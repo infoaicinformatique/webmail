@@ -393,6 +393,8 @@
 		if (!core || core.state.module !== 'calendar') return
 		const h = core.h
 		const el = core.detailEl
+		// a refresh while typing in the search field must not take the focus away
+		const typing = searchInput && document.activeElement === searchInput
 		core.clear(el)
 
 		const title = cal.view === 'list'
@@ -429,6 +431,7 @@
 			h('button', { class: 'primary wm-mobile-only', onclick: () => openForm(null, new Date()) }, '＋'),
 		))
 
+		if (typing) searchInput.focus()
 		if (cal.search) {
 			el.appendChild(renderSearch())
 			return
@@ -451,10 +454,8 @@
 
 	function searchField() {
 		const h = core.h
-		if (searchInput) {
-			if (document.activeElement !== searchInput) searchInput.value = cal.search ? cal.search.q : ''
-			return searchInput
-		}
+		// what is typed stays, whatever is redrawn; only closing the search empties it
+		if (searchInput) return searchInput
 		const input = searchInput = h('input', {
 			type: 'search',
 			class: 'wm-cal-search',
@@ -538,8 +539,15 @@
 		return 'Semaine du ' + from + ' au ' + last.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
 	}
 
-	function setCalView(v) {
+	/** Moving in the calendar closes the search results. */
+	function closeSearch() {
+		if (!cal.search) return
 		cal.search = null
+		if (searchInput) searchInput.value = ''
+	}
+
+	function setCalView(v) {
+		closeSearch()
 		cal.view = v
 		cal.weekScroll = null
 		try { localStorage.setItem('webmail.calview', v) } catch (e) { /* ignore */ }
@@ -1322,7 +1330,7 @@
 	window.WebmailModules = window.WebmailModules || {}
 
 	function refreshAll() {
-		cal.search = null // moving in the calendar closes the search results
+		closeSearch()
 		core.renderNav()
 		load()
 	}
