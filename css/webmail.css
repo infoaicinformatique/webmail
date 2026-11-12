@@ -737,3 +737,10 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-send-options { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 4px 0; font-size: 0.9em; }
 .wm-send-options input[type="datetime-local"] { width: auto; min-width: 220px; margin: 0; }
 .wm-send-options input[hidden] { display: none; }
+
+/* searching events */
+.wm-cal-search { width: 220px; margin: 0 0 0 auto; min-height: 34px; }
+@media (max-width: 1100px) { .wm-cal-search { width: 160px; } }
+@media (max-width: 800px) { .wm-cal-search { order: 10; width: 100%; } }
+.wm-agenda-day.past { color: var(--color-text-maxcontrast); }
+.wm-cal-results .wm-agenda-item { border-inline-start: 3px solid var(--ev-color, var(--color-primary-element)); }

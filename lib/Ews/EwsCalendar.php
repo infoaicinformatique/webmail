@@ -223,6 +223,48 @@ class EwsCalendar {
 	 * @param string $calendar calendar key, see folderXml()
 	 * @return array<int, array<string, mixed>>
 	 */
+	/**
+	 * Does the event contain all the words searched (subject, location,
+	 * organiser), whatever the accents and capitals?
+	 * @param array<string, mixed> $event as returned by findEvents()
+	 */
+	public static function matches(array $event, string $query): bool {
+		$fold = function (string $s): string {
+			$s = mb_strtolower($s, 'UTF-8');
+			$t = class_exists(\Normalizer::class) ? \Normalizer::normalize($s, \Normalizer::FORM_D) : $s;
+			return (string)preg_replace('/\p{Mn}+/u', '', (string)$t);
+		};
+		$organizer = is_array($event['organizer'] ?? null) ? ($event['organizer']['name'] ?? '') . ' ' . ($event['organizer']['email'] ?? '') : '';
+		$haystack = $fold(($event['subject'] ?? '') . ' ' . ($event['location'] ?? '') . ' ' . $organizer);
+		$words = preg_split('/\s+/u', $fold(trim($query)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+		if ($words === []) {
+			return false;
+		}
+		foreach ($words as $w) {
+			if (!str_contains($haystack, $w)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Events of a calendar matching $query, from six months ago to six months
+	 * ahead (Exchange cannot search and expand recurring events at once: the
+	 * period is read, then filtered), soonest first.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function searchEvents(string $query, string $calendar = 'calendar', ?\DateTimeImmutable $now = null): array {
+		if (mb_strlen(trim($query)) < 2) {
+			throw new MailException('Tapez au moins 2 lettres');
+		}
+		$now ??= new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+		$found = array_values(array_filter($this->findEvents($now->modify('-183 days'), $now->modify('+183 days'), $calendar),
+			fn ($e) => self::matches($e, $query)));
+		usort($found, fn ($a, $b) => strcmp((string)$a['start'], (string)$b['start']));
+		return array_slice($found, 0, 200);
+	}
+
 	public function findEvents(\DateTimeInterface $start, \DateTimeInterface $end, string $calendar = 'calendar'): array {
 		if ($end <= $start) {
 			throw new MailException('Période invalide');

@@ -1170,6 +1170,25 @@ async function main() {
 		await page.click('.wm-segmented button:has-text("' + before.trim() + '")')
 	})
 
+	await step('calendar: searching events', async () => {
+		await page.fill('.wm-cal-search', 'EQUIPE')
+		await page.press('.wm-cal-search', 'Enter')
+		await page.waitForSelector('.wm-cal-results .wm-search-info:has-text("Événements contenant « EQUIPE »")')
+		await page.waitForSelector('.wm-cal-results .wm-agenda-item')
+		// accents and capitals do not matter; the weekly meeting appears for each week
+		const subjects = await page.$$eval('.wm-cal-results .wm-agenda-subject', (els) => els.map((e) => e.firstChild.textContent))
+		assert(subjects.length > 1 && subjects.every((t) => /équipe/i.test(t)), subjects.join('|'))
+		await shot('44-event-search')
+		await page.click('.wm-cal-results .wm-agenda-item >> nth=0')
+		await page.waitForSelector('.wm-modal .wm-event-when')
+		await page.click('.wm-modal-close')
+		await page.fill('.wm-cal-search', 'zzz introuvable')
+		await page.press('.wm-cal-search', 'Enter')
+		await page.waitForSelector('.wm-cal-results .wm-empty:has-text("Aucun événement trouvé")')
+		await page.click('.wm-cal-results a:has-text("revenir à l\'agenda")')
+		await page.waitForSelector('.wm-cal-results', { state: 'detached' })
+	})
+
 	await step('calendar: share my calendar without delegation', async () => {
 		const openShare = async (name) => {
 			await page.click('.wm-cal-row:has-text("' + name + '") .wm-cal-share')

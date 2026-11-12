@@ -34,6 +34,7 @@ return [
 		['name' => 'calendar#setPermissions', 'url' => '/api/accounts/{id}/calendar/permissions', 'verb' => 'POST'],
 		['name' => 'calendar#addShared', 'url' => '/api/accounts/{id}/calendar/shared', 'verb' => 'POST'],
 		['name' => 'calendar#removeShared', 'url' => '/api/accounts/{id}/calendar/shared/delete', 'verb' => 'POST'],
+		['name' => 'calendar#search', 'url' => '/api/accounts/{id}/calendar/search', 'verb' => 'GET'],
 		['name' => 'calendar#events', 'url' => '/api/accounts/{id}/calendar/events', 'verb' => 'GET'],
 		['name' => 'calendar#event', 'url' => '/api/accounts/{id}/calendar/event', 'verb' => 'GET'],
 		['name' => 'calendar#series', 'url' => '/api/accounts/{id}/calendar/series', 'verb' => 'GET'],

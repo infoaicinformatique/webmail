@@ -14,7 +14,8 @@
 		view: null, // month | week | list
 		cursor: startOfDay(new Date()), // reference day: its month, its week, or the first day of the list
 		weekScroll: null,
-		miniMonth: null, // month shown by the small calendar when browsed with its arrows // remembered vertical scroll of the week grid
+		miniMonth: null, // month shown by the small calendar when browsed with its arrows
+		search: null, // { q, loading, events }: search results shown instead of the calendar // remembered vertical scroll of the week grid
 		calendars: [], // own and shared calendars of the current account
 		calendarsFor: null, // account id the list belongs to
 		hidden: new Set(), // keys of calendars the user unticked
@@ -418,6 +419,7 @@
 			cal.view !== 'list' ? h('button', { 'aria-label': unit[0], onclick: () => move(-1) }, '‹') : null,
 			cal.view !== 'list' ? h('button', { 'aria-label': unit[1], onclick: () => move(1) }, '›') : null,
 			h('h2', { class: 'wm-cal-title' }, title),
+			searchField(),
 			cal.loading ? h('span', { class: 'icon-loading-small' }) : null,
 			h('div', { class: 'wm-segmented' },
 				h('button', { class: cal.view === 'day' ? 'active' : '', onclick: () => setCalView('day') }, 'Jour'),
@@ -427,6 +429,10 @@
 			h('button', { class: 'primary wm-mobile-only', onclick: () => openForm(null, new Date()) }, '＋'),
 		))
 
+		if (cal.search) {
+			el.appendChild(renderSearch())
+			return
+		}
 		if (cal.view === 'week' || cal.view === 'day') {
 			const week = renderWeek()
 			el.appendChild(week)
@@ -434,6 +440,87 @@
 			return
 		}
 		el.appendChild(cal.view === 'list' ? renderList() : renderMonth())
+	}
+
+	// ------------------------------------------------------------------
+	// searching events
+	// ------------------------------------------------------------------
+
+	function searchField() {
+		const h = core.h
+		const input = h('input', {
+			type: 'search',
+			class: 'wm-cal-search',
+			name: 'calSearch',
+			placeholder: 'Rechercher un événement',
+			'aria-label': 'Rechercher un événement',
+			value: cal.search ? cal.search.q : '',
+			onkeydown: (e) => {
+				if (e.key === 'Enter') { e.preventDefault(); searchEvents(input.value.trim()) }
+				if (e.key === 'Escape' && cal.search) { e.preventDefault(); endSearch() }
+			},
+		})
+		return input
+	}
+
+	let searchSeq = 0
+
+	function endSearch() {
+		cal.search = null
+		render()
+	}
+
+	/** In every visible calendar, six months back and ahead. */
+	async function searchEvents(q) {
+		if (!q) { endSearch(); return }
+		if (q.length < 2) { core.toast('Tapez au moins 2 lettres', true); return }
+		const mine = ++searchSeq
+		cal.search = { q, loading: true, events: [] }
+		render()
+		const visible = cal.calendars.filter((c) => !cal.hidden.has(c.key) && c.mode !== 'freebusy')
+		const results = await Promise.all(visible.map((c) => api('/accounts/' + core.accountId + '/calendar/search', {
+			query: { q, tz: core.TZ, calendar: c.key },
+		}).then((d) => d.events.map((ev) => Object.assign(ev, { calendar: c.key, color: c.color, readOnly: !c.canEdit, shared: c.kind === 'shared' })),
+			(e) => { core.toast(c.name + ' : ' + e.message, true); return [] })))
+		if (mine !== searchSeq || !cal.search) return
+		cal.search = { q, loading: false, events: results.flat().sort((a, b) => new Date(a.start) - new Date(b.start)) }
+		render()
+	}
+
+	function renderSearch() {
+		const h = core.h
+		const { q, loading, events } = cal.search
+		const wrap = h('div', { class: 'wm-agenda wm-cal-results' },
+			h('div', { class: 'wm-search-info' },
+				'Événements contenant « ' + q + ' » ' + (loading ? '' : '(' + events.length + ') ') + '— six mois avant et après aujourd\'hui · ',
+				h('a', { href: '#', onclick: (e) => { e.preventDefault(); endSearch() } }, 'revenir à l\'agenda')))
+		if (loading) {
+			wrap.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
+			return wrap
+		}
+		if (!events.length) {
+			wrap.appendChild(h('div', { class: 'wm-empty' }, 'Aucun événement trouvé'))
+			return wrap
+		}
+		let lastDay = null
+		const today = startOfDay(new Date())
+		events.forEach((ev) => {
+			const s = new Date(ev.start)
+			const day = startOfDay(s)
+			if (!lastDay || !sameDay(day, lastDay)) {
+				lastDay = day
+				wrap.appendChild(h('h3', { class: 'wm-agenda-day' + (sameDay(day, today) ? ' today' : '') + (day < today ? ' past' : '') },
+					ucfirst(day.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))))
+			}
+			const item = h('button', { type: 'button', class: 'wm-agenda-item', onclick: () => openEvent(ev), dataset: { id: ev.id } },
+				h('span', { class: 'wm-agenda-time' }, ev.allDay ? 'Journée' : timeLabel(s) + ' – ' + timeLabel(new Date(ev.end))),
+				h('span', { class: 'wm-agenda-subject' + (ev.isCancelled ? ' cancelled' : '') }, ev.subject || '(sans titre)',
+					ev.location ? h('span', { class: 'wm-muted' }, ' · ' + ev.location) : null,
+					cal.calendars.length > 1 ? h('span', { class: 'wm-muted' }, ' · ' + (calendarOf(ev) || {}).name) : null))
+			if (ev.color) item.style.setProperty('--ev-color', ev.color)
+			wrap.appendChild(item)
+		})
+		return wrap
 	}
 
 	function weekTitle(first) {
@@ -444,6 +531,7 @@
 	}
 
 	function setCalView(v) {
+		cal.search = null
 		cal.view = v
 		cal.weekScroll = null
 		try { localStorage.setItem('webmail.calview', v) } catch (e) { /* ignore */ }
@@ -1226,6 +1314,7 @@
 	window.WebmailModules = window.WebmailModules || {}
 
 	function refreshAll() {
+		cal.search = null // moving in the calendar closes the search results
 		core.renderNav()
 		load()
 	}
