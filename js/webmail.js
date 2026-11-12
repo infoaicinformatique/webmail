@@ -545,12 +545,21 @@
 				h('span', { class: 'wm-folder-name' }, f.name),
 				f.unread && f.role !== 'sentitems' && f.role !== 'deleteditems' ? h('span', { class: 'wm-badge' }, String(f.unread)) : null)
 			folderDropTarget(link, f)
-			ul.appendChild(h('li', {}, link))
+			ul.appendChild(h('li', { class: 'wm-folder-row' }, link,
+				h('button', {
+					type: 'button',
+					class: 'wm-folder-menu-btn',
+					title: 'Actions sur le dossier',
+					'aria-label': 'Actions sur le dossier ' + f.name,
+					'aria-haspopup': 'menu',
+					onclick: (e) => { e.stopPropagation(); openFolderMenu(e.currentTarget, f) },
+				}, '⋯')))
 			const children = (byParent[f.id] || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'))
 			children.forEach((c) => addFolder(c, depth + 1))
 		}
 		top.forEach((f) => addFolder(f, 0))
 		navEl.appendChild(ul)
+		navEl.appendChild(h('a', { href: '#', class: 'wm-new-folder', onclick: (e) => { e.preventDefault(); createFolder(null) } }, '＋ Nouveau dossier'))
 		const usage = usageGauge()
 		if (usage) navEl.appendChild(usage)
 		navEl.appendChild(navFooter())
@@ -1110,6 +1119,113 @@
 			ids.forEach((id) => state.checked.delete(id))
 			moveMessages(ids, folder.id, folder.name)
 		})
+	}
+
+	// ------------------------------------------------------------------
+	// managing folders: create, rename, move, delete
+	// ------------------------------------------------------------------
+
+	const FIXED_ROLES = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail']
+
+	function openFolderMenu(anchor, f) {
+		document.querySelectorAll('.wm-folder-menu').forEach((m) => m.remove())
+		const fixed = FIXED_ROLES.includes(f.role)
+		const item = (label, action, danger) => h('button', {
+			type: 'button',
+			role: 'menuitem',
+			class: 'wm-folder-menu-item' + (danger ? ' wm-danger' : ''),
+			onclick: () => { close(); action() },
+		}, label)
+		const menu = h('div', { class: 'wm-folder-menu', role: 'menu', 'aria-label': 'Dossier ' + f.name },
+			item('＋ Nouveau sous-dossier', () => createFolder(f)),
+			fixed ? null : item('✏️ Renommer', () => renameFolder(f)),
+			fixed ? null : item('↪ Déplacer…', () => moveFolder(f)),
+			fixed ? null : item('🗑 Supprimer', () => deleteFolder(f), true))
+		const close = () => { menu.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', onKey, true) }
+		const outside = (e) => { if (!menu.contains(e.target)) close() }
+		const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close() } }
+		document.addEventListener('mousedown', outside, true)
+		document.addEventListener('keydown', onKey, true)
+		const r = anchor.getBoundingClientRect()
+		menu.style.top = Math.min(r.bottom + 2, window.innerHeight - 180) + 'px'
+		menu.style.left = Math.max(8, r.right - 210) + 'px'
+		document.body.appendChild(menu)
+		const first = menu.querySelector('button')
+		if (first) first.focus()
+	}
+
+	/**
+	 * Small dialog: a name to type, or a choice in a list.
+	 * @return {Promise<string|null>} null when cancelled
+	 */
+	function askFolder({ title, label, value = '', choices = null, confirmLabel }) {
+		return new Promise((resolve) => {
+			const overlay = h('div', { class: 'wm-overlay' })
+			const done = (v) => { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(v) }
+			const onKey = (e) => { if (e.key === 'Escape') done(null) }
+			document.addEventListener('keydown', onKey)
+			overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) done(null) })
+			const field = choices
+				? h('select', { name: 'folderChoice' }, choices.map(([v, l]) => h('option', { value: v }, l)))
+				: h('input', { type: 'text', name: 'folderName', value, maxlength: '255', required: true })
+			overlay.appendChild(h('div', { class: 'wm-modal wm-modal-small', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+				h('div', { class: 'wm-modal-header' }, h('h2', {}, title), h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: () => done(null) }, '✕')),
+				h('form', {
+					class: 'wm-event-form',
+					onsubmit: (e) => { e.preventDefault(); const v = field.value.trim ? field.value.trim() : field.value; if (choices || v) done(v) },
+				},
+				h('label', { class: 'wm-field' }, h('span', {}, label), field),
+				h('div', { class: 'wm-compose-actions' }, h('button', { type: 'submit', class: 'primary' }, confirmLabel), h('button', { type: 'button', onclick: () => done(null) }, 'Annuler')))))
+			document.body.appendChild(overlay)
+			field.focus()
+			if (field.select) field.select()
+		})
+	}
+
+	async function folderAction(path, body, message) {
+		try {
+			const r = await api('/accounts/' + state.accountId + '/folders' + path, { method: 'POST', body })
+			toast(message)
+			await loadFolders()
+			return r
+		} catch (e) {
+			toast(e.message, true)
+			return null
+		}
+	}
+
+	async function createFolder(parent) {
+		const name = await askFolder({ title: parent ? 'Nouveau dossier dans « ' + parent.name + ' »' : 'Nouveau dossier', label: 'Nom', confirmLabel: 'Créer' })
+		if (name) await folderAction('', { name, parentId: parent ? parent.id : '' }, 'Dossier « ' + name + ' » créé')
+	}
+
+	async function renameFolder(f) {
+		const name = await askFolder({ title: 'Renommer « ' + f.name + ' »', label: 'Nouveau nom', value: f.name, confirmLabel: 'Renommer' })
+		if (name && name !== f.name) await folderAction('/rename', { folderId: f.id, name }, 'Dossier renommé en « ' + name + ' »')
+	}
+
+	async function moveFolder(f) {
+		// not into itself nor into one of its own sub-folders
+		const inside = new Set([f.id])
+		let grew = true
+		while (grew) {
+			grew = false
+			state.folders.forEach((x) => { if (x.parentId && inside.has(x.parentId) && !inside.has(x.id)) { inside.add(x.id); grew = true } })
+		}
+		const choices = [['', '(en haut de la boîte aux lettres)']].concat(state.folders.filter((x) => !inside.has(x.id) && x.id !== f.parentId).map((x) => [x.id, x.name]))
+		const target = await askFolder({ title: 'Déplacer « ' + f.name + ' »', label: 'Dans', choices, confirmLabel: 'Déplacer' })
+		if (target === null) return
+		const where = target ? '« ' + folderName(target) + ' »' : 'en haut de la boîte aux lettres'
+		await folderAction('/move', { folderId: f.id, parentId: target }, 'Dossier « ' + f.name + ' » déplacé ' + (target ? 'dans ' : '') + where)
+	}
+
+	async function deleteFolder(f) {
+		if (!window.confirm('Supprimer le dossier « ' + f.name + ' » et tout son contenu ? Il sera placé dans « Éléments supprimés ».')) return
+		const wasOpen = state.folderId === f.id
+		if (await folderAction('/delete', { folderId: f.id }, 'Dossier « ' + f.name + ' » placé dans les éléments supprimés') && wasOpen) {
+			const inbox = state.folders.find((x) => x.role === 'inbox')
+			if (inbox) selectFolder(inbox.id)
+		}
 	}
 
 	function folderName(id) {

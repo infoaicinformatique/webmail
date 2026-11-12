@@ -199,6 +199,71 @@ class EwsClient {
 		return null;
 	}
 
+	// ------------------------------------------------------------------
+	// Managing mail folders
+	// ------------------------------------------------------------------
+
+	/** Folders Exchange needs: they cannot be renamed, moved or deleted. */
+	private const PROTECTED_ROLES = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'outbox', 'msgfolderroot'];
+
+	private static function folderName(string $name): string {
+		$name = trim($name);
+		if ($name === '' || mb_strlen($name) > 255 || preg_match('/[\x00-\x1f]/', $name)) {
+			throw new MailException('Nom de dossier invalide');
+		}
+		return $name;
+	}
+
+	private function assertEditable(string $folderId): void {
+		if (in_array($folderId, self::DISTINGUISHED, true)
+			|| in_array($folderId, $this->distinguishedFolderIds(self::PROTECTED_ROLES), true)) {
+			throw new MailException('Ce dossier est indispensable à Exchange : il ne peut pas être renommé, déplacé ni supprimé');
+		}
+	}
+
+	/**
+	 * New mail folder, at the top of the mailbox or inside $parentId.
+	 * @return string id of the folder
+	 */
+	public function createFolder(string $name, ?string $parentId = null): string {
+		$xp = $this->request(
+			'<m:CreateFolder><m:ParentFolderId>' . $this->folderIdXml($parentId ?? 'msgfolderroot') . '</m:ParentFolderId>'
+			. '<m:Folders><t:Folder><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>' . $this->esc(self::folderName($name)) . '</t:DisplayName></t:Folder></m:Folders>'
+			. '</m:CreateFolder>'
+		);
+		return (string)$this->attr($xp, '//m:Folders/*/t:FolderId', 'Id');
+	}
+
+	public function renameFolder(string $folderId, string $name): void {
+		$this->assertEditable($folderId);
+		$this->request(
+			'<m:UpdateFolder><m:FolderChanges><t:FolderChange>' . $this->folderIdXml($folderId)
+			. '<t:Updates><t:SetFolderField><t:FieldURI FieldURI="folder:DisplayName"/><t:Folder><t:DisplayName>'
+			. $this->esc(self::folderName($name)) . '</t:DisplayName></t:Folder></t:SetFolderField></t:Updates>'
+			. '</t:FolderChange></m:FolderChanges></m:UpdateFolder>'
+		);
+	}
+
+	/** Move a folder (and what it contains) inside $parentId, or to the top of the mailbox. */
+	public function moveFolder(string $folderId, ?string $parentId): void {
+		$this->assertEditable($folderId);
+		if ($parentId === $folderId) {
+			throw new MailException('Un dossier ne peut pas être déplacé dans lui-même');
+		}
+		$this->request(
+			'<m:MoveFolder><m:ToFolderId>' . $this->folderIdXml($parentId ?? 'msgfolderroot') . '</m:ToFolderId>'
+			. '<m:FolderIds>' . $this->folderIdXml($folderId) . '</m:FolderIds></m:MoveFolder>'
+		);
+	}
+
+	/** Delete a folder and what it contains: to « Éléments supprimés », like Outlook. */
+	public function deleteFolder(string $folderId): void {
+		$this->assertEditable($folderId);
+		$this->request(
+			'<m:DeleteFolder DeleteType="MoveToDeletedItems"><m:FolderIds>' . $this->folderIdXml($folderId) . '</m:FolderIds></m:DeleteFolder>'
+		);
+	}
+
 	public function distinguishedFolderIds(array $names): array {
 		$ids = '';
 		foreach ($names as $n) {
@@ -934,6 +999,10 @@ class EwsClient {
 			'ErrorInvalidPermissionSettings' => 'Exchange a refusé ces autorisations',
 			'ErrorIrresolvableConflict' => 'L\'élément a été modifié entre-temps, rechargez la page',
 			'ErrorTimeZone' => 'Fuseau horaire non reconnu par Exchange',
+			'ErrorFolderExists' => 'Un dossier porte déjà ce nom à cet endroit',
+			'ErrorDeleteDistinguishedFolder' => 'Ce dossier est indispensable à Exchange et ne peut pas être supprimé',
+			'ErrorMoveDistinguishedFolder' => 'Ce dossier est indispensable à Exchange et ne peut pas être déplacé',
+			'ErrorMoveCopyFailed' => 'Exchange n\'a pas pu déplacer le dossier (pas dans un de ses sous-dossiers)',
 			default => 'Erreur Exchange' . ($code ? ' (' . $code . ')' : '') . ($text ? ' : ' . $text : ''),
 		};
 	}

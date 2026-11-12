@@ -257,6 +257,60 @@ def move_message(mid, folder):
     MESSAGES[mid]['folder'] = folder
 
 
+def manage_folder(op, el):
+    """Create, rename, move, delete mail folders (Exchange's own ones are refused)."""
+    ids = {f[0]: i for i, f in enumerate(FOLDERS)}
+    protected = {f[0] for f in FOLDERS if f[3]}
+    sibling_names = lambda parent: {f[1].lower() for f in FOLDERS if f[2] == parent}
+    if op == 'CreateFolder':
+        parent = folder_id(el.find('m:ParentFolderId', NS)[0])
+        name = el.findtext('m:Folders/t:Folder/t:DisplayName', default='', namespaces=NS)
+        if parent not in ids:
+            return wrap(op, [err(op, 'ErrorFolderNotFound', 'not found')])
+        if name.lower() in sibling_names(parent):
+            return wrap(op, [err(op, 'ErrorFolderExists', 'A folder with the specified name already exists.')])
+        fid = 'F-NEW-%d' % next(COUNTER)
+        FOLDERS.append((fid, name, parent, None))
+        return wrap(op, [ok(op, '<m:Folders><t:Folder><t:FolderId Id="%s" ChangeKey="AQ"/></t:Folder></m:Folders>' % fid)])
+    if op == 'UpdateFolder':
+        out = []
+        for ch in el.findall('m:FolderChanges/t:FolderChange', NS):
+            fid = folder_id(ch[0])
+            name = ch.findtext('.//t:Folder/t:DisplayName', default='', namespaces=NS)
+            if fid not in ids:
+                out.append(err(op, 'ErrorFolderNotFound', 'not found'))
+            elif fid in protected:
+                out.append(err(op, 'ErrorAccessDenied', 'Access is denied.'))
+            elif name.lower() in sibling_names(FOLDERS[ids[fid]][2]) - {FOLDERS[ids[fid]][1].lower()}:
+                out.append(err(op, 'ErrorFolderExists', 'exists'))
+            else:
+                f = FOLDERS[ids[fid]]
+                FOLDERS[ids[fid]] = (fid, name, f[2], f[3])
+                out.append(ok(op, '<m:Folders><t:Folder><t:FolderId Id="%s" ChangeKey="AQ"/></t:Folder></m:Folders>' % fid))
+        return wrap(op, out)
+    target = folder_id(el.find('m:ToFolderId', NS)[0]) if op == 'MoveFolder' else 'F-DELETED'
+    out = []
+    for ref in el.find('m:FolderIds', NS):
+        fid = folder_id(ref)
+        if fid not in ids:
+            out.append(err(op, 'ErrorFolderNotFound', 'not found'))
+            continue
+        if fid in protected:
+            out.append(err(op, 'ErrorDeleteDistinguishedFolder' if op == 'DeleteFolder' else 'ErrorMoveDistinguishedFolder', 'protected'))
+            continue
+        # not into itself or one of its sub-folders
+        p = target
+        while p is not None and p != fid:
+            p = FOLDERS[ids[p]][2] if p in ids else None
+        if p == fid:
+            out.append(err(op, 'ErrorMoveCopyFailed', 'cannot move a folder into itself'))
+            continue
+        f = FOLDERS[ids[fid]]
+        FOLDERS[ids[fid]] = (fid, f[1], target, f[3])
+        out.append(ok(op, '<m:Folders><t:Folder><t:FolderId Id="%s" ChangeKey="AQ"/></t:Folder></m:Folders>' % fid if op == 'MoveFolder' else ''))
+    return wrap(op, out)
+
+
 def handle(op, el, user):
     r = pim.handle(op, el, user, CURRENT_TZ, MESSAGES, move_message)
     if r is not None:
@@ -276,6 +330,9 @@ def handle(op, el, user):
                     quota += '<t:UnreadCount>%d</t:UnreadCount>' % counts(fid)[1]
                 msgs.append(ok(op, '<m:Folders><t:Folder><t:FolderId Id="%s" ChangeKey="AQ"/>%s</t:Folder></m:Folders>' % (fid, quota)))
         return wrap(op, msgs)
+
+    if op in ('CreateFolder', 'UpdateFolder', 'MoveFolder', 'DeleteFolder'):
+        return manage_folder(op, el)
 
     if op == 'FindFolder':
         cal = ('<t:CalendarFolder><t:FolderId Id="F-CAL" ChangeKey="AQ"/><t:ParentFolderId Id="F-ROOT" ChangeKey="AQ"/>'

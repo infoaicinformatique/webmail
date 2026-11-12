@@ -21,7 +21,7 @@ et sur les téléphones, et inversement.
 
 | | |
 |---|---|
-| Dossiers | Arborescence Exchange (Boîte de réception, Envoyés, Brouillons, Indésirables, Supprimés, dossiers personnels) avec le nombre de non-lus |
+| Dossiers | Arborescence Exchange (Boîte de réception, Envoyés, Brouillons, Indésirables, Supprimés, dossiers personnels) avec le nombre de non-lus. « ＋ Nouveau dossier » sous la liste ; le bouton « ⋯ » d'un dossier propose **Nouveau sous-dossier, Renommer, Déplacer** (dans un autre dossier ou en haut de la boîte) et **Supprimer** (le dossier et son contenu vont dans « Éléments supprimés »). Les dossiers indispensables à Exchange (Boîte de réception, Brouillons, Envoyés, Supprimés, Indésirables) ne peuvent être que complétés de sous-dossiers |
 | Espace utilisé | Sous les dossiers : espace occupé par la boîte et limite fixée dans Exchange (« 1,2 Go sur 2 Go (60 %) »), en orange à 75 %, en rouge à 90 % avec un avertissement : au-delà de la limite, Exchange bloque l'envoi. Sans limite connue, seul l'espace occupé est affiché |
 | Liste | Défilement continu (50 messages à la fois), aperçu, pièce jointe, importance, suivi (drapeau), actualisation toutes les 2 minutes |
 | Fluidité | Un dossier déjà ouvert s'affiche **immédiatement**, à la même position, puis se met à jour. Les messages voisins de celui que vous lisez (et celui que survole la souris) sont chargés à l'avance, **sans être marqués comme lus**. Supprimer, déplacer, marquer ou suivre un message est **instantané** (annulé si Exchange refuse) ; après une suppression, le message suivant s'ouvre. L'agenda charge aussi à l'avance la semaine ou le mois précédent et suivant, et les carnets d'adresses déjà vus s'affichent tout de suite. Côté serveur, une seule connexion HTTPS vers Exchange par requête, réponses compressées |
@@ -137,7 +137,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.20.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.21.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -159,7 +159,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.20 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.21 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -245,7 +245,6 @@ templates/          page principale et page d'administration
 **Courrier**
 - Images collées dans l'éditeur, signature mise en forme, pièces jointes enregistrées avec le brouillon
 - Affichage par conversation (fil de discussion)
-- Gestion des dossiers : créer, renommer, déplacer, supprimer
 - Règles de la boîte de réception
 - Catégories Outlook (couleurs), « Ce n'est pas du courrier indésirable », bloquer un expéditeur
 - Lien de partage Nextcloud à la place d'une pièce jointe trop lourde

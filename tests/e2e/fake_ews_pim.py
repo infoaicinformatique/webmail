@@ -638,6 +638,8 @@ def handle(op, el, user, tz, messages, move_message):
                               % (tag, folder, permission_set_xml(folder), tag)))
         return wrap(op, out)
 
+    if op == 'UpdateFolder' and el.find('.//t:FieldURI[@FieldURI="folder:DisplayName"]', NS) is not None:
+        return None  # renaming a mail folder: fake_ews.py
     if op == 'UpdateFolder':
         out = []
         for ch in el.findall('m:FolderChanges/t:FolderChange', NS):

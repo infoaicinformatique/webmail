@@ -711,3 +711,15 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-dragging .wm-folder { outline: 1px dashed transparent; }
 .wm-folder.wm-drop-target { background: var(--color-primary-element-light); outline: 2px dashed var(--color-primary-element, #0082c9); outline-offset: -2px; }
 @media (max-width: 800px) { .wm-check { opacity: 1; } }
+
+/* managing folders */
+.wm-folder-row { position: relative; }
+.wm-folder-menu-btn { position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%); min-height: 26px !important; min-width: 26px; padding: 0 !important; margin: 0; border: none; background: transparent; opacity: 0; font-weight: bold; }
+.wm-folder-row:hover .wm-folder-menu-btn, .wm-folder-menu-btn:focus-visible { opacity: 1; }
+.wm-folder-row:hover .wm-badge { visibility: hidden; }
+.wm-folder-menu { position: fixed; z-index: 9100; width: 210px; padding: 4px; border-radius: var(--border-radius-large, 10px); background: var(--color-main-background); box-shadow: 0 2px 12px rgba(0, 0, 0, .25); display: flex; flex-direction: column; }
+.wm-folder-menu-item { text-align: start; justify-content: flex-start; margin: 0; border: none; background: transparent; }
+.wm-folder-menu-item:hover, .wm-folder-menu-item:focus-visible { background: var(--color-background-hover); }
+.wm-new-folder { display: block; padding: 6px 12px; font-size: 0.9em; color: var(--color-text-maxcontrast); }
+.wm-modal-small { max-width: 460px; }
+@media (max-width: 800px) { .wm-folder-menu-btn { opacity: 1; } }

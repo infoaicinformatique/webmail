@@ -442,6 +442,64 @@ async function main() {
 		await page.waitForSelector(msg(11))
 	})
 
+	await step('managing folders: create, sub-folder, rename, move, delete', async () => {
+		const row = (name) => '.wm-folder-row:has(.wm-folder-name:text-is("' + name + '"))'
+		const menu = async (name, action) => {
+			await page.hover(row(name))
+			await page.click(row(name) + ' .wm-folder-menu-btn')
+			await page.click('.wm-folder-menu button:has-text("' + action + '")')
+		}
+		const ask = async (value, button) => {
+			await page.fill('.wm-modal input[name=folderName]', value)
+			await page.click('.wm-modal button:has-text("' + button + '")')
+		}
+		await page.click('.wm-new-folder')
+		await ask('Projets', 'Créer')
+		await page.waitForSelector('.wm-toast:has-text("Dossier « Projets » créé")')
+		await page.waitForSelector(row('Projets'))
+		// same name at the same place: refused by Exchange
+		await page.click('.wm-new-folder')
+		await ask('Projets', 'Créer')
+		await page.waitForSelector('.wm-toast:has-text("Un dossier porte déjà ce nom")')
+
+		await menu('Projets', 'Nouveau sous-dossier')
+		await page.waitForSelector('.wm-modal h2:has-text("Nouveau dossier dans « Projets »")')
+		await ask('Chantier Nice', 'Créer')
+		await page.waitForSelector(row('Chantier Nice'))
+		const indent = async (name) => parseInt(await page.$eval(row(name) + ' .wm-folder', (a) => getComputedStyle(a).paddingInlineStart), 10)
+		assert((await indent('Chantier Nice')) > (await indent('Projets')), 'shown inside « Projets »')
+		await menu('Chantier Nice', 'Renommer')
+		await ask('Chantier Antibes', 'Renommer')
+		await page.waitForSelector('.wm-toast:has-text("Dossier renommé en « Chantier Antibes »")')
+		await page.waitForSelector(row('Chantier Antibes'))
+		await shot('39-folders')
+
+		// a message into it, then the folder to the top of the mailbox
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°11")) .wm-check')
+		await page.selectOption('.wm-bulk select[name=bulkMove]', { label: 'Chantier Antibes' })
+		await page.waitForSelector('.wm-toast:has-text("Message déplacé vers « Chantier Antibes »")')
+		await menu('Chantier Antibes', 'Déplacer')
+		await page.selectOption('.wm-modal select[name=folderChoice]', '')
+		await page.click('.wm-modal button:has-text("Déplacer")')
+		await page.waitForSelector('.wm-toast:has-text("déplacé en haut de la boîte aux lettres")')
+		await page.waitForFunction(() => { const a = [...document.querySelectorAll('.wm-folder')].find((x) => x.textContent.includes('Chantier Antibes')); return a && parseInt(getComputedStyle(a).paddingInlineStart, 10) === 12 })
+		await page.click(row('Chantier Antibes') + ' .wm-folder')
+		await page.waitForSelector('.wm-message:has-text("Newsletter n°11")')
+
+		// delete: into « Éléments supprimés », with what it contains
+		page.once('dialog', (d) => d.accept())
+		await menu('Projets', 'Supprimer')
+		await page.waitForSelector('.wm-toast:has-text("Dossier « Projets » placé dans les éléments supprimés")')
+		// Exchange's own folders cannot be renamed, moved or deleted
+		await page.hover(row('Boîte de réception'))
+		await page.click(row('Boîte de réception') + ' .wm-folder-menu-btn')
+		const items = await page.$$eval('.wm-folder-menu button', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(items, ['＋ Nouveau sous-dossier'])
+		await page.keyboard.press('Escape')
+		await page.click(row('Boîte de réception') + ' .wm-folder')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('account settings: signature', async () => {
 		await page.click('text=Comptes et signature')
 		await page.fill('.wm-account-card textarea', 'Utilisateur\nSociété A')
