@@ -259,6 +259,30 @@ class EwsCalendarTest extends EwsTestCase {
 		];
 	}
 
+	public function testMoveEventOnlyChangesStartAndEnd(): void {
+		$this->queue(self::ok('UpdateItem', '<m:Items/>'));
+		$this->calendar()->moveEvent('E1', '2026-11-19T10:15', '2026-11-19T11:45', false, false);
+		$req = $this->lastRequest();
+		$this->assertStringContainsString('SendMeetingInvitationsOrCancellations="SendToNone"', $req);
+		$this->assertStringContainsString('<t:Updates><t:SetItemField><t:FieldURI FieldURI="calendar:Start"/><t:CalendarItem><t:Start>2026-11-19T10:15:00</t:Start></t:CalendarItem></t:SetItemField>'
+			. '<t:SetItemField><t:FieldURI FieldURI="calendar:End"/><t:CalendarItem><t:End>2026-11-19T11:45:00</t:End></t:CalendarItem></t:SetItemField></t:Updates>', $req);
+		$this->assertSame(2, substr_count($req, '<t:SetItemField>'));
+	}
+
+	public function testMoveAllDayMeetingNotifiesAttendees(): void {
+		$this->queue(self::ok('UpdateItem', '<m:Items/>'));
+		$this->calendar()->moveEvent('E2', '2026-11-23', '2026-11-24', true, true);
+		$req = $this->lastRequest();
+		$this->assertStringContainsString('SendMeetingInvitationsOrCancellations="SendToAllAndSaveCopy"', $req);
+		$this->assertStringContainsString('<t:Start>2026-11-23T00:00:00</t:Start>', $req);
+		$this->assertStringContainsString('<t:End>2026-11-25T00:00:00</t:End>', $req);
+	}
+
+	public function testMoveRejectsEndBeforeStart(): void {
+		$this->expectException(MailException::class);
+		$this->calendar()->moveEvent('E1', '2026-11-19T10:00', '2026-11-19T09:00', false, false);
+	}
+
 	public function testTimeZoneMapping(): void {
 		$this->assertSame('Romance Standard Time', TimeZones::toWindows('Europe/Paris'));
 		$this->assertSame('Mauritius Standard Time', TimeZones::toWindows('Indian/Reunion'));

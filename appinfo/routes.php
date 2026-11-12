@@ -26,6 +26,7 @@ return [
 		['name' => 'calendar#series', 'url' => '/api/accounts/{id}/calendar/series', 'verb' => 'GET'],
 		['name' => 'calendar#create', 'url' => '/api/accounts/{id}/calendar/events', 'verb' => 'POST'],
 		['name' => 'calendar#update', 'url' => '/api/accounts/{id}/calendar/update', 'verb' => 'POST'],
+		['name' => 'calendar#move', 'url' => '/api/accounts/{id}/calendar/move', 'verb' => 'POST'],
 		['name' => 'calendar#delete', 'url' => '/api/accounts/{id}/calendar/delete', 'verb' => 'POST'],
 		['name' => 'calendar#respond', 'url' => '/api/accounts/{id}/calendar/respond', 'verb' => 'POST'],
 

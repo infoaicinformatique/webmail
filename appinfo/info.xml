@@ -9,9 +9,9 @@
 * L'administrateur associe chaque domaine e-mail à son serveur OVH (ex. https://ex3.mail.ovh.net/EWS/Exchange.asmx).
 * L'utilisateur saisit seulement son adresse et son mot de passe : le bon serveur est choisi automatiquement.
 * Courrier : lecture, recherche, dossiers, envoi, réponse, transfert, pièces jointes (depuis/vers Fichiers).
-* Agenda Exchange : vues mois, semaine et liste, création, modification (y compris des séries périodiques), invitations, réponses aux réunions.
+* Agenda Exchange : vues mois, semaine et liste, création, modification (y compris des séries périodiques), glisser-déposer, invitations, réponses aux réunions.
 * Contacts Exchange : consultation, recherche, création, modification ; complétion des adresses (contacts + annuaire).]]></description>
-	<version>1.3.0</version>
+	<version>1.4.0</version>
 	<licence>agpl</licence>
 	<author>AIC Informatique</author>
 	<namespace>Webmail</namespace>

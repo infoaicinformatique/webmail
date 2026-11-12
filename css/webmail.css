@@ -537,3 +537,16 @@
 .wm-rule-summary { font-size: 13px; }
 .wm-recurrence select { flex: 0 0 auto; width: auto; min-width: 0; }
 .wm-recurrence .wm-inline { flex-wrap: wrap; }
+
+/* ---------- drag and drop ---------- */
+.wm-movable { cursor: grab; touch-action: auto; }
+.wm-dragging { opacity: .85; z-index: 10 !important; box-shadow: 0 4px 14px var(--color-box-shadow) !important; cursor: grabbing; pointer-events: none; }
+body.wm-drag-active, body.wm-drag-active * { user-select: none !important; }
+body.wm-drag-move, body.wm-drag-move * { cursor: grabbing !important; }
+body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
+.wm-drop-target { outline: 2px dashed var(--color-primary-element); outline-offset: -2px; background: var(--color-primary-element-light) !important; }
+.wm-resize {
+	position: absolute; left: 0; right: 0; bottom: 0; height: 6px;
+	cursor: ns-resize;
+}
+.wm-week-event:hover .wm-resize { border-bottom: 2px solid var(--color-primary-element); }

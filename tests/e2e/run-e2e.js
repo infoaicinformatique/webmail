@@ -419,6 +419,101 @@ async function main() {
 		await page.waitForSelector('.wm-agenda')
 	})
 
+	// ------------------------------------------------------------------ drag and drop
+	const dragBy = async (selector, dx, dy) => {
+		const box = await (await page.$(selector)).boundingBox()
+		const x = box.x + box.width / 2
+		const y = box.y + Math.min(12, box.height / 2)
+		await page.mouse.move(x, y)
+		await page.mouse.down()
+		for (let i = 1; i <= 8; i++) await page.mouse.move(x + dx * i / 8, y + dy * i / 8)
+		await page.mouse.up()
+	}
+
+	await step('calendar: drag an event to another time (meeting: attendees warned)', async () => {
+		await page.click('.wm-segmented button:has-text("Semaine")')
+		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
+		const ev = '.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")'
+		await page.waitForSelector(ev)
+		assert(await page.$(ev + '.wm-movable'), 'organiser can move')
+		let confirmText = ''
+		page.once('dialog', (d) => { confirmText = d.message(); d.accept() })
+		await dragBy(ev, 0, 48) // one hour later
+		await page.waitForSelector('.wm-toast:has-text("Réunion déplacée, participants prévenus")')
+		assert(confirmText.includes('Les participants recevront la mise à jour'), confirmText)
+		await page.waitForFunction(() => {
+			const e = [...document.querySelectorAll('.wm-week-col.today .wm-week-event')].find((x) => x.textContent.includes('Point hebdo'))
+			return e && e.style.top === '480px' && e.textContent.includes('10:00 – 11:00')
+		})
+		// the click that ends the drag does not open the event
+		assert(!(await page.$('.wm-modal')))
+		await shot('20-drag')
+	})
+
+	await step('calendar: resize an event from its bottom edge', async () => {
+		const ev = '.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")'
+		page.once('dialog', (d) => d.accept())
+		const handle = await (await page.$(ev + ' .wm-resize')).boundingBox()
+		await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+		await page.mouse.down()
+		for (let i = 1; i <= 6; i++) await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2 + 24 * i / 6)
+		await page.mouse.up()
+		await page.waitForSelector('.wm-toast:has-text("10:00 – 11:30")')
+		await page.click(ev)
+		await page.waitForSelector('.wm-modal .wm-event-when:has-text("10:00 – 11:30")')
+		await page.click('.wm-modal-close')
+	})
+
+	await step('calendar: drag to another day, Escape cancels', async () => {
+		const ev = '.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")'
+		// Escape: nothing changes
+		const box = await (await page.$(ev)).boundingBox()
+		await page.mouse.move(box.x + 10, box.y + 10)
+		await page.mouse.down()
+		await page.mouse.move(box.x + 10, box.y + 100, { steps: 5 })
+		await page.keyboard.press('Escape')
+		await page.mouse.up()
+		await page.waitForFunction(() => {
+			const e = [...document.querySelectorAll('.wm-week-col.today .wm-week-event')].find((x) => x.textContent.includes('Point hebdo'))
+			return e && e.style.top === '480px'
+		})
+		assert(!(await page.$('.wm-modal')))
+		// to the next day (when today is not Sunday)
+		const cols = await page.$$('.wm-week-col')
+		const todayIndex = await page.$$eval('.wm-week-col', (els) => els.findIndex((e) => e.classList.contains('today')))
+		if (todayIndex < 6) {
+			const next = await cols[todayIndex + 1].boundingBox()
+			const cur = await cols[todayIndex].boundingBox()
+			page.once('dialog', (d) => d.accept())
+			await dragBy(ev, next.x - cur.x, 0)
+			await page.waitForSelector('.wm-toast:has-text("Réunion déplacée")')
+			const date = await cols[todayIndex + 1].getAttribute('data-date')
+			await page.waitForSelector('.wm-week-col[data-date="' + date + '"] .wm-week-event:has-text("Point hebdo équipe")')
+			assert(!(await page.$(ev)))
+		}
+	})
+
+	await step('calendar: invitations from others cannot be dragged; month view drag', async () => {
+		await page.click('.wm-segmented button:has-text("Mois")')
+		await page.waitForSelector('.wm-month .wm-event:has-text("Revue budget")')
+		assert(!(await page.$('.wm-month .wm-event.wm-movable:has-text("Revue budget")')), 'attendee cannot move')
+		const chipSel = '.wm-month .wm-event:has-text("Salon Informatique")'
+		const firstCell = await page.$eval(chipSel, (e) => e.closest('.wm-month-cell').dataset.date)
+		const cells = await page.$$eval('.wm-month-cell', (els) => els.map((e) => e.dataset.date))
+		const target = cells[cells.indexOf(firstCell) + 1]
+		const from = await (await page.$('.wm-month-cell[data-date="' + firstCell + '"]')).boundingBox()
+		const to = await (await page.$('.wm-month-cell[data-date="' + target + '"]')).boundingBox()
+		await dragBy(chipSel + ' >> nth=0', to.x - from.x, to.y - from.y) // the next day may be on the next row
+		await page.waitForSelector('.wm-toast:has-text("Événement déplacé")')
+		await page.waitForFunction((d) => {
+			const first = [...document.querySelectorAll('.wm-month-cell')].find((c) => [...c.querySelectorAll('.wm-event')].some((e) => e.textContent.includes('Salon Informatique')))
+			return first && first.dataset.date === d
+		}, target)
+		await shot('21-month-drag')
+		await page.click('.wm-segmented button:has-text("Liste")')
+		await page.waitForSelector('.wm-agenda')
+	})
+
 	// ------------------------------------------------------------------ recurring series
 	await step('calendar: edit a whole recurring series', async () => {
 		// the previous step moved the calendar two weeks ahead
