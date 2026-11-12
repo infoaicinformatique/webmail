@@ -627,23 +627,12 @@ class EwsClient {
 	 */
 	public function sendMessage(string $mode, string $subject, string $htmlBody, array $to, array $cc, array $bcc,
 		array $attachments = [], ?string $referenceId = null, string $importance = 'Normal'): void {
-		$recipients = $this->recipientsXml('ToRecipients', $to)
-			. $this->recipientsXml('CcRecipients', $cc)
-			. $this->recipientsXml('BccRecipients', $bcc);
-		$importance = in_array($importance, ['Low', 'Normal', 'High'], true) ? $importance : 'Normal';
-
 		if ($mode === 'new') {
 			$attXml = '';
 			foreach ($attachments as $a) {
 				$attXml .= $this->fileAttachmentXml($a);
 			}
-			$item = '<t:Message>'
-				. '<t:Subject>' . $this->esc($subject) . '</t:Subject>'
-				. '<t:Body BodyType="HTML">' . $this->esc($htmlBody) . '</t:Body>'
-				. ($attXml !== '' ? '<t:Attachments>' . $attXml . '</t:Attachments>' : '')
-				. '<t:Importance>' . $importance . '</t:Importance>'
-				. $recipients
-				. '</t:Message>';
+			$item = $this->composeItemXml('new', $subject, $htmlBody, $to, $cc, $bcc, null, $importance, $attXml);
 			if ($attachments === []) {
 				$this->createAndSend($item);
 				return;
@@ -653,6 +642,35 @@ class EwsClient {
 			return;
 		}
 
+		$item = $this->composeItemXml($mode, $subject, $htmlBody, $to, $cc, $bcc, $referenceId, $importance);
+		if ($attachments === []) {
+			$this->createAndSend($item);
+			return;
+		}
+		$draft = $this->createDraft($item);
+		$changeKey = $this->addAttachments($draft['id'], $attachments);
+		$this->sendDraft($draft['id'], $changeKey);
+	}
+
+	/**
+	 * The item to create: a new message, or a reply / forward of
+	 * $referenceId (Exchange then adds the quote and keeps the thread).
+	 */
+	private function composeItemXml(string $mode, string $subject, string $htmlBody, array $to, array $cc, array $bcc,
+		?string $referenceId, string $importance, string $attachmentsXml = ''): string {
+		$recipients = $this->recipientsXml('ToRecipients', $to)
+			. $this->recipientsXml('CcRecipients', $cc)
+			. $this->recipientsXml('BccRecipients', $bcc);
+		$importance = in_array($importance, ['Low', 'Normal', 'High'], true) ? $importance : 'Normal';
+		if ($mode === 'new') {
+			return '<t:Message>'
+				. '<t:Subject>' . $this->esc($subject) . '</t:Subject>'
+				. '<t:Body BodyType="HTML">' . $this->esc($htmlBody) . '</t:Body>'
+				. ($attachmentsXml !== '' ? '<t:Attachments>' . $attachmentsXml . '</t:Attachments>' : '')
+				. '<t:Importance>' . $importance . '</t:Importance>'
+				. $recipients
+				. '</t:Message>';
+		}
 		$element = match ($mode) {
 			'reply' => 'ReplyToItem',
 			'replyAll' => 'ReplyAllToItem',
@@ -663,19 +681,64 @@ class EwsClient {
 			throw new MailException('Message d\'origine manquant');
 		}
 		$ref = $this->itemRef($referenceId);
-		$item = '<t:' . $element . '>'
+		return '<t:' . $element . '>'
 			. $recipients
 			. '<t:ReferenceItemId Id="' . $this->esc($ref['id']) . '" ChangeKey="' . $this->esc($ref['changeKey']) . '"/>'
 			. '<t:NewBodyContent BodyType="HTML">' . $this->esc($htmlBody) . '</t:NewBodyContent>'
 			. '</t:' . $element . '>';
+	}
 
-		if ($attachments === []) {
-			$this->createAndSend($item);
-			return;
+	// ------------------------------------------------------------------
+	// Drafts
+	// ------------------------------------------------------------------
+
+	/**
+	 * Save what is being written as a draft in « Brouillons ». A reply or a
+	 * forward is created again at each save (Exchange adds the quote and
+	 * keeps the thread), the previous version ($replaceId) is then deleted.
+	 * @return string id of the draft
+	 */
+	public function saveDraft(?string $replaceId, string $mode, string $subject, string $htmlBody, array $to, array $cc, array $bcc,
+		?string $referenceId = null, string $importance = 'Normal'): string {
+		$draft = $this->createDraft($this->composeItemXml($mode, $subject, $htmlBody, $to, $cc, $bcc, $referenceId, $importance));
+		if ($replaceId !== null && $replaceId !== $draft['id']) {
+			try {
+				$this->deleteItems([$replaceId], true);
+			} catch (MailException) {
+				// already gone (sent or deleted elsewhere)
+			}
 		}
-		$draft = $this->createDraft($item);
-		$changeKey = $this->addAttachments($draft['id'], $attachments);
-		$this->sendDraft($draft['id'], $changeKey);
+		return $draft['id'];
+	}
+
+	/**
+	 * Change a draft opened from « Brouillons » (its quote and attachments stay).
+	 */
+	public function updateDraft(string $id, string $subject, string $htmlBody, array $to, array $cc, array $bcc, string $importance = 'Normal'): void {
+		$importance = in_array($importance, ['Low', 'Normal', 'High'], true) ? $importance : 'Normal';
+		$set = fn (string $uri, string $inner) => '<t:SetItemField><t:FieldURI FieldURI="' . $uri . '"/><t:Message>' . $inner . '</t:Message></t:SetItemField>';
+		$updates = $set('item:Subject', '<t:Subject>' . $this->esc($subject) . '</t:Subject>')
+			. $set('item:Body', '<t:Body BodyType="HTML">' . $this->esc($htmlBody) . '</t:Body>')
+			. $set('item:Importance', '<t:Importance>' . $importance . '</t:Importance>');
+		foreach (['ToRecipients' => $to, 'CcRecipients' => $cc, 'BccRecipients' => $bcc] as $field => $list) {
+			$updates .= $list !== []
+				? $set('message:' . $field, $this->recipientsXml($field, $list))
+				: '<t:DeleteItemField><t:FieldURI FieldURI="message:' . $field . '"/></t:DeleteItemField>';
+		}
+		$this->request(
+			'<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite">'
+			. '<m:ItemChanges><t:ItemChange><t:ItemId Id="' . $this->esc($id) . '"/><t:Updates>' . $updates . '</t:Updates></t:ItemChange></m:ItemChanges>'
+			. '</m:UpdateItem>'
+		);
+	}
+
+	/**
+	 * Send a draft as it is in Exchange (after updateDraft), with extra attachments.
+	 */
+	public function sendSavedDraft(string $id, array $attachments = []): void {
+		$ref = $this->itemRef($id);
+		$changeKey = $attachments !== [] ? $this->addAttachments($ref['id'], $attachments) : $ref['changeKey'];
+		$this->sendDraft($ref['id'], $changeKey);
 	}
 
 	private function createAndSend(string $itemXml): void {

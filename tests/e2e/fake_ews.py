@@ -224,6 +224,7 @@ def _item_full_xml(m):
                     len(a['content']), 'true' if a.get('inline') else 'false'))
     to = ''.join(mailbox(n, e) for n, e in m['to'])
     cc = ''.join(mailbox(n, e) for n, e in m['cc'])
+    bcc = ''.join(mailbox(n, e) for n, e in m.get('bcc', []))
     return ('<t:Message><t:ItemId Id="%s" ChangeKey="%s"/><t:ParentFolderId Id="%s" ChangeKey="AQ"/><t:Subject>%s</t:Subject>'
             '<t:Body BodyType="HTML" IsTruncated="false">%s</t:Body>%s<t:DateTimeReceived>%s</t:DateTimeReceived>'
             '<t:HasAttachments>%s</t:HasAttachments><t:Importance>%s</t:Importance><t:DateTimeSent>%s</t:DateTimeSent>'
@@ -233,7 +234,8 @@ def _item_full_xml(m):
                '<t:Attachments>%s</t:Attachments>' % atts if atts else '', m['date'],
                'true' if m['attachments'] else 'false', m['importance'], m['date'],
                'Flagged' if m['flagged'] else 'NotFlagged', mailbox(*m['sender']),
-               '<t:ToRecipients>%s</t:ToRecipients>' % to if to else '', '<t:CcRecipients>%s</t:CcRecipients>' % cc if cc else '',
+               '<t:ToRecipients>%s</t:ToRecipients>' % to if to else '',
+               ('<t:CcRecipients>%s</t:CcRecipients>' % cc if cc else '') + ('<t:BccRecipients>%s</t:BccRecipients>' % bcc if bcc else ''),
                'true' if m['is_read'] else 'false', mailbox(*m['sender']), m['id']))
 
 
@@ -372,6 +374,22 @@ def handle(op, el, user):
                 msgs.append(err(op, 'ErrorItemNotFound', 'not found'))
                 continue
             for upd in ch.find('t:Updates', NS):
+                # drafts: subject, body, importance, recipients
+                uri = (upd.find('t:FieldURI', NS) if upd.find('t:FieldURI', NS) is not None else ET.Element('x')).get('FieldURI', '')
+                rcpt = {'message:ToRecipients': 'to', 'message:CcRecipients': 'cc', 'message:BccRecipients': 'bcc'}
+                if upd.tag == T + 'DeleteItemField' and uri in rcpt:
+                    m[rcpt[uri]] = []
+                    continue
+                item = upd.find('t:Message', NS)
+                if item is not None:
+                    if uri == 'item:Subject':
+                        m['subject'] = item.findtext('t:Subject', default='', namespaces=NS)
+                    elif uri == 'item:Body':
+                        m['body'] = item.findtext('t:Body', default='', namespaces=NS)
+                    elif uri == 'item:Importance':
+                        m['importance'] = item.findtext('t:Importance', default='Normal', namespaces=NS)
+                    elif uri in rcpt:
+                        m[rcpt[uri]] = recipients(item, uri[8:])
                 r = upd.findtext('.//t:IsRead', default=None, namespaces=NS)
                 if r is not None:
                     m['is_read'] = r == 'true'
@@ -429,8 +447,10 @@ def handle(op, el, user):
             if tag == 'ForwardItem':
                 atts += list(ref['attachments'])
             folder = 'F-SENT' if disposition == 'SendAndSaveCopy' else 'F-DRAFTS'
-            mid = add_message(folder, subject, ('Utilisateur', user), body, 0, is_read=True, to=to, cc=recipients(it, 'CcRecipients'))
+            mid = add_message(folder, subject, ('Utilisateur', user), body, 0, is_read=True, to=to, cc=recipients(it, 'CcRecipients'),
+                              importance=it.findtext('t:Importance', default='Normal', namespaces=NS))
             MESSAGES[mid]['attachments'] = atts
+            MESSAGES[mid]['bcc'] = recipients(it, 'BccRecipients')
             if disposition == 'SendAndSaveCopy':
                 deliver_to_self(MESSAGES[mid], user)
             items = '<m:Items/>' if disposition == 'SendAndSaveCopy' else '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/></t:Message></m:Items>' % (mid, MESSAGES[mid]['ck'])

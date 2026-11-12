@@ -29,7 +29,9 @@ et sur les téléphones, et inversement.
 | Recherche | Recherche Exchange (AQS) dans le dossier courant **ou dans tous les dossiers** (le dossier de chaque résultat est indiqué, 200 résultats au plus). Bouton ⏷ : filtres **Non lus**, **Pièces jointes**, **Suivis** et **période** (7 jours, 30 jours, 12 mois), seuls ou avec des mots |
 | Lecture | Le HTML est nettoyé côté serveur et affiché dans une iframe isolée, sans aucun script. Les images intégrées (`cid:`) s'affichent. Les images distantes sont bloquées tant que l'utilisateur ne clique pas sur « Afficher les images » |
 | Actions | Marquer comme lu ou non lu, suivi, déplacer, supprimer (vers « Éléments supprimés », puis suppression définitive) |
-| Envoi | Nouveau message, Répondre, Répondre à tous, Transférer (Exchange cite le message d'origine et garde ses pièces jointes), Cc/Cci, importance, signature |
+| Envoi | Nouveau message, Répondre, Répondre à tous, Transférer (Exchange cite le message d'origine et garde ses pièces jointes), Cc/Cci, importance, signature ; `Ctrl+Entrée` envoie |
+| Éditeur | Texte **mis en forme** : gras, italique, souligné, listes à puces et numérotées, liens, citations ; les adresses web tapées deviennent des liens. Le contenu est nettoyé sur le serveur avant l'envoi (aucun script ne peut passer) |
+| Brouillons | Le message en cours est **enregistré automatiquement** dans « Brouillons » quelques secondes après chaque modification (« Brouillon enregistré à 15:42 ») et en fermant avec « Annuler ». Dans « Brouillons », un clic **rouvre le brouillon** pour le terminer et l'envoyer (y compris une réponse ou un transfert, avec sa citation et ses pièces jointes). « Supprimer le brouillon » le jette. Les pièces jointes ajoutées depuis l'ordinateur ou Fichiers ne sont envoyées à Exchange qu'au moment de l'envoi |
 | Pièces jointes | Téléchargement, **enregistrement dans Fichiers** (une par une ou **toutes d'un coup**), ajout depuis l'ordinateur ou **depuis Fichiers** (25 Mo au total) |
 | Aperçu | Miniatures des photos ; **aperçu plein écran** des images, des PDF et des fichiers texte (← / → pour passer de l'une à l'autre, Échap pour fermer). Le texte est affiché tel quel, rien n'y est interprété ; les autres types (Word, zip…) se téléchargent |
 | Destinataires | Complétion automatique des adresses à partir des contacts Exchange **et de l'annuaire de l'entreprise** |
@@ -39,6 +41,8 @@ et sur les téléphones, et inversement.
 | Mobile | Affichage adapté aux téléphones ; le bouton **Retour** du téléphone ferme le message (ou le menu) au lieu de quitter le webmail |
 
 ![Raccourcis clavier](docs/capture-raccourcis.png)
+
+![Éditeur et brouillons](docs/capture-editeur.png)
 
 ![Aperçu des pièces jointes](docs/capture-apercu.png)
 
@@ -127,7 +131,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.17.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.18.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -149,7 +153,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.17 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.18 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -233,7 +237,7 @@ templates/          page principale et page d'administration
 ## Évolutions possibles
 
 **Courrier**
-- Brouillons enregistrés automatiquement et modifiables, éditeur HTML (gras, listes, liens, images collées) et signature HTML
+- Images collées dans l'éditeur, signature mise en forme, pièces jointes enregistrées avec le brouillon
 - Affichage par conversation (fil de discussion)
 - Sélection multiple (cases à cocher, Maj+clic) et glisser-déposer des messages vers un dossier
 - Gestion des dossiers : créer, renommer, déplacer, supprimer

@@ -74,4 +74,12 @@ class HtmlSanitizerTest extends TestCase {
 		$this->assertStringContainsString('Bonjour &lt;b&gt;<br>', $html);
 		$this->assertStringContainsString('<a href="https://ex.fr/a?b=1&amp;c=2">', $html);
 	}
+
+	public function testEditorToHtmlLinksAddressesAndKeepsFormatting(): void {
+		$out = HtmlSanitizer::editorToHtml('<div>Voir https://nextcloud.com/a?b=1 et <a href="https://x.fr">le site</a></div><ul><li><b>1 200 €</b> é</li></ul>');
+		$this->assertStringStartsWith('<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">', $out);
+		$this->assertStringContainsString('<a href="https://nextcloud.com/a?b=1">https://nextcloud.com/a?b=1</a>', $out);
+		$this->assertStringContainsString('<a href="https://x.fr">le site</a>', $out, 'existing links untouched');
+		$this->assertStringContainsString('<ul><li><b>1 200 €</b> é</li></ul>', $out);
+	}
 }

@@ -962,6 +962,13 @@
 			api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: [id], flag: 'read', value: true } })
 				.catch((e) => toast(e.message, true))
 		}
+		const own = state.folders.find((f) => f.id === msg.folderId)
+		if ((own ? own.role : folderRole()) === 'drafts') {
+			// a draft opens in the editor, to be finished and sent
+			state.current = null
+			openCompose('draft', msg)
+			return
+		}
 		msg.isRead = true
 		state.current = Object.assign({}, msg, { remoteAllowed: !!remote })
 		markReadLocally(id)
@@ -1413,14 +1420,24 @@
 		const account = state.accounts.find((a) => a.id === state.accountId)
 		const ncFiles = [] // paths from Nextcloud Files
 
-		const titles = { new: 'Nouveau message', reply: 'Répondre', replyAll: 'Répondre à tous', forward: 'Transférer' }
+		const titles = { new: 'Nouveau message', reply: 'Répondre', replyAll: 'Répondre à tous', forward: 'Transférer', draft: 'Brouillon' }
 		const isResponse = mode === 'reply' || mode === 'replyAll'
+		// a draft opened from « Brouillons »: original is the draft itself
+		const isDraft = mode === 'draft'
+		let draftId = isDraft ? original.id : null
 
 		const to = h('input', { type: 'text', name: 'to', placeholder: 'adresse@exemple.fr, …', autocomplete: 'email', multiple: true })
 		const cc = h('input', { type: 'text', name: 'cc', placeholder: '' })
 		const bcc = h('input', { type: 'text', name: 'bcc', placeholder: '' })
 		const subject = h('input', { type: 'text', name: 'subject' })
-		const body = h('textarea', { name: 'body', rows: '16' })
+		const body = h('div', {
+			class: 'wm-editor',
+			contenteditable: 'true',
+			role: 'textbox',
+			'aria-multiline': 'true',
+			'aria-label': 'Message',
+			spellcheck: 'true',
+		})
 		const files = h('input', { type: 'file', multiple: true, class: 'wm-file-input', 'aria-label': 'Joindre des fichiers' })
 		const attachList = h('ul', { class: 'wm-compose-attachments' })
 		const importance = h('select', { name: 'importance', 'aria-label': 'Importance' },
@@ -1428,19 +1445,60 @@
 			h('option', { value: 'High' }, 'Importance haute'),
 			h('option', { value: 'Low' }, 'Importance faible'))
 
-		if (original) {
-			const prefix = mode === 'forward' ? 'TR : ' : 'RE : '
-			subject.value = /^(re|tr|fw|fwd)\s?:/i.test(original.subject || '') ? original.subject : prefix + (original.subject || '')
-			subject.disabled = true
+		const textHtml = (t) => escapeHtml(t).replace(/\n/g, '<br>')
+		const addresses = (list) => (list || []).map((p) => (p.name && p.name !== p.email ? p.name + ' <' + p.email + '>' : p.email)).join(', ')
+		if (isDraft) {
+			to.value = addresses(original.to)
+			cc.value = addresses(original.cc)
+			bcc.value = addresses(original.bcc)
+			subject.value = original.subject || ''
+			importance.value = original.importance || 'Normal'
+			body.innerHTML = original.body || ''
+		} else {
+			if (original) {
+				const prefix = mode === 'forward' ? 'TR : ' : 'RE : '
+				subject.value = /^(re|tr|fw|fwd)\s?:/i.test(original.subject || '') ? original.subject : prefix + (original.subject || '')
+				subject.disabled = true
+			}
+			body.innerHTML = '<div><br></div>' + (account && account.signature ? '<div><br></div><div>-- <br>' + textHtml(account.signature) + '</div>' : '')
+			if (prefill) {
+				if (prefill.to) to.value = prefill.to
+				if (prefill.subject) subject.value = prefill.subject
+				if (prefill.body) body.innerHTML = '<div>' + textHtml(prefill.body) + '</div>' + body.innerHTML
+			}
 		}
-		if (account && account.signature) {
-			body.value = '\n\n-- \n' + account.signature
-		}
-		if (prefill) {
-			if (prefill.to) to.value = prefill.to
-			if (prefill.subject) subject.value = prefill.subject
-			if (prefill.body) body.value = prefill.body + body.value
-		}
+
+		// ---- formatting toolbar (bold, italic, underline, lists, link, quote, clear)
+		const exec = (cmd, value) => { body.focus(); document.execCommand(cmd, false, value) }
+		const tool = (label, title, action) => h('button', {
+			type: 'button',
+			class: 'wm-editor-btn',
+			title,
+			'aria-label': title,
+			onmousedown: (e) => e.preventDefault(), // keep the selection in the text
+			onclick: action,
+		}, label)
+		const editorBar = h('div', { class: 'wm-editor-bar', role: 'toolbar', 'aria-label': 'Mise en forme' },
+			tool('G', 'Gras (Ctrl+B)', () => exec('bold')),
+			tool('I', 'Italique (Ctrl+I)', () => exec('italic')),
+			tool('S', 'Souligné (Ctrl+U)', () => exec('underline')),
+			tool('•', 'Liste à puces', () => exec('insertUnorderedList')),
+			tool('1.', 'Liste numérotée', () => exec('insertOrderedList')),
+			tool('🔗', 'Insérer un lien', () => {
+				const sel = window.getSelection()
+				const range = sel && sel.rangeCount ? sel.getRangeAt(0) : null
+				const url = (window.prompt('Adresse du lien (https://…)', 'https://') || '').trim()
+				if (!/^(https?:\/\/|mailto:)\S+$/i.test(url)) return
+				body.focus()
+				if (range) { sel.removeAllRanges(); sel.addRange(range) }
+				if (range && !range.collapsed) exec('createLink', url)
+				else exec('insertHTML', '<a href="' + escapeHtml(url) + '">' + escapeHtml(url) + '</a>')
+			}),
+			tool('❝', 'Citation', () => exec('formatBlock', 'blockquote')),
+			tool('⌫', 'Effacer la mise en forme', () => { exec('removeFormat'); exec('unlink') }))
+		body.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit() }
+		})
 
 		const renderAttachList = () => {
 			clear(attachList)
@@ -1458,30 +1516,105 @@
 			}, true, null, true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
 		}
 
-		const sendBtn = h('button', { type: 'submit', class: 'primary' }, 'Envoyer')
+		// ---- drafts: saved a few seconds after the last change, and when leaving
+		const draftStatus = h('span', { class: 'wm-draft-status wm-muted', 'aria-live': 'polite' })
+		const deleteDraftBtn = h('button', { type: 'button', class: 'wm-danger', hidden: !draftId, onclick: () => discardDraft() }, '🗑 Supprimer le brouillon')
+		const DRAFT_DELAY = 3000
+		let draftTimer = null
+		let dirty = false
+		let closed = false
+		let saving = null
+		const fields = () => ({
+			mode,
+			to: to.value,
+			cc: cc.value,
+			bcc: bcc.value,
+			subject: subject.value,
+			bodyHtml: body.innerHTML,
+			importance: importance.value,
+			referenceId: original && !isDraft ? original.id : '',
+			draftId: draftId || '',
+		})
+		const saveDraft = () => {
+			clearTimeout(draftTimer)
+			if (!dirty) return saving || Promise.resolve()
+			dirty = false
+			const run = async () => {
+				draftStatus.textContent = 'Enregistrement du brouillon…'
+				try {
+					const r = await api('/accounts/' + state.accountId + '/draft', { method: 'POST', body: fields() })
+					draftId = r.draftId
+					deleteDraftBtn.hidden = false
+					draftStatus.textContent = 'Brouillon enregistré à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+					const drafts = state.folders.find((f) => f.role === 'drafts')
+					if (drafts) listCache.delete(state.accountId + '|' + drafts.id)
+				} catch (err) {
+					dirty = true
+					draftStatus.textContent = 'Brouillon non enregistré : ' + err.message
+				}
+			}
+			// one save at a time, in order
+			saving = (saving || Promise.resolve()).then(run).finally(() => { saving = null })
+			return saving
+		}
+		const changed = () => {
+			if (closed) return
+			dirty = true
+			clearTimeout(draftTimer)
+			draftTimer = setTimeout(saveDraft, DRAFT_DELAY)
+		}
+		;[to, cc, bcc, subject, body].forEach((el) => el.addEventListener('input', changed))
+		importance.addEventListener('change', changed)
+		const leave = () => {
+			closed = true
+			clearTimeout(draftTimer)
+			if (folderRole() === 'drafts') loadMessages(true)
+			if (state.current && !isDraft) renderMessage(); else renderEmptyDetail()
+			setView(state.current && !isDraft ? 'detail' : 'list')
+		}
+		const cancel = async () => {
+			if (dirty || saving) {
+				await saveDraft()
+				if (draftId && !dirty) toast('Brouillon enregistré dans « Brouillons »')
+			}
+			leave()
+		}
+		const discardDraft = async () => {
+			if (!window.confirm('Supprimer ce brouillon ?')) return
+			closed = true
+			clearTimeout(draftTimer)
+			await saving
+			try {
+				if (draftId) await api('/accounts/' + state.accountId + '/draft/delete', { method: 'POST', body: { draftId } })
+				toast('Brouillon supprimé')
+				if (isDraft) { state.selectedId = null; removeFromList([draftId]) }
+			} catch (err) { toast(err.message, true) }
+			leave()
+		}
+
+		const sendBtn = h('button', { type: 'submit', class: 'primary', title: 'Envoyer (Ctrl+Entrée)' }, 'Envoyer')
 		const form = h('form', {
 			class: 'wm-compose',
 			onsubmit: async (e) => {
 				e.preventDefault()
+				// a save in progress must end first: the draft it creates is deleted after sending
+				clearTimeout(draftTimer)
+				await saving
 				const fd = new FormData()
-				fd.append('mode', mode)
-				fd.append('to', to.value)
-				fd.append('cc', cc.value)
-				fd.append('bcc', bcc.value)
-				fd.append('subject', subject.value)
-				fd.append('body', body.value)
-				fd.append('importance', importance.value)
-				if (original) fd.append('referenceId', original.id)
+				Object.entries(fields()).forEach(([k, v]) => fd.append(k, v))
 				Array.from(files.files).forEach((f) => fd.append('files[]', f, f.name))
 				ncFiles.forEach((p) => fd.append('filePaths[]', p))
 				sendBtn.disabled = true
 				sendBtn.textContent = 'Envoi…'
+				closed = true
 				try {
 					await api('/accounts/' + state.accountId + '/send', { method: 'POST', body: fd })
 					toast('Message envoyé')
-					if (state.current) renderMessage(); else renderEmptyDetail()
+					if (isDraft) { state.selectedId = null; removeFromList([draftId]) }
+					if (state.current && !isDraft) renderMessage(); else renderEmptyDetail()
 					if (folderRole() === 'sentitems') setTimeout(() => loadMessages(true), 1500)
 				} catch (err) {
+					closed = false
 					toast(err.message, true)
 					sendBtn.disabled = false
 					sendBtn.textContent = 'Envoyer'
@@ -1489,9 +1622,10 @@
 			},
 		},
 		h('div', { class: 'wm-compose-title' },
-			h('button', { type: 'button', class: 'wm-back wm-mobile-only', onclick: () => setView('list'), 'aria-label': 'Retour' }, '←'),
+			h('button', { type: 'button', class: 'wm-back wm-mobile-only', onclick: cancel, 'aria-label': 'Retour' }, '←'),
 			h('h2', {}, titles[mode]),
-			h('span', { class: 'wm-muted' }, 'De : ' + (account ? account.email : ''))),
+			h('span', { class: 'wm-muted' }, 'De : ' + (account ? account.email : '')),
+			draftStatus),
 		isResponse
 			? h('div', { class: 'wm-info' }, mode === 'reply'
 				? 'Réponse à : ' + personLabel((original.replyTo && original.replyTo[0]) || original.from)
@@ -1500,8 +1634,11 @@
 		h('label', { class: 'wm-field' }, h('span', {}, isResponse ? 'Ajouter en Cc' : 'Cc'), attachAutocomplete(cc)),
 		h('label', { class: 'wm-field' }, h('span', {}, 'Cci'), attachAutocomplete(bcc)),
 		h('label', { class: 'wm-field' }, h('span', {}, 'Objet'), subject),
-		body,
-		original ? h('div', { class: 'wm-info wm-muted' }, mode === 'forward'
+		h('div', { class: 'wm-editor-wrap' }, editorBar, body),
+		isDraft && original.attachments && original.attachments.length
+			? h('div', { class: 'wm-info wm-muted' }, 'Déjà joint : ' + original.attachments.map((a) => a.name).join(', '))
+			: null,
+		original && !isDraft ? h('div', { class: 'wm-info wm-muted' }, mode === 'forward'
 			? 'Le message d\'origine et ses pièces jointes seront ajoutés automatiquement sous votre texte.'
 			: 'Le message d\'origine sera cité automatiquement sous votre réponse.') : null,
 		attachList,
@@ -1510,11 +1647,26 @@
 			h('label', { class: 'wm-file-label button' }, '📎 Joindre', files),
 			h('button', { type: 'button', onclick: pickFromFiles }, '☁️ Depuis Fichiers'),
 			importance,
-			h('button', { type: 'button', onclick: () => { if (state.current) renderMessage(); else renderEmptyDetail(); setView(state.current ? 'detail' : 'list') } }, 'Annuler')),
+			h('button', { type: 'button', onclick: cancel, title: 'Fermer (le brouillon est gardé)' }, 'Annuler'),
+			deleteDraftBtn),
 		)
 		detailEl.appendChild(form)
-		;(mode === 'new' || mode === 'forward' ? to : body).focus()
-		if (isResponse) body.setSelectionRange(0, 0)
+		if (mode === 'new' || mode === 'forward' || (isDraft && !to.value)) {
+			to.focus()
+		} else {
+			// caret at the start of the text, above the signature / quote
+			body.focus()
+			const range = document.createRange()
+			range.setStart(body, 0)
+			range.collapse(true)
+			const sel = window.getSelection()
+			sel.removeAllRanges()
+			sel.addRange(range)
+		}
+	}
+
+	function escapeHtml(t) {
+		return String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 	}
 
 	// ------------------------------------------------------------------

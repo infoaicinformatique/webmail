@@ -669,3 +669,20 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-chip-check input { margin: 0; min-height: 0; }
 .wm-filter-toggle.active { color: var(--color-primary-element, #0082c9); font-weight: bold; }
 .wm-message-folder { margin-inline: 6px auto; padding: 0 6px; border-radius: 8px; font-size: 11px; background: var(--color-background-dark, #eee); color: var(--color-text-maxcontrast); white-space: nowrap; }
+
+/* message editor */
+.wm-editor-wrap { border: 2px solid var(--color-border-dark, #ccc); border-radius: var(--border-radius-large, 10px); overflow: hidden; display: flex; flex-direction: column; }
+.wm-editor-wrap:focus-within { border-color: var(--color-primary-element, #0082c9); }
+.wm-editor-bar { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px; border-bottom: 1px solid var(--color-border); background: var(--color-background-hover); }
+.wm-editor-btn { min-height: 30px !important; min-width: 32px; padding: 0 6px !important; margin: 0; font-size: 13px; background: transparent; border: none; }
+.wm-editor-btn:nth-child(1) { font-weight: bold; }
+.wm-editor-btn:nth-child(2) { font-style: italic; }
+.wm-editor-btn:nth-child(3) { text-decoration: underline; }
+.wm-editor { align-self: stretch; width: auto !important; max-width: none !important; margin: 0 !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; box-sizing: border-box; min-height: 260px; padding: 10px 12px; outline: none; overflow-wrap: anywhere; line-height: 1.45; background: var(--color-main-background); color: var(--color-main-text); }
+.wm-editor blockquote { margin: 0 0 0 8px; padding-left: 8px; border-left: 3px solid var(--color-border-dark, #ccc); color: var(--color-text-maxcontrast); }
+.wm-editor ul, .wm-editor ol { padding-left: 24px; margin: 4px 0; }
+.wm-editor ul { list-style: disc !important; }
+.wm-editor ol { list-style: decimal !important; }
+.wm-editor li { display: list-item; }
+.wm-editor a { color: var(--color-primary-element, #0082c9); text-decoration: underline; }
+.wm-draft-status { margin-inline-start: auto; font-size: 0.85em; }

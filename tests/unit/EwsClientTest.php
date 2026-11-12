@@ -134,6 +134,51 @@ class EwsClientTest extends EwsTestCase {
 		$this->assertSame('2026-11-12T09:00:00Z', $this->client()->newMessages('2026-11-12T09:00:00Z')['latest']);
 	}
 
+	private function created(string $id): string {
+		return self::ok('CreateItem', '<m:Items><t:Message><t:ItemId Id="' . $id . '" ChangeKey="CK-' . $id . '"/></t:Message></m:Items>');
+	}
+
+	public function testSaveNewDraft(): void {
+		$this->queue($this->created('D1'));
+		$id = $this->client()->saveDraft(null, 'new', 'Devis', '<p>Bonjour</p>', ['a@x.fr'], [], ['b@x.fr'], null, 'High');
+		$this->assertSame('D1', $id);
+		$this->assertCount(1, $this->requests);
+		$req = $this->requests[0];
+		$this->assertStringContainsString('<m:CreateItem MessageDisposition="SaveOnly"><m:SavedItemFolderId><t:DistinguishedFolderId Id="drafts"/>', $req);
+		$this->assertStringContainsString('<t:Body BodyType="HTML">&lt;p&gt;Bonjour&lt;/p&gt;</t:Body>', $req);
+		$this->assertStringContainsString('<t:Importance>High</t:Importance>', $req);
+		$this->assertStringContainsString('<t:BccRecipients><t:Mailbox><t:EmailAddress>b@x.fr</t:EmailAddress></t:Mailbox></t:BccRecipients>', $req);
+	}
+
+	public function testSaveReplyDraftReplacesThePreviousOne(): void {
+		$this->queue(self::ok('GetItem', '<m:Items><t:Message><t:ItemId Id="ORIG" ChangeKey="CK-O"/></t:Message></m:Items>'));
+		$this->queue($this->created('D2'));
+		$this->queue(self::ok('DeleteItem'));
+		$id = $this->client()->saveDraft('D1', 'reply', '', '<p>Oui</p>', [], [], [], 'ORIG');
+		$this->assertSame('D2', $id);
+		$this->assertStringContainsString('<t:ReplyToItem><t:ReferenceItemId Id="ORIG" ChangeKey="CK-O"/><t:NewBodyContent BodyType="HTML">', $this->requests[1]);
+		$this->assertStringContainsString('MessageDisposition="SaveOnly"', $this->requests[1]);
+		$this->assertStringContainsString('<m:DeleteItem DeleteType="HardDelete"><m:ItemIds><t:ItemId Id="D1"/>', $this->requests[2]);
+	}
+
+	public function testUpdateDraft(): void {
+		$this->queue(self::ok('UpdateItem', '<m:Items><t:Message><t:ItemId Id="D1" ChangeKey="CK2"/></t:Message></m:Items>'));
+		$this->client()->updateDraft('D1', 'Objet', '<p>Texte</p>', ['a@x.fr'], [], [], 'Low');
+		$req = $this->requests[0];
+		$this->assertStringContainsString('<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite">', $req);
+		$this->assertStringContainsString('<t:SetItemField><t:FieldURI FieldURI="message:ToRecipients"/><t:Message><t:ToRecipients><t:Mailbox><t:EmailAddress>a@x.fr</t:EmailAddress>', $req);
+		$this->assertStringContainsString('<t:DeleteItemField><t:FieldURI FieldURI="message:CcRecipients"/></t:DeleteItemField>', $req);
+		$this->assertStringContainsString('<t:SetItemField><t:FieldURI FieldURI="item:Body"/><t:Message><t:Body BodyType="HTML">&lt;p&gt;Texte&lt;/p&gt;</t:Body></t:Message></t:SetItemField>', $req);
+		$this->assertStringContainsString('<t:Importance>Low</t:Importance>', $req);
+	}
+
+	public function testSendSavedDraft(): void {
+		$this->queue(self::ok('GetItem', '<m:Items><t:Message><t:ItemId Id="D1" ChangeKey="CK3"/></t:Message></m:Items>'));
+		$this->queue(self::ok('SendItem'));
+		$this->client()->sendSavedDraft('D1');
+		$this->assertStringContainsString('<m:SendItem SaveItemToFolder="true"><m:ItemIds><t:ItemId Id="D1" ChangeKey="CK3"/></m:ItemIds>', $this->requests[1]);
+	}
+
 	public function testFindItemsWithSearchAndPaging(): void {
 		$this->queue(self::ok('FindItem', '<m:RootFolder IndexedPagingOffset="50" TotalItemsInView="120" IncludesLastItemInRange="false"><t:Items>'
 			. '<t:Message><t:ItemId Id="M1" ChangeKey="CK1"/><t:Subject>Facture &amp; devis</t:Subject><t:DateTimeReceived>2026-11-10T08:15:00Z</t:DateTimeReceived>'
