@@ -141,6 +141,46 @@ async function main() {
 		await page.waitForSelector(`.wm-message.unread[data-id="${id}"]`)
 	})
 
+	await step('attachment previews and save all', async () => {
+		await page.click('.wm-folder:has-text("Clients")')
+		await page.click('.wm-message:has-text("Photos du chantier")')
+		await page.waitForSelector('.wm-attachment-thumb img')
+		assert.strictEqual(await page.$$eval('.wm-attachment-thumb', (els) => els.length), 2, 'thumbnails for the pictures')
+		assert.strictEqual(await page.$$eval('.wm-preview-btn', (els) => els.length), 4, 'no preview for the zip')
+		await page.waitForFunction(() => [...document.querySelectorAll('.wm-attachment-thumb img')].every((i) => i.complete && i.naturalWidth === 320))
+
+		await page.click('.wm-attachment-thumb >> nth=0')
+		await page.waitForSelector('.wm-preview-title:has-text("facade.png")')
+		await page.waitForFunction(() => { const i = document.querySelector('.wm-preview-image'); return i && i.complete && i.naturalWidth === 320 })
+		assert.strictEqual(await page.textContent('.wm-preview-names .wm-muted'), '1 / 4')
+		await shot('33-attachment-preview')
+		await page.keyboard.press('ArrowRight')
+		await page.waitForSelector('.wm-preview-title:has-text("toiture.png")')
+		await page.keyboard.press('ArrowRight')
+		await page.waitForSelector('.wm-preview-text')
+		// plain text is shown as text: the <b> is not interpreted
+		assert((await page.textContent('.wm-preview-text')).includes('Toiture : <b>58 m²</b>'))
+		assert(!(await page.$('.wm-preview-text b')))
+		await page.click('.wm-preview-nav[aria-label="Pièce jointe suivante"]')
+		await page.waitForSelector('.wm-preview-pdf')
+		const pdf = await page.evaluate(async () => {
+			const r = await fetch(document.querySelector('.wm-preview-pdf').src)
+			return [r.headers.get('content-type'), r.headers.get('content-disposition').split(';')[0]]
+		})
+		assert.deepStrictEqual(pdf, ['application/pdf', 'inline'])
+		await page.keyboard.press('ArrowRight')
+		await page.waitForSelector('.wm-preview-title:has-text("facade.png")')
+		await page.keyboard.press('Escape')
+		await page.waitForSelector('.wm-preview', { state: 'detached' })
+		assert(await page.$('.wm-message-header'), 'Escape only closed the preview')
+
+		await page.evaluate(() => { OC.dialogs.filepicker = (t, cb) => cb('/Documents') })
+		await page.click('button:has-text("Tout enregistrer dans Fichiers")')
+		await page.waitForSelector('.wm-toast:has-text("5 pièces jointes enregistrées dans /Documents/")')
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector('.wm-message:has-text("Réunion de lundi")')
+	})
+
 	await step('search', async () => {
 		await page.fill('.wm-search', 'réunion')
 		await page.press('.wm-search', 'Enter')

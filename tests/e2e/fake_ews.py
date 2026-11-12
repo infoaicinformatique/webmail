@@ -16,7 +16,9 @@ import html
 import itertools
 import os
 import ssl
+import struct
 import threading
+import zlib
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -52,6 +54,17 @@ FOLDERS = [
     ('F-FACTURES', 'Factures', 'F-ROOT', None),
 ]
 ROLE_TO_ID = {f[3]: f[0] for f in FOLDERS if f[3]}
+
+def make_png(w, h, top, bottom):
+    """A small vertical gradient, as a real PNG (for attachment previews)."""
+    rows = b''
+    for y in range(h):
+        c = bytes(int(top[i] + (bottom[i] - top[i]) * y / max(1, h - 1)) for i in range(3))
+        rows += b'\x00' + c * w
+    chunk = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
+            + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
+
 
 PNG_1PX = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==')
 
@@ -89,6 +102,14 @@ def seed():
     for i in range(1, 58):
         add_message('F-INBOX', 'Newsletter n°%d' % i, ('Lettre d\'info', 'news@exemple.org'),
                     '<p>Contenu %d</p>' % i, 60 * 24 * (2 + i), is_read=True)
+    add_message('F-CLIENTS', 'Photos du chantier', ('Client B', 'contact@client-b.fr'),
+                '<p>Bonjour, voici les photos et le relevé.</p>', 60 * 30, is_read=True, attachments=[
+                    dict(name='facade.png', content_type='image/png', content=make_png(320, 200, (70, 130, 180), (230, 240, 250)), inline=False),
+                    dict(name='toiture.png', content_type='image/png', content=make_png(320, 200, (160, 82, 45), (250, 235, 215)), inline=False),
+                    dict(name='releve.txt', content_type='text/plain', content='Relevé du 12/11\nFaçade : 42 m²\nToiture : <b>58 m²</b>\n'.encode('utf-8'), inline=False),
+                    dict(name='plan.pdf', content_type='application/pdf', content=b'%PDF-1.4\n% plan\n', inline=False),
+                    dict(name='archive.zip', content_type='application/zip', content=b'PK\x05\x06' + b'\x00' * 18, inline=False),
+                ])
     add_message('F-CLIENTS', 'Commande 4521', ('Client B', 'contact@client-b.fr'), '<p>Merci pour la livraison.</p>', 60 * 50, is_read=True)
     add_message('F-SENT', 'Re: Planning', ('Utilisateur', 'user@societe-a.fr'), '<p>OK pour moi.</p>', 300, is_read=True,
                 to=(('Marie Martin', 'marie.martin@societe-a.fr'),))

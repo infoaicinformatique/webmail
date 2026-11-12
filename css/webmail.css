@@ -634,3 +634,28 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-quota-high .wm-quota-fill { background: var(--color-warning, #e9a200); }
 .wm-quota-full .wm-quota-fill { background: var(--color-error, #e9322d); }
 .wm-quota-full .wm-quota-text { color: var(--color-error-text, var(--color-error, #c00)); font-weight: 600; }
+
+/* attachment previews */
+.wm-attachment-thumb { padding: 0 !important; margin: 0 4px 0 0; min-height: 0 !important; border: none; background: none; cursor: zoom-in; }
+.wm-attachment-thumb img { display: block; width: 40px; height: 40px; object-fit: cover; border-radius: 6px; }
+.wm-attachments-all { margin: -2px 0 8px; }
+.wm-overlay.wm-preview { background: rgba(16, 16, 16, 0.96); padding: 2vh 16px; align-items: center; }
+.wm-preview-frame { display: flex; flex-direction: column; width: min(1200px, 96vw); height: 94vh; color: #fff; }
+.wm-preview-header { display: flex; align-items: center; gap: 8px; padding: 8px 4px; }
+.wm-preview-header .button, .wm-preview-header button { margin: 0; }
+.wm-preview-header .wm-modal-close { color: #fff; }
+.wm-preview-names { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.wm-preview-names .wm-muted { color: #ccc; }
+.wm-preview-title { margin: 0; font-size: 1.1em; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-preview-stage { flex: 1; min-height: 0; display: flex; align-items: stretch; gap: 8px; }
+.wm-preview-body { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; overflow: auto; }
+.wm-preview-image { max-width: 100%; max-height: 100%; object-fit: contain; background: #fff; }
+.wm-preview-pdf { width: 100%; height: 100%; border: 0; background: #fff; }
+.wm-preview-text { width: 100%; height: 100%; margin: 0; padding: 16px; overflow: auto; background: #fff; color: #222; white-space: pre-wrap; font-size: 13px; box-sizing: border-box; }
+.wm-preview-nav { align-self: center; font-size: 32px; min-width: 44px; min-height: 64px; background: rgba(255, 255, 255, 0.12); color: #fff; border: none; }
+.wm-preview-nav[hidden] { display: none; }
+@media (max-width: 800px) {
+	.wm-preview-frame { width: 100vw; height: 100vh; }
+	.wm-preview-header .button, .wm-preview-header > button:not(.wm-modal-close) { display: none; }
+	.wm-preview-nav { min-width: 32px; }
+}

@@ -843,14 +843,25 @@
 
 		if (m.attachments && m.attachments.length) {
 			const list = h('ul', { class: 'wm-attachments' })
+			const previewable = m.attachments.filter((a) => previewKind(a))
 			m.attachments.forEach((a) => {
-				const dl = OC.generateUrl(BASE + '/accounts/' + state.accountId + '/attachment') + '?attachmentId=' + encodeURIComponent(a.id)
-				list.appendChild(h('li', { class: 'wm-attachment' },
-					h('a', { href: dl, class: 'wm-attachment-name', title: 'Télécharger', download: a.name }, '📎 ' + a.name),
+				const kind = previewKind(a)
+				const open = kind ? () => openPreview(previewable, previewable.indexOf(a)) : null
+				list.appendChild(h('li', { class: 'wm-attachment' + (kind === 'image' ? ' wm-attachment-image' : '') },
+					kind === 'image'
+						? h('button', { type: 'button', class: 'wm-attachment-thumb', title: 'Aperçu de ' + a.name, onclick: open },
+							h('img', { src: attachmentUrl(a, true), alt: '', loading: 'lazy' }))
+						: null,
+					h('a', { href: attachmentUrl(a), class: 'wm-attachment-name', title: 'Télécharger', download: a.name }, '📎 ' + a.name),
 					h('span', { class: 'wm-muted' }, ' ' + formatSize(a.size) + ' '),
+					kind ? h('button', { class: 'wm-small wm-preview-btn', onclick: open }, '👁 Aperçu') : null,
 					h('button', { class: 'wm-small', onclick: () => saveAttachment(a) }, 'Enregistrer dans Fichiers')))
 			})
 			detailEl.appendChild(list)
+			if (m.attachments.filter((a) => !a.isItem).length > 1) {
+				detailEl.appendChild(h('div', { class: 'wm-attachments-all' },
+					h('button', { class: 'wm-small', onclick: () => saveAllAttachments(m.attachments.filter((a) => !a.isItem)) }, '💾 Tout enregistrer dans Fichiers')))
+			}
 		}
 
 		const frame = h('iframe', {
@@ -1010,6 +1021,108 @@
 		} catch (e) {
 			undo()
 			toast(e.message, true)
+		}
+	}
+
+	function attachmentUrl(a, inline) {
+		return OC.generateUrl(BASE + '/accounts/' + state.accountId + '/attachment') + '?attachmentId=' + encodeURIComponent(a.id) + (inline ? '&inline=1' : '')
+	}
+
+	const PREVIEW_TEXT_MAX = 1024 * 1024
+	/** image | pdf | text, or null when the browser cannot show it safely */
+	function previewKind(a) {
+		if (a.isItem) return null
+		const type = (a.contentType || '').toLowerCase()
+		const ext = (a.name || '').toLowerCase().split('.').pop()
+		if (['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/bmp'].includes(type)) return 'image'
+		if (type === 'application/pdf' || ext === 'pdf') return 'pdf'
+		if ((type.startsWith('text/plain') || type === 'text/csv' || ['txt', 'csv', 'log'].includes(ext)) && a.size <= PREVIEW_TEXT_MAX) return 'text'
+		return null
+	}
+
+	/**
+	 * Full-screen preview of the attachments that can be shown (images, PDF,
+	 * plain text), with ← / → to go from one to the next.
+	 */
+	function openPreview(items, index) {
+		let i = index
+		const overlay = h('div', { class: 'wm-overlay wm-preview' })
+		const title = h('h2', { class: 'wm-preview-title' })
+		const counter = h('span', { class: 'wm-muted' })
+		const body = h('div', { class: 'wm-preview-body' })
+		const download = h('a', { class: 'button', download: '' }, '⬇ Télécharger')
+		const save = h('button', { type: 'button', onclick: () => saveAttachment(items[i]) }, 'Enregistrer dans Fichiers')
+		const prev = h('button', { type: 'button', class: 'wm-preview-nav', 'aria-label': 'Pièce jointe précédente', onclick: () => go(-1) }, '‹')
+		const next = h('button', { type: 'button', class: 'wm-preview-nav', 'aria-label': 'Pièce jointe suivante', onclick: () => go(1) }, '›')
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true) }
+		const onKey = (e) => {
+			if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close() } else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); go(-1) } else if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); go(1) }
+		}
+		const go = (step) => {
+			if (items.length < 2) return
+			i = (i + step + items.length) % items.length
+			show()
+		}
+		let seq = 0
+		const show = async () => {
+			const a = items[i]
+			const mine = ++seq
+			title.textContent = a.name
+			counter.textContent = items.length > 1 ? (i + 1) + ' / ' + items.length : ''
+			download.href = attachmentUrl(a)
+			download.setAttribute('download', a.name)
+			prev.hidden = next.hidden = items.length < 2
+			clear(body)
+			const kind = previewKind(a)
+			if (kind === 'image') {
+				body.appendChild(h('img', { class: 'wm-preview-image', src: attachmentUrl(a, true), alt: a.name }))
+			} else if (kind === 'pdf') {
+				body.appendChild(h('iframe', { class: 'wm-preview-pdf', src: attachmentUrl(a, true), title: a.name }))
+			} else {
+				body.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
+				try {
+					const res = await fetch(attachmentUrl(a), { headers: { requesttoken: OC.requestToken } })
+					if (!res.ok) throw new Error('Erreur ' + res.status)
+					const text = await res.text()
+					if (mine !== seq) return
+					clear(body)
+					// shown as text only: nothing in the file is interpreted
+					body.appendChild(h('pre', { class: 'wm-preview-text' }, text))
+				} catch (e) {
+					if (mine !== seq) return
+					clear(body)
+					body.appendChild(h('div', { class: 'wm-empty' }, 'Aperçu impossible : ' + e.message))
+				}
+			}
+		}
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay || e.target === body) close() })
+		document.addEventListener('keydown', onKey, true)
+		overlay.appendChild(h('div', { class: 'wm-preview-frame', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Aperçu de la pièce jointe' },
+			h('div', { class: 'wm-preview-header' }, h('div', { class: 'wm-preview-names' }, title, counter),
+				download, save, h('button', { type: 'button', class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
+			h('div', { class: 'wm-preview-stage' }, prev, body, next)))
+		document.body.appendChild(overlay)
+		show()
+	}
+
+	/** Save several attachments in one Files folder chosen once. */
+	function saveAllAttachments(list) {
+		const doSave = async (dir) => {
+			let done = 0
+			let lastPath = ''
+			for (const a of list) {
+				try {
+					const res = await api('/accounts/' + state.accountId + '/attachment/save', { method: 'POST', body: { attachmentId: a.id, path: dir } })
+					done++
+					lastPath = res.path
+				} catch (e) { toast(a.name + ' : ' + e.message, true) }
+			}
+			if (done) toast(done + ' pièce' + (done > 1 ? 's jointes enregistrées' : ' jointe enregistrée') + ' dans ' + lastPath.replace(/\/[^/]*$/, '/'))
+		}
+		if (OC.dialogs && typeof OC.dialogs.filepicker === 'function') {
+			OC.dialogs.filepicker('Choisir le dossier de destination', (dir) => doSave(dir || '/'), false, 'httpd/unix-directory', true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
+		} else {
+			doSave('/Pièces jointes')
 		}
 	}
 
