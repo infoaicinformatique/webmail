@@ -659,3 +659,13 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 	.wm-preview-header .button, .wm-preview-header > button:not(.wm-modal-close) { display: none; }
 	.wm-preview-nav { min-width: 32px; }
 }
+
+/* search filters */
+.wm-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--color-border); }
+.wm-chip { min-height: 28px !important; padding: 0 10px !important; margin: 0; border-radius: 14px !important; font-size: 12px; font-weight: normal; }
+.wm-chip.on { background: var(--color-primary-element, #0082c9); color: var(--color-primary-element-text, #fff); border-color: transparent; }
+.wm-chip-select { min-height: 28px !important; height: 28px; margin: 0; font-size: 12px; border-radius: 14px; padding: 0 8px; width: auto; }
+.wm-chip-check { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
+.wm-chip-check input { margin: 0; min-height: 0; }
+.wm-filter-toggle.active { color: var(--color-primary-element, #0082c9); font-weight: bold; }
+.wm-message-folder { margin-inline: 6px auto; padding: 0 6px; border-radius: 8px; font-size: 11px; background: var(--color-background-dark, #eee); color: var(--color-text-maxcontrast); white-space: nowrap; }

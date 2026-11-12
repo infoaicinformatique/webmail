@@ -17,6 +17,9 @@
 		total: 0,
 		hasMore: false,
 		query: '',
+		// search filters; all: every folder instead of the current one
+		filters: { unread: false, attachments: false, flagged: false, since: '', all: false },
+		showFilters: false,
 		selectedId: null,
 		current: null, // opened message
 		view: 'list', // mobile: list | detail
@@ -53,6 +56,33 @@
 	let listObserver = null
 
 	const listKey = () => state.accountId + '|' + state.folderId
+	const NO_FILTERS = { unread: false, attachments: false, flagged: false, since: '', all: false }
+	const filtersOn = () => ['unread', 'attachments', 'flagged', 'since'].filter((k) => state.filters[k]).length
+	/** a search or a filter is active: the list is not the folder's content */
+	const isSearching = () => !!state.query || filtersOn() > 0
+
+	function resetSearch() {
+		state.query = ''
+		state.filters = Object.assign({}, NO_FILTERS)
+		state.showFilters = false
+	}
+
+	/** Query parameters of the list request (folder, search words, filters). */
+	function listQuery(offset, limit) {
+		const f = state.filters
+		const since = f.since ? new Date(Date.now() - parseInt(f.since, 10) * 86400000) : null
+		return {
+			folder: state.folderId,
+			offset,
+			limit,
+			q: state.query,
+			unread: f.unread ? 1 : undefined,
+			attachments: f.attachments ? 1 : undefined,
+			flagged: f.flagged ? 1 : undefined,
+			since: since ? since.getFullYear() + '-' + String(since.getMonth() + 1).padStart(2, '0') + '-' + String(since.getDate()).padStart(2, '0') : undefined,
+			scope: f.all && isSearching() ? 'all' : undefined,
+		}
+	}
 	const msgKey = (id) => state.accountId + '|' + id
 
 	function cacheMessage(msg) {
@@ -63,7 +93,7 @@
 	}
 
 	function saveListCache() {
-		if (state.query || !state.accountId) return
+		if (isSearching() || !state.accountId) return
 		listCache.set(listKey(), { messages: state.messages.slice(), total: state.total, hasMore: state.hasMore, scrollTop: listEl ? listEl.scrollTop : 0 })
 	}
 
@@ -457,7 +487,7 @@
 		state.accountId = id
 		state.folderId = 'inbox'
 		state.folders = []
-		state.query = ''
+		resetSearch()
 		try { localStorage.setItem('webmail.account', String(id)) } catch (e) { /* ignore */ }
 		if (currentModule()) {
 			activateModule()
@@ -471,7 +501,7 @@
 	function selectFolder(id) {
 		saveListCache()
 		state.folderId = id
-		state.query = ''
+		resetSearch()
 		state.selectedId = null
 		renderNav()
 		renderEmptyDetail()
@@ -495,7 +525,7 @@
 		let limit = PAGE_SIZE
 		state.loadingList = true
 		if (reset) {
-			const cached = !state.query && listCache.get(listKey())
+			const cached = !isSearching() && listCache.get(listKey())
 			if (cached) {
 				state.messages = cached.messages.slice()
 				state.total = cached.total
@@ -511,7 +541,7 @@
 		}
 		try {
 			const data = await api('/accounts/' + state.accountId + '/messages', {
-				query: { folder: state.folderId, offset: reset ? 0 : state.messages.length, limit, q: state.query },
+				query: listQuery(reset ? 0 : state.messages.length, limit),
 			})
 			// a newer load (another folder, a search) replaced this one; the folder id
 			// itself may change meanwhile ("inbox" becomes its real id)
@@ -539,7 +569,7 @@
 			const seq = listSeq
 			try {
 				const data = await api('/accounts/' + state.accountId + '/messages', {
-					query: { folder: state.folderId, offset: 0, limit: Math.max(PAGE_SIZE, state.messages.length), q: state.query },
+					query: listQuery(0, Math.max(PAGE_SIZE, state.messages.length)),
 				})
 				if (seq !== listSeq || state.module !== 'mail') return
 				state.messages = data.items
@@ -566,7 +596,7 @@
 		const searchInput = h('input', {
 			type: 'search',
 			class: 'wm-search',
-			placeholder: 'Rechercher dans ' + (f ? f.name : 'le dossier'),
+			placeholder: state.filters.all ? 'Rechercher dans tous les dossiers' : 'Rechercher dans ' + (f ? f.name : 'le dossier'),
 			value: typing ? typing.value : state.query,
 			'aria-label': 'Rechercher',
 		})
@@ -576,19 +606,30 @@
 		},
 		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': 'Dossiers', onclick: () => setView('nav') }, '☰'),
 		searchInput,
+		h('button', {
+			type: 'button',
+			class: 'wm-icon-btn wm-filter-toggle' + (state.showFilters || filtersOn() ? ' active' : ''),
+			title: 'Filtres',
+			'aria-label': 'Filtres',
+			'aria-expanded': state.showFilters ? 'true' : 'false',
+			onclick: () => { state.showFilters = !state.showFilters; renderList(state.loadingList && !state.messages.length) },
+		}, '⏷' + (filtersOn() ? ' ' + filtersOn() : '')),
 		h('button', { type: 'button', class: 'wm-icon-btn', title: 'Actualiser', 'aria-label': 'Actualiser', onclick: () => { loadFolders(); loadMessages(true) } }, '⟳'),
 		)
 		listEl.appendChild(form)
+		if (state.showFilters || filtersOn()) listEl.appendChild(filterBar(searchInput))
 		if (typing) {
 			const caret = typing.selectionStart
 			searchInput.focus()
 			try { searchInput.setSelectionRange(caret, caret) } catch (e) { /* ignore */ }
 		}
 
-		if (state.query) {
+		if (isSearching()) {
+			const where = state.filters.all ? 'dans tous les dossiers' : 'dans ' + (f ? f.name : 'le dossier')
 			listEl.appendChild(h('div', { class: 'wm-search-info' },
-				'Résultats pour « ' + state.query + ' » ',
-				h('a', { href: '#', onclick: (e) => { e.preventDefault(); state.query = ''; loadMessages(true) } }, 'effacer')))
+				(state.query ? 'Résultats pour « ' + state.query + ' » ' : 'Messages filtrés ') + where
+				+ (state.loadingList ? '' : ' (' + state.total + ') '),
+				h('a', { href: '#', onclick: (e) => { e.preventDefault(); resetSearch(); loadMessages(true) } }, 'effacer')))
 		}
 
 		if (loading) {
@@ -596,7 +637,7 @@
 			return
 		}
 		if (state.messages.length === 0) {
-			listEl.appendChild(h('div', { class: 'wm-empty' }, state.query ? 'Aucun résultat' : 'Aucun message'))
+			listEl.appendChild(h('div', { class: 'wm-empty' }, isSearching() ? 'Aucun résultat' : 'Aucun message'))
 			return
 		}
 
@@ -616,6 +657,7 @@
 			},
 			h('div', { class: 'wm-message-line1' },
 				h('span', { class: 'wm-message-from' }, who),
+				m.folderId && state.filters.all ? h('span', { class: 'wm-message-folder' }, folderName(m.folderId)) : null,
 				h('span', { class: 'wm-message-date' }, formatDate(m.date))),
 			h('div', { class: 'wm-message-line2' },
 				m.importance === 'High' ? h('span', { class: 'wm-important', title: 'Importance haute' }, '❗') : null,
@@ -646,6 +688,36 @@
 			}
 		}
 		listEl.scrollTop = keepScroll
+	}
+
+	function folderName(id) {
+		const f = state.folders.find((x) => x.id === id)
+		return f ? f.name : ''
+	}
+
+	/** Filters under the search field: unread, attachments, flagged, period, all folders. */
+	function filterBar(searchInput) {
+		const f = state.filters
+		const apply = () => {
+			// keep the words typed but not yet searched
+			state.query = searchInput.value.trim()
+			loadMessages(true)
+		}
+		const chip = (key, label) => h('button', {
+			type: 'button',
+			class: 'wm-chip' + (f[key] ? ' on' : ''),
+			'aria-pressed': f[key] ? 'true' : 'false',
+			dataset: { filter: key },
+			onclick: () => { f[key] = !f[key]; apply() },
+		}, label)
+		const period = h('select', { class: 'wm-chip-select', name: 'since', 'aria-label': 'Période', onchange: (e) => { f.since = e.target.value; apply() } },
+			[['', 'Toute période'], ['7', '7 derniers jours'], ['30', '30 derniers jours'], ['365', '12 derniers mois']]
+				.map(([v, l]) => h('option', { value: v, selected: f.since === v }, l)))
+		const all = h('label', { class: 'wm-chip-check' },
+			h('input', { type: 'checkbox', name: 'allFolders', checked: f.all, onchange: (e) => { f.all = e.target.checked; if (isSearching() || searchInput.value.trim()) apply() } }),
+			' Tous les dossiers')
+		return h('div', { class: 'wm-filters', role: 'group', 'aria-label': 'Filtres' },
+			chip('unread', 'Non lus'), chip('attachments', '📎 Pièces jointes'), chip('flagged', '⚑ Suivis'), period, all)
 	}
 
 	function listItemEl(id) {
@@ -796,7 +868,8 @@
 		const m = state.current
 		if (!m) return
 		clear(detailEl)
-		const role = folderRole()
+		const own = state.folders.find((f) => f.id === m.folderId)
+		const role = own ? own.role : folderRole()
 
 		const moveSelect = h('select', {
 			class: 'wm-move',

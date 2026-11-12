@@ -237,13 +237,125 @@ class EwsClient {
 	/**
 	 * @return array{items: array<int, array<string, mixed>>, total: int, hasMore: bool}
 	 */
-	public function findItems(string $folderId, int $offset = 0, int $limit = 50, ?string $query = null): array {
+	/**
+	 * Exchange search text (AQS) for the words typed and the filters ticked:
+	 * unread, with attachments, flagged, received since a date (Y-m-d).
+	 * @param array{unread?: bool, attachments?: bool, flagged?: bool, since?: string} $filters
+	 */
+	public static function searchQuery(?string $text, array $filters): ?string {
+		$parts = [];
+		$text = trim((string)$text);
+		if ($text !== '') {
+			$parts[] = $text;
+		}
+		if (!empty($filters['unread'])) {
+			$parts[] = 'isread:false';
+		}
+		if (!empty($filters['attachments'])) {
+			$parts[] = 'hasattachment:true';
+		}
+		if (!empty($filters['flagged'])) {
+			$parts[] = 'isflagged:true';
+		}
+		$since = (string)($filters['since'] ?? '');
+		if ($since !== '') {
+			$d = \DateTimeImmutable::createFromFormat('!Y-m-d', $since);
+			if ($d === false || $d->format('Y-m-d') !== $since) {
+				throw new MailException('Date de recherche invalide');
+			}
+			$parts[] = 'received>=' . $since;
+		}
+		return $parts !== [] ? implode(' ', $parts) : null;
+	}
+
+	/**
+	 * Search several folders at once (the whole mailbox): one FindItem over
+	 * all of them, results merged newest first. Paging goes up to 200 results.
+	 * @param string[] $folderIds
+	 */
+	public function searchFolders(array $folderIds, int $offset, int $limit, string $query): array {
+		$window = min(200, max(1, $offset + $limit));
+		$ids = '';
+		foreach ($folderIds as $id) {
+			$ids .= $this->folderIdXml($id);
+		}
+		$xp = $this->request(
+			'<m:FindItem Traversal="Shallow">'
+			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $this->summaryFields(true) . '</t:AdditionalProperties></m:ItemShape>'
+			. '<m:IndexedPageItemView MaxEntriesReturned="' . $window . '" Offset="0" BasePoint="Beginning"/>'
+			. '<m:SortOrder><t:FieldOrder Order="Descending"><t:FieldURI FieldURI="item:DateTimeReceived"/></t:FieldOrder></m:SortOrder>'
+			. '<m:ParentFolderIds>' . $ids . '</m:ParentFolderIds>'
+			. '<m:QueryString>' . $this->esc($query) . '</m:QueryString>'
+			. '</m:FindItem>',
+			false
+		);
+		$items = [];
+		$total = 0;
+		$more = false;
+		foreach ($xp->query('//m:RootFolder') as $root) {
+			if (!$root instanceof \DOMElement) {
+				continue;
+			}
+			$total += (int)$root->getAttribute('TotalItemsInView');
+			$more = $more || $root->getAttribute('IncludesLastItemInRange') === 'false';
+			foreach ($xp->query('t:Items/*', $root) as $node) {
+				$items[] = $this->summary($xp, $node);
+			}
+		}
+		if ($items === [] && $total === 0) {
+			// every folder refused: report the first error
+			$err = $xp->query('//m:ResponseMessages/*[@ResponseClass="Error"]')->item(0);
+			if ($err !== null) {
+				throw new MailException(self::translateError($this->text($xp, 'm:ResponseCode', $err), $this->text($xp, 'm:MessageText', $err)));
+			}
+		}
+		usort($items, fn ($a, $b) => strcmp((string)$b['date'], (string)$a['date']));
+		$page = array_slice($items, $offset, $limit);
+		return [
+			'items' => $page,
+			'total' => $total,
+			'hasMore' => $offset + $limit < 200 && ($more || count($items) > $offset + $limit),
+		];
+	}
+
+	private function summaryFields(bool $withFolder = false): string {
 		$props = ['item:Subject', 'message:From', 'item:DisplayTo', 'item:DateTimeReceived', 'message:IsRead',
 			'item:HasAttachments', 'item:Importance', 'item:Flag', 'item:Preview'];
+		if ($withFolder) {
+			$props[] = 'item:ParentFolderId';
+		}
 		$fields = '';
 		foreach ($props as $p) {
 			$fields .= '<t:FieldURI FieldURI="' . $p . '"/>';
 		}
+		return $fields;
+	}
+
+	/** @return array<string, mixed> one message of a list */
+	private function summary(\DOMXPath $xp, \DOMNode $node): array {
+		$item = [
+			'id' => $this->attr($xp, 't:ItemId', 'Id', $node),
+			'changeKey' => $this->attr($xp, 't:ItemId', 'ChangeKey', $node),
+			'subject' => (string)$this->text($xp, 't:Subject', $node),
+			'from' => $this->mailbox($xp, 't:From/t:Mailbox', $node),
+			'displayTo' => (string)$this->text($xp, 't:DisplayTo', $node),
+			'date' => $this->text($xp, 't:DateTimeReceived', $node),
+			'isRead' => $this->text($xp, 't:IsRead', $node) !== 'false',
+			'hasAttachments' => $this->text($xp, 't:HasAttachments', $node) === 'true',
+			'importance' => $this->text($xp, 't:Importance', $node) ?? 'Normal',
+			'flagged' => $this->text($xp, 't:Flag/t:FlagStatus', $node) === 'Flagged',
+			'preview' => mb_substr((string)$this->text($xp, 't:Preview', $node), 0, 200),
+			'isMeeting' => $node->localName !== 'Message',
+		];
+		$folder = $this->attr($xp, 't:ParentFolderId', 'Id', $node);
+		if ($folder !== null) {
+			$item['folderId'] = $folder;
+		}
+		return $item;
+	}
+
+	public function findItems(string $folderId, int $offset = 0, int $limit = 50, ?string $query = null): array {
+		$fields = $this->summaryFields();
 		$queryXml = '';
 		if ($query !== null && trim($query) !== '') {
 			$queryXml = '<m:QueryString>' . $this->esc(trim($query)) . '</m:QueryString>';
@@ -265,20 +377,7 @@ class EwsClient {
 
 		$items = [];
 		foreach ($xp->query('//m:RootFolder/t:Items/*') as $node) {
-			$items[] = [
-				'id' => $this->attr($xp, 't:ItemId', 'Id', $node),
-				'changeKey' => $this->attr($xp, 't:ItemId', 'ChangeKey', $node),
-				'subject' => (string)$this->text($xp, 't:Subject', $node),
-				'from' => $this->mailbox($xp, 't:From/t:Mailbox', $node),
-				'displayTo' => (string)$this->text($xp, 't:DisplayTo', $node),
-				'date' => $this->text($xp, 't:DateTimeReceived', $node),
-				'isRead' => $this->text($xp, 't:IsRead', $node) !== 'false',
-				'hasAttachments' => $this->text($xp, 't:HasAttachments', $node) === 'true',
-				'importance' => $this->text($xp, 't:Importance', $node) ?? 'Normal',
-				'flagged' => $this->text($xp, 't:Flag/t:FlagStatus', $node) === 'Flagged',
-				'preview' => mb_substr((string)$this->text($xp, 't:Preview', $node), 0, 200),
-				'isMeeting' => $node->localName !== 'Message',
-			];
+			$items[] = $this->summary($xp, $node);
 		}
 		return ['items' => $items, 'total' => $total, 'hasMore' => !$last];
 	}

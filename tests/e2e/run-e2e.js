@@ -191,6 +191,54 @@ async function main() {
 		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 62)
 	})
 
+	await step('search filters and search in all folders', async () => {
+		const subjects = () => page.$$eval('.wm-message-subject', (els) => els.map((e) => e.textContent))
+		const settle = () => page.waitForFunction(() => !document.querySelector('.wm-list .icon-loading') && document.querySelector('.wm-search-info, .wm-message'))
+		await page.click('.wm-filter-toggle')
+		await page.waitForSelector('.wm-filters')
+		// unread only: as many as the folder's badge
+		await page.click('.wm-chip[data-filter="unread"]')
+		await page.waitForSelector('.wm-search-info:has-text("Messages filtrés dans Boîte de réception")')
+		await settle()
+		const badge = parseInt(await page.textContent('.wm-folder.active .wm-badge'), 10)
+		await page.waitForFunction((n) => document.querySelectorAll('.wm-message.unread').length === n && document.querySelectorAll('.wm-message').length === n, badge)
+		// and with attachments
+		await page.click('.wm-chip[data-filter="attachments"]')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 1)
+		assert.deepStrictEqual(await subjects(), ['Devis pour la maintenance annuelle'])
+		assert.strictEqual(await page.textContent('.wm-filter-toggle'), '⏷ 2')
+
+		// all folders: attachments everywhere, with the folder of each result
+		await page.click('.wm-chip[data-filter="unread"]')
+		await page.check('.wm-filters input[name=allFolders]')
+		await page.waitForSelector('.wm-message:has-text("Photos du chantier") .wm-message-folder:has-text("Clients")')
+		await page.waitForSelector('.wm-message:has-text("Devis pour la maintenance") .wm-message-folder:has-text("Boîte de réception")')
+		await shot('34-search-filters')
+		// words + all folders
+		await page.click('.wm-chip[data-filter="attachments"]')
+		await page.fill('.wm-search', 'devis')
+		await page.press('.wm-search', 'Enter')
+		await page.waitForSelector('.wm-search-info:has-text("Résultats pour « devis » dans tous les dossiers (2)")')
+		assert.deepStrictEqual((await subjects()).sort(), ['Commande 4521', 'Devis pour la maintenance annuelle'])
+		// a result from another folder opens normally
+		await page.click('.wm-message:has-text("Commande 4521")')
+		await page.frameLocator('.wm-body-frame').locator('text=le devis est signé').waitFor()
+
+		// period: the old newsletters go
+		await page.fill('.wm-search', '')
+		await page.press('.wm-search', 'Enter')
+		await page.selectOption('.wm-filters select[name=since]', '30')
+		await page.waitForSelector('.wm-search-info:has-text("Messages filtrés dans tous les dossiers")')
+		await settle()
+		await page.waitForFunction(() => !document.querySelector('.wm-list .icon-loading'))
+		const recent = await subjects()
+		assert(recent.includes('Newsletter n°1') && !recent.includes('Newsletter n°40'), recent.join('|'))
+
+		// clear: back to the folder, filters gone
+		await page.click('.wm-search-info a')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 62 && !document.querySelector('.wm-filters'))
+	})
+
 	await step('fluid navigation: prefetch, keyboard, folder cache, instant delete, Back button', async () => {
 		const fetched = []
 		const onRequest = (r) => { if (r.url().includes('/message?')) fetched.push(new URL(r.url()).searchParams) }

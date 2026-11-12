@@ -60,9 +60,23 @@ class MailController extends Controller {
 	}
 
 	#[NoAdminRequired]
-	public function messages(int $id, string $folder = 'inbox', int $offset = 0, int $limit = 50, string $q = ''): Response {
+	/**
+	 * Messages of a folder, or search results. Filters: unread, with
+	 * attachments, flagged, received since a date (Y-m-d); scope "all"
+	 * searches every mail folder.
+	 */
+	public function messages(int $id, string $folder = 'inbox', int $offset = 0, int $limit = 50, string $q = '',
+		bool $unread = false, bool $attachments = false, bool $flagged = false, string $since = '', string $scope = 'folder'): Response {
 		$limit = max(1, min(100, $limit));
-		return $this->handle(fn () => $this->client($id)->findItems($folder, max(0, $offset), $limit, $q !== '' ? $q : null));
+		return $this->handle(function () use ($id, $folder, $offset, $limit, $q, $unread, $attachments, $flagged, $since, $scope) {
+			$client = $this->client($id);
+			$query = EwsClient::searchQuery($q, ['unread' => $unread, 'attachments' => $attachments, 'flagged' => $flagged, 'since' => $since]);
+			if ($scope === 'all' && $query !== null) {
+				$ids = array_column($client->listFolders(), 'id');
+				return $client->searchFolders($ids, max(0, $offset), $limit, $query);
+			}
+			return $client->findItems($folder, max(0, $offset), $limit, $query);
+		});
 	}
 
 	#[NoAdminRequired]

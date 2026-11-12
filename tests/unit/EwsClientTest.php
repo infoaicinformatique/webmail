@@ -58,6 +58,47 @@ class EwsClientTest extends EwsTestCase {
 		$this->assertNull($this->client()->mailboxQuota());
 	}
 
+	public function testSearchQueryCombinesTextAndFilters(): void {
+		$this->assertNull(EwsClient::searchQuery('  ', []));
+		$this->assertSame('devis', EwsClient::searchQuery(' devis ', ['unread' => false]));
+		$this->assertSame('devis isread:false hasattachment:true isflagged:true received>=2026-10-01',
+			EwsClient::searchQuery('devis', ['unread' => true, 'attachments' => true, 'flagged' => true, 'since' => '2026-10-01']));
+		$this->assertSame('isread:false', EwsClient::searchQuery('', ['unread' => true]), 'a filter alone is a search');
+	}
+
+	public function testSearchQueryRejectsBadDates(): void {
+		$this->expectException(MailException::class);
+		EwsClient::searchQuery('', ['since' => '2026-13-45']);
+	}
+
+	public function testSearchAllFoldersMergesNewestFirst(): void {
+		$msg = fn (string $id, string $folder, string $date) => '<t:Message><t:ItemId Id="' . $id . '" ChangeKey="c"/><t:ParentFolderId Id="' . $folder . '"/>'
+			. '<t:Subject>S ' . $id . '</t:Subject><t:DateTimeReceived>' . $date . '</t:DateTimeReceived><t:IsRead>true</t:IsRead></t:Message>';
+		$found = fn (int $total, bool $last, string $items) => '<m:FindItemResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode>'
+			. '<m:RootFolder IndexedPagingOffset="0" TotalItemsInView="' . $total . '" IncludesLastItemInRange="' . ($last ? 'true' : 'false') . '"><t:Items>' . $items . '</t:Items></m:RootFolder></m:FindItemResponseMessage>';
+		$this->queue('<m:FindItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>'
+			. $found(2, true, $msg('A', 'INBOX', '2026-11-10T08:00:00Z') . $msg('B', 'INBOX', '2026-11-01T08:00:00Z'))
+			. $found(1, true, $msg('C', 'CLIENTS', '2026-11-05T08:00:00Z'))
+			. '</m:ResponseMessages></m:FindItemResponse>');
+		$r = $this->client()->searchFolders(['INBOX', 'CLIENTS'], 0, 2, 'devis');
+		$this->assertSame(['A', 'C'], array_column($r['items'], 'id'));
+		$this->assertSame(['INBOX', 'CLIENTS'], array_column($r['items'], 'folderId'));
+		$this->assertSame(3, $r['total']);
+		$this->assertTrue($r['hasMore']);
+		$req = $this->requests[0];
+		$this->assertStringContainsString('<m:ParentFolderIds><t:FolderId Id="INBOX"/><t:FolderId Id="CLIENTS"/></m:ParentFolderIds><m:QueryString>devis</m:QueryString>', $req);
+		$this->assertStringContainsString('<t:FieldURI FieldURI="item:ParentFolderId"/>', $req);
+		$this->assertStringContainsString('MaxEntriesReturned="2"', $req);
+	}
+
+	public function testSearchAllFoldersReportsAnError(): void {
+		$this->queue('<m:FindItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"><m:ResponseMessages>'
+			. '<m:FindItemResponseMessage ResponseClass="Error"><m:MessageText>x</m:MessageText><m:ResponseCode>ErrorAccessDenied</m:ResponseCode></m:FindItemResponseMessage>'
+			. '</m:ResponseMessages></m:FindItemResponse>');
+		$this->expectException(MailException::class);
+		$this->client()->searchFolders(['INBOX'], 0, 50, 'x');
+	}
+
 	public function testFindItemsWithSearchAndPaging(): void {
 		$this->queue(self::ok('FindItem', '<m:RootFolder IndexedPagingOffset="50" TotalItemsInView="120" IncludesLastItemInRange="false"><t:Items>'
 			. '<t:Message><t:ItemId Id="M1" ChangeKey="CK1"/><t:Subject>Facture &amp; devis</t:Subject><t:DateTimeReceived>2026-11-10T08:15:00Z</t:DateTimeReceived>'

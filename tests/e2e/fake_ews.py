@@ -110,7 +110,7 @@ def seed():
                     dict(name='plan.pdf', content_type='application/pdf', content=b'%PDF-1.4\n% plan\n', inline=False),
                     dict(name='archive.zip', content_type='application/zip', content=b'PK\x05\x06' + b'\x00' * 18, inline=False),
                 ])
-    add_message('F-CLIENTS', 'Commande 4521', ('Client B', 'contact@client-b.fr'), '<p>Merci pour la livraison.</p>', 60 * 50, is_read=True)
+    add_message('F-CLIENTS', 'Commande 4521', ('Client B', 'contact@client-b.fr'), '<p>Merci pour la livraison, le devis est signé.</p>', 60 * 50, is_read=True)
     add_message('F-SENT', 'Re: Planning', ('Utilisateur', 'user@societe-a.fr'), '<p>OK pour moi.</p>', 300, is_read=True,
                 to=(('Marie Martin', 'marie.martin@societe-a.fr'),))
 
@@ -184,7 +184,7 @@ def folder_xml(f, with_size=False):
             % (fid, '<t:ParentFolderId Id="%s" ChangeKey="AQ"/>' % parent if parent else '', esc(name), total, children, unread, size))
 
 
-def item_summary_xml(m):
+def item_summary_xml(m, with_folder=False):
     import re
     text = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', m['body'], flags=re.S)
     text = html.unescape(re.sub(r'<[^>]+>', ' ', text))
@@ -193,6 +193,7 @@ def item_summary_xml(m):
     return (('<t:Message><t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject><t:DateTimeReceived>%s</t:DateTimeReceived>'
             '<t:HasAttachments>%s</t:HasAttachments><t:Importance>%s</t:Importance><t:DisplayTo>%s</t:DisplayTo><t:Preview>%s</t:Preview>'
             '<t:Flag><t:FlagStatus>%s</t:FlagStatus></t:Flag><t:IsRead>%s</t:IsRead><t:From>%s</t:From></t:Message>').replace('Message>', m.get('kind', 'Message') + '>')
+            .replace('<t:Subject>', ('<t:ParentFolderId Id="%s" ChangeKey="AQ"/>' % m['folder'] if with_folder else '') + '<t:Subject>', 1)
             % (m['id'], m['ck'], esc(m['subject']), m['date'],
                'true' if any(not ATTACHMENTS[a].get('inline') for a in m['attachments']) else 'false',
                m['importance'], esc(display_to), esc(text),
@@ -288,20 +289,40 @@ def handle(op, el, user):
                             % (len(FOLDERS), folders))])
 
     if op == 'FindItem':
-        fid = folder_id(el.find('m:ParentFolderIds', NS)[0])
-        if fid is None or fid not in {f[0] for f in FOLDERS}:
-            return wrap(op, [err(op, 'ErrorFolderNotFound', 'Folder not found')])
         view = el.find('m:IndexedPageItemView', NS)
         offset, limit = int(view.get('Offset', 0)), int(view.get('MaxEntriesReturned', 50))
         q = (el.findtext('m:QueryString', default='', namespaces=NS) or '').lower()
-        msgs = [m for m in MESSAGES.values() if m['folder'] == fid]
-        if q:
-            msgs = [m for m in msgs if q in m['subject'].lower() or q in m['body'].lower() or q in m['sender'][0].lower()]
-        msgs.sort(key=lambda m: m['date'], reverse=True)
-        page = msgs[offset:offset + limit]
-        last = offset + limit >= len(msgs)
-        return wrap(op, [ok(op, '<m:RootFolder IndexedPagingOffset="%d" TotalItemsInView="%d" IncludesLastItemInRange="%s"><t:Items>%s</t:Items></m:RootFolder>'
-                            % (offset + len(page), len(msgs), 'true' if last else 'false', ''.join(item_summary_xml(m) for m in page)))])
+        with_folder = any(u.get('FieldURI') == 'item:ParentFolderId' for u in el.iter(T + 'FieldURI'))
+        # the AQS keywords the webmail uses; the other words are searched in the text
+        conds, words = [], []
+        for tok in q.split():
+            if tok == 'isread:false':
+                conds.append(lambda m: not m['is_read'])
+            elif tok == 'hasattachment:true':
+                conds.append(lambda m: any(not ATTACHMENTS[a].get('inline') for a in m['attachments']))
+            elif tok == 'isflagged:true':
+                conds.append(lambda m: m['flagged'])
+            elif tok.startswith('received>='):
+                since = tok[len('received>='):]
+                conds.append(lambda m, since=since: m['date'][:10] >= since)
+            else:
+                words.append(tok)
+        text = ' '.join(words)
+        out = []
+        for parent in el.find('m:ParentFolderIds', NS):
+            fid = folder_id(parent)
+            if fid is None or fid not in {f[0] for f in FOLDERS}:
+                out.append(err(op, 'ErrorFolderNotFound', 'Folder not found'))
+                continue
+            msgs = [m for m in MESSAGES.values() if m['folder'] == fid and all(c(m) for c in conds)]
+            if text:
+                msgs = [m for m in msgs if text in m['subject'].lower() or text in m['body'].lower() or text in m['sender'][0].lower()]
+            msgs.sort(key=lambda m: m['date'], reverse=True)
+            page = msgs[offset:offset + limit]
+            last = offset + limit >= len(msgs)
+            out.append(ok(op, '<m:RootFolder IndexedPagingOffset="%d" TotalItemsInView="%d" IncludesLastItemInRange="%s"><t:Items>%s</t:Items></m:RootFolder>'
+                          % (offset + len(page), len(msgs), 'true' if last else 'false', ''.join(item_summary_xml(m, with_folder) for m in page))))
+        return wrap(op, out)
 
     if op == 'GetItem':
         shape = el.findtext('m:ItemShape/t:BaseShape', default='', namespaces=NS)
