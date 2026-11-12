@@ -30,7 +30,13 @@ async function main() {
 
 	const step = async (name, fn) => {
 		process.stdout.write('• ' + name + ' … ')
-		await fn()
+		try {
+			await fn()
+		} catch (e) {
+			// what the page looked like, to understand the failure
+			await page.screenshot({ path: path.join(SHOTS, 'FAILED.png') }).catch(() => {})
+			throw e
+		}
 		console.log('ok')
 	}
 	const shot = (name) => page.screenshot({ path: path.join(SHOTS, name + '.png') })
@@ -363,6 +369,44 @@ async function main() {
 		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
 	})
 
+	await step('Nextcloud share links instead of heavy attachments', async () => {
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'client@exemple.fr')
+		await page.fill('input[name=subject]', 'Plans du chantier')
+		await page.fill('.wm-editor', 'Bonjour, voici les documents.')
+		// a file of Files, as a link in the text
+		await page.evaluate(() => { OC.dialogs.filepicker = (t, cb) => cb(['/Documents/devis-2027.pdf']) })
+		await page.click('.wm-link-btn')
+		const link = '.wm-editor a:has-text("devis-2027.pdf")'
+		await page.waitForSelector(link)
+		const href = await page.getAttribute(link, 'href')
+		assert(/\/s\/[A-Za-z0-9]+$/.test(href), href)
+		assert((await page.textContent('.wm-editor')).includes('devis-2027.pdf ('), 'with its size')
+		// the same file again: the same link (not a second share)
+		await page.click('.wm-link-btn')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-editor a').length === 2)
+		const hrefs = await page.$$eval('.wm-editor a', (els) => els.map((e) => e.getAttribute('href')))
+		assert.strictEqual(hrefs[0], hrefs[1])
+		// a heavy file of the computer: a warning, then put in Files and replaced by its link
+		await page.setInputFiles('.wm-file-input', { name: 'plan-chantier.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(16 * 1024 * 1024, 37) })
+		await page.waitForSelector('.wm-compose-attachments li.wm-heavy:has-text("plan-chantier.pdf")')
+		await page.waitForSelector('.wm-heavy-warning:has-text("Exchange peut refuser le message")')
+		await shot('50-share-link')
+		await page.click('.wm-compose-attachments li:has-text("plan-chantier.pdf") .wm-to-link')
+		await page.waitForSelector('.wm-editor a:has-text("plan-chantier.pdf")', { timeout: 60000 })
+		await page.waitForSelector('.wm-heavy-warning', { state: 'detached' })
+		assert(!(await page.$('.wm-compose-attachments li:has-text("plan-chantier.pdf")')), 'no longer attached')
+		// anybody with the link can download
+		const visitor = await browser.newContext()
+		const big = await page.getAttribute('.wm-editor a:has-text("plan-chantier.pdf")', 'href')
+		const res = await visitor.request.get(big + '/download')
+		assert.strictEqual(res.status(), 200)
+		assert.strictEqual((await res.body()).length, 16 * 1024 * 1024)
+		await visitor.close()
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+	})
+
 	await step('forward', async () => {
 		await page.click('.wm-toolbar button:has-text("Transférer")')
 		await page.click('.wm-compose button[type=submit]')
@@ -668,6 +712,57 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('Outlook categories: colours, tick, create, filter, several messages', async () => {
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		const devis = '.wm-message:has-text("Devis pour la maintenance annuelle")'
+		await page.click(devis)
+		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+		// the mailbox's list, with Outlook's colours
+		await page.click('.wm-toolbar .wm-cat-btn')
+		await page.waitForSelector('.wm-cat-menu .wm-cat-choice:has-text("Clients")')
+		await page.check('.wm-cat-menu .wm-cat-choice:has-text("Clients") input')
+		const pill = '.wm-header-cats .wm-cat:text-is("Clients")'
+		await page.waitForSelector(pill)
+		assert.strictEqual(await page.$eval(pill, (e) => getComputedStyle(e).backgroundColor), 'rgb(157, 183, 232)')
+		await page.waitForSelector(devis + ' .wm-cat:text-is("Clients")')
+		// a new one, with its colour
+		await page.fill('.wm-cat-menu input[name=newCategory]', 'Fournisseurs')
+		await page.selectOption('.wm-cat-menu select[name=newCategoryColor]', { label: 'Vert foncé' })
+		await page.click('.wm-cat-menu button:has-text("Créer")')
+		await page.waitForSelector('.wm-header-cats .wm-cat:text-is("Fournisseurs")')
+		assert.strictEqual(await page.$eval('.wm-header-cats .wm-cat:text-is("Fournisseurs")', (e) => getComputedStyle(e).color), 'rgb(255, 255, 255)', 'white text on a dark colour')
+		await page.waitForSelector('.wm-cat-menu .wm-cat-choice:has-text("Fournisseurs") input:checked')
+		await shot('48-categories')
+		await page.keyboard.press('Escape')
+		await page.waitForSelector('.wm-cat-menu', { state: 'detached' })
+		// saved in Exchange: still there once reloaded
+		await page.reload()
+		await page.waitForSelector(devis + ' .wm-cat:text-is("Fournisseurs")')
+		// several messages at once
+		await page.click('.wm-message:has-text("Newsletter n°1") .wm-check')
+		await page.click('.wm-message:has-text("Newsletter n°2") .wm-check')
+		await page.click('.wm-bulk .wm-cat-btn')
+		await page.check('.wm-cat-menu .wm-cat-choice:has-text("Clients") input')
+		await page.waitForSelector('.wm-message:has-text("Newsletter n°2") .wm-cat:text-is("Clients")')
+		await page.waitForSelector('.wm-message:has-text("Newsletter n°1") .wm-cat:text-is("Clients")')
+		await page.keyboard.press('Escape')
+		await page.keyboard.press('Escape')
+		// a click on a pill: every message of that category, in all folders
+		await page.click(devis)
+		await page.click('.wm-header-cats .wm-cat:text-is("Clients")')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 3)
+		// removed from the newsletters, from the menu with them ticked
+		await page.click('.wm-message:has-text("Newsletter n°1") .wm-check')
+		await page.click('.wm-message:has-text("Newsletter n°2") .wm-check')
+		await page.click('.wm-bulk .wm-cat-btn')
+		await page.uncheck('.wm-cat-menu .wm-cat-choice:has-text("Clients") input')
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-message')].some((e) => /Newsletter/.test(e.textContent) && e.querySelector('.wm-cat')))
+		await page.keyboard.press('Escape')
+		await page.keyboard.press('Escape')
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector(devis + ' .wm-cat:text-is("Clients")')
+	})
+
 	await step('Nextcloud notifications (bell) for new messages, webmail closed', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\NewMailJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
@@ -725,6 +820,64 @@ async function main() {
 		await page.click('.wm-folder:has-text("Boîte de réception")')
 		await page.click('.wm-message:has-text("Sans notification")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Sans notification")')
+	})
+
+	await step('calendar reminders in Nextcloud notifications', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\ReminderJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		assert(jobId, 'background job registered')
+		const runJob = () => occ('background-job:execute ' + jobId + ' --force-execute')
+		const reminders = () => page.evaluate(async () => {
+			const r = await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })
+			return (await r.json()).ocs.data.filter((n) => n.app === 'webmail' && n.subject.startsWith('Rappel'))
+		})
+		// an appointment in 10 minutes, reminder 15 minutes before: due now
+		const created = await page.evaluate(async () => {
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const iso = (min) => new Date(Date.now() + min * 60000).toISOString().slice(0, 16)
+			const r = await fetch('/apps/webmail/api/accounts/' + id + '/calendar/events?tz=UTC', {
+				method: 'POST',
+				headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ event: { subject: 'Appel fournisseur', start: iso(10), end: iso(40), location: 'Bureau 2', reminder: 15 } }),
+			})
+			if (!r.ok) throw new Error('event not created: ' + r.status)
+			return { account: id, event: (await r.json()).id }
+		})
+		runJob()
+		let mine = (await reminders()).filter((n) => n.subject === 'Rappel : Appel fournisseur')
+		assert.strictEqual(mine.length, 1, JSON.stringify(await reminders()))
+		assert(/^Aujourd'hui \d\d:\d\d · Bureau 2 · user@societe-a\.fr$/.test(mine[0].message), mine[0].message)
+		// once only
+		runJob()
+		assert.strictEqual((await reminders()).filter((n) => n.subject === 'Rappel : Appel fournisseur').length, 1)
+		await page.reload()
+		await page.click('.notifications-button')
+		await page.waitForSelector('.notification:has-text("Appel fournisseur")')
+		await shot('49-reminder')
+		// its link: the calendar, the appointment open
+		await page.goto(mine[0].link)
+		await page.waitForSelector('.wm-modal h2:has-text("Appel fournisseur")')
+		await page.click('.wm-modal-close')
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+		// can be switched off per account
+		await page.click('text=Comptes et signature')
+		const box = '.wm-account-card:has-text("user@societe-a.fr") input[name=reminders]'
+		assert(await page.isChecked(box))
+		await page.uncheck(box)
+		await page.waitForSelector('.wm-toast:has-text("n\'arriveront plus dans Nextcloud")')
+		await page.check(box)
+		await page.waitForSelector('.wm-toast:has-text("arriveront dans Nextcloud")')
+		// the next steps start from an empty bell and the calendar as before
+		await page.evaluate(async (c) => {
+			await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications', { method: 'DELETE', headers: { 'OCS-APIREQUEST': 'true', requesttoken: OC.requestToken } })
+			await fetch('/apps/webmail/api/accounts/' + c.account + '/calendar/delete', {
+				method: 'POST',
+				headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ eventId: c.event }),
+			})
+		}, created)
 	})
 
 	await step('rich text editor and drafts', async () => {
@@ -1822,6 +1975,34 @@ async function main() {
 		await page.waitForSelector('.wm-notify-toggle:has-text("Activer les notifications")')
 	})
 
+	await step('Nextcloud unified search: messages and events, the link opens them', async () => {
+		const search = async (term, section) => {
+			await page.goto(NC + '/apps/files/')
+			await page.click('header button[aria-label="Recherche unifiée"]')
+			await page.keyboard.type(term)
+			await page.waitForSelector('text=' + section)
+		}
+		await search('facture', 'Courrier Exchange')
+		const result = page.locator('a:has-text("Votre facture OVH")').first()
+		assert((await result.textContent()).includes('OVHcloud'))
+		await shot('47-unified-search')
+		await result.click()
+		await page.waitForURL(/apps\/webmail/)
+		await page.waitForSelector('.wm-message-header h2:has-text("Votre facture OVH")')
+		// an event: the calendar at its date, the event open
+		await search('revue budget', 'Agenda Exchange')
+		await page.locator('a:has-text("Revue budget")').first().click()
+		await page.waitForURL(/apps\/webmail/)
+		await page.waitForSelector('.wm-modal .wm-event-when')
+		assert(await page.isVisible('.wm-modal h2:has-text("Revue budget")'))
+		await page.click('.wm-modal-close')
+		// two letters: nothing asked to Exchange
+		const r = await page.evaluate(async () => (await (await fetch('/ocs/v2.php/search/providers/webmail-mail/search?term=fa&format=json', { headers: { 'OCS-APIREQUEST': 'true' } })).json()).ocs.data.entries.length)
+		assert.strictEqual(r, 0)
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('Nextcloud dashboard: unread messages and next events', async () => {
 		const ocs = (path, opts = {}) => page.evaluate(async ({ path, opts }) => {
 			const r = await fetch(OC.linkToOCS('apps/dashboard/api', 2).replace(/\/$/, '') + path, {
@@ -1882,7 +2063,9 @@ async function main() {
 	})
 
 	// expected: deliberate 400s (bad domain/password, missing recipient) and the fake tracker pixel
-	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED/.test(e))
+	// errors of other Nextcloud apps (Files, Text… where the unified search is tried) are not ours
+	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED/.test(e)
+		&& !/\/apps\/(?!webmail\/)[a-z_]+\/js\//.test(e))
 	await browser.close()
 	if (relevant.length) {
 		console.log('\nBrowser errors:\n' + relevant.join('\n'))

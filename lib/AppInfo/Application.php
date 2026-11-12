@@ -8,6 +8,8 @@ use OCA\Webmail\Dashboard\AgendaWidget;
 use OCA\Webmail\Dashboard\UnreadWidget;
 use OCA\Webmail\Listener\UserDeletedListener;
 use OCA\Webmail\Notification\Notifier;
+use OCA\Webmail\Search\EventSearchProvider;
+use OCA\Webmail\Search\MailSearchProvider;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -26,6 +28,8 @@ class Application extends App implements IBootstrap {
 		$context->registerDashboardWidget(UnreadWidget::class);
 		$context->registerDashboardWidget(AgendaWidget::class);
 		$context->registerNotifierService(Notifier::class);
+		$context->registerSearchProvider(MailSearchProvider::class);
+		$context->registerSearchProvider(EventSearchProvider::class);
 	}
 
 	public function boot(IBootContext $context): void {

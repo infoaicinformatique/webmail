@@ -1355,5 +1355,21 @@
 			core = c
 			renderNav(navEl)
 		},
+		/** A link to an event (unified search, dashboard): show its day, open it. */
+		async openLinked(c, eventId) {
+			core = c
+			try {
+				const ev = await api('/accounts/' + core.accountId + '/calendar/event', { query: { eventId, tz: core.TZ } })
+				const d = new Date(ev.start)
+				if (!isNaN(d)) {
+					cal.cursor = startOfDay(d)
+					cal.weekScroll = null
+					refreshAll()
+				}
+				openEvent(Object.assign({ calendar: 'calendar' }, ev))
+			} catch (e) {
+				core.toast(e.message, true)
+			}
+		},
 	}
 })()
