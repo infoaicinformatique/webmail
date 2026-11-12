@@ -803,3 +803,8 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-thread-preview { grid-area: preview; color: var(--color-text-maxcontrast); font-size: .9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wm-thread-body { padding: 0 12px 10px; }
 .wm-thread-actions { display: flex; gap: 6px; margin: 4px 0 8px; }
+
+/* video meetings */
+.wm-talk-btn { margin-left: 6px; white-space: nowrap; }
+.wm-event-join { margin: 6px 0; }
+.wm-event-join .wm-join-btn { display: inline-block; text-decoration: none; }

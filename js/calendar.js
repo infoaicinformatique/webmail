@@ -1102,6 +1102,39 @@
 		const close = modal(ucfirst(day.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })), list)
 	}
 
+	// ------------------------------------------------------------------
+	// Nextcloud Talk: a video meeting room for an event
+	// ------------------------------------------------------------------
+
+	const TALK_LINK = /https?:\/\/[^\s<>"']+\/call\/[A-Za-z0-9]+/
+	const ANY_LINK = /https?:\/\/[^\s<>"']+/
+
+	function talkEnabled() {
+		const root = document.getElementById('webmail-app')
+		return !!root && root.dataset.talk === '1'
+	}
+
+	/** A public Talk conversation (anyone with the link joins, guests included): its link. */
+	async function createTalkRoom(name) {
+		const r = await fetch(OC.linkToOCS('apps/spreed/api/v4', 2) + 'room?format=json', {
+			method: 'POST',
+			headers: { 'OCS-APIRequest': 'true', requesttoken: OC.requestToken, 'Content-Type': 'application/json', Accept: 'application/json' },
+			body: JSON.stringify({ roomType: 3, roomName: (name || 'Réunion').slice(0, 255) }),
+		})
+		const data = await r.json().catch(() => null)
+		const token = data && data.ocs && data.ocs.data && data.ocs.data.token
+		if (!r.ok || !token) throw new Error('Nextcloud Talk n\'a pas pu créer la salle de visio' + (data && data.ocs && data.ocs.meta && data.ocs.meta.message ? ' : ' + data.ocs.meta.message : ''))
+		return window.location.origin + OC.generateUrl('/call/' + token)
+	}
+
+	/** The link to join a meeting: a Talk room, else a link given as the place (Teams, Zoom…). */
+	function meetingLink(ev) {
+		const talk = ((ev.location || '') + ' ' + (ev.body || '')).match(TALK_LINK)
+		if (talk) return { url: talk[0], talk: true }
+		const other = (ev.location || '').match(ANY_LINK)
+		return other ? { url: other[0], talk: false } : null
+	}
+
 	async function openEvent(summary) {
 		const h = core.h
 		const calendar = calendarOf(summary)
@@ -1137,6 +1170,11 @@
 			ev.isRecurring ? h('div', { class: 'wm-muted wm-event-rule' }, '🔁 Événement périodique') : null,
 			calendarLine,
 			ev.location ? h('div', {}, '📍 ' + ev.location) : null,
+			(() => {
+				const link = meetingLink(ev)
+				return link ? h('div', { class: 'wm-event-join' },
+					h('a', { class: 'button primary wm-join-btn', href: link.url, target: '_blank', rel: 'noopener noreferrer' }, link.talk ? '🎥 Rejoindre la visio Nextcloud Talk' : '🎥 Rejoindre la réunion en ligne')) : null
+			})(),
 			ev.isMeeting && ev.organizer ? h('div', {}, '👤 Organisateur : ' + core.personLabel(ev.organizer)) : null,
 			ev.attendees.length ? h('div', {}, h('strong', {}, 'Participants'), h('ul', { class: 'wm-attendees' }, people(ev.attendees))) : null,
 			ev.optionalAttendees.length ? h('div', {}, h('strong', {}, 'Facultatifs'), h('ul', { class: 'wm-attendees' }, people(ev.optionalAttendees))) : null,
@@ -1258,6 +1296,27 @@
 			value: ev ? ev.optionalAttendees.map((a) => a.email).filter((e) => e && !e.startsWith('/')).join(', ') : '' })
 		const description = h('textarea', { name: 'body', rows: '5', placeholder: 'Description' })
 		description.value = ev ? ev.body : ''
+		// a video meeting: a Nextcloud Talk room, its link in the place and the description
+		const talkBtn = talkEnabled() ? h('button', {
+			type: 'button',
+			class: 'wm-talk-btn',
+			title: 'Créer une salle de visio Nextcloud Talk pour cet événement (les invités y entrent par le lien, sans compte)',
+			hidden: TALK_LINK.test(location.value + ' ' + ((ev && ev.body) || '')),
+			onclick: async () => {
+				talkBtn.disabled = true
+				try {
+					const url = await createTalkRoom(subject.value.trim())
+					if (!location.value.trim()) location.value = url
+					description.value = (description.value.trim() ? description.value.trim() + '\n\n' : '') + 'Rejoindre la visio Nextcloud Talk : ' + url
+					talkBtn.hidden = true
+					core.toast('Salle de visio créée : son lien est dans le lieu et la description')
+				} catch (e) {
+					core.toast(e.message, true)
+				} finally {
+					talkBtn.disabled = false
+				}
+			},
+		}, '🎥 Visio Talk') : null
 		const reminder = h('select', { name: 'reminder' }, REMINDERS.map(([v, l]) => h('option', { value: String(v), selected: (ev ? ev.reminder : 15) === v }, l)))
 		const freeBusy = h('select', { name: 'freeBusy' }, FREEBUSY.map(([v, l]) => h('option', { value: v, selected: (ev ? ev.freeBusy : 'Busy') === v }, l)))
 		const customRule = isSeries && ev.recurrence && ev.recurrence.freq === 'other'
@@ -1271,7 +1330,15 @@
 			endDate.disabled = true
 		}
 		const syncAllDay = () => { startTime.hidden = allDay.checked; endTime.hidden = allDay.checked }
-		allDay.addEventListener('change', syncAllDay)
+		allDay.addEventListener('change', () => {
+			// 23:00 – 00:00 becomes one whole day, not two (the end date is inclusive for a whole day)
+			if (allDay.checked && endDate.value > startDate.value) {
+				const s = new Date(startDate.value + 'T' + (startTime.value || '00:00'))
+				const e = new Date(endDate.value + 'T' + (endTime.value || '00:00'))
+				if (e - s <= 86400000) endDate.value = startDate.value
+			}
+			syncAllDay()
+		})
 		syncAllDay()
 		// keep the duration when the start moves
 		let duration = end - start
@@ -1348,7 +1415,7 @@
 		h('label', { class: 'wm-inline' }, allDay, ' Journée entière'),
 		field('Début', startDate, startTime),
 		field('Fin', endDate, endTime),
-		field('Lieu', location),
+		field('Lieu', location, talkBtn),
 		field('Participants', core.attachAutocomplete(attendees)),
 		field('Facultatifs', core.attachAutocomplete(optional)),
 		rule ? h('div', { class: 'wm-field wm-field-top' }, h('span', {}, 'Répétition'), rule.el) : (ev.isRecurring ? h('p', { class: 'wm-muted' }, '🔁 Seule cette occurrence sera modifiée.') : null),

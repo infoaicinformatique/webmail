@@ -1366,6 +1366,54 @@ async function main() {
 		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
 	})
 
+	await step('calendar: a Nextcloud Talk video room for a meeting', async () => {
+		// Talk is not installed in the test Nextcloud: its API (create a public conversation) is answered here
+		let asked = null
+		await page.route('**/ocs/v2.php/apps/spreed/api/v4/room**', async (route) => {
+			asked = { method: route.request().method(), body: JSON.parse(route.request().postData() || '{}'), ocs: route.request().headers()['ocs-apirequest'] }
+			await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ ocs: { meta: { status: 'ok', statuscode: 201 }, data: { token: 'k3tq7wzp', type: 3 } } }) })
+		})
+		await page.evaluate(() => { document.getElementById('webmail-app').dataset.talk = '1' })
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		await page.fill('.wm-modal input[name=subject]', 'Point visio client')
+		await page.click('.wm-modal .wm-talk-btn')
+		await page.waitForSelector('.wm-toast:has-text("Salle de visio créée")')
+		assert.deepStrictEqual(asked, { method: 'POST', body: { roomType: 3, roomName: 'Point visio client' }, ocs: 'true' })
+		const url = await page.inputValue('.wm-modal input[name=location]')
+		assert(/^http:\/\/localhost:8080\/(index\.php\/)?call\/k3tq7wzp$/.test(url), url)
+		assert.strictEqual(await page.inputValue('.wm-modal textarea[name=body]'), 'Rejoindre la visio Nextcloud Talk : ' + url)
+		assert(await page.isHidden('.wm-modal .wm-talk-btn'), 'one room per event')
+		await shot('54-talk')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
+		// the event: a button to join
+		const created = await page.evaluate(async () => {
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const from = new Date(Date.now() - 86400000).toISOString().slice(0, 16)
+			const to = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 16)
+			const r = await (await fetch('/apps/webmail/api/accounts/' + id + '/calendar/events?tz=UTC&start=' + from + '&end=' + to, { headers: { requesttoken: OC.requestToken } })).json()
+			return { account: id, event: r.events.find((e) => e.subject === 'Point visio client').id }
+		})
+		await page.goto(NC + '/apps/webmail/?' + new URLSearchParams({ account: created.account, module: 'calendar', event: created.event }))
+		await page.waitForSelector('.wm-modal .wm-join-btn:has-text("Rejoindre la visio Nextcloud Talk")')
+		assert.strictEqual(await page.getAttribute('.wm-modal .wm-join-btn', 'href'), url)
+		await page.click('.wm-modal-close')
+		// without Talk: no button
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		assert(!(await page.$('.wm-modal .wm-talk-btn')), 'Talk not installed')
+		await page.click('.wm-modal-close')
+		await page.unroute('**/ocs/v2.php/apps/spreed/api/v4/room**')
+		await page.evaluate(async (c) => {
+			await fetch('/apps/webmail/api/accounts/' + c.account + '/calendar/delete', {
+				method: 'POST',
+				headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ eventId: c.event }),
+			})
+		}, created)
+		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
+	})
+
 	await step('calendar: a series can become a single event', async () => {
 		await page.click('.wm-agenda-item:has-text("Sport collectif") >> nth=0')
 		await page.click('.wm-modal button:has-text("Modifier la série")')

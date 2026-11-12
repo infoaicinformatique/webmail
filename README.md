@@ -93,6 +93,8 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Le 2e mardi du mois](docs/capture-2e-mardi.png)
 
+![Visio Talk](docs/capture-talk.png)
+
 | | |
 |---|---|
 | Vues | **Jour**, **semaine**, **mois** et **liste** des 30 prochains jours. Mini-calendrier à gauche : un point sous les jours qui ont des rendez-vous (dans la période affichée), ses propres flèches pour parcourir les mois sans changer l'affichage principal, un clic va au jour, un double-clic l'affiche seul (vue jour). Les événements périodiques sont dépliés |
@@ -107,6 +109,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Glisser-déposer | À la souris, dans la vue **semaine**, glisser un événement le déplace à une autre heure ou un autre jour, par pas de 15 minutes. Tirer son **bord inférieur** change l'heure de fin. Dans la vue **mois** et la ligne « Journée », glisser un événement le déplace sur un autre jour en gardant ses horaires. **Échap** annule. Pour une réunion, une confirmation est demandée et les participants reçoivent la mise à jour. Seuls les événements dont vous êtes l'organisateur peuvent être déplacés. Sur écran tactile, un appui ouvre l'événement, et on le modifie avec « Modifier » |
 | Séries | Depuis une occurrence : **« Modifier cette occurrence »** ou **« Modifier la série »**. Les deux modifient titre, horaires, lieu, participants, rappel et disponibilité ; seule la série permet de changer la règle de répétition ou de la supprimer (la série devient alors un événement unique). Les participants reçoivent la mise à jour. Pour une règle créée dans Outlook que l'application ne sait pas modifier (par ex. « le 2e jour ouvré du mois »), la règle est conservée et seuls les horaires sont modifiables |
 | Réunions | Les participants reçoivent l'invitation, puis les mises à jour et les annulations (envoyées par Exchange) |
+| Visio | Avec **Nextcloud Talk** installé, « 🎥 Visio Talk » dans le formulaire crée une salle de visio publique pour l'événement : son lien va dans le lieu et dans la description, donc dans l'invitation ; les invités extérieurs y entrent sans compte. Dans le détail d'un événement, « 🎥 Rejoindre la visio » ouvre la salle (ou le lien Teams, Zoom… donné comme lieu) |
 | Invitations reçues | Accepter, provisoire ou refuser depuis l'agenda ou depuis l'e-mail |
 | Réponse au nom d'un collègue | Dans l'agenda d'un collègue partagé en **modification** (délégué ou éditeur), ses invitations affichent « Réponse de Marie Martin » et les boutons pour répondre **en son nom**, après confirmation. Impossible en lecture seule |
 | Suppression | D'un événement, d'une occurrence ou de toute la série |
@@ -185,7 +188,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.35.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.36.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -207,7 +210,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.35 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.36 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -297,7 +300,6 @@ templates/          page principale et page d'administration
 
 **Agenda**
 - Assistant de planification (disponibilités des participants, salles de réunion)
-- Lien de visio Nextcloud Talk dans les invitations
 - Agendas des dossiers publics
 
 **Contacts**

@@ -11,6 +11,7 @@ use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\TemplateResponse;
+use OCP\App\IAppManager;
 use OCP\IGroupManager;
 use OCP\IRequest;
 use OCP\IUserSession;
@@ -22,6 +23,7 @@ class PageController extends Controller {
 		private ServerConfigService $servers,
 		private IUserSession $userSession,
 		private IGroupManager $groupManager,
+		private IAppManager $apps,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -42,6 +44,8 @@ class PageController extends Controller {
 		$response = new TemplateResponse(Application::APP_ID, 'main', [
 			'domains' => $this->servers->getDomains(),
 			'isAdmin' => $user !== null && $this->groupManager->isAdmin($user->getUID()),
+			// Nextcloud Talk: video meetings in the invitations
+			'talk' => $user !== null && $this->apps->isEnabledForUser('spreed', $user),
 		]);
 
 		// The message body is rendered in a sandboxed srcdoc iframe which
