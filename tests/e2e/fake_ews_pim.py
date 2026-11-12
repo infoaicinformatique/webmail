@@ -77,12 +77,40 @@ def at(days, hour, minute=0):
 
 
 def add_event(subject, start, end, all_day=False, location='', body='', organizer=ME, response='Organizer',
-              attendees=(), optional=(), free_busy='Busy', ev_type='Single', series=None, reminder=15, cancelled=False, folder='F-CAL'):
+              attendees=(), optional=(), free_busy='Busy', ev_type='Single', series=None, reminder=15, cancelled=False, folder='F-CAL',
+              resources=()):
     eid = new_id('EV')
     EVENTS[eid] = dict(id=eid, ck=new_id('CK'), subject=subject, start=start, end=end, all_day=all_day, location=location,
                        body=body, organizer=organizer, response=response, attendees=list(attendees), optional=list(optional),
-                       free_busy=free_busy, type=ev_type, series=series, reminder=reminder, cancelled=cancelled, folder=folder)
+                       free_busy=free_busy, type=ev_type, series=series, reminder=reminder, cancelled=cancelled, folder=folder,
+                       resources=[])
+    book_rooms(EVENTS[eid], resources)
     return eid
+
+
+# ----------------------------------------------------------------------------
+# meeting rooms (room lists of the organisation); a room accepts a booking when it is free
+# ----------------------------------------------------------------------------
+ROOM_LISTS = [
+    ('Salles Paris', 'salles-paris@societe-a.fr', [('Salle Mistral (8 places)', 'mistral@societe-a.fr'), ('Salle Alizé (4 places)', 'alize@societe-a.fr'),
+                                                   ('Salle Sirocco (12 places)', 'sirocco@societe-a.fr')]),
+    ('Salles Lyon', 'salles-lyon@societe-a.fr', [('Salle Fourvière', 'fourviere@societe-a.fr')]),
+]
+ROOMS = {e: n for _, _, rooms in ROOM_LISTS for n, e in rooms}
+# bookings made by other people: room -> [(start, end)], set by seed()
+ROOM_BOOKINGS = {}
+
+
+def room_busy(email, start, end, skip=None):
+    blocks = list(ROOM_BOOKINGS.get(email, []))
+    blocks += [(e['start'], e['end']) for e in EVENTS.values() if e is not skip and not e.get('series_master')
+               and any(r[1] == email and r[2] == 'Accept' for r in e.get('resources', []))]
+    return [(s_, e_) for s_, e_ in blocks if s_ < end and e_ > start]
+
+
+def book_rooms(e, resources):
+    """resources: [(name, email, response)] read from a request: each room answers."""
+    e['resources'] = [(ROOMS.get(m, n), m, 'Decline' if room_busy(m, e['start'], e['end'], skip=e) else 'Accept') for n, m, _ in resources]
 
 
 # ----------------------------------------------------------------------------
@@ -421,6 +449,8 @@ def master_xml(sid):
 
 
 def seed():
+    # the big room is taken all day, every day (training sessions)
+    ROOM_BOOKINGS['mistral@societe-a.fr'] = [(at(d, 8), at(d, 19)) for d in range(-7, 60)]
     add_event('Point hebdo équipe', at(0, 9), at(0, 10), location='Salle Méditerranée',
               attendees=[('Marie Martin', 'marie.martin@societe-a.fr', 'Accept'), ('Paul Durand', 'paul.durand@societe-a.fr', 'NoResponseReceived')],
               body='Ordre du jour :\n- planning\n- clients')
@@ -518,6 +548,7 @@ def event_xml(e, detail, recurrence='', reminders=False):
              e['type'], e['response'], mailbox(*e['organizer'])))
     if detail:
         x += attendees_xml('RequiredAttendees', e['attendees']) + attendees_xml('OptionalAttendees', e['optional'])
+        x += attendees_xml('Resources', e.get('resources', []))
     return x + recurrence + '</t:CalendarItem>'
 
 
@@ -729,6 +760,22 @@ def handle(op, el, user, tz, messages, move_message):
             out.append(ok(op, '<m:Folders><t:%s><t:FolderId Id="%s" ChangeKey="AQ"/>%s</t:%s></m:Folders>' % (tag, fid, rights, tag)))
         return wrap(op, out)
 
+    if op == 'GetRoomLists':
+        lists = ''.join('<t:Address><t:Name>%s</t:Name><t:EmailAddress>%s</t:EmailAddress><t:RoutingType>SMTP</t:RoutingType><t:MailboxType>PublicDL</t:MailboxType></t:Address>'
+                        % (esc(n), m) for n, m, _ in ROOM_LISTS)
+        return ('<m:GetRoomListsResponse ResponseClass="Success" xmlns:m="%s" xmlns:t="%s"><m:ResponseCode>NoError</m:ResponseCode><m:RoomLists>%s</m:RoomLists></m:GetRoomListsResponse>'
+                % (NS['m'], NS['t'], lists))
+    if op == 'GetRooms':
+        want = text(el, 'm:RoomList/t:EmailAddress').lower()
+        found = next((rooms for _, m, rooms in ROOM_LISTS if m == want), None)
+        if found is None:
+            return ('<m:GetRoomsResponse ResponseClass="Error" xmlns:m="%s" xmlns:t="%s"><m:MessageText>No results</m:MessageText>'
+                    '<m:ResponseCode>ErrorNameResolutionNoResults</m:ResponseCode><m:DescriptiveLinkKey>0</m:DescriptiveLinkKey></m:GetRoomsResponse>' % (NS['m'], NS['t']))
+        rooms = ''.join('<t:Room><t:Id><t:Name>%s</t:Name><t:EmailAddress>%s</t:EmailAddress><t:RoutingType>SMTP</t:RoutingType><t:MailboxType>Mailbox</t:MailboxType></t:Id></t:Room>'
+                        % (esc(n), m) for n, m in found)
+        return ('<m:GetRoomsResponse ResponseClass="Success" xmlns:m="%s" xmlns:t="%s"><m:ResponseCode>NoError</m:ResponseCode><m:Rooms>%s</m:Rooms></m:GetRoomsResponse>'
+                % (NS['m'], NS['t'], rooms))
+
     if op == 'GetUserAvailabilityRequest':
         win = el.find('t:FreeBusyViewOptions/t:TimeWindow', NS)
         start = parse_dt(text(win, 't:StartTime')[:19] + 'Z', 'UTC')
@@ -743,6 +790,8 @@ def handle(op, el, user, tz, messages, move_message):
                 # one's own calendar
                 blocks = [(e['start'], e['end'], e['free_busy'], e['subject']) for e in EVENTS.values()
                           if e['folder'] in ('F-CAL', 'F-CAL2') and not e.get('series_master')]
+            elif email in ROOMS:
+                blocks = [(s_, e_, 'Busy', '') for s_, e_ in room_busy(email, start, end)]
             elif email in SHARED_ACCESS:
                 blocks = list(FREEBUSY.get(email, []))
                 folder = 'shared:' + email
@@ -840,7 +889,7 @@ def handle(op, el, user, tz, messages, move_message):
                     first = create_series(text(it, 't:Subject'), start, end, parse_rule(rec), folder=folder, **common)
                     out.append(ok(op, '<m:Items><t:CalendarItem><t:ItemId Id="%s" ChangeKey="CK"/></t:CalendarItem></m:Items>' % first))
                 else:
-                    eid = add_event(text(it, 't:Subject'), start, end, folder=folder, **common)
+                    eid = add_event(text(it, 't:Subject'), start, end, folder=folder, resources=read_attendees(it, 'Resources'), **common)
                     out.append(ok(op, '<m:Items><t:CalendarItem><t:ItemId Id="%s" ChangeKey="%s"/></t:CalendarItem></m:Items>' % (eid, EVENTS[eid]['ck'])))
             return wrap(op, out)
         if tag == 'Contact':
@@ -910,6 +959,8 @@ def handle(op, el, user, tz, messages, move_message):
                             e['attendees'] = []
                         elif uri == 'calendar:OptionalAttendees':
                             e['optional'] = []
+                        elif uri == 'calendar:Resources':
+                            e['resources'] = []
                         continue
                     ci = upd.find('t:CalendarItem', NS)
                     if uri == 'item:Subject':
@@ -930,12 +981,16 @@ def handle(op, el, user, tz, messages, move_message):
                         e['attendees'] = read_attendees(ci, 'RequiredAttendees')
                     elif uri == 'calendar:OptionalAttendees':
                         e['optional'] = read_attendees(ci, 'OptionalAttendees')
+                    elif uri == 'calendar:Resources':
+                        e['resources'] = read_attendees(ci, 'Resources')
                     elif uri == 'item:ReminderIsSet' and text(ci, 't:ReminderIsSet') == 'false':
                         e['reminder'] = -1
                     elif uri == 'item:ReminderMinutesBeforeStart':
                         e['reminder'] = int(text(ci, 't:ReminderMinutesBeforeStart'))
                 if e['end'] < e['start']:
                     return wrap(op, [err(op, 'ErrorCalendarEndDateIsEarlierThanStartDate', 'End before start')])
+                # the rooms answer again (new time or new room)
+                book_rooms(e, e.get('resources', []))
                 e['ck'] = new_id('CK')
                 if sid:
                     for k in [k for k, x in EVENTS.items() if x['series'] == sid]:

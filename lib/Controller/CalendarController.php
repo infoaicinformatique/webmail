@@ -185,6 +185,17 @@ class CalendarController extends Controller {
 	}
 
 	/**
+	 * Room lists of the organisation, or (with $list) the rooms of one.
+	 */
+	#[NoAdminRequired]
+	public function rooms(int $id, string $list = ''): Response {
+		return $this->handle(function () use ($id, $list) {
+			$cal = $this->calendar($id, 'UTC');
+			return $list === '' ? ['lists' => $cal->roomLists()] : ['rooms' => $cal->rooms($list)];
+		});
+	}
+
+	/**
 	 * Scheduling assistant: the availability of the attendees (and of the
 	 * account) on a day, and the first moment from $from when everybody
 	 * is free for $minutes (working days, 8:00–18:00, two weeks ahead).

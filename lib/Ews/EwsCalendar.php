@@ -23,7 +23,7 @@ class EwsCalendar {
 	private const DETAIL_FIELDS = ['item:Subject', 'item:Body', 'item:ReminderIsSet', 'item:ReminderMinutesBeforeStart',
 		'calendar:Start', 'calendar:End', 'calendar:IsAllDayEvent', 'calendar:Location', 'calendar:Organizer',
 		'calendar:MyResponseType', 'calendar:IsRecurring', 'calendar:IsCancelled', 'calendar:IsMeeting',
-		'calendar:LegacyFreeBusyStatus', 'calendar:CalendarItemType', 'calendar:RequiredAttendees', 'calendar:OptionalAttendees'];
+		'calendar:LegacyFreeBusyStatus', 'calendar:CalendarItemType', 'calendar:RequiredAttendees', 'calendar:OptionalAttendees', 'calendar:Resources'];
 
 	public function __construct(
 		private EwsClient $client,
@@ -123,6 +123,55 @@ class EwsCalendar {
 		$now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 		$this->freeBusy($email, $now, $now->modify('+1 day'));
 		return ['mode' => 'freebusy', 'canEdit' => false];
+	}
+
+	/**
+	 * The room lists of the organisation (GetRoomLists): « Salles Paris »…
+	 * Empty when the administrator made none.
+	 * @return list<array{name: string, email: string}>
+	 */
+	public function roomLists(): array {
+		$xp = $this->client->request('<m:GetRoomLists/>', false);
+		self::roomError($xp, 'm:GetRoomListsResponse');
+		$out = [];
+		foreach ($xp->query('//m:RoomLists/t:Address') as $a) {
+			$email = (string)$this->client->text($xp, 't:EmailAddress', $a);
+			if ($email !== '') {
+				$out[] = ['name' => (string)($this->client->text($xp, 't:Name', $a) ?: $email), 'email' => $email];
+			}
+		}
+		usort($out, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+		return $out;
+	}
+
+	/**
+	 * The rooms of a room list (GetRooms).
+	 * @return list<array{name: string, email: string}>
+	 */
+	public function rooms(string $list): array {
+		if (!filter_var($list, FILTER_VALIDATE_EMAIL)) {
+			throw new MailException('Liste de salles invalide');
+		}
+		$xp = $this->client->request('<m:GetRooms><m:RoomList><t:EmailAddress>' . $this->client->esc($list) . '</t:EmailAddress></m:RoomList></m:GetRooms>', false);
+		self::roomError($xp, 'm:GetRoomsResponse');
+		$out = [];
+		foreach ($xp->query('//m:Rooms/t:Room/t:Id') as $a) {
+			$email = (string)$this->client->text($xp, 't:EmailAddress', $a);
+			if ($email !== '') {
+				$out[] = ['name' => (string)($this->client->text($xp, 't:Name', $a) ?: $email), 'email' => $email];
+			}
+		}
+		usort($out, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+		return $out;
+	}
+
+	/** GetRoomLists and GetRooms answer without m:ResponseMessages. */
+	private static function roomError(\DOMXPath $xp, string $root): void {
+		$node = $xp->query('//' . $root)->item(0);
+		if ($node instanceof \DOMElement && $node->getAttribute('ResponseClass') === 'Error') {
+			$code = trim((string)$xp->evaluate('string(m:ResponseCode)', $node));
+			throw new MailException($code === 'ErrorNameResolutionNoResults' ? 'Liste de salles introuvable' : 'Exchange ne donne pas les salles de réunion (' . $code . ')');
+		}
 	}
 
 	/**
@@ -460,7 +509,7 @@ class EwsCalendar {
 	public function createEvent(array $data, string $calendar = 'calendar'): string {
 		$e = self::normalize($data);
 		$tz = $this->client->getTimeZone() ?? 'UTC';
-		$hasAttendees = $e['attendees'] !== [] || $e['optionalAttendees'] !== [];
+		$hasAttendees = $e['attendees'] !== [] || $e['optionalAttendees'] !== [] || ($e['resources'] ?? []) !== [];
 
 		$item = '<t:CalendarItem>'
 			. '<t:Subject>' . $this->client->esc($e['subject']) . '</t:Subject>'
@@ -474,6 +523,7 @@ class EwsCalendar {
 			. ($e['location'] !== '' ? '<t:Location>' . $this->client->esc($e['location']) . '</t:Location>' : '')
 			. $this->attendeesXml('RequiredAttendees', $e['attendees'])
 			. $this->attendeesXml('OptionalAttendees', $e['optionalAttendees'])
+			. $this->attendeesXml('Resources', $e['resources'] ?? [])
 			. $this->recurrenceXml($e)
 			. '<t:StartTimeZone Id="' . $this->client->esc($tz) . '"/>'
 			. '<t:EndTimeZone Id="' . $this->client->esc($tz) . '"/>'
@@ -583,7 +633,9 @@ class EwsCalendar {
 			. $set('calendar:LegacyFreeBusyStatus', '<t:LegacyFreeBusyStatus>' . $e['freeBusy'] . '</t:LegacyFreeBusyStatus>')
 			. ($e['location'] !== '' ? $set('calendar:Location', '<t:Location>' . $c->esc($e['location']) . '</t:Location>') : $del('calendar:Location'))
 			. ($e['attendees'] !== [] ? $set('calendar:RequiredAttendees', $this->attendeesXml('RequiredAttendees', $e['attendees'])) : $del('calendar:RequiredAttendees'))
-			. ($e['optionalAttendees'] !== [] ? $set('calendar:OptionalAttendees', $this->attendeesXml('OptionalAttendees', $e['optionalAttendees'])) : $del('calendar:OptionalAttendees'));
+			. ($e['optionalAttendees'] !== [] ? $set('calendar:OptionalAttendees', $this->attendeesXml('OptionalAttendees', $e['optionalAttendees'])) : $del('calendar:OptionalAttendees'))
+			// rooms: only when the form sent them (a drag and drop keeps them)
+			. ($e['resources'] === null ? '' : ($e['resources'] !== [] ? $set('calendar:Resources', $this->attendeesXml('Resources', $e['resources'])) : $del('calendar:Resources')));
 
 		if ($series) {
 			$rec = $e['recurrence'];
@@ -595,7 +647,7 @@ class EwsCalendar {
 			}
 		}
 
-		$notify = ($e['attendees'] !== [] || $e['optionalAttendees'] !== []) ? 'SendToAllAndSaveCopy' : 'SendToNone';
+		$notify = ($e['attendees'] !== [] || $e['optionalAttendees'] !== [] || ($e['resources'] ?? []) !== []) ? 'SendToAllAndSaveCopy' : 'SendToNone';
 		$this->client->request(
 			'<m:UpdateItem ConflictResolution="AlwaysOverwrite" SendMeetingInvitationsOrCancellations="' . $notify . '">'
 			. '<m:ItemChanges><t:ItemChange><t:ItemId Id="' . $c->esc($id) . '"/><t:Updates>' . $updates . '</t:Updates></t:ItemChange></m:ItemChanges>'
@@ -715,6 +767,8 @@ class EwsCalendar {
 			'body' => (string)($data['body'] ?? ''),
 			'attendees' => self::emails($data['attendees'] ?? []),
 			'optionalAttendees' => self::emails($data['optionalAttendees'] ?? []),
+			// rooms booked (Resources); null: not sent, left as they are
+			'resources' => array_key_exists('resources', $data) ? self::emails($data['resources'] ?? []) : null,
 			'reminder' => $reminder,
 			'freeBusy' => $freeBusy,
 			'recurrence' => $recurrence,
@@ -923,6 +977,7 @@ class EwsCalendar {
 			$event['body'] = (string)$c->text($xp, 't:Body', $node);
 			$event['attendees'] = $attendees('t:RequiredAttendees');
 			$event['optionalAttendees'] = $attendees('t:OptionalAttendees');
+			$event['resources'] = $attendees('t:Resources');
 			$event['reminder'] = $c->text($xp, 't:ReminderIsSet', $node) === 'true'
 				? (int)$c->text($xp, 't:ReminderMinutesBeforeStart', $node) : -1;
 		}

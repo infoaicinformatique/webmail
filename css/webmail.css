@@ -857,3 +857,16 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-task-title { padding: 8px 4px; }
 .wm-task-form .wm-field .wm-small { margin-left: 4px; }
 .wm-task-form .wm-field { flex-wrap: wrap; }
+
+/* Meeting rooms */
+.wm-room-field { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1; min-width: 0; }
+.wm-room-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.wm-room-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--color-background-dark); border-radius: 14px; padding: 2px 4px 2px 10px; }
+.wm-chip-remove { min-height: 22px !important; min-width: 22px; padding: 0 !important; margin: 0 !important; border: none !important; background: transparent !important; }
+.wm-rooms { flex-basis: 100%; border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); padding: 8px; }
+.wm-rooms-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; }
+.wm-room-list { list-style: none; margin: 0; padding: 0; }
+.wm-room { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 4px 0; border-top: 1px solid var(--color-border); }
+.wm-room-name { flex: 1; min-width: 140px; }
+.wm-room-state { color: var(--color-success, #2d7b41); font-size: 12px; }
+.wm-room.taken .wm-room-state { color: var(--color-error); }

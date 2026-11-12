@@ -31,6 +31,8 @@
 	 * loaded in advance. Any change made from here empties it.
 	 */
 	const eventCache = new Map()
+	// room lists and rooms of the organisation, per account: { lists, rooms: { listEmail: [...] } }
+	const roomCache = new Map()
 	const EVENT_CACHE_MAX = 24
 
 	function api(path, opts) {
@@ -1217,6 +1219,8 @@
 			ev.isMeeting && ev.organizer ? h('div', {}, '👤 Organisateur : ' + core.personLabel(ev.organizer)) : null,
 			ev.attendees.length ? h('div', {}, h('strong', {}, 'Participants'), h('ul', { class: 'wm-attendees' }, people(ev.attendees))) : null,
 			ev.optionalAttendees.length ? h('div', {}, h('strong', {}, 'Facultatifs'), h('ul', { class: 'wm-attendees' }, people(ev.optionalAttendees))) : null,
+			(ev.resources || []).length ? h('div', { class: 'wm-event-rooms' }, h('strong', {}, 'Salle'), h('ul', { class: 'wm-attendees' }, ev.resources.map((a) => h('li', {}, '🚪 ' + (a.name || a.email),
+				h('span', { class: 'wm-muted' }, ' — ' + ({ Accept: 'réservée', Tentative: 'réservation provisoire', Decline: 'refusée (déjà prise ?)' }[a.response] || 'en attente de confirmation')))))) : null,
 			ev.body.trim() ? h('div', { class: 'wm-event-body' }, ev.body.trim()) : null,
 		].filter(Boolean))
 
@@ -1337,6 +1341,122 @@
 			value: ev ? ev.optionalAttendees.map((a) => a.email).filter((e) => e && !e.startsWith('/')).join(', ') : '' })
 		const description = h('textarea', { name: 'body', rows: '5', placeholder: 'Description' })
 		description.value = ev ? ev.body : ''
+
+		// ---- meeting rooms (Exchange room lists): booked as resources, the room answers itself
+		const rooms = ((ev && ev.resources) || []).filter((r) => r.email).map((r) => ({ name: r.name || r.email, email: r.email }))
+		const roomChips = h('span', { class: 'wm-room-chips' })
+		const roomBox = h('div', { class: 'wm-rooms', hidden: true })
+		const roomName = (email) => (rooms.find((r) => r.email.toLowerCase() === email.toLowerCase()) || {}).name
+		function renderRoomChips() {
+			core.clear(roomChips)
+			if (!rooms.length) roomChips.appendChild(h('span', { class: 'wm-muted' }, 'Aucune'))
+			rooms.forEach((r) => roomChips.appendChild(h('span', { class: 'wm-room-chip', dataset: { email: r.email } }, '🚪 ' + r.name,
+				h('button', {
+					type: 'button',
+					class: 'wm-chip-remove',
+					'aria-label': 'Retirer la salle ' + r.name,
+					onclick: () => {
+						rooms.splice(rooms.indexOf(r), 1)
+						if (location.value.trim() === r.name) location.value = ''
+						renderRoomChips()
+						if (!planBox.hidden) loadPlan()
+					},
+				}, '✕'))))
+		}
+		renderRoomChips()
+		const roomBtn = h('button', {
+			type: 'button',
+			class: 'wm-room-btn',
+			title: 'Réserver une salle de réunion de l\'entreprise',
+			onclick: () => {
+				roomBox.hidden = !roomBox.hidden
+				if (!roomBox.hidden) loadRooms()
+			},
+		}, '🚪 Choisir une salle')
+		let roomSeq = 0
+		async function loadRooms() {
+			const mine = ++roomSeq
+			core.clear(roomBox)
+			roomBox.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading-small' })))
+			const base = '/accounts/' + core.accountId + '/calendar/rooms'
+			const cache = roomCache.get(core.accountId) || { lists: null, rooms: {} }
+			roomCache.set(core.accountId, cache)
+			try {
+				if (!cache.lists) cache.lists = (await api(base)).lists
+				if (mine !== roomSeq) return
+				if (!cache.lists.length) {
+					core.clear(roomBox)
+					roomBox.appendChild(h('div', { class: 'wm-muted' }, 'Aucune liste de salles n\'est définie dans Exchange : l\'administrateur peut en créer (salles de réunion regroupées par site).'))
+					return
+				}
+				// the list chosen last time
+				if (!cache.lists.some((l) => l.email === cache.last)) cache.last = cache.lists[0].email
+				if (!cache.rooms[cache.last]) cache.rooms[cache.last] = (await api(base, { query: { list: cache.last } })).rooms
+				if (mine !== roomSeq) return
+				const list = cache.rooms[cache.last]
+				const s = readStart()
+				const e = readEnd()
+				let busy = {}
+				if (list.length && !isNaN(s) && !isNaN(e)) {
+					const r = await api('/accounts/' + core.accountId + '/calendar/availability', {
+						query: { emails: list.map((x) => x.email).join(','), day: startDate.value, from: s.toISOString(), minutes: 60, tz: core.TZ },
+					})
+					if (mine !== roomSeq) return
+					r.people.forEach((p) => {
+						const hit = p.error ? null : p.busy.filter((b) => b.type !== 'Free' && new Date(b.start) < e && new Date(b.end) > s)
+						busy[p.email.toLowerCase()] = p.error ? 'unknown' : hit
+					})
+				}
+				renderRooms(cache.lists, cache.last, list, busy)
+			} catch (ex) {
+				if (mine !== roomSeq) return
+				core.clear(roomBox)
+				roomBox.appendChild(h('div', { class: 'wm-form-error' }, ex.message))
+			}
+		}
+		function renderRooms(lists, current, list, busy) {
+			core.clear(roomBox)
+			const s = readStart()
+			const e = readEnd()
+			roomBox.appendChild(h('div', { class: 'wm-rooms-head' },
+				lists.length > 1
+					? h('select', { name: 'roomList', 'aria-label': 'Liste de salles', onchange: (ev2) => { roomCache.get(core.accountId).last = ev2.target.value; loadRooms() } },
+						lists.map((l) => h('option', { value: l.email, selected: l.email === current }, l.name)))
+					: h('strong', {}, lists[0].name),
+				!isNaN(s) && !isNaN(e) ? h('span', { class: 'wm-muted' }, ' ' + ucfirst(core.formatRange(s.toISOString(), e.toISOString(), allDay.checked))) : null))
+			if (!list.length) {
+				roomBox.appendChild(h('div', { class: 'wm-muted' }, 'Aucune salle dans cette liste'))
+				return
+			}
+			const ul = h('ul', { class: 'wm-room-list' })
+			// free rooms first
+			const state = (r) => busy[r.email.toLowerCase()]
+			const sorted = list.slice().sort((a, b) => (Array.isArray(state(a)) && state(a).length ? 1 : 0) - (Array.isArray(state(b)) && state(b).length ? 1 : 0))
+			sorted.forEach((r) => {
+				const st = state(r)
+				const taken = Array.isArray(st) && st.length > 0
+				const chosen = rooms.some((x) => x.email.toLowerCase() === r.email.toLowerCase())
+				ul.appendChild(h('li', { class: 'wm-room' + (taken ? ' taken' : ''), dataset: { email: r.email } },
+					h('span', { class: 'wm-room-name' }, '🚪 ' + r.name),
+					h('span', { class: 'wm-room-state' }, st === 'unknown' ? 'disponibilité inconnue'
+						: taken ? 'occupée ' + st.map((b) => timeLabel(new Date(b.start)) + '–' + timeLabel(new Date(b.end))).join(', ')
+							: st ? 'libre' : ''),
+					chosen ? h('span', { class: 'wm-muted' }, '✓ choisie') : h('button', {
+						type: 'button',
+						class: 'wm-small' + (taken ? '' : ' primary'),
+						onclick: () => {
+							if (taken && !window.confirm(r.name + ' est déjà occupée à ce moment : elle refusera sans doute la réservation. La demander quand même ?')) return
+							rooms.push({ name: r.name, email: r.email })
+							if (!location.value.trim()) location.value = r.name
+							renderRoomChips()
+							roomBox.hidden = true
+							if (!planBox.hidden) loadPlan()
+							core.toast(r.name + ' sera réservée à l\'enregistrement')
+						},
+					}, 'Réserver')))
+			})
+			roomBox.appendChild(ul)
+		}
 		// a video meeting: a Nextcloud Talk room, its link in the place and the description
 		const talkBtn = talkEnabled() ? h('button', {
 			type: 'button',
@@ -1415,6 +1535,7 @@
 			core.clear(planBox)
 			planBox.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading-small' })))
 			const emails = (attendees.value + ',' + optional.value).split(/[,;]/).map((x) => (x.match(/<([^>]+)>/) || [null, x])[1].trim()).filter((x) => x.includes('@'))
+				.concat(rooms.map((r) => r.email))
 			const s = readStart()
 			const minutes = allDay.checked ? 60 : Math.max(15, Math.round((readEnd() - s) / 60000) || 60)
 			try {
@@ -1464,7 +1585,7 @@
 				if (sameDay && !allDay.checked) track.appendChild(h('span', { class: 'wm-plan-meeting', style: 'left:' + pct(s) + '%;width:' + Math.max(0.5, pct(e) - pct(s)) + '%' }))
 				if (p.error) track.appendChild(h('span', { class: 'wm-plan-unknown' }, p.error))
 				planBox.appendChild(h('div', { class: 'wm-plan-row', dataset: { email: p.email } },
-					h('span', { class: 'wm-plan-who', title: p.email }, p.self ? 'Moi' : p.email), track))
+					h('span', { class: 'wm-plan-who', title: p.email }, p.self ? 'Moi' : roomName(p.email) ? '🚪 ' + roomName(p.email) : p.email), track))
 			})
 			const sug = r.suggestion
 			planBox.appendChild(h('div', { class: 'wm-plan-foot' },
@@ -1490,7 +1611,10 @@
 					}, 'Premier créneau libre pour tous : ' + new Date(sug.start).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + timeLabel(new Date(sug.start)))
 					: h('span', { class: 'wm-muted' }, 'Aucun créneau libre de ' + minutes + ' minutes pour tous dans les 2 semaines (jours ouvrés, 8 h – 18 h)')))
 		}
-		;[startDate, startTime, endDate, endTime].forEach((i) => i.addEventListener('change', () => { if (!planBox.hidden) { planDay = startDate.value; loadPlan() } }))
+		;[startDate, startTime, endDate, endTime].forEach((i) => i.addEventListener('change', () => {
+			if (!planBox.hidden) { planDay = startDate.value; loadPlan() }
+			if (!roomBox.hidden) loadRooms()
+		}))
 
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
 		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? 'Créer' : 'Enregistrer')
@@ -1509,6 +1633,7 @@
 					location: location.value,
 					attendees: attendees.value,
 					optionalAttendees: optional.value,
+					resources: rooms.map((r) => r.email),
 					body: description.value,
 					reminder: parseInt(reminder.value, 10),
 					freeBusy: freeBusy.value,
@@ -1552,6 +1677,7 @@
 		field('Début', startDate, startTime),
 		field('Fin', endDate, endTime),
 		field('Lieu', location, talkBtn),
+		h('div', { class: 'wm-field' }, h('span', {}, 'Salle'), h('div', { class: 'wm-room-field' }, roomChips, roomBtn, roomBox)),
 		field('Participants', core.attachAutocomplete(attendees)),
 		field('Facultatifs', core.attachAutocomplete(optional)),
 		h('div', { class: 'wm-field' }, h('span', {}), h('div', {}, planBtn, planBox)),

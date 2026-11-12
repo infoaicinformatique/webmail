@@ -100,6 +100,8 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Disponibilités](docs/capture-disponibilites.png)
 
+![Salles de réunion](docs/capture-salles.png)
+
 ![Agenda des dossiers publics](docs/capture-agenda-public.png)
 
 | | |
@@ -118,6 +120,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Réunions | Les participants reçoivent l'invitation, puis les mises à jour et les annulations (envoyées par Exchange) |
 | Dossiers publics | « ＋ Ajouter un agenda des dossiers publics » : parcourez les dossiers publics Exchange et ajoutez un agenda commun (planning de l'équipe, réservations, fermetures…). Il s'affiche avec vos agendas ; lecture ou modification selon les droits donnés par l'administrateur Exchange (création, modification, déplacement, suppression d'événements — définitive, les dossiers publics n'ayant pas d'« Éléments supprimés »). Retirer l'agenda de la liste ne supprime rien |
 | Disponibilités | « 📅 Disponibilités » dans le formulaire : une ligne par participant (et vous), sur la journée de 7 h à 20 h : occupé, provisoire, absent, et la réunion telle qu'elle est placée ; ‹ › pour changer de jour. « **Premier créneau libre pour tous** » place la réunion (même durée) au premier moment où tout le monde est libre, jours ouvrés de 8 h à 18 h, dans les deux semaines. Les personnes extérieures sont signalées « disponibilités inconnues » et ne bloquent pas la recherche |
+| Salles de réunion | « 🚪 Choisir une salle » dans le formulaire : les **listes de salles** d'Exchange (« Salles Paris », « Salles Lyon »…, la dernière choisie est retenue) et, pour chaque salle, si elle est **libre** ou **occupée** au moment de la réunion (les libres d'abord). « Réserver » ajoute la salle à l'événement (et son nom dans le lieu s'il est vide) ; à l'enregistrement, Exchange lui envoie la demande et la salle **accepte ou refuse** d'elle-même. Le détail de l'événement indique « réservée », « refusée » ou « en attente de confirmation ». La salle apparaît aussi dans les disponibilités. ✕ retire une salle. Les listes de salles sont créées par l'administrateur Exchange |
 | Visio | Avec **Nextcloud Talk** installé, « 🎥 Visio Talk » dans le formulaire crée une salle de visio publique pour l'événement : son lien va dans le lieu et dans la description, donc dans l'invitation ; les invités extérieurs y entrent sans compte. Dans le détail d'un événement, « 🎥 Rejoindre la visio » ouvre la salle (ou le lien Teams, Zoom… donné comme lieu) |
 | Invitations reçues | Accepter, provisoire ou refuser depuis l'agenda ou depuis l'e-mail |
 | Réponse au nom d'un collègue | Dans l'agenda d'un collègue partagé en **modification** (délégué ou éditeur), ses invitations affichent « Réponse de Marie Martin » et les boutons pour répondre **en son nom**, après confirmation. Impossible en lecture seule |
@@ -210,7 +213,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.40.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.41.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -232,7 +235,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.40 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.41 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -319,9 +322,6 @@ templates/          page principale et page d'administration
 - Images collées dans l'éditeur, signature mise en forme, pièces jointes enregistrées avec le brouillon
 - Liste des messages regroupée par conversation
 - Boîtes des collègues dont on est délégué (courrier)
-
-**Agenda**
-- Salles de réunion (listes de salles Exchange) dans l'assistant de planification
 
 **Contacts**
 - Groupes de contacts modifiables, photos

@@ -41,6 +41,7 @@ return [
 		['name' => 'calendar#publicFolders', 'url' => '/api/accounts/{id}/calendar/public', 'verb' => 'GET'],
 		['name' => 'calendar#addPublic', 'url' => '/api/accounts/{id}/calendar/public', 'verb' => 'POST'],
 		['name' => 'calendar#removePublic', 'url' => '/api/accounts/{id}/calendar/public/delete', 'verb' => 'POST'],
+		['name' => 'calendar#rooms', 'url' => '/api/accounts/{id}/calendar/rooms', 'verb' => 'GET'],
 		['name' => 'calendar#availability', 'url' => '/api/accounts/{id}/calendar/availability', 'verb' => 'GET'],
 		['name' => 'calendar#search', 'url' => '/api/accounts/{id}/calendar/search', 'verb' => 'GET'],
 		['name' => 'calendar#events', 'url' => '/api/accounts/{id}/calendar/events', 'verb' => 'GET'],
