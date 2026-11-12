@@ -1555,6 +1555,7 @@
 			api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: [id], flag: 'read', value: true } })
 				.catch((e) => toast(e.message, true))
 		}
+		if (state.module !== 'mail') return
 		const own = state.folders.find((f) => f.id === msg.folderId)
 		if ((own ? own.role : folderRole()) === 'drafts') {
 			// a draft opens in the editor, to be finished and sent
@@ -1584,7 +1585,8 @@
 
 	function renderMessage() {
 		const m = state.current
-		if (!m) return
+		// loaded after a switch to the calendar or the contacts: not shown over them
+		if (!m || state.module !== 'mail') return
 		clear(detailEl)
 		const own = state.folders.find((f) => f.id === m.folderId)
 		const role = own ? own.role : folderRole()

@@ -1295,6 +1295,52 @@ async function main() {
 		assert.strictEqual(await page.$$eval('.wm-agenda-item', (els) => els.filter((e) => e.textContent.includes('Sport collectif')).length), 4)
 	})
 
+	await step('calendar: every 2nd Tuesday of the month', async () => {
+		// the 2nd Tuesday of next month
+		const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1)
+		while (d.getDay() !== 2) d.setDate(d.getDate() + 1)
+		d.setDate(d.getDate() + 7)
+		const ymd = (x) => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0')
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		await page.fill('.wm-modal input[name=subject]', 'Comité de direction')
+		await page.fill('.wm-modal input[name=startDate]', ymd(d))
+		await page.dispatchEvent('.wm-modal input[name=startDate]', 'change')
+		await page.selectOption('.wm-modal select[name=repeat]', 'monthly')
+		// on the date, or on the weekday
+		const choices = await page.$$eval('.wm-modal select[name=repeatBy] option', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(choices.slice(0, 2), ['le ' + d.getDate(), 'le 2e mardi'])
+		await page.selectOption('.wm-modal select[name=repeatBy]', 'weekday')
+		await page.selectOption('.wm-modal select[name=ends]', 'count')
+		await page.fill('.wm-modal input[name=count]', '3')
+		await page.dispatchEvent('.wm-modal input[name=count]', 'change')
+		assert.strictEqual(await page.textContent('.wm-rule-summary'), 'Tous les mois le 2e mardi, 3 fois')
+		await shot('51-second-tuesday')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
+		// three meetings, each on the 2nd Tuesday of its month
+		const found = await page.evaluate(async (from) => {
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const end = new Date(from); end.setMonth(end.getMonth() + 4)
+			const r = await (await fetch('/apps/webmail/api/accounts/' + id + '/calendar/events?tz=Europe/Paris&start=' + from + 'T00:00&end=' + end.toISOString().slice(0, 10) + 'T00:00', { headers: { requesttoken: OC.requestToken } })).json()
+			return { id, events: r.events.filter((e) => e.subject === 'Comité de direction').map((e) => ({ id: e.id, start: e.start })) }
+		}, ymd(d))
+		assert.strictEqual(found.events.length, 3, JSON.stringify(found.events))
+		found.events.forEach((e) => {
+			const s = new Date(e.start)
+			assert(s.getDay() === 2 && s.getDate() > 7 && s.getDate() <= 14, e.start)
+		})
+		// shown as such, and kept when the series is edited
+		await page.goto(NC + '/apps/webmail/?' + new URLSearchParams({ account: found.id, module: 'calendar', event: found.events[1].id }))
+		await page.waitForSelector('.wm-modal .wm-event-rule:has-text("Tous les mois le 2e mardi, 3 fois")')
+		await page.click('.wm-modal button:has-text("Modifier la série")')
+		await page.waitForSelector('.wm-modal h2:has-text("Modifier la série")')
+		assert.strictEqual(await page.inputValue('.wm-modal select[name=repeat]'), 'monthly')
+		assert.strictEqual(await page.inputValue('.wm-modal select[name=repeatBy]'), 'weekday')
+		await page.click('.wm-modal-close')
+		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
+	})
+
 	await step('calendar: a series can become a single event', async () => {
 		await page.click('.wm-agenda-item:has-text("Sport collectif") >> nth=0')
 		await page.click('.wm-modal button:has-text("Modifier la série")')

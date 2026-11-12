@@ -88,6 +88,8 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Recherche d'événements](docs/capture-recherche-agenda.png)
 
+![Le 2e mardi du mois](docs/capture-2e-mardi.png)
+
 | | |
 |---|---|
 | Vues | **Jour**, **semaine**, **mois** et **liste** des 30 prochains jours. Mini-calendrier à gauche : un point sous les jours qui ont des rendez-vous (dans la période affichée), ses propres flèches pour parcourir les mois sans changer l'affichage principal, un clic va au jour, un double-clic l'affiche seul (vue jour). Les événements périodiques sont dépliés |
@@ -95,12 +97,12 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Semaine | Grille horaire sur 7 jours. Une ligne « Journée » regroupe les événements sur la journée entière. Les événements qui se chevauchent sont placés côte à côte, et un trait rouge marque l'heure actuelle. Un clic sur un créneau libre crée un événement à cette heure. Un clic sur un jour du mini-calendrier affiche sa semaine |
 | Détail | Horaire, lieu, organisateur, participants et leur réponse, description |
 | Création / modification | Titre, journée entière, début et fin, lieu, participants et facultatifs (avec complétion), rappel, disponibilité |
-| Répétition | Chaque jour, semaine, mois ou année, **tous les N** jours, semaines ou mois, **plusieurs jours de la semaine** (par ex. lundi et jeudi). Fin : jamais, à une date ou après N occurrences. Un résumé en clair s'affiche, par ex. « Toutes les 2 semaines le lundi et le jeudi, 10 fois » |
+| Répétition | Chaque jour, semaine, mois ou année, **tous les N** jours, semaines ou mois, **plusieurs jours de la semaine** (par ex. lundi et jeudi). Fin : jamais, à une date ou après N occurrences. Chaque mois ou chaque année **à une date** (« le 12 ») **ou un jour de la semaine** (« le 2e mardi », « le dernier vendredi », « le 4e jeudi de novembre »), proposés d'après la date du premier événement. Un résumé en clair s'affiche, par ex. « Toutes les 2 semaines le lundi et le jeudi, 10 fois » |
 | Plusieurs agendas | **Vos autres agendas** Exchange (par ex. « Congés équipe ») apparaissent automatiquement. Chaque agenda a sa couleur et une case pour l'afficher ou le masquer. À la création d'un événement, on choisit l'agenda |
 | Agendas partagés | « Ajouter un agenda partagé » : saisissez l'adresse d'un collègue (avec complétion). Le niveau d'accès est **détecté automatiquement** : **modification** ou **lecture** si l'agenda vous a été partagé dans Outlook, sinon **disponibilités** seulement (le partage par défaut d'Exchange : créneaux occupés, hachurés, avec l'objet s'il est partagé). En lecture, rien n'est modifiable ; en modification, on peut créer, modifier, déplacer et supprimer. La liste est propre à chaque utilisateur et à chaque compte ; retirer un agenda ne supprime rien dans Exchange |
 | Partager mon agenda | Bouton 🔗 à côté de chacun de vos agendas : choisissez ce que **toute l'organisation** et **chaque personne** peuvent voir ou faire (aucun accès, disponibilités seulement, disponibilités avec objet et lieu, lecture, lecture et ajout, modification), **sans en faire un délégué**. C'est le réglage « Autorisations » d'Outlook ; les niveaux personnalisés créés dans Outlook sont affichés et conservés tels quels. Vos collègues ajoutent ensuite votre agenda avec « Ajouter un agenda partagé » |
 | Glisser-déposer | À la souris, dans la vue **semaine**, glisser un événement le déplace à une autre heure ou un autre jour, par pas de 15 minutes. Tirer son **bord inférieur** change l'heure de fin. Dans la vue **mois** et la ligne « Journée », glisser un événement le déplace sur un autre jour en gardant ses horaires. **Échap** annule. Pour une réunion, une confirmation est demandée et les participants reçoivent la mise à jour. Seuls les événements dont vous êtes l'organisateur peuvent être déplacés. Sur écran tactile, un appui ouvre l'événement, et on le modifie avec « Modifier » |
-| Séries | Depuis une occurrence : **« Modifier cette occurrence »** ou **« Modifier la série »**. Les deux modifient titre, horaires, lieu, participants, rappel et disponibilité ; seule la série permet de changer la règle de répétition ou de la supprimer (la série devient alors un événement unique). Les participants reçoivent la mise à jour. Pour une règle créée dans Outlook que l'application ne sait pas modifier (par ex. « le 2e mardi du mois »), la règle est conservée et seuls les horaires sont modifiables |
+| Séries | Depuis une occurrence : **« Modifier cette occurrence »** ou **« Modifier la série »**. Les deux modifient titre, horaires, lieu, participants, rappel et disponibilité ; seule la série permet de changer la règle de répétition ou de la supprimer (la série devient alors un événement unique). Les participants reçoivent la mise à jour. Pour une règle créée dans Outlook que l'application ne sait pas modifier (par ex. « le 2e jour ouvré du mois »), la règle est conservée et seuls les horaires sont modifiables |
 | Réunions | Les participants reçoivent l'invitation, puis les mises à jour et les annulations (envoyées par Exchange) |
 | Invitations reçues | Accepter, provisoire ou refuser depuis l'agenda ou depuis l'e-mail |
 | Réponse au nom d'un collègue | Dans l'agenda d'un collègue partagé en **modification** (délégué ou éditeur), ses invitations affichent « Réponse de Marie Martin » et les boutons pour répondre **en son nom**, après confirmation. Impossible en lecture seule |
@@ -177,7 +179,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.32.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.33.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -199,7 +201,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.32 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.33 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -288,7 +290,6 @@ templates/          page principale et page d'administration
 - Boîtes partagées (contact@…) et boîtes des collègues dont on est délégué
 
 **Agenda**
-- Règles « le 2e mardi du mois » (aujourd'hui conservées, mais pas modifiables ici)
 - Assistant de planification (disponibilités des participants, salles de réunion)
 - Lien de visio Nextcloud Talk dans les invitations
 - Agendas des dossiers publics

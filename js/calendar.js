@@ -928,6 +928,26 @@
 		return list.length > 1 ? list.slice(0, -1).join(', ') + ' et ' + list[list.length - 1] : (list[0] || '')
 	}
 
+	const RANKS = ['1er', '2e', '3e', '4e']
+
+	/** "le 2e mardi", "le dernier vendredi" of the month of `d` (a 5th one is the last) */
+	function weekdayRank(d, by) {
+		const n = Math.floor((d.getDate() - 1) / 7)
+		const day = WEEKDAY_FR[(d.getDay() + 6) % 7]
+		return 'le ' + (by === 'last' || n > 3 ? 'dernier' : RANKS[n]) + ' ' + day
+	}
+
+	/** "de novembre", "d'avril" */
+	function monthOf(d) {
+		const m = d.toLocaleDateString('fr-FR', { month: 'long' })
+		return (/^[aeiou]/.test(m) ? 'd\'' : 'de ') + m
+	}
+
+	function inLastWeek(d) {
+		const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+		return d.getDate() + 7 > last
+	}
+
 	/** "Toutes les 2 semaines le lundi et le jeudi, jusqu'au 31 mars 2027" */
 	function describeRule(r, start) {
 		if (!r) return 'Ne se répète pas'
@@ -941,9 +961,11 @@
 			const days = (r.days && r.days.length ? r.days : [weekdayOf(start)])
 			text += ' ' + joinFr(WEEKDAYS.filter((d) => days.includes(d)).map((d) => 'le ' + WEEKDAY_FR[WEEKDAYS.indexOf(d)]))
 		} else if (r.freq === 'monthly') {
-			text += ' le ' + (start.getDate() === 1 ? '1er' : start.getDate())
+			text += r.by === 'weekday' || r.by === 'last' ? ' ' + weekdayRank(start, r.by) : ' le ' + (start.getDate() === 1 ? '1er' : start.getDate())
 		} else if (r.freq === 'yearly') {
-			text += ' le ' + start.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+			text += r.by === 'weekday' || r.by === 'last'
+				? ' ' + weekdayRank(start, r.by) + ' ' + monthOf(start)
+				: ' le ' + start.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
 		}
 		if (r.until) {
 			text += ', jusqu\'au ' + new Date(r.until + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -975,6 +997,20 @@
 			return { d, box, el: h('label', { class: 'wm-day-check', title: WEEKDAY_FR[i] }, box, WEEKDAY_FR[i].slice(0, 2)) }
 		})
 		const daysWrap = h('div', { class: 'wm-days' }, dayBoxes.map((x) => x.el))
+		// monthly / yearly: on the date, or on the weekday ("le 2e mardi", "le dernier mardi")
+		const by = h('select', { name: 'repeatBy', 'aria-label': 'Quel jour' })
+		const fillBy = (start, f) => {
+			const keep = by.value || (initial && initial.by) || 'date'
+			core.clear(by)
+			if (isNaN(start)) return
+			const date = f === 'yearly' ? 'le ' + start.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : 'le ' + (start.getDate() === 1 ? '1er' : start.getDate())
+			const suffix = f === 'yearly' ? ' ' + monthOf(start) : ''
+			const options = [['date', date], ['weekday', weekdayRank(start, 'weekday') + suffix]]
+			// the 4th Tuesday can also be the last one
+			if (inLastWeek(start) && Math.floor((start.getDate() - 1) / 7) < 4) options.push(['last', weekdayRank(start, 'last') + suffix])
+			options.forEach(([v, l]) => by.appendChild(h('option', { value: v }, l)))
+			by.value = options.some(([v]) => v === keep) ? keep : (keep === 'last' ? 'weekday' : 'date')
+		}
 		const ends = h('select', { name: 'ends', 'aria-label': 'Fin de la répétition' },
 			h('option', { value: 'never' }, 'sans fin'),
 			h('option', { value: 'until' }, 'jusqu\'au'),
@@ -1001,6 +1037,7 @@
 			if (!repeat.value) return null
 			const r = { freq: repeat.value, interval: parseInt(interval.value, 10) || 1 }
 			if (r.freq === 'weekly') r.days = dayBoxes.filter((x) => x.box.checked).map((x) => x.d)
+			if (r.freq === 'monthly' || r.freq === 'yearly') r.by = by.value || 'date'
 			if (ends.value === 'until' && until.value) r.until = until.value
 			if (ends.value === 'count') r.count = parseInt(count.value, 10) || 1
 			return r
@@ -1010,6 +1047,8 @@
 			const active = f !== '' && f !== 'keep'
 			intervalWrap.hidden = !active || f === 'yearly'
 			daysWrap.hidden = f !== 'weekly'
+			by.hidden = f !== 'monthly' && f !== 'yearly'
+			if (!by.hidden) fillBy(getStart(), f)
 			ends.hidden = !active
 			until.hidden = !active || ends.value !== 'until'
 			countWrap.hidden = !active || ends.value !== 'count'
@@ -1021,12 +1060,12 @@
 			}
 			summary.textContent = f === 'keep' ? describeRule(initial, start) : (active && !isNaN(start) ? describeRule(value(), start) : '')
 		}
-		;[repeat, interval, ends, until, count].forEach((i) => { i.addEventListener('change', sync); i.addEventListener('input', sync) })
+		;[repeat, interval, ends, until, count, by].forEach((i) => { i.addEventListener('change', sync); i.addEventListener('input', sync) })
 		dayBoxes.forEach((x) => x.box.addEventListener('change', sync))
 		sync()
 
 		const el = h('div', { class: 'wm-recurrence' },
-			h('div', { class: 'wm-inline wm-wrap' }, repeat, intervalWrap, ends, until, countWrap),
+			h('div', { class: 'wm-inline wm-wrap' }, repeat, intervalWrap, by, ends, until, countWrap),
 			daysWrap,
 			summary)
 		return { el, value, sync }

@@ -310,7 +310,8 @@ def parse_rule(rec):
     until = text(rec, 't:EndDateRecurrence/t:EndDate')
     count = text(rec, 't:NumberedRecurrence/t:NumberOfOccurrences')
     return dict(pattern=pattern.tag.replace(T, ''), interval=int(text(pattern, 't:Interval', '1')),
-                days=text(pattern, 't:DaysOfWeek').split(), until=dt.date.fromisoformat(until[:10]) if until else None,
+                days=text(pattern, 't:DaysOfWeek').split(), index=text(pattern, 't:DayOfWeekIndex'), month=text(pattern, 't:Month'),
+                until=dt.date.fromisoformat(until[:10]) if until else None,
                 count=int(count) if count else None)
 
 
@@ -336,6 +337,22 @@ def expand_rule(rule, start, end):
                 if not add(s):
                     return out
         return out
+    if rule['pattern'] in ('RelativeMonthlyRecurrence', 'RelativeYearlyRecurrence'):
+        # "the 2nd Tuesday", "the last Friday" of each month (or of one month a year)
+        wd = WEEKDAYS.index(rule['days'][0])
+        step = 12 if rule['pattern'] == 'RelativeYearlyRecurrence' else n
+        for i in range(0, 200):
+            m = start.month - 1 + step * i
+            year, month = start.year + m // 12, m % 12 + 1
+            first = start.replace(year=year, month=month, day=1)
+            days = [first + dt.timedelta(days=k) for k in range(31) if (first + dt.timedelta(days=k)).month == month and (first + dt.timedelta(days=k)).weekday() == wd]
+            idx = ['First', 'Second', 'Third', 'Fourth'].index(rule['index']) if rule['index'] != 'Last' else -1
+            s = days[idx]
+            if s < start:
+                continue
+            if not add(s):
+                return out
+        return out
     for i in range(0, 200):
         if rule['pattern'] == 'DailyRecurrence':
             s = start + dt.timedelta(days=n * i)
@@ -357,7 +374,11 @@ def expand_rule(rule, start, end):
 
 def rule_xml(rule, start):
     p = rule['pattern']
-    inner = '' if p == 'AbsoluteYearlyRecurrence' else '<t:Interval>%d</t:Interval>' % rule['interval']
+    inner = '' if p in ('AbsoluteYearlyRecurrence', 'RelativeYearlyRecurrence') else '<t:Interval>%d</t:Interval>' % rule['interval']
+    if p in ('RelativeMonthlyRecurrence', 'RelativeYearlyRecurrence'):
+        inner += '<t:DaysOfWeek>%s</t:DaysOfWeek><t:DayOfWeekIndex>%s</t:DayOfWeekIndex>' % (rule['days'][0], rule['index'])
+        if p == 'RelativeYearlyRecurrence':
+            inner += '<t:Month>%s</t:Month>' % (rule['month'] or start.strftime('%B'))
     if p == 'WeeklyRecurrence':
         inner += '<t:DaysOfWeek>%s</t:DaysOfWeek>' % ' '.join(rule['days'] or [WEEKDAYS[start.weekday()]])
     elif p == 'AbsoluteMonthlyRecurrence':

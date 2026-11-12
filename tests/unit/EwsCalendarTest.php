@@ -190,19 +190,68 @@ class EwsCalendarTest extends EwsTestCase {
 		$this->assertSame('MASTER1', $series['id']);
 		$this->assertSame('RecurringMaster', $series['type']);
 		$this->assertSame(['freq' => 'weekly', 'pattern' => 'WeeklyRecurrence', 'interval' => 2, 'days' => ['Monday', 'Thursday'],
-			'dayOfMonth' => null, 'until' => '2027-03-31', 'count' => null], $series['recurrence']);
+			'dayOfMonth' => null, 'by' => 'date', 'weekIndex' => null, 'until' => '2027-03-31', 'count' => null], $series['recurrence']);
 	}
 
-	public function testUnsupportedPatternIsReportedAsOther(): void {
+	public function testSecondTuesdayOfTheMonth(): void {
 		$this->queue(self::ok('GetItem', '<m:Items><t:CalendarItem><t:ItemId Id="M2"/><t:Subject>Comité</t:Subject>'
 			. '<t:Start>2026-11-10T09:00:00Z</t:Start><t:End>2026-11-10T10:00:00Z</t:End>'
 			. '<t:Recurrence><t:RelativeMonthlyRecurrence><t:Interval>1</t:Interval><t:DaysOfWeek>Tuesday</t:DaysOfWeek><t:DayOfWeekIndex>Second</t:DayOfWeekIndex></t:RelativeMonthlyRecurrence>'
 			. '<t:NumberedRecurrence><t:StartDate>2026-11-10</t:StartDate><t:NumberOfOccurrences>12</t:NumberOfOccurrences></t:NumberedRecurrence></t:Recurrence>'
 			. '</t:CalendarItem></m:Items>'));
 		$r = $this->calendar()->getSeries('OCC2')['recurrence'];
+		$this->assertSame(['monthly', 'weekday', 'Second', ['Tuesday'], 12], [$r['freq'], $r['by'], $r['weekIndex'], $r['days'], $r['count']]);
+	}
+
+	public function testLastFridayOfNovember(): void {
+		$this->queue(self::ok('GetItem', '<m:Items><t:CalendarItem><t:ItemId Id="M3"/><t:Subject>Inventaire</t:Subject>'
+			. '<t:Start>2026-11-27T09:00:00Z</t:Start><t:End>2026-11-27T10:00:00Z</t:End>'
+			. '<t:Recurrence><t:RelativeYearlyRecurrence><t:DaysOfWeek>Friday</t:DaysOfWeek><t:DayOfWeekIndex>Last</t:DayOfWeekIndex><t:Month>November</t:Month></t:RelativeYearlyRecurrence>'
+			. '<t:NoEndRecurrence><t:StartDate>2026-11-27</t:StartDate></t:NoEndRecurrence></t:Recurrence>'
+			. '</t:CalendarItem></m:Items>'));
+		$r = $this->calendar()->getSeries('OCC3')['recurrence'];
+		$this->assertSame(['yearly', 'last', 'Last'], [$r['freq'], $r['by'], $r['weekIndex']]);
+	}
+
+	public function testUnsupportedPatternIsReportedAsOther(): void {
+		// "the 2nd weekday of the month": not one day of the week
+		$this->queue(self::ok('GetItem', '<m:Items><t:CalendarItem><t:ItemId Id="M2"/><t:Subject>Comité</t:Subject>'
+			. '<t:Start>2026-11-03T09:00:00Z</t:Start><t:End>2026-11-03T10:00:00Z</t:End>'
+			. '<t:Recurrence><t:RelativeMonthlyRecurrence><t:Interval>1</t:Interval><t:DaysOfWeek>Weekday</t:DaysOfWeek><t:DayOfWeekIndex>Second</t:DayOfWeekIndex></t:RelativeMonthlyRecurrence>'
+			. '<t:NumberedRecurrence><t:StartDate>2026-11-03</t:StartDate><t:NumberOfOccurrences>12</t:NumberOfOccurrences></t:NumberedRecurrence></t:Recurrence>'
+			. '</t:CalendarItem></m:Items>'));
+		$r = $this->calendar()->getSeries('OCC2')['recurrence'];
 		$this->assertSame('other', $r['freq']);
 		$this->assertSame('RelativeMonthlyRecurrence', $r['pattern']);
 		$this->assertSame(12, $r['count']);
+	}
+
+	/**
+	 * @dataProvider relativeRules
+	 */
+	public function testCreateOnAWeekday(string $start, array $rule, string $expected): void {
+		$this->queue(self::ok('CreateItem', '<m:Items><t:CalendarItem><t:ItemId Id="N"/></t:CalendarItem></m:Items>'));
+		$this->calendar()->createEvent(['subject' => 'x', 'start' => $start . 'T10:00', 'end' => $start . 'T11:00', 'recurrence' => $rule]);
+		$this->assertStringContainsString($expected, $this->lastRequest());
+	}
+
+	public static function relativeRules(): array {
+		return [
+			'2nd Tuesday' => ['2026-11-10', ['freq' => 'monthly', 'by' => 'weekday', 'interval' => 2],
+				'<t:RelativeMonthlyRecurrence><t:Interval>2</t:Interval><t:DaysOfWeek>Tuesday</t:DaysOfWeek><t:DayOfWeekIndex>Second</t:DayOfWeekIndex></t:RelativeMonthlyRecurrence>'],
+			'5th Monday is the last' => ['2026-11-30', ['freq' => 'monthly', 'by' => 'weekday'],
+				'<t:DaysOfWeek>Monday</t:DaysOfWeek><t:DayOfWeekIndex>Last</t:DayOfWeekIndex>'],
+			'last Friday' => ['2026-11-27', ['freq' => 'monthly', 'by' => 'last'],
+				'<t:DaysOfWeek>Friday</t:DaysOfWeek><t:DayOfWeekIndex>Last</t:DayOfWeekIndex>'],
+			'4th Thursday of November' => ['2026-11-26', ['freq' => 'yearly', 'by' => 'weekday'],
+				'<t:RelativeYearlyRecurrence><t:DaysOfWeek>Thursday</t:DaysOfWeek><t:DayOfWeekIndex>Fourth</t:DayOfWeekIndex><t:Month>November</t:Month></t:RelativeYearlyRecurrence>'],
+		];
+	}
+
+	public function testLastNeedsTheLastWeek(): void {
+		$this->expectException(MailException::class);
+		$this->expectExceptionMessage('pas le dernier');
+		EwsCalendar::normalize(['start' => '2026-11-10T10:00', 'end' => '2026-11-10T11:00', 'recurrence' => ['freq' => 'monthly', 'by' => 'last']]);
 	}
 
 	public function testUpdateSeriesWithNewRule(): void {
