@@ -500,6 +500,30 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('junk e-mail: junk and not junk', async () => {
+		const msg = (n) => '.wm-message:has(.wm-message-subject:text-is("Newsletter n°' + n + '"))'
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.click(msg(12))
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°12")')
+		await page.click('.wm-toolbar .wm-junk-btn:has-text("Indésirable")')
+		await page.waitForSelector('.wm-toast:has-text("Message dans « Courrier indésirable » ; l\'expéditeur est bloqué")')
+		assert(!(await page.$(msg(12))))
+		// several at once
+		await page.click(msg(13) + ' .wm-check')
+		await page.click(msg(14) + ' .wm-check')
+		await page.click('.wm-bulk .wm-junk-btn')
+		await page.waitForSelector('.wm-toast:has-text("2 messages dans « Courrier indésirable » ; leurs expéditeurs sont bloqués")')
+		// from the junk folder: not junk, back to the inbox
+		await page.click('.wm-folder:has-text("Courrier indésirable")')
+		await page.click(msg(12))
+		await page.waitForSelector('.wm-toolbar .wm-junk-btn:has-text("Pas indésirable")')
+		await shot('42-junk')
+		await page.click('.wm-toolbar .wm-junk-btn')
+		await page.waitForSelector('.wm-toast:has-text("Message remis dans la boîte de réception ; l\'expéditeur est considéré comme fiable")')
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector(msg(12))
+	})
+
 	await step('account settings: signature', async () => {
 		await page.click('text=Comptes et signature')
 		await page.fill('.wm-account-card textarea', 'Utilisateur\nSociété A')

@@ -669,6 +669,22 @@ class EwsClient {
 	 * @param string[] $itemIds
 	 * @param bool $permanent true = HardDelete, false = move to "Deleted Items"
 	 */
+	/**
+	 * Junk e-mail, like Outlook: $junk = true blocks the senders and moves the
+	 * messages to « Courrier indésirable »; false trusts them (safe senders)
+	 * and moves the messages back to the inbox.
+	 * @param string[] $itemIds
+	 */
+	public function markAsJunk(array $itemIds, bool $junk): void {
+		if ($itemIds === []) {
+			return;
+		}
+		$this->request(
+			'<m:MarkAsJunk IsJunk="' . ($junk ? 'true' : 'false') . '" MoveItem="true">'
+			. '<m:ItemIds>' . $this->itemIdsXml($itemIds) . '</m:ItemIds></m:MarkAsJunk>'
+		);
+	}
+
 	public function deleteItems(array $itemIds, bool $permanent = false): void {
 		if ($itemIds === []) {
 			return;

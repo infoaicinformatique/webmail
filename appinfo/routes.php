@@ -14,6 +14,7 @@ return [
 		['name' => 'mail#folders', 'url' => '/api/accounts/{id}/folders', 'verb' => 'GET'],
 		['name' => 'mail#messages', 'url' => '/api/accounts/{id}/messages', 'verb' => 'GET'],
 		['name' => 'mail#message', 'url' => '/api/accounts/{id}/message', 'verb' => 'GET'],
+		['name' => 'mail#junk', 'url' => '/api/accounts/{id}/junk', 'verb' => 'POST'],
 		['name' => 'mail#createFolder', 'url' => '/api/accounts/{id}/folders', 'verb' => 'POST'],
 		['name' => 'mail#renameFolder', 'url' => '/api/accounts/{id}/folders/rename', 'verb' => 'POST'],
 		['name' => 'mail#moveFolder', 'url' => '/api/accounts/{id}/folders/move', 'verb' => 'POST'],

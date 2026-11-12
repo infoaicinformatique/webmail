@@ -53,6 +53,8 @@ FOLDERS = [
     ('F-CLIENTS', 'Clients', 'F-INBOX', None),
     ('F-FACTURES', 'Factures', 'F-ROOT', None),
 ]
+# junk e-mail options of the mailbox (MarkAsJunk)
+BLOCKED_SENDERS, SAFE_SENDERS = set(), set()
 ROLE_TO_ID = {f[3]: f[0] for f in FOLDERS if f[3]}
 
 def make_png(w, h, top, bottom):
@@ -459,6 +461,22 @@ def handle(op, el, user):
             m['ck'] = 'CK-%d' % next(COUNTER)
             msgs.append(ok(op, '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/></t:Message></m:Items><m:ConflictResults><t:Count>0</t:Count></m:ConflictResults>' % (m['id'], m['ck'])))
         return wrap(op, msgs)
+
+    if op == 'MarkAsJunk':
+        junk = el.get('IsJunk') == 'true'
+        target = ROLE_TO_ID['junkemail' if junk else 'inbox']
+        out = []
+        for i in el.find('m:ItemIds', NS):
+            m = MESSAGES.get(i.get('Id'))
+            if not m:
+                out.append(err(op, 'ErrorItemNotFound', 'not found'))
+                continue
+            (BLOCKED_SENDERS if junk else SAFE_SENDERS).add(m['sender'][1].lower())
+            (SAFE_SENDERS if junk else BLOCKED_SENDERS).discard(m['sender'][1].lower())
+            if el.get('MoveItem') == 'true':
+                m['folder'] = target
+            out.append(ok(op, '<m:MovedItemId Id="%s" ChangeKey="%s"/>' % (m['id'], m['ck'])))
+        return wrap(op, out)
 
     if op in ('MoveItem', 'DeleteItem'):
         target = folder_id(el.find('m:ToFolderId', NS)[0]) if op == 'MoveItem' else 'F-DELETED'

@@ -29,6 +29,7 @@ et sur les téléphones, et inversement.
 | Recherche | Recherche Exchange (AQS) dans le dossier courant **ou dans tous les dossiers** (le dossier de chaque résultat est indiqué, 200 résultats au plus). Bouton ⏷ : filtres **Non lus**, **Pièces jointes**, **Suivis** et **période** (7 jours, 30 jours, 12 mois), seuls ou avec des mots |
 | Lecture | Le HTML est nettoyé côté serveur et affiché dans une iframe isolée, sans aucun script. Les images intégrées (`cid:`) s'affichent. Les images distantes sont bloquées tant que l'utilisateur ne clique pas sur « Afficher les images » |
 | Actions | Marquer comme lu ou non lu, suivi, déplacer, supprimer (vers « Éléments supprimés », puis suppression définitive) |
+| Courrier indésirable | « ⛔ Indésirable » déplace le message dans « Courrier indésirable » et **bloque l'expéditeur** (ses prochains messages y iront directement) ; dans ce dossier, « ✔ Pas indésirable » le remet dans la boîte de réception et **fait confiance à l'expéditeur**. Comme dans Outlook, les listes d'expéditeurs bloqués et fiables sont celles d'Exchange. Aussi pour plusieurs messages à la fois |
 | Plusieurs messages | Case à cocher devant chaque message (au survol), **Ctrl+clic** pour en ajouter, **Maj+clic** pour une plage, `x` au clavier ; une barre propose alors Tout sélectionner, Lu, Non lu, Suivi, Déplacer vers… et Supprimer, pour tous d'un coup. Échap annule la sélection. **Glisser-déposer** un message (ou la sélection) sur un dossier le déplace |
 | Envoi | Nouveau message, Répondre, Répondre à tous, Transférer (Exchange cite le message d'origine et garde ses pièces jointes), Cc/Cci, importance, signature ; `Ctrl+Entrée` envoie |
 | Éditeur | Texte **mis en forme** : gras, italique, souligné, listes à puces et numérotées, liens, citations ; les adresses web tapées deviennent des liens. Le contenu est nettoyé sur le serveur avant l'envoi (aucun script ne peut passer) |
@@ -154,7 +155,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.23.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.24.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -176,7 +177,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.23 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.24 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -263,7 +264,7 @@ templates/          page principale et page d'administration
 - Images collées dans l'éditeur, signature mise en forme, pièces jointes enregistrées avec le brouillon
 - Affichage par conversation (fil de discussion)
 - Règles de la boîte de réception
-- Catégories Outlook (couleurs), « Ce n'est pas du courrier indésirable », bloquer un expéditeur
+- Catégories Outlook (couleurs)
 - Lien de partage Nextcloud à la place d'une pièce jointe trop lourde
 - Boîtes partagées (contact@…) et boîtes des collègues dont on est délégué
 - Envoi différé, accusé de lecture, impression

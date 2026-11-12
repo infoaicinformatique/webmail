@@ -1065,6 +1065,7 @@
 			move,
 			h('button', { type: 'button', class: 'wm-small wm-danger', onclick: () => deleteMessages(ids(), role === 'deleteditems') },
 				role === 'deleteditems' ? 'Supprimer définitivement' : '🗑 Supprimer'),
+			junkButton(null, role, ids),
 			h('button', { type: 'button', class: 'wm-small wm-icon-btn', 'aria-label': 'Annuler la sélection', title: 'Annuler la sélection (Échap)', onclick: clearChecked }, '✕')))
 	}
 
@@ -1433,6 +1434,7 @@
 			h('button', { class: m.flagged ? 'wm-flag-btn on' : 'wm-flag-btn', onclick: () => toggleFlag(m) }, m.flagged ? '⚑ Suivi ✓' : '⚑ Suivi'),
 			moveSelect,
 			h('button', { class: 'wm-danger', onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? 'Supprimer définitivement' : '🗑 Supprimer'),
+			junkButton([m.id], role),
 		)
 		detailEl.appendChild(toolbar)
 
@@ -1611,6 +1613,38 @@
 			renderList(false)
 			saveListCache()
 			if (before.selectedId && ids.includes(before.selectedId)) openMessage(before.selectedId)
+		}
+	}
+
+	/**
+	 * « Courrier indésirable » (blocks the sender), or in that folder « Pas
+	 * indésirable » (trusts the sender, back to the inbox), like Outlook.
+	 */
+	function junkButton(ids, role, getIds) {
+		if (role === 'sentitems' || role === 'drafts' || role === 'deleteditems') return null
+		const notJunk = role === 'junkemail'
+		return h('button', {
+			type: 'button',
+			class: 'wm-junk-btn' + (getIds ? ' wm-small' : ''),
+			title: notJunk ? 'Remettre dans la boîte de réception et faire confiance à l\'expéditeur' : 'Déplacer dans « Courrier indésirable » et bloquer l\'expéditeur',
+			onclick: () => markJunk(getIds ? getIds() : ids, !notJunk),
+		}, notJunk ? '✔ Pas indésirable' : '⛔ Indésirable')
+	}
+
+	async function markJunk(ids, junk) {
+		ids.forEach((id) => state.checked.delete(id))
+		const undo = removeFromList(ids)
+		try {
+			await api('/accounts/' + state.accountId + '/junk', { method: 'POST', body: { itemIds: ids, junk } })
+			const n = ids.length > 1 ? ids.length + ' messages' : 'Message'
+			toast(junk
+				? n + ' dans « Courrier indésirable » ; ' + (ids.length > 1 ? 'leurs expéditeurs sont bloqués' : 'l\'expéditeur est bloqué')
+				: n + ' remis dans la boîte de réception ; ' + (ids.length > 1 ? 'leurs expéditeurs sont' : 'l\'expéditeur est') + ' considéré' + (ids.length > 1 ? 's' : '') + ' comme fiable' + (ids.length > 1 ? 's' : ''))
+			state.folders.filter((f) => f.role === (junk ? 'junkemail' : 'inbox')).forEach((f) => listCache.delete(state.accountId + '|' + f.id))
+			loadFolders()
+		} catch (e) {
+			undo()
+			toast(e.message, true)
 		}
 	}
 

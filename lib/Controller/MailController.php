@@ -236,6 +236,17 @@ class MailController extends Controller {
 	/**
 	 * @param string[] $itemIds
 	 */
+	/**
+	 * @param bool $junk true: junk (sender blocked), false: not junk (sender trusted)
+	 */
+	#[NoAdminRequired]
+	public function junk(int $id, array $itemIds, bool $junk): Response {
+		return $this->handle(function () use ($id, $itemIds, $junk) {
+			$this->client($id)->markAsJunk($itemIds, $junk);
+			return ['status' => 'ok'];
+		});
+	}
+
 	#[NoAdminRequired]
 	public function delete(int $id, array $itemIds, bool $permanent = false): Response {
 		return $this->handle(function () use ($id, $itemIds, $permanent) {

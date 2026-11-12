@@ -230,6 +230,15 @@ class EwsClientTest extends EwsTestCase {
 		$this->client()->renameFolder('inbox', 'x');
 	}
 
+	public function testMarkAsJunkAndNotJunk(): void {
+		$this->queue(self::ok('MarkAsJunk', '<m:MovedItemId Id="J1"/>'));
+		$this->client()->markAsJunk(['M1', 'M2'], true);
+		$this->assertStringContainsString('<m:MarkAsJunk IsJunk="true" MoveItem="true"><m:ItemIds><t:ItemId Id="M1"/><t:ItemId Id="M2"/></m:ItemIds></m:MarkAsJunk>', $this->lastRequest());
+		$this->queue(self::ok('MarkAsJunk', '<m:MovedItemId Id="I1"/>'));
+		$this->client()->markAsJunk(['J1'], false);
+		$this->assertStringContainsString('<m:MarkAsJunk IsJunk="false" MoveItem="true">', $this->lastRequest());
+	}
+
 	public function testFindItemsWithSearchAndPaging(): void {
 		$this->queue(self::ok('FindItem', '<m:RootFolder IndexedPagingOffset="50" TotalItemsInView="120" IncludesLastItemInRange="false"><t:Items>'
 			. '<t:Message><t:ItemId Id="M1" ChangeKey="CK1"/><t:Subject>Facture &amp; devis</t:Subject><t:DateTimeReceived>2026-11-10T08:15:00Z</t:DateTimeReceived>'
