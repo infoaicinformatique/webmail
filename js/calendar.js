@@ -883,17 +883,23 @@
 		const readOnly = !!summary.readOnly
 		const shared = !!summary.shared
 		const canEdit = ev.isOrganizer && !readOnly
-		if (ev.isMeeting && !ev.isOrganizer && !ev.isCancelled && !shared) {
+		// in a colleague's calendar shared with edit rights, answer on their behalf
+		const principal = shared ? calendar.name : null
+		if (ev.isMeeting && !ev.isOrganizer && !ev.isCancelled && (!shared || !readOnly)) {
 			const answer = async (response, label) => {
+				if (principal && !window.confirm('Répondre « ' + label + ' » au nom de ' + principal + ' ? L\'organisateur recevra la réponse de votre part, au nom de ' + principal + '.')) return
 				try {
-					await core.api('/accounts/' + core.accountId + '/calendar/respond', { method: 'POST', body: { eventId: ev.id, response } })
-					core.toast('Réponse envoyée : ' + label)
+					await core.api('/accounts/' + core.accountId + '/calendar/respond', {
+						method: 'POST',
+						body: { eventId: ev.id, response, calendar: summary.calendar || 'calendar' },
+					})
+					core.toast(principal ? 'Réponse envoyée au nom de ' + principal + ' : ' + label : 'Réponse envoyée : ' + label)
 					close()
 					load()
 				} catch (e) { core.toast(e.message, true) }
 			}
 			actions.append(
-				h('span', { class: 'wm-muted' }, 'Votre réponse : ' + (RESPONSES[ev.response] || 'aucune')),
+				h('span', { class: 'wm-muted' }, (principal ? 'Réponse de ' + principal + ' : ' : 'Votre réponse : ') + (RESPONSES[ev.response] || 'aucune')),
 				h('button', { class: 'primary', onclick: () => answer('accept', 'accepté') }, '✓ Accepter'),
 				h('button', { onclick: () => answer('tentative', 'provisoire') }, '? Provisoire'),
 				h('button', { class: 'wm-danger', onclick: () => answer('decline', 'refusé') }, '✗ Refuser'))

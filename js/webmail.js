@@ -588,24 +588,34 @@
 
 	const RESPONSE_LABELS = { Accept: 'Vous avez accepté', Tentative: 'Vous avez répondu « provisoire »', Decline: 'Vous avez refusé', Organizer: 'Vous êtes l\'organisateur' }
 
+	const DELEGATE_RESPONSE = { Accept: 'a accepté', Tentative: 'a répondu « provisoire »', Decline: 'a refusé' }
+
 	function meetingBanner(m) {
 		const info = m.meeting
-		const box = h('div', { class: 'wm-meeting' + (info.cancelled ? ' cancelled' : '') },
-			h('div', { class: 'wm-meeting-title' }, info.cancelled ? '❌ Réunion annulée' : '📅 Invitation à une réunion'),
+		// copy of a colleague's invitation received as their delegate
+		const principal = info.onBehalfOf ? (info.onBehalfOf.name || info.onBehalfOf.email) : null
+		const responseLine = principal
+			? (DELEGATE_RESPONSE[info.response] ? principal + ' ' + DELEGATE_RESPONSE[info.response] : null)
+			: RESPONSE_LABELS[info.response]
+		const box = h('div', { class: 'wm-meeting' + (info.cancelled ? ' cancelled' : '') + (principal ? ' delegate' : '') },
+			h('div', { class: 'wm-meeting-title' }, info.cancelled ? '❌ Réunion annulée'
+				: (principal ? '📅 Invitation reçue pour ' + principal + ' (vous êtes son délégué)' : '📅 Invitation à une réunion')),
 			h('div', {}, (() => { const r = formatRange(info.start, info.end, info.allDay); return r.charAt(0).toUpperCase() + r.slice(1) })()),
 			info.location ? h('div', { class: 'wm-muted' }, '📍 ' + info.location) : null,
-			RESPONSE_LABELS[info.response] ? h('div', { class: 'wm-muted' }, RESPONSE_LABELS[info.response]) : null)
+			responseLine ? h('div', { class: 'wm-muted' }, responseLine) : null)
 		if (!info.cancelled) {
 			const answer = async (response, label) => {
+				if (principal && !window.confirm('Répondre « ' + label + ' » au nom de ' + principal + ' ? L\'organisateur recevra la réponse de votre part, au nom de ' + principal + '.')) return
 				try {
 					await api('/accounts/' + state.accountId + '/calendar/respond', { method: 'POST', body: { eventId: m.id, response } })
-					toast('Réponse envoyée : ' + label)
+					toast(principal ? 'Réponse envoyée au nom de ' + principal + ' : ' + label : 'Réponse envoyée : ' + label)
 					// Exchange files the processed invitation in "Deleted Items"
 					removeFromList([m.id])
 					loadFolders()
 				} catch (e) { toast(e.message, true) }
 			}
 			box.appendChild(h('div', { class: 'wm-meeting-actions' },
+				principal ? h('span', { class: 'wm-muted' }, 'Répondre au nom de ' + principal + ' :') : null,
 				h('button', { class: 'primary', onclick: () => answer('accept', 'accepté') }, '✓ Accepter'),
 				h('button', { onclick: () => answer('tentative', 'provisoire') }, '? Provisoire'),
 				h('button', { class: 'wm-danger', onclick: () => answer('decline', 'refusé') }, '✗ Refuser')))

@@ -198,10 +198,19 @@ class CalendarController extends Controller {
 
 	/**
 	 * @param string $eventId calendar item or meeting request (e-mail) id
+	 * @param string $calendar calendar key of the item; "shared:<email>" answers on behalf of that person
 	 */
 	#[NoAdminRequired]
-	public function respond(int $id, string $eventId, string $response, string $message = ''): Response {
-		return $this->handle(function () use ($id, $eventId, $response, $message) {
+	public function respond(int $id, string $eventId, string $response, string $message = '', string $calendar = ''): Response {
+		return $this->handle(function () use ($id, $eventId, $response, $message, $calendar) {
+			// answering in a colleague's calendar = answering on their behalf:
+			// only with edit rights on it (delegate / editor in Outlook)
+			if (str_starts_with($calendar, 'shared:')) {
+				$entry = $this->shared->find(SharedFolderService::CALENDARS, (string)$this->userId, $id, substr($calendar, 7));
+				if ($entry === null || !$entry['canEdit']) {
+					throw new MailException('Vous ne pouvez pas répondre au nom de cette personne : son agenda vous est partagé en lecture seule');
+				}
+			}
 			$this->calendar($id, 'UTC')->respond($eventId, $response, $message);
 			return ['status' => 'ok'];
 		});
