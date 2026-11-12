@@ -1,0 +1,10 @@
+#webmail-admin .webmail-admin-table { margin: 12px 0; border-collapse: collapse; }
+#webmail-admin .webmail-admin-table th { text-align: start; padding: 4px 8px 4px 0; color: var(--color-text-maxcontrast); font-weight: normal; }
+#webmail-admin .webmail-admin-table td { padding: 2px 8px 2px 0; }
+#webmail-admin .wm-domain { width: 200px; }
+#webmail-admin .wm-label { width: 180px; }
+#webmail-admin .wm-url { width: 420px; max-width: 60vw; }
+#webmail-admin .wm-remove { width: 34px; min-height: 34px; background-color: transparent; border: none; }
+#webmail-admin .msg { margin-inline-start: 12px; }
+#webmail-admin .msg.success { color: var(--color-success-text, var(--color-success)); }
+#webmail-admin .msg.error { color: var(--color-error-text, var(--color-error)); }

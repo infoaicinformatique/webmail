@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+	<id>webmail</id>
+	<name>Webmail</name>
+	<summary>Webmail Exchange (EWS) pour OVH Hosted Exchange, un serveur par domaine</summary>
+	<description><![CDATA[Webmail intégré à Nextcloud pour les boîtes OVH Hosted Exchange, via Exchange Web Services (EWS).
+
+* L'administrateur associe chaque domaine e-mail à son serveur OVH (ex. https://ex3.mail.ovh.net/EWS/Exchange.asmx).
+* L'utilisateur saisit seulement son adresse et son mot de passe : le bon serveur est choisi automatiquement.
+* Lecture, recherche, dossiers, envoi, réponse, transfert, pièces jointes (depuis/vers Fichiers).]]></description>
+	<version>1.0.0</version>
+	<licence>agpl</licence>
+	<author>AIC Informatique</author>
+	<namespace>Webmail</namespace>
+	<category>social</category>
+	<category>office</category>
+	<bugs>https://github.com/infoaicinformatique/webmail/issues</bugs>
+	<dependencies>
+		<php min-version="8.1"/>
+		<nextcloud min-version="28" max-version="32"/>
+	</dependencies>
+	<settings>
+		<admin>OCA\Webmail\Settings\Admin</admin>
+		<admin-section>OCA\Webmail\Settings\AdminSection</admin-section>
+	</settings>
+	<navigations>
+		<navigation>
+			<name>Webmail</name>
+			<route>webmail.page.index</route>
+			<icon>app.svg</icon>
+		</navigation>
+	</navigations>
+</info>

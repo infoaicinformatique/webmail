@@ -1,0 +1,5 @@
+/vendor/
+/.phpunit.cache/
+/build/
+node_modules/
+__pycache__/
