@@ -10,7 +10,7 @@ use OCA\Webmail\Ews\EwsContacts;
 use OCA\Webmail\Ews\TimeZones;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
-use OCA\Webmail\Service\SharedCalendarService;
+use OCA\Webmail\Service\SharedFolderService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Response;
@@ -27,7 +27,7 @@ class CalendarController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private AccountService $accounts,
-		private SharedCalendarService $shared,
+		private SharedFolderService $shared,
 		private LoggerInterface $logger,
 		private ?string $userId,
 	) {
@@ -66,7 +66,7 @@ class CalendarController extends Controller {
 				'kind' => 'shared',
 				'canEdit' => $c['canEdit'],
 				'mode' => $c['mode'],
-			], $this->shared->list((string)$this->userId, $id));
+			], $this->shared->list(SharedFolderService::CALENDARS, (string)$this->userId, $id));
 			return ['calendars' => array_merge($own, $shared)];
 		});
 	}
@@ -102,7 +102,7 @@ class CalendarController extends Controller {
 				// the address is enough
 			}
 			$entry = ['email' => $email, 'name' => $name, 'mode' => $access['mode'], 'canEdit' => $access['canEdit']];
-			$this->shared->save((string)$this->userId, $id, $entry);
+			$this->shared->save(SharedFolderService::CALENDARS, (string)$this->userId, $id, $entry);
 			return ['key' => 'shared:' . $email, 'kind' => 'shared'] + $entry;
 		});
 	}
@@ -111,7 +111,7 @@ class CalendarController extends Controller {
 	public function removeShared(int $id, string $email): Response {
 		return $this->handle(function () use ($id, $email) {
 			$this->accounts->find((string)$this->userId, $id); // ownership check
-			$this->shared->remove((string)$this->userId, $id, $email);
+			$this->shared->remove(SharedFolderService::CALENDARS, (string)$this->userId, $id, $email);
 			return ['status' => 'ok'];
 		});
 	}
@@ -124,7 +124,7 @@ class CalendarController extends Controller {
 		return $this->handle(function () use ($id, $start, $end, $tz, $calendar) {
 			$cal = $this->calendar($id, $tz);
 			if (str_starts_with($calendar, 'shared:')) {
-				$entry = $this->shared->find((string)$this->userId, $id, substr($calendar, 7));
+				$entry = $this->shared->find(SharedFolderService::CALENDARS, (string)$this->userId, $id, substr($calendar, 7));
 				if ($entry === null) {
 					throw new MailException('Agenda partagé inconnu');
 				}
@@ -148,7 +148,7 @@ class CalendarController extends Controller {
 	public function create(int $id, array $event, string $tz = 'UTC', string $calendar = 'calendar'): Response {
 		return $this->handle(function () use ($id, $event, $tz, $calendar) {
 			if (str_starts_with($calendar, 'shared:')) {
-				$entry = $this->shared->find((string)$this->userId, $id, substr($calendar, 7));
+				$entry = $this->shared->find(SharedFolderService::CALENDARS, (string)$this->userId, $id, substr($calendar, 7));
 				if ($entry === null || !$entry['canEdit']) {
 					throw new MailException('Vous ne pouvez pas ajouter d\'événement dans cet agenda');
 				}

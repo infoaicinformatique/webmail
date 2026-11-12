@@ -111,6 +111,78 @@ class EwsContactsTest extends EwsTestCase {
 		$this->assertSame([], $this->contacts()->resolve('zzz'));
 	}
 
+	public function testListOwnBooksKeepsOnlyPlainContactFolders(): void {
+		$this->queue('<m:GetFolderResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>'
+			. '<m:GetFolderResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Folders><t:ContactsFolder><t:FolderId Id="CT-DEF"/></t:ContactsFolder></m:Folders></m:GetFolderResponseMessage>'
+			. '</m:ResponseMessages></m:GetFolderResponse>');
+		$this->queue(self::ok('FindFolder', '<m:RootFolder TotalItemsInView="5" IncludesLastItemInRange="true"><t:Folders>'
+			. '<t:ContactsFolder><t:FolderId Id="CT-DEF"/><t:FolderClass>IPF.Contact</t:FolderClass><t:DisplayName>Contacts</t:DisplayName></t:ContactsFolder>'
+			. '<t:ContactsFolder><t:FolderId Id="CT-FOUR"/><t:FolderClass>IPF.Contact</t:FolderClass><t:DisplayName>Fournisseurs</t:DisplayName></t:ContactsFolder>'
+			. '<t:ContactsFolder><t:FolderId Id="CT-RC"/><t:FolderClass>IPF.Contact.RecipientCache</t:FolderClass><t:DisplayName>Recipient Cache</t:DisplayName></t:ContactsFolder>'
+			. '<t:ContactsFolder><t:FolderId Id="CT-GAL"/><t:FolderClass>IPF.Contact.GalContacts</t:FolderClass><t:DisplayName>GAL Contacts</t:DisplayName></t:ContactsFolder>'
+			. '<t:Folder><t:FolderId Id="INBOX"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Inbox</t:DisplayName></t:Folder>'
+			. '</t:Folders></m:RootFolder>'));
+		$books = $this->contacts()->listOwnBooks();
+		$this->assertSame(['contacts', 'CT-FOUR'], array_column($books, 'key'));
+		$this->assertSame(['Contacts', 'Fournisseurs'], array_column($books, 'name'));
+	}
+
+	public function testSharedBookUsesTheOtherMailbox(): void {
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="0" IncludesLastItemInRange="true"><t:Items/></m:RootFolder>'));
+		$this->contacts()->listContacts(0, 100, null, 'shared:marie@x.fr');
+		$this->assertStringContainsString('<m:ParentFolderIds><t:DistinguishedFolderId Id="contacts"><t:Mailbox><t:EmailAddress>marie@x.fr</t:EmailAddress></t:Mailbox></t:DistinguishedFolderId></m:ParentFolderIds>', $this->lastRequest());
+	}
+
+	public function testCreateInAnotherBook(): void {
+		$this->queue(self::ok('CreateItem', '<m:Items><t:Contact><t:ItemId Id="N"/></t:Contact></m:Items>'));
+		$this->contacts()->createContact(['displayName' => 'Plombier'], 'CT-FOUR');
+		$this->assertStringContainsString('<m:SavedItemFolderId><t:FolderId Id="CT-FOUR"/></m:SavedItemFolderId>', $this->lastRequest());
+	}
+
+	public function testProbeSharedBook(): void {
+		$this->queue(self::ok('GetFolder', '<m:Folders><t:ContactsFolder><t:FolderId Id="X"/><t:EffectiveRights><t:CreateAssociated>false</t:CreateAssociated>'
+			. '<t:CreateContents>false</t:CreateContents><t:CreateHierarchy>false</t:CreateHierarchy><t:Delete>false</t:Delete><t:Modify>false</t:Modify><t:Read>true</t:Read>'
+			. '</t:EffectiveRights></t:ContactsFolder></m:Folders>'));
+		$this->assertSame(['canEdit' => false], $this->contacts()->probeSharedBook('martine@x.fr'));
+	}
+
+	public function testProbeSharedBookNotShared(): void {
+		$this->queue('<m:GetFolderResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"><m:ResponseMessages>'
+			. '<m:GetFolderResponseMessage ResponseClass="Error"><m:MessageText>Access is denied.</m:MessageText><m:ResponseCode>ErrorAccessDenied</m:ResponseCode></m:GetFolderResponseMessage>'
+			. '</m:ResponseMessages></m:GetFolderResponse>');
+		$this->expectException(MailException::class);
+		$this->expectExceptionMessage('ne partage pas ses contacts');
+		$this->contacts()->probeSharedBook('paul@x.fr');
+	}
+
+	public function testSearchDirectoryReturnsFullCards(): void {
+		$this->queue('<m:ResolveNamesResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>'
+			. '<m:ResolveNamesResponseMessage ResponseClass="Warning"><m:ResponseCode>ErrorNameResolutionMultipleResults</m:ResponseCode><m:ResolutionSet TotalItemsInView="2" IncludesLastItemInRange="true">'
+			. '<t:Resolution><t:Mailbox><t:Name>Paul Durand</t:Name><t:EmailAddress>paul@x.fr</t:EmailAddress><t:RoutingType>SMTP</t:RoutingType><t:MailboxType>Mailbox</t:MailboxType></t:Mailbox>'
+			. '<t:Contact><t:DisplayName>Paul Durand</t:DisplayName><t:GivenName>Paul</t:GivenName><t:CompanyName>Société A</t:CompanyName>'
+			. '<t:EmailAddresses><t:Entry Key="EmailAddress1">SMTP:paul@x.fr</t:Entry><t:Entry Key="EmailAddress2">/O=EXCH/CN=paul</t:Entry></t:EmailAddresses>'
+			. '<t:PhoneNumbers><t:Entry Key="BusinessPhone">04 93 00 00 01</t:Entry><t:Entry Key="MobilePhone">06 00 00 00 01</t:Entry></t:PhoneNumbers>'
+			. '<t:Department>Comptabilité</t:Department><t:JobTitle>Comptable</t:JobTitle><t:OfficeLocation>Nice</t:OfficeLocation><t:Surname>Durand</t:Surname></t:Contact></t:Resolution>'
+			. '<t:Resolution><t:Mailbox><t:Name>Équipe Ventes</t:Name><t:EmailAddress>ventes@x.fr</t:EmailAddress><t:RoutingType>SMTP</t:RoutingType><t:MailboxType>PublicDL</t:MailboxType></t:Mailbox></t:Resolution>'
+			. '</m:ResolutionSet></m:ResolveNamesResponseMessage></m:ResponseMessages></m:ResolveNamesResponse>');
+		$cards = $this->contacts()->searchDirectory('pa');
+		$this->assertStringContainsString('ReturnFullContactData="true" SearchScope="ActiveDirectory"', $this->lastRequest());
+		$this->assertCount(2, $cards);
+		$paul = $cards[0];
+		$this->assertSame('directory:paul@x.fr', $paul['id']);
+		$this->assertSame(['paul@x.fr'], $paul['emails'], 'X.500 addresses and the smtp: prefix are dropped');
+		$this->assertSame('Comptable', $paul['jobTitle']);
+		$this->assertSame('Comptabilité', $paul['department']);
+		$this->assertSame('Nice', $paul['office']);
+		$this->assertSame('06 00 00 00 01', $paul['phone']);
+		$this->assertTrue($cards[1]['isGroup']);
+	}
+
+	public function testSearchDirectoryNeedsTwoCharacters(): void {
+		$this->assertSame([], $this->contacts()->searchDirectory('a'));
+		$this->assertSame([], $this->requests);
+	}
+
 	public function testResolveIgnoresShortQueries(): void {
 		$this->assertSame([], $this->contacts()->resolve('a'));
 		$this->assertSame([], $this->requests);

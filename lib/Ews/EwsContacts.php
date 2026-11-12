@@ -27,10 +27,135 @@ class EwsContacts {
 	) {
 	}
 
+	// ------------------------------------------------------------------
+	// Address books: the mailbox's contact folders, other people's contacts
+	// ------------------------------------------------------------------
+
+	/**
+	 * Folder reference for an address book key:
+	 *  - "contacts"        the default contacts folder of the mailbox
+	 *  - "shared:<email>"  the default contacts folder of another mailbox
+	 *  - anything else     a FolderId of the mailbox (another contact folder)
+	 */
+	public function folderXml(string $book): string {
+		if ($book === '' || $book === 'contacts') {
+			return '<t:DistinguishedFolderId Id="contacts"/>';
+		}
+		if (str_starts_with($book, 'shared:')) {
+			$email = substr($book, 7);
+			if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+				throw new MailException('Carnet partagé invalide');
+			}
+			return '<t:DistinguishedFolderId Id="contacts"><t:Mailbox><t:EmailAddress>' . $this->client->esc($email)
+				. '</t:EmailAddress></t:Mailbox></t:DistinguishedFolderId>';
+		}
+		return '<t:FolderId Id="' . $this->client->esc($book) . '"/>';
+	}
+
+	/**
+	 * Contact folders of the mailbox, the default one first. Only plain
+	 * "IPF.Contact" folders: Exchange's internal ones (recipient cache,
+	 * GAL contacts, Skype...) use derived classes and are skipped.
+	 * @return array<int, array{key: string, name: string, kind: string, canEdit: bool}>
+	 */
+	public function listOwnBooks(): array {
+		$defaultId = $this->client->distinguishedFolderIds(['contacts'])['contacts'] ?? null;
+		$xp = $this->client->request(
+			'<m:FindFolder Traversal="Deep">'
+			. '<m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:FieldURI FieldURI="folder:DisplayName"/><t:FieldURI FieldURI="folder:FolderClass"/>'
+			. '</t:AdditionalProperties></m:FolderShape>'
+			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="msgfolderroot"/></m:ParentFolderIds>'
+			. '</m:FindFolder>'
+		);
+		$default = ['key' => 'contacts', 'name' => 'Contacts', 'kind' => 'own', 'canEdit' => true];
+		$others = [];
+		foreach ($xp->query('//t:Folders/*') as $node) {
+			if ($this->client->text($xp, 't:FolderClass', $node) !== 'IPF.Contact') {
+				continue;
+			}
+			$id = (string)$this->client->attr($xp, 't:FolderId', 'Id', $node);
+			$name = (string)$this->client->text($xp, 't:DisplayName', $node);
+			if ($id === $defaultId) {
+				$default['name'] = $name !== '' ? $name : $default['name'];
+				continue;
+			}
+			$others[] = ['key' => $id, 'name' => $name, 'kind' => 'own', 'canEdit' => true];
+		}
+		usort($others, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+		return array_merge([$default], $others);
+	}
+
+	/**
+	 * Access to another person's contacts folder (shared in Outlook).
+	 * @return array{canEdit: bool}
+	 * @throws MailException when the mailbox does not exist or does not share its contacts
+	 */
+	public function probeSharedBook(string $email): array {
+		$xp = $this->client->request(
+			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:FieldURI FieldURI="folder:EffectiveRights"/></t:AdditionalProperties></m:FolderShape>'
+			. '<m:FolderIds>' . $this->folderXml('shared:' . $email) . '</m:FolderIds></m:GetFolder>',
+			false
+		);
+		$msg = $xp->query('//m:ResponseMessages/*')->item(0);
+		if ($msg instanceof \DOMElement && $msg->getAttribute('ResponseClass') !== 'Error'
+			&& $this->client->text($xp, './/t:EffectiveRights/t:Read', $msg) !== 'false') {
+			return ['canEdit' => $this->client->text($xp, './/t:EffectiveRights/t:CreateContents', $msg) === 'true'];
+		}
+		$code = $msg !== null ? $this->client->text($xp, 'm:ResponseCode', $msg) : null;
+		if ($code === 'ErrorNonExistentMailbox' || $code === 'ErrorInvalidSmtpAddress') {
+			throw new MailException('Aucune boîte Exchange ne correspond à ' . $email);
+		}
+		throw new MailException($email . ' ne partage pas ses contacts avec vous (à faire dans Outlook : clic droit sur « Contacts » → Propriétés → Autorisations)');
+	}
+
+	/**
+	 * Search the company directory (Global Address List). Exchange only allows
+	 * searching it, not listing it entirely, and returns at most 100 entries.
+	 * @return array<int, array<string, mixed>> full contact cards
+	 */
+	public function searchDirectory(string $query): array {
+		$query = trim($query);
+		if (mb_strlen($query) < 2) {
+			return [];
+		}
+		$xp = $this->client->request(
+			'<m:ResolveNames ReturnFullContactData="true" SearchScope="ActiveDirectory">'
+			. '<m:UnresolvedEntry>' . $this->client->esc($query) . '</m:UnresolvedEntry></m:ResolveNames>',
+			false
+		);
+		$out = [];
+		$seen = [];
+		foreach ($xp->query('//m:ResolutionSet/t:Resolution') as $i => $res) {
+			$mb = $xp->query('t:Mailbox', $res)->item(0);
+			$email = $mb !== null ? (string)$this->client->text($xp, 't:EmailAddress', $mb) : '';
+			$routing = $mb !== null ? (string)$this->client->text($xp, 't:RoutingType', $mb) : '';
+			if ($email === '' || ($routing !== '' && $routing !== 'SMTP') || isset($seen[strtolower($email)])) {
+				continue;
+			}
+			$seen[strtolower($email)] = true;
+			$ct = $xp->query('t:Contact', $res)->item(0);
+			$card = $ct !== null ? $this->parseContact($xp, $ct) : ['emails' => []];
+			$card['id'] = 'directory:' . strtolower($email);
+			$card['displayName'] = ($card['displayName'] ?? '') !== '' ? $card['displayName'] : (string)$this->client->text($xp, 't:Name', $mb);
+			if (!in_array($email, $card['emails'], true)) {
+				array_unshift($card['emails'], $email);
+			}
+			$card['isGroup'] = in_array((string)$this->client->text($xp, 't:MailboxType', $mb), ['PublicDL', 'PrivateDL'], true);
+			$card['email'] = $email;
+			$card['phone'] = ($card['mobilePhone'] ?? '') ?: ($card['businessPhone'] ?? '');
+			$card['company'] = $card['company'] ?? '';
+			$out[] = $card;
+		}
+		usort($out, fn ($a, $b) => strcasecmp($a['displayName'], $b['displayName']));
+		return $out;
+	}
+
 	/**
 	 * @return array{items: array<int, array<string, mixed>>, total: int, hasMore: bool}
 	 */
-	public function listContacts(int $offset = 0, int $limit = 100, ?string $query = null): array {
+	public function listContacts(int $offset = 0, int $limit = 100, ?string $query = null, string $book = 'contacts'): array {
 		$props = '<t:FieldURI FieldURI="contacts:DisplayName"/><t:FieldURI FieldURI="contacts:CompanyName"/>'
 			. '<t:FieldURI FieldURI="contacts:JobTitle"/>'
 			. '<t:IndexedFieldURI FieldURI="contacts:EmailAddress" FieldIndex="EmailAddress1"/>'
@@ -43,7 +168,7 @@ class EwsContacts {
 			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $props . '</t:AdditionalProperties></m:ItemShape>'
 			. '<m:IndexedPageItemView MaxEntriesReturned="' . max(1, $limit) . '" Offset="' . max(0, $offset) . '" BasePoint="Beginning"/>'
 			. '<m:SortOrder><t:FieldOrder Order="Ascending"><t:FieldURI FieldURI="contacts:DisplayName"/></t:FieldOrder></m:SortOrder>'
-			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="contacts"/></m:ParentFolderIds>'
+			. '<m:ParentFolderIds>' . $this->folderXml($book) . '</m:ParentFolderIds>'
 			. $queryXml
 			. '</m:FindItem>'
 		);
@@ -87,10 +212,18 @@ class EwsContacts {
 		if ($node === null) {
 			throw new MailException('Contact introuvable');
 		}
+		$contact = $this->parseContact($xp, $node);
+		$contact['id'] = $this->client->attr($xp, 't:ItemId', 'Id', $node);
+		$contact['isGroup'] = $node->localName === 'DistributionList';
+		return $contact;
+	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	private function parseContact(\DOMXPath $xp, \DOMNode $node): array {
 		$c = $this->client;
 		$contact = [
-			'id' => $c->attr($xp, 't:ItemId', 'Id', $node),
-			'isGroup' => $node->localName === 'DistributionList',
 			'notes' => (string)$c->text($xp, 't:Body', $node),
 			'emails' => [],
 		];
@@ -99,8 +232,8 @@ class EwsContacts {
 		}
 		foreach (['EmailAddress1', 'EmailAddress2', 'EmailAddress3'] as $k) {
 			$v = $c->text($xp, 't:EmailAddresses/t:Entry[@Key="' . $k . '"]', $node);
-			if ($v !== null && $v !== '') {
-				$contact['emails'][] = $v;
+			if ($v !== null && $v !== '' && !str_starts_with($v, '/') && !in_array(preg_replace('/^smtp:/i', '', $v), $contact['emails'], true)) {
+				$contact['emails'][] = preg_replace('/^smtp:/i', '', $v);
 			}
 		}
 		foreach (self::PHONES as $key => $k) {
@@ -109,13 +242,14 @@ class EwsContacts {
 		foreach (self::ADDRESS as $key => $el) {
 			$contact[$key] = (string)$c->text($xp, 't:PhysicalAddresses/t:Entry[@Key="Business"]/t:' . $el, $node);
 		}
+		$contact['office'] = (string)$c->text($xp, 't:OfficeLocation', $node);
 		return $contact;
 	}
 
 	/**
 	 * @param array<string, mixed> $data
 	 */
-	public function createContact(array $data): string {
+	public function createContact(array $data, string $book = 'contacts'): string {
 		$d = self::normalize($data);
 		$c = $this->client;
 		$el = fn (string $name, string $value) => $value !== '' ? '<t:' . $name . '>' . $c->esc($value) . '</t:' . $name . '>' : '';
@@ -151,7 +285,7 @@ class EwsContacts {
 			. '</t:Contact>';
 
 		$xp = $this->client->request(
-			'<m:CreateItem><m:SavedItemFolderId><t:DistinguishedFolderId Id="contacts"/></m:SavedItemFolderId>'
+			'<m:CreateItem><m:SavedItemFolderId>' . $this->folderXml($book) . '</m:SavedItemFolderId>'
 			. '<m:Items>' . $item . '</m:Items></m:CreateItem>'
 		);
 		return (string)$this->client->attr($xp, '//m:Items/t:Contact/t:ItemId', 'Id');

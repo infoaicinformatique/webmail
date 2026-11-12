@@ -577,3 +577,10 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 	font-style: italic;
 	background-image: repeating-linear-gradient(135deg, transparent, transparent 5px, color-mix(in srgb, var(--ev-color, var(--color-primary-element)) 22%, transparent) 5px, color-mix(in srgb, var(--ev-color, var(--color-primary-element)) 22%, transparent) 10px) !important;
 }
+
+/* ---------- address books ---------- */
+.wm-book-link { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; color: var(--color-main-text); text-decoration: none; padding: 4px 6px; border-radius: var(--border-radius-element, 8px); }
+.wm-book-link:hover { background: var(--color-background-hover); }
+.wm-book-row.active .wm-book-link { background: var(--color-primary-element-light); font-weight: bold; }
+.wm-book-icon { width: 18px; text-align: center; }
+.wm-directory { margin-top: 10px !important; border-top: 1px solid var(--color-border); padding-top: 6px !important; }
