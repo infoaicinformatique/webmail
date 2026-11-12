@@ -61,6 +61,7 @@ return [
 
 		['name' => 'oof#show', 'url' => '/api/accounts/{id}/oof', 'verb' => 'GET'],
 		['name' => 'oof#update', 'url' => '/api/accounts/{id}/oof', 'verb' => 'POST'],
+		['name' => 'share#link', 'url' => '/api/share-link', 'verb' => 'POST'],
 		['name' => 'category#index', 'url' => '/api/accounts/{id}/categories', 'verb' => 'GET'],
 		['name' => 'category#create', 'url' => '/api/accounts/{id}/categories', 'verb' => 'POST'],
 		['name' => 'category#assign', 'url' => '/api/accounts/{id}/categories/assign', 'verb' => 'POST'],

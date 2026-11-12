@@ -2153,11 +2153,102 @@
 			if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit() }
 		})
 
+		// ---- Nextcloud share links instead of heavy attachments
+		// where the user was typing, to put the links there
+		let lastRange = null
+		const trackCaret = () => {
+			if (!body.isConnected) { document.removeEventListener('selectionchange', trackCaret); return }
+			const sel = window.getSelection()
+			if (sel && sel.rangeCount && body.contains(sel.getRangeAt(0).commonAncestorContainer)) lastRange = sel.getRangeAt(0).cloneRange()
+		}
+		document.addEventListener('selectionchange', trackCaret)
+		const insertLinks = (links) => {
+			const html = links.map((l) => '<div>' + (l.isFolder ? '📁 ' : '📎 ') + '<a href="' + escapeHtml(l.url) + '">' + escapeHtml(l.name) + '</a>'
+				+ (l.isFolder ? '' : ' (' + formatSize(l.size) + ')')
+				+ (l.expires ? ' — lien valable jusqu\'au ' + new Date(l.expires + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '')
+				+ '</div>').join('')
+			const tmp = document.createElement('div')
+			tmp.innerHTML = html
+			const nodes = [...tmp.childNodes]
+			if (lastRange && body.contains(lastRange.commonAncestorContainer)) {
+				// after the block where the caret was
+				let block = lastRange.endContainer
+				while (block.parentNode && block.parentNode !== body) block = block.parentNode
+				if (block === body) body.prepend(...nodes)
+				else block.after(...nodes)
+			} else {
+				// before the signature, else at the end of the text
+				const sig = [...body.children].find((d) => /^--\s/.test(d.textContent))
+				const anchor = sig && sig.previousElementSibling && !sig.previousElementSibling.textContent.trim() ? sig.previousElementSibling : sig
+				if (anchor) anchor.before(...nodes)
+				else body.append(...nodes)
+			}
+			changed()
+		}
+		const shareLinks = async (paths) => {
+			const links = []
+			for (const path of paths) {
+				try {
+					links.push(await api('/share-link', { method: 'POST', body: { path } }))
+				} catch (e) {
+					toast(e.message, true)
+				}
+			}
+			if (links.length) {
+				insertLinks(links)
+				toast(links.length > 1 ? links.length + ' liens ajoutés au message' : 'Lien ajouté au message')
+			}
+			return links.length === paths.length
+		}
+		const pickLinks = () => {
+			if (!(OC.dialogs && OC.dialogs.filepicker)) { toast('Sélecteur de fichiers indisponible', true); return }
+			OC.dialogs.filepicker('Envoyer un lien Nextcloud', (paths) => {
+				shareLinks((Array.isArray(paths) ? paths : [paths]).filter(Boolean))
+			}, true, null, true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
+		}
+		// a file of the computer: put in Files (« Pièces jointes envoyées »), then its link
+		const LINK_FOLDER = 'Pièces jointes envoyées'
+		const uploadAsLink = async (file, button) => {
+			button.disabled = true
+			button.textContent = 'Envoi dans Fichiers…'
+			try {
+				const base = OC.linkToRemote('dav') + '/files/' + encodeURIComponent(OC.getCurrentUser().uid) + '/' + encodeURIComponent(LINK_FOLDER)
+				const headers = { requesttoken: OC.requestToken }
+				await fetch(base, { method: 'MKCOL', headers }) // 405 when it exists already
+				const name = file.name.replace(/[\\/]/g, '_')
+				const put = await fetch(base + '/' + encodeURIComponent(name), { method: 'PUT', headers, body: file })
+				if (!put.ok) throw new Error('Dépôt dans Fichiers impossible (' + put.status + ')')
+				if (await shareLinks(['/' + LINK_FOLDER + '/' + name])) {
+					const dt = new DataTransfer()
+					Array.from(files.files).filter((f) => f !== file).forEach((f) => dt.items.add(f))
+					files.files = dt.files
+					renderAttachList()
+				}
+			} catch (e) {
+				toast(e.message, true)
+				button.disabled = false
+				button.textContent = '🔗 Envoyer en lien'
+			}
+		}
+		// Exchange (OVH) refuses messages over about 25 MB once encoded
+		const HEAVY = 15 * 1024 * 1024
+
 		const renderAttachList = () => {
 			clear(attachList)
-			Array.from(files.files).forEach((f) => attachList.appendChild(h('li', {}, '📎 ' + f.name + ' (' + formatSize(f.size) + ')')))
+			const local = Array.from(files.files)
+			const total = local.reduce((n, f) => n + f.size, 0)
+			local.forEach((f) => {
+				const toLink = h('button', { type: 'button', class: 'wm-small wm-to-link', onclick: (e) => uploadAsLink(f, e.currentTarget) }, '🔗 Envoyer en lien')
+				attachList.appendChild(h('li', { class: f.size >= HEAVY ? 'wm-heavy' : '' }, '📎 ' + f.name + ' (' + formatSize(f.size) + ') ', toLink))
+			})
 			ncFiles.forEach((p, i) => attachList.appendChild(h('li', {}, '☁️ ' + p + ' ',
+				h('button', { type: 'button', class: 'wm-small wm-to-link', onclick: async () => { if (await shareLinks([p])) { ncFiles.splice(ncFiles.indexOf(p), 1); renderAttachList() } } }, '🔗 en lien'),
+				' ',
 				h('button', { type: 'button', class: 'wm-small', onclick: () => { ncFiles.splice(i, 1); renderAttachList() } }, 'retirer'))))
+			if (total >= HEAVY) {
+				attachList.appendChild(h('li', { class: 'wm-warning wm-heavy-warning' },
+					'Pièces jointes lourdes (' + formatSize(total) + ') : Exchange peut refuser le message. Préférez « 🔗 Envoyer en lien » : le fichier est déposé dans vos Fichiers et le destinataire reçoit un lien de téléchargement.'))
+			}
 		}
 		files.addEventListener('change', renderAttachList)
 
@@ -2289,7 +2380,8 @@
 						? 'Envoi programmé le ' + new Date(sent.sendAt).toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) + ' (dans « Boîte d\'envoi » d\'ici là)'
 						: 'Message envoyé')
 					if (isDraft) { state.selectedId = null; removeFromList([draftId]) }
-					if (state.current && !isDraft) renderMessage(); else renderEmptyDetail()
+					// meanwhile another message may have been opened or started: leave it
+					if (form.isConnected) { if (state.current && !isDraft) renderMessage(); else renderEmptyDetail() }
 					if (folderRole() === 'sentitems') setTimeout(() => loadMessages(true), 1500)
 				} catch (err) {
 					closed = false
@@ -2325,6 +2417,7 @@
 			sendBtn,
 			h('label', { class: 'wm-file-label button' }, '📎 Joindre', files),
 			h('button', { type: 'button', onclick: pickFromFiles }, '☁️ Depuis Fichiers'),
+			h('button', { type: 'button', class: 'wm-link-btn', onclick: pickLinks, title: 'Un lien de téléchargement Nextcloud dans le message, au lieu d\'une pièce jointe' }, '🔗 Lien Nextcloud'),
 			importance,
 			h('button', { type: 'button', onclick: cancel, title: 'Fermer (le brouillon est gardé)' }, 'Annuler'),
 			deleteDraftBtn),

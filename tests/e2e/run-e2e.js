@@ -30,7 +30,13 @@ async function main() {
 
 	const step = async (name, fn) => {
 		process.stdout.write('• ' + name + ' … ')
-		await fn()
+		try {
+			await fn()
+		} catch (e) {
+			// what the page looked like, to understand the failure
+			await page.screenshot({ path: path.join(SHOTS, 'FAILED.png') }).catch(() => {})
+			throw e
+		}
 		console.log('ok')
 	}
 	const shot = (name) => page.screenshot({ path: path.join(SHOTS, name + '.png') })
@@ -359,6 +365,44 @@ async function main() {
 		await page.evaluate(() => { OC.dialogs.filepicker = (t, cb) => cb(['/Documents/devis-2027.pdf']) })
 		await page.click('button:has-text("Depuis Fichiers")')
 		await page.fill('.wm-editor', 'Oui, 14h me va.')
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+	})
+
+	await step('Nextcloud share links instead of heavy attachments', async () => {
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'client@exemple.fr')
+		await page.fill('input[name=subject]', 'Plans du chantier')
+		await page.fill('.wm-editor', 'Bonjour, voici les documents.')
+		// a file of Files, as a link in the text
+		await page.evaluate(() => { OC.dialogs.filepicker = (t, cb) => cb(['/Documents/devis-2027.pdf']) })
+		await page.click('.wm-link-btn')
+		const link = '.wm-editor a:has-text("devis-2027.pdf")'
+		await page.waitForSelector(link)
+		const href = await page.getAttribute(link, 'href')
+		assert(/\/s\/[A-Za-z0-9]+$/.test(href), href)
+		assert((await page.textContent('.wm-editor')).includes('devis-2027.pdf ('), 'with its size')
+		// the same file again: the same link (not a second share)
+		await page.click('.wm-link-btn')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-editor a').length === 2)
+		const hrefs = await page.$$eval('.wm-editor a', (els) => els.map((e) => e.getAttribute('href')))
+		assert.strictEqual(hrefs[0], hrefs[1])
+		// a heavy file of the computer: a warning, then put in Files and replaced by its link
+		await page.setInputFiles('.wm-file-input', { name: 'plan-chantier.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(16 * 1024 * 1024, 37) })
+		await page.waitForSelector('.wm-compose-attachments li.wm-heavy:has-text("plan-chantier.pdf")')
+		await page.waitForSelector('.wm-heavy-warning:has-text("Exchange peut refuser le message")')
+		await shot('50-share-link')
+		await page.click('.wm-compose-attachments li:has-text("plan-chantier.pdf") .wm-to-link')
+		await page.waitForSelector('.wm-editor a:has-text("plan-chantier.pdf")', { timeout: 60000 })
+		await page.waitForSelector('.wm-heavy-warning', { state: 'detached' })
+		assert(!(await page.$('.wm-compose-attachments li:has-text("plan-chantier.pdf")')), 'no longer attached')
+		// anybody with the link can download
+		const visitor = await browser.newContext()
+		const big = await page.getAttribute('.wm-editor a:has-text("plan-chantier.pdf")', 'href')
+		const res = await visitor.request.get(big + '/download')
+		assert.strictEqual(res.status(), 200)
+		assert.strictEqual((await res.body()).length, 16 * 1024 * 1024)
+		await visitor.close()
 		await page.click('.wm-compose button[type=submit]')
 		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
 	})

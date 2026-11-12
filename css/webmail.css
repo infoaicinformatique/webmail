@@ -780,3 +780,8 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-cat-new input { grid-column: 1 / -1; margin: 0; width: 100%; }
 .wm-cat-new select, .wm-cat-new button { margin: 0; }
 .wm-cat-new .wm-form-error { grid-column: 1 / -1; }
+
+/* attachments sent as Nextcloud links */
+.wm-compose-attachments li.wm-heavy { color: var(--color-warning-text, #8a5300); font-weight: bold; }
+.wm-compose-attachments .wm-to-link { margin-left: 6px; }
+.wm-heavy-warning { list-style: none; margin-top: 6px; font-size: .92em; }
