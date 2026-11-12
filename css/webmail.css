@@ -723,3 +723,12 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-new-folder { display: block; padding: 6px 12px; font-size: 0.9em; color: var(--color-text-maxcontrast); }
 .wm-modal-small { max-width: 460px; }
 @media (max-width: 800px) { .wm-folder-menu-btn { opacity: 1; } }
+
+/* day view and small calendar */
+.wm-day-view .wm-week-row { grid-template-columns: 56px minmax(0, 1fr); }
+@media (max-width: 800px) { .wm-day-view .wm-week-row { grid-template-columns: 34px minmax(0, 1fr); } }
+.wm-mini-title { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.wm-mini-nav { min-height: 26px !important; min-width: 26px; padding: 0 !important; margin: 0; border: none; background: transparent; font-size: 16px; }
+.wm-mini-day { position: relative; }
+.wm-mini-day.has-events::after { content: ''; position: absolute; bottom: 2px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--color-primary-element, #0082c9); }
+.wm-mini-day.today.has-events::after { background: var(--color-primary-element-text, #fff); }

@@ -1079,6 +1079,40 @@ async function main() {
 		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-agenda-item')].some((e) => e.textContent.includes('Rendez-vous fournisseur')))
 	})
 
+	await step('calendar: day view and small calendar', async () => {
+		await page.click('.wm-tab[data-module="calendar"]')
+		await page.waitForSelector('.wm-cal-toolbar')
+		const before = await page.textContent('.wm-segmented button.active')
+		const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+		const tomorrow = new Date(Date.now() + 86400000)
+		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
+		await page.click('.wm-segmented button:has-text("Jour")')
+		await page.waitForSelector('.wm-week.wm-day-view')
+		assert.strictEqual(await page.$$eval('.wm-week-col', (els) => els.length), 1, 'one column')
+		const today = await page.textContent('.wm-cal-title')
+		assert(today.includes(String(new Date().getDate())), today)
+		// next day: its events
+		await page.click('.wm-cal-toolbar button[aria-label="Jour suivant"]')
+		await page.waitForSelector('.wm-week-col[data-date="' + ymd(tomorrow) + '"]')
+		await page.waitForSelector('.wm-day-view .wm-week-event:has-text("Point hebdo équipe")')
+		await page.waitForFunction(() => !document.querySelector('.wm-cal-toolbar .icon-loading-small'))
+		// the small calendar: a dot under the days with events, its own arrows
+		await page.waitForSelector('.wm-mini-day.has-events[data-date="' + ymd(tomorrow) + '"]')
+		await shot('41-day-view')
+		const shownMonth = await page.textContent('.wm-mini-title span')
+		await page.click('.wm-mini-nav[aria-label="Mois suivant"]')
+		await page.waitForFunction((m) => document.querySelector('.wm-mini-title span').textContent !== m, shownMonth)
+		assert(await page.$('.wm-week-col[data-date="' + ymd(tomorrow) + '"]'), 'the main view did not move')
+		await page.click('.wm-mini-nav[aria-label="Mois précédent"]')
+		// double-click a day of the small calendar: that day alone
+		await page.click('.wm-segmented button:has-text("Semaine")')
+		await page.waitForSelector('.wm-week:not(.wm-day-view)')
+		await page.dblclick('.wm-mini-day[data-date="' + ymd(new Date()) + '"]')
+		await page.waitForSelector('.wm-week.wm-day-view .wm-week-col[data-date="' + ymd(new Date()) + '"]')
+		// back to the view used before
+		await page.click('.wm-segmented button:has-text("' + before.trim() + '")')
+	})
+
 	await step('calendar: share my calendar without delegation', async () => {
 		const openShare = async (name) => {
 			await page.click('.wm-cal-row:has-text("' + name + '") .wm-cal-share')
