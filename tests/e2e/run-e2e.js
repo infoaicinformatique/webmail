@@ -1559,7 +1559,10 @@ async function main() {
 				.observe(box, { childList: true })
 		})
 		const polls = []
-		const onPoll = async (r) => { if (r.url().includes('/new?')) polls.push(decodeURIComponent(r.url().split('?')[1]) + ' -> ' + (await r.text().catch(() => '?')).slice(0, 160)) }
+		const onPoll = async (r) => {
+			if (r.url().includes('/new?')) polls.push(r.url().replace(/.*\/accounts\//, '').replace(/\?.*/, '') + ' ' + decodeURIComponent(r.url().split('?')[1]) + ' -> ' + (await r.text().catch(() => '?')).slice(0, 160))
+			if (r.url().endsWith('/send')) polls.push('SEND via ' + r.url().replace(/.*\/accounts\//, ''))
+		}
 		page.on('response', onPoll)
 		await sendToMe('Rappel 2')
 		await check()
@@ -1567,6 +1570,7 @@ async function main() {
 			.catch(async (e) => {
 				const seen = await page.evaluate(() => ({ toasts: window.__toasts, notes: window.__notes.map((n) => n.title + ' / ' + n.body), focus: document.hasFocus(), hidden: document.hidden }))
 				const inbox = await page.$$eval('.wm-message-subject', (els) => els.slice(0, 4).map((x) => x.textContent))
+				polls.push('selected account: ' + await page.inputValue('.wm-account-select').catch(() => '?'))
 				throw new Error('no in-page message for Rappel 2: ' + JSON.stringify(seen) + ' polls=' + JSON.stringify(polls) + ' list=' + JSON.stringify(inbox) + ' (' + e.message.split('\n')[0] + ')')
 			})
 		await page.waitForSelector('.wm-message:has-text("Rappel 2")')
