@@ -87,6 +87,17 @@ class CalendarController extends Controller {
 		});
 	}
 
+	/**
+	 * Drag and drop: new start and end of an event.
+	 */
+	#[NoAdminRequired]
+	public function move(int $id, string $eventId, string $start, string $end, bool $allDay = false, bool $notify = false, string $tz = 'UTC'): Response {
+		return $this->handle(function () use ($id, $eventId, $start, $end, $allDay, $notify, $tz) {
+			$this->calendar($id, $tz)->moveEvent($eventId, $start, $end, $allDay, $notify);
+			return ['status' => 'ok'];
+		});
+	}
+
 	#[NoAdminRequired]
 	public function delete(int $id, string $eventId, bool $series = false): Response {
 		return $this->handle(function () use ($id, $eventId, $series) {

@@ -229,7 +229,7 @@
 				onclick: () => openForm(null, day),
 			},
 			h('div', { class: 'wm-month-day' }, String(day.getDate())),
-			evs.slice(0, max).map((ev) => chip(ev, day)),
+			evs.slice(0, max).map((ev) => draggable(chip(ev, day), ev, 'day', day)),
 			evs.length > max ? h('button', {
 				type: 'button',
 				class: 'wm-more',
@@ -298,7 +298,7 @@
 		const allDay = h('div', { class: 'wm-week-row wm-week-allday' },
 			h('div', { class: 'wm-week-gutter wm-muted' }, 'Journée'),
 			days.map((d) => h('div', { class: 'wm-week-allday-cell', dataset: { date: ymd(d) } },
-				eventsOn(d).filter((ev) => ev.allDay).map((ev) => chip(ev, d)))))
+				eventsOn(d).filter((ev) => ev.allDay).map((ev) => draggable(chip(ev, d), ev, 'day', d)))))
 
 		const hours = h('div', { class: 'wm-week-gutter wm-week-hours' },
 			Array.from({ length: 24 }, (_, hr) => h('div', { class: 'wm-week-hour', style: 'height:' + HOUR_PX + 'px' }, hr ? pad(hr) + ':00' : '')))
@@ -335,7 +335,8 @@
 						(startsToday ? timeLabel(new Date(ev.start)) : '…') + ' – ' + (endsToday ? timeLabel(new Date(ev.end)) : '…')),
 					h('span', { class: 'wm-week-event-subject' }, ev.subject || '(sans titre)'))
 				if (ev.location && minutes >= 45) b.appendChild(h('span', { class: 'wm-week-event-location' }, ev.location))
-				col.appendChild(b)
+				if (canMove(ev)) b.appendChild(h('span', { class: 'wm-resize', title: 'Tirer pour changer l\'heure de fin', 'aria-hidden': 'true' }))
+				col.appendChild(draggable(b, ev, 'time', d))
 			})
 			if (sameDay(d, now)) {
 				col.appendChild(h('div', { class: 'wm-now', style: 'top:' + ((now.getHours() * 60 + now.getMinutes()) * HOUR_PX / 60) + 'px', 'aria-hidden': 'true' }))
@@ -386,6 +387,164 @@
 		}
 		if (!any) wrap.appendChild(h('div', { class: 'wm-empty' }, cal.loading ? 'Chargement…' : 'Aucun événement dans les 30 prochains jours'))
 		return wrap
+	}
+
+	// ------------------------------------------------------------------
+	// drag and drop (mouse / pen; on touch screens a tap opens the event)
+	// ------------------------------------------------------------------
+
+	const SNAP_MIN = 15
+
+	function canMove(ev) {
+		return ev.isOrganizer && !ev.isCancelled
+	}
+
+	function daysBetween(a, b) {
+		return Math.round((startOfDay(b) - startOfDay(a)) / 86400000)
+	}
+
+	function dateOfCell(cell) {
+		const [y, m, d] = cell.dataset.date.split('-').map(Number)
+		return new Date(y, m - 1, d)
+	}
+
+	/**
+	 * mode "time": week grid, the event moves by 15 minutes and across days,
+	 *              or is resized from its bottom edge.
+	 * mode "day":  month cells / all-day row, the event moves to another day.
+	 */
+	function draggable(el, ev, mode, day) {
+		if (!canMove(ev)) return el
+		el.classList.add('wm-movable')
+		el.title = (el.title ? el.title + ' — ' : '') + 'glisser pour déplacer'
+		el.addEventListener('pointerdown', (e) => {
+			if (e.button !== 0 || e.pointerType === 'touch') return
+			startDrag(e, el, ev, mode, day, e.target.classList.contains('wm-resize'))
+		})
+		return el
+	}
+
+	function startDrag(down, el, ev, mode, day, resize) {
+		const sx = down.clientX
+		const sy = down.clientY
+		const origStart = new Date(ev.start)
+		const origEnd = new Date(ev.end)
+		const duration = origEnd - origStart
+		const origTop = parseFloat(el.style.top) || 0
+		const origHeight = parseFloat(el.style.height) || 0
+		let active = false
+		let result = null
+		let dropCell = null
+
+		const setLabel = (s, e) => {
+			const label = el.querySelector('.wm-week-event-time')
+			if (label) label.textContent = timeLabel(s) + ' – ' + timeLabel(e)
+		}
+		const onMove = (m) => {
+			const dx = m.clientX - sx
+			const dy = m.clientY - sy
+			if (!active) {
+				if (Math.abs(dx) + Math.abs(dy) < 5) return
+				active = true
+				el.classList.add('wm-dragging')
+				document.body.classList.add('wm-drag-active', resize ? 'wm-drag-resize' : 'wm-drag-move')
+			}
+			m.preventDefault()
+			if (mode === 'time') {
+				const delta = Math.round(dy / HOUR_PX * 60 / SNAP_MIN) * SNAP_MIN
+				if (resize) {
+					const end = new Date(Math.max(origStart.getTime() + SNAP_MIN * 60000, origEnd.getTime() + delta * 60000))
+					result = { start: origStart, end }
+					el.style.height = Math.max(HOUR_PX * SNAP_MIN / 60, origHeight + (end - origEnd) / 60000 * HOUR_PX / 60) + 'px'
+					setLabel(origStart, end)
+					return
+				}
+				const col = [...document.querySelectorAll('.wm-week-col')].find((c) => {
+					const r = c.getBoundingClientRect()
+					return m.clientX >= r.left && m.clientX < r.right
+				})
+				const dayDelta = col ? daysBetween(day, dateOfCell(col)) : 0
+				const start = new Date(addDays(origStart, dayDelta).getTime() + delta * 60000)
+				result = { start, end: new Date(start.getTime() + duration) }
+				if (col && el.parentNode !== col) col.appendChild(el)
+				el.style.top = Math.max(0, origTop + delta * HOUR_PX / 60) + 'px'
+				el.style.left = '1px'
+				el.style.width = 'calc(100% - 3px)'
+				setLabel(result.start, result.end)
+				return
+			}
+			// day mode: find the day cell under the pointer
+			const cell = document.elementsFromPoint(m.clientX, m.clientY)
+				.find((n) => n.matches && n.matches('.wm-month-cell, .wm-week-allday-cell'))
+			if (dropCell && dropCell !== cell) dropCell.classList.remove('wm-drop-target')
+			dropCell = cell || null
+			if (!cell) { result = null; return }
+			cell.classList.add('wm-drop-target')
+			const dayDelta = daysBetween(day, dateOfCell(cell))
+			result = { start: addDays(origStart, dayDelta), end: addDays(origEnd, dayDelta) }
+			if (el.parentNode !== cell) {
+				const anchor = cell.querySelector('.wm-month-day')
+				anchor ? anchor.after(el) : cell.prepend(el)
+			}
+		}
+		const finish = (commitIt) => {
+			window.removeEventListener('pointermove', onMove)
+			window.removeEventListener('pointerup', onUp)
+			window.removeEventListener('keydown', onKey, true)
+			document.body.classList.remove('wm-drag-active', 'wm-drag-resize', 'wm-drag-move')
+			if (dropCell) dropCell.classList.remove('wm-drop-target')
+			if (!active) return
+			// the click that follows a drag must not open the event or the "new event" form
+			const eat = (c) => { c.stopPropagation(); c.preventDefault() }
+			window.addEventListener('click', eat, { capture: true, once: true })
+			setTimeout(() => window.removeEventListener('click', eat, { capture: true }), 0)
+			const changed = result && (result.start.getTime() !== origStart.getTime() || result.end.getTime() !== origEnd.getTime())
+			if (commitIt && changed) {
+				commitMove(ev, result)
+			} else {
+				render()
+			}
+		}
+		const onUp = () => finish(true)
+		const onKey = (k) => { if (k.key === 'Escape') { k.stopPropagation(); finish(false) } }
+		window.addEventListener('pointermove', onMove)
+		window.addEventListener('pointerup', onUp)
+		window.addEventListener('keydown', onKey, true)
+	}
+
+	async function commitMove(ev, r) {
+		const notify = ev.isMeeting && ev.isOrganizer
+		if (notify && !window.confirm('Déplacer la réunion « ' + (ev.subject || '') + ' » au '
+			+ core.formatRange(r.start.toISOString(), r.end.toISOString(), ev.allDay) + ' ? Les participants recevront la mise à jour.')) {
+			render()
+			return
+		}
+		const before = { start: ev.start, end: ev.end }
+		// optimistic: show the new place right away
+		ev.start = r.start.toISOString()
+		ev.end = r.end.toISOString()
+		render()
+		const local = (d) => ymd(d) + 'T' + hm(d)
+		try {
+			await core.api('/accounts/' + core.accountId + '/calendar/move', {
+				method: 'POST',
+				body: {
+					eventId: ev.id,
+					start: ev.allDay ? ymd(r.start) : local(r.start),
+					end: ev.allDay ? ymd(addDays(r.end, -1)) : local(r.end), // all-day: inclusive last day
+					allDay: ev.allDay,
+					notify,
+					tz: core.TZ,
+				},
+			})
+			core.toast((notify ? 'Réunion déplacée, participants prévenus : ' : 'Événement déplacé : ') + core.formatRange(ev.start, ev.end, ev.allDay))
+		} catch (e) {
+			ev.start = before.start
+			ev.end = before.end
+			render()
+			core.toast(e.message, true)
+		}
+		load()
 	}
 
 	// ------------------------------------------------------------------

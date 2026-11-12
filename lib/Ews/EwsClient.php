@@ -603,6 +603,7 @@ class EwsClient {
 			'ErrorCalendarEndDateIsEarlierThanStartDate' => 'La fin de l\'événement est avant son début',
 			'ErrorCalendarDurationIsTooLong' => 'Événement trop long',
 			'ErrorCalendarIsOrganizerForAccept', 'ErrorCalendarIsOrganizerForDecline', 'ErrorCalendarIsOrganizerForTentative' => 'Vous êtes l\'organisateur de cette réunion',
+			'ErrorOccurrenceCrossingBoundary' => 'Une occurrence ne peut pas être déplacée au-delà de l\'occurrence précédente ou suivante de la série',
 			'ErrorIrresolvableConflict' => 'L\'élément a été modifié entre-temps, rechargez la page',
 			'ErrorTimeZone' => 'Fuseau horaire non reconnu par Exchange',
 			default => 'Erreur Exchange' . ($code ? ' (' . $code . ')' : '') . ($text ? ' : ' . $text : ''),

@@ -214,6 +214,25 @@ class EwsCalendar {
 	}
 
 	/**
+	 * Move or resize an event (drag and drop): only its start and end change.
+	 * $start / $end are local wall-clock times ("Y-m-d\TH:i"), or dates
+	 * ("Y-m-d", inclusive last day) for an all-day event.
+	 * @param bool $notify send the update to the attendees (meeting you organise)
+	 */
+	public function moveEvent(string $id, string $start, string $end, bool $allDay, bool $notify): void {
+		$e = self::normalize(['start' => $start, 'end' => $end, 'allDay' => $allDay]);
+		$c = $this->client;
+		$set = fn (string $field, string $inner) => '<t:SetItemField><t:FieldURI FieldURI="' . $field . '"/><t:CalendarItem>' . $inner . '</t:CalendarItem></t:SetItemField>';
+		$this->client->request(
+			'<m:UpdateItem ConflictResolution="AlwaysOverwrite" SendMeetingInvitationsOrCancellations="' . ($notify ? 'SendToAllAndSaveCopy' : 'SendToNone') . '">'
+			. '<m:ItemChanges><t:ItemChange><t:ItemId Id="' . $c->esc($id) . '"/><t:Updates>'
+			. $set('calendar:Start', '<t:Start>' . $e['start'] . '</t:Start>')
+			. $set('calendar:End', '<t:End>' . $e['end'] . '</t:End>')
+			. '</t:Updates></t:ItemChange></m:ItemChanges></m:UpdateItem>'
+		);
+	}
+
+	/**
 	 * Delete an event. For an occurrence, $series = true deletes the whole series.
 	 * Attendees of a meeting you organise receive a cancellation.
 	 */
