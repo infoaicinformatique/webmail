@@ -2169,6 +2169,60 @@ async function main() {
 		await page.waitForSelector('.wm-settings h2:has-text("Comptes Exchange")')
 	})
 
+	await step('tasks: add, edit, complete and delete an Exchange task', async () => {
+		await page.click('.wm-tab[data-module="tasks"]')
+		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
+		// the late one first, in red; the completed one is not in « À faire »
+		assert.ok((await page.textContent('.wm-task >> nth=0')).includes('Relancer le cabinet comptable'))
+		await page.waitForSelector('.wm-task.late:has-text("Relancer le cabinet comptable") .wm-task-due:has-text("En retard")')
+		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine") .wm-task-due:has-text("Demain")')
+		await page.waitForSelector('.wm-task:has-text("Commander des cartouches") .wm-task-status:has-text("En cours")')
+		assert.strictEqual(await page.locator('.wm-task:has-text("Envoyer les vœux")').count(), 0)
+
+		// quick add
+		await page.fill('input[name=quickTask]', 'Préparer le devis Dupont')
+		await page.press('input[name=quickTask]', 'Enter')
+		await page.waitForSelector('.wm-toast:has-text("Tâche ajoutée")')
+		const devis = '.wm-task:has-text("Préparer le devis Dupont")'
+		await page.waitForSelector(devis)
+
+		// edit: due tomorrow, high importance, notes
+		await page.click(devis + ' .wm-task-subject')
+		await page.waitForSelector('.wm-task-form input[name=subject]')
+		assert.strictEqual(await page.inputValue('.wm-task-form input[name=subject]'), 'Préparer le devis Dupont')
+		await page.click('.wm-task-form button:has-text("Demain")')
+		await page.selectOption('.wm-task-form select[name=importance]', 'High')
+		await page.fill('.wm-task-form textarea[name=notes]', 'Chiffrer la maintenance sur 3 ans')
+		await page.click('.wm-task-form button:has-text("Enregistrer")')
+		await page.waitForSelector('.wm-toast:has-text("Tâche enregistrée")')
+		await page.waitForSelector(devis + ' .wm-important')
+		await page.waitForSelector(devis + ' .wm-task-due:has-text("Demain")')
+		await shot('58-tasks')
+		// saved on the server: reopen it
+		await page.click('.wm-task:has-text("Renouveler le nom de domaine") .wm-task-subject')
+		await page.waitForFunction(() => document.querySelector('.wm-task-form input[name=subject]')?.value === 'Renouveler le nom de domaine')
+		await page.click(devis + ' .wm-task-subject')
+		await page.waitForFunction(() => document.querySelector('.wm-task-form textarea[name=notes]')?.value === 'Chiffrer la maintenance sur 3 ans')
+
+		// done: it leaves « À faire » and is in « Terminées »
+		await page.check(devis + ' .wm-task-done')
+		await page.waitForSelector('.wm-toast:has-text("Tâche terminée")')
+		await page.waitForFunction((sel) => !document.querySelector(sel), devis)
+		await page.click('.wm-task-filter[data-filter="done"]')
+		await page.waitForSelector('.wm-task.done:has-text("Préparer le devis Dupont")')
+		await page.waitForSelector('.wm-task.done:has-text("Envoyer les vœux")')
+
+		// delete
+		await page.click(devis + ' .wm-task-subject')
+		await page.waitForSelector('.wm-task-form button:has-text("Remettre à faire")')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-task-form button:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Tâche supprimée")')
+		await page.waitForFunction((sel) => !document.querySelector(sel), devis)
+		await page.click('.wm-task-filter[data-filter="todo"]')
+		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
+	})
+
 	await step('module choice is remembered', async () => {
 		await page.click('.wm-tab[data-module="calendar"]')
 		await page.reload()

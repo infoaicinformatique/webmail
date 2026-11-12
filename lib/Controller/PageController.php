@@ -37,6 +37,7 @@ class PageController extends Controller {
 		Util::addScript(Application::APP_ID, 'contacts');
 		Util::addScript(Application::APP_ID, 'delegates');
 		Util::addScript(Application::APP_ID, 'rules');
+		Util::addScript(Application::APP_ID, 'tasks');
 		Util::addScript(Application::APP_ID, 'webmail');
 		Util::addStyle(Application::APP_ID, 'webmail');
 

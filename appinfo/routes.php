@@ -71,6 +71,12 @@ return [
 
 		['name' => 'oof#show', 'url' => '/api/accounts/{id}/oof', 'verb' => 'GET'],
 		['name' => 'oof#update', 'url' => '/api/accounts/{id}/oof', 'verb' => 'POST'],
+		['name' => 'task#index', 'url' => '/api/accounts/{id}/tasks', 'verb' => 'GET'],
+		['name' => 'task#show', 'url' => '/api/accounts/{id}/task', 'verb' => 'GET'],
+		['name' => 'task#create', 'url' => '/api/accounts/{id}/tasks', 'verb' => 'POST'],
+		['name' => 'task#update', 'url' => '/api/accounts/{id}/tasks/update', 'verb' => 'POST'],
+		['name' => 'task#complete', 'url' => '/api/accounts/{id}/tasks/complete', 'verb' => 'POST'],
+		['name' => 'task#delete', 'url' => '/api/accounts/{id}/tasks/delete', 'verb' => 'POST'],
 		['name' => 'share#link', 'url' => '/api/share-link', 'verb' => 'POST'],
 		['name' => 'category#index', 'url' => '/api/accounts/{id}/categories', 'verb' => 'GET'],
 		['name' => 'category#create', 'url' => '/api/accounts/{id}/categories', 'verb' => 'POST'],

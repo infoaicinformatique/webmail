@@ -155,6 +155,19 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Import / export | « ⬇ » au-dessus de la liste : tout le carnet affiché dans un fichier **vCard** (.vcf) pour Outlook, un téléphone, Nextcloud Contacts… « ⬆ » : les contacts d'un fichier vCard (2.1, 3.0 ou 4.0, celui d'Outlook ou d'un téléphone) sont ajoutés au carnet ; ceux déjà présents (même adresse e-mail) sont ignorés, et le bilan s'affiche |
 | Groupes | Les listes de distribution sont affichées, leur gestion reste dans Outlook |
 
+### Tâches
+
+![Tâches](docs/capture-taches.png)
+
+L'onglet **✅ Tâches** affiche le dossier « Tâches » de la boîte Exchange, le même que dans Outlook et Outlook sur le web.
+
+| | |
+|---|---|
+| Liste | « À faire » : les tâches en retard d'abord (échéance en rouge, « En retard · 10 nov. »), puis par échéance (« Aujourd'hui », « Demain »…), puis celles sans échéance ; importance haute marquée ❗, état « En cours » / « En attente » / « Reportée » affiché. « Terminées » : les tâches finies, les plus récentes d'abord |
+| Ajout rapide | Champ « Ajouter une tâche » en haut de la liste : un titre, Entrée, et la tâche est créée |
+| Terminer | La case devant une tâche la marque **terminée** (100 %) ou la remet à faire, tout de suite |
+| Modifier | Un clic ouvre la tâche : titre, **échéance** (raccourcis Aujourd'hui, Demain, Dans une semaine, Aucune), état, importance, notes. « Supprimer » la met dans « Éléments supprimés » |
+
 ### Délégués
 
 ![Délégués](docs/capture-delegues.png)
@@ -197,7 +210,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.39.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.40.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -219,7 +232,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.39 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.40 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -245,7 +258,7 @@ sudo -u www-data php occ config:app:set webmail servers --value='[{"domain":"soc
 
 1. Ouvrez l'application **Webmail** dans la barre du haut.
 2. Saisissez l'adresse Exchange et son mot de passe. La connexion est testée avant l'enregistrement.
-3. Passez du courrier à l'agenda ou aux contacts avec les onglets en haut à gauche. L'application se rouvre sur le dernier onglet utilisé.
+3. Passez du courrier à l'agenda, aux contacts ou aux tâches avec les onglets en haut à gauche. L'application se rouvre sur le dernier onglet utilisé.
 4. Pour la signature, une autre boîte ou un changement de mot de passe, utilisez **Comptes et signature**
    en bas à gauche.
 
@@ -315,6 +328,5 @@ templates/          page principale et page d'administration
 
 **Nextcloud et serveur**
 - Notifications Exchange en direct (abonnement « streaming ») à la place de la vérification régulière
-- Tâches Exchange
 - Découverte automatique (Autodiscover) à la place de la table domaine/serveur
 - Traduction (anglais)

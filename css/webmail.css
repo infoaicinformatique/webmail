@@ -840,3 +840,20 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-plan-legend .wm-plan-busy, .wm-plan-legend .wm-plan-meeting { position: static; width: 14px; height: 10px; vertical-align: middle; }
 .wm-plan-suggest { margin: 0; }
 @media (max-width: 800px) { .wm-plan-row { grid-template-columns: 90px 1fr; } }
+
+/* Tasks */
+.wm-tasks { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
+.wm-task { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-bottom: 1px solid var(--color-border); cursor: pointer; }
+.wm-task:hover { background: var(--color-background-hover); }
+.wm-task.selected { background: var(--color-primary-element-light, var(--color-background-dark)); }
+.wm-task-done { margin-top: 3px !important; cursor: pointer; flex: none; }
+.wm-task-text { min-width: 0; flex: 1; }
+.wm-task-subject { overflow-wrap: anywhere; }
+.wm-task.done .wm-task-subject { text-decoration: line-through; color: var(--color-text-maxcontrast); }
+.wm-task-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--color-text-maxcontrast); margin-top: 2px; }
+.wm-task.late .wm-task-due { color: var(--color-error); font-weight: bold; }
+.wm-task-status { background: var(--color-background-dark); border-radius: 8px; padding: 0 6px; }
+.wm-task-quick { width: 100%; }
+.wm-task-title { padding: 8px 4px; }
+.wm-task-form .wm-field .wm-small { margin-left: 4px; }
+.wm-task-form .wm-field { flex-wrap: wrap; }

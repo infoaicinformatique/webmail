@@ -23,6 +23,7 @@ import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import fake_ews_pim as pim
+import fake_ews_tasks as tasks
 import fake_ews_rules as rules
 
 NS = {
@@ -421,6 +422,9 @@ def handle(op, el, user):
                         % (m['id'], item_summary_xml(m, True)) for m in msgs)
         return wrap(op, [ok(op, '<m:Conversation><t:ConversationId Id="%s"/><t:ConversationNodes>%s</t:ConversationNodes></m:Conversation>' % (cid, nodes))])
     r = handle_user_configuration(op, el, user)
+    if r is not None:
+        return r
+    r = tasks.handle(op, el)
     if r is not None:
         return r
     r = rules.handle(op, el, user, lambda fid: any(f[0] == fid for f in FOLDERS))

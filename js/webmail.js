@@ -36,6 +36,7 @@
 		{ id: 'mail', label: 'Courrier', icon: '✉️' },
 		{ id: 'calendar', label: 'Agenda', icon: '📅' },
 		{ id: 'contacts', label: 'Contacts', icon: '👤' },
+		{ id: 'tasks', label: 'Tâches', icon: '✅' },
 	]
 	// calendar.js and contacts.js register themselves here
 	window.WebmailModules = window.WebmailModules || {}
@@ -2897,14 +2898,14 @@
 		try {
 			saved = parseInt(localStorage.getItem('webmail.account') || '', 10)
 			const mod = localStorage.getItem('webmail.module')
-			if (mod === 'calendar' || mod === 'contacts') state.module = mod
+			if (mod === 'calendar' || mod === 'contacts' || mod === 'tasks') state.module = mod
 		} catch (e) { /* ignore */ }
 		// links from the Nextcloud dashboard: ?account=…&message=… or ?module=calendar
 		const link = new URLSearchParams(window.location.search)
 		const linkAccount = parseInt(link.get('account') || '', 10)
 		if (state.accounts.some((a) => a.id === linkAccount)) saved = linkAccount
 		const linkModule = link.get('module')
-		if (linkModule === 'calendar' || linkModule === 'contacts' || linkModule === 'mail') state.module = linkModule
+		if (['calendar', 'contacts', 'tasks', 'mail'].includes(linkModule)) state.module = linkModule
 		else if (link.get('message')) state.module = 'mail'
 		const linkMessage = link.get('message')
 		const linkEvent = link.get('event')
