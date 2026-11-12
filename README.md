@@ -68,6 +68,8 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Vue jour](docs/capture-jour.png)
 
+![Recherche d'événements](docs/capture-recherche-agenda.png)
+
 | | |
 |---|---|
 | Vues | **Jour**, **semaine**, **mois** et **liste** des 30 prochains jours. Mini-calendrier à gauche : un point sous les jours qui ont des rendez-vous (dans la période affichée), ses propres flèches pour parcourir les mois sans changer l'affichage principal, un clic va au jour, un double-clic l'affiche seul (vue jour). Les événements périodiques sont dépliés |
