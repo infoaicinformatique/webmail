@@ -40,6 +40,7 @@ et sur les téléphones, et inversement.
 | Destinataires | Complétion automatique des adresses à partir des contacts Exchange **et de l'annuaire de l'entreprise** |
 | Invitations | Une invitation reçue par e-mail affiche la date et le lieu, avec les boutons **Accepter / Provisoire / Refuser** |
 | Réponse automatique | « 🌴 Réponse automatique » (dans « Comptes et signature ») : comme dans Outlook, activée tout de suite ou **pendant une période**, avec un message pour vos collègues et, au choix, aucune réponse, une réponse à vos contacts extérieurs ou à tout le monde à l'extérieur (même message ou un autre). Tant qu'elle est active, un rappel avec « Modifier » et « Désactiver » s'affiche au-dessus des dossiers |
+| Règles | « 📋 Règles » (dans « Comptes et signature ») ou « 📋 Règle… » sur un message (son expéditeur est déjà rempli) : les règles qu'Exchange applique à chaque message reçu, **même webmail fermé**. Conditions : expéditeur, mots dans l'expéditeur, l'objet ou le texte, destinataire, pièce jointe, envoyé à moi seul, importance. Actions : déplacer, copier, mettre à la corbeille, marquer comme lu, importance, catégorie, transférer, ne pas appliquer les règles suivantes. Activer / désactiver, changer l'ordre, supprimer. Les règles faites dans Outlook avec d'autres réglages sont affichées (« créée dans Outlook ») et peuvent être activées, désactivées, déplacées ou supprimées sans être abîmées. Comme dans Outlook sur le web, la première modification remplace la copie des règles gardée par Outlook pour Windows : ses règles « côté client uniquement » (qui ne fonctionnent qu'Outlook ouvert) sont alors à refaire |
 | Délégation | Si vous êtes **délégué** d'un collègue dans Outlook, Exchange vous transmet une copie de ses invitations : le bandeau indique « Invitation reçue pour Marie Martin (vous êtes son délégué) » et la réponse est envoyée **en son nom** (après confirmation) |
 | Nouveaux messages | Le nombre de non-lus de la boîte de réception s'affiche dans le **titre de l'onglet** (« (3) Webmail »). Avec « 🔔 Activer les notifications » (en bas à gauche), chaque nouveau message de chaque compte déclenche une **notification du navigateur** quand la fenêtre n'est pas au premier plan (un clic ouvre le message), ou un message dans la page sinon. Vérification chaque minute, tant que Nextcloud est ouvert dans un onglet |
 | Mobile | Affichage adapté aux téléphones ; le bouton **Retour** du téléphone ferme le message (ou le menu) au lieu de quitter le webmail |
@@ -49,6 +50,8 @@ et sur les téléphones, et inversement.
 ![Éditeur et brouillons](docs/capture-editeur.png)
 
 ![Réponse automatique](docs/capture-absence.png)
+
+![Règles](docs/capture-regles.png)
 
 ![Plusieurs messages](docs/capture-selection.png)
 
@@ -159,7 +162,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.26.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.27.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -181,7 +184,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.26 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.27 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -267,7 +270,6 @@ templates/          page principale et page d'administration
 **Courrier**
 - Images collées dans l'éditeur, signature mise en forme, pièces jointes enregistrées avec le brouillon
 - Affichage par conversation (fil de discussion)
-- Règles de la boîte de réception
 - Catégories Outlook (couleurs)
 - Lien de partage Nextcloud à la place d'une pièce jointe trop lourde
 - Boîtes partagées (contact@…) et boîtes des collègues dont on est délégué

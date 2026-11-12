@@ -61,6 +61,11 @@ return [
 
 		['name' => 'oof#show', 'url' => '/api/accounts/{id}/oof', 'verb' => 'GET'],
 		['name' => 'oof#update', 'url' => '/api/accounts/{id}/oof', 'verb' => 'POST'],
+		['name' => 'rule#index', 'url' => '/api/accounts/{id}/rules', 'verb' => 'GET'],
+		['name' => 'rule#save', 'url' => '/api/accounts/{id}/rules', 'verb' => 'POST'],
+		['name' => 'rule#enable', 'url' => '/api/accounts/{id}/rules/enable', 'verb' => 'POST'],
+		['name' => 'rule#move', 'url' => '/api/accounts/{id}/rules/move', 'verb' => 'POST'],
+		['name' => 'rule#delete', 'url' => '/api/accounts/{id}/rules/delete', 'verb' => 'POST'],
 		['name' => 'delegate#index', 'url' => '/api/accounts/{id}/delegates', 'verb' => 'GET'],
 		['name' => 'delegate#create', 'url' => '/api/accounts/{id}/delegates', 'verb' => 'POST'],
 		['name' => 'delegate#update', 'url' => '/api/accounts/{id}/delegates/update', 'verb' => 'POST'],

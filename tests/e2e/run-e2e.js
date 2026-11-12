@@ -597,6 +597,72 @@ async function main() {
 		await page.waitForSelector('.wm-oof-banner', { state: 'detached' })
 	})
 
+	await step('inbox rules: create, order, switch off, run on arrival, from a message', async () => {
+		await page.click('text=Comptes et signature')
+		await page.click('.wm-account-card:has-text("user@societe-a.fr") .wm-rules-btn')
+		// a rule made in Outlook: shown, can be switched off, not edited here
+		const outlook = '.wm-rule:has-text("Grosses pièces jointes")'
+		await page.waitForSelector(outlook + ' .wm-rule-tag:has-text("créée dans Outlook")')
+		assert(!(await page.$(outlook + ' .wm-rule-edit')), 'no edit button')
+		// a new rule
+		await page.click('.wm-rule-new')
+		await page.fill('input[name=ruleName]', 'Relevés bancaires')
+		await page.fill('input[name=ruleSubject]', 'relevé, extrait de compte')
+		await page.selectOption('select[name=ruleMove]', { label: 'Factures' })
+		await page.check('input[name=ruleMarkRead]')
+		await page.check('input[name=ruleStop]')
+		await page.click('.wm-rule-form button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Règle créée")')
+		const mine = '.wm-rule:has-text("Relevés bancaires")'
+		const summary = await page.textContent(mine + ' .wm-rule-summary')
+		assert(summary.includes('Si l\'objet contient « relevé » ou « extrait de compte » → déplacer vers Factures, marquer comme lu, puis ne pas appliquer les règles suivantes'), summary)
+		// created last, moved up
+		let names = await page.$$eval('.wm-rule-name', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(names, ['Grosses pièces jointes', 'Relevés bancaires'])
+		await page.click(mine + ' .wm-rule-up')
+		await page.waitForFunction(() => document.querySelector('.wm-rule-name').textContent === 'Relevés bancaires')
+		// the Outlook rule switched off, sent back to Exchange untouched otherwise
+		await page.uncheck(outlook + ' .wm-rule-enabled')
+		await page.waitForSelector('.wm-toast:has-text("Règle désactivée")')
+		await page.waitForSelector('.wm-rule.off:has-text("Grosses pièces jointes") .wm-rule-tag')
+		await shot('45-inbox-rules')
+		// edited
+		await page.click(mine + ' .wm-rule-edit')
+		assert.strictEqual(await page.inputValue('input[name=ruleSubject]'), 'relevé, extrait de compte')
+		assert.strictEqual(await page.inputValue('select[name=ruleMove]') !== '', true)
+		await page.fill('input[name=ruleName]', 'Relevés de la banque')
+		await page.click('.wm-rule-form button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Règle enregistrée")')
+		await page.waitForSelector('.wm-rule-name:text-is("Relevés de la banque")')
+		// a message that matches arrives: Exchange files it, read, in Factures
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'user@societe-a.fr')
+		await page.fill('input[name=subject]', 'Votre relevé de novembre')
+		await page.fill('.wm-editor', 'Bonjour')
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		await page.click('.wm-folder:has-text("Factures")')
+		await page.waitForSelector('.wm-message:not(.unread):has-text("Votre relevé de novembre")')
+		// a rule from a message: its sender is filled in
+		await page.click('.wm-message:has-text("Votre relevé de novembre")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Votre relevé de novembre")')
+		await page.click('.wm-rule-from-msg')
+		await page.waitForSelector('.wm-rule-form h3:has-text("Nouvelle règle")')
+		assert.strictEqual(await page.inputValue('input[name=ruleFrom]'), 'user@societe-a.fr')
+		// it must do something
+		await page.click('.wm-rule-form button[type=submit]')
+		await page.waitForSelector('.wm-rule-form .wm-form-error:has-text("Choisissez ce que la règle doit faire")')
+		await page.click('.wm-rule-form button:has-text("Annuler")')
+		// deleted
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-rule:has-text("Relevés de la banque") .wm-rule-delete')
+		await page.waitForSelector('.wm-toast:has-text("Règle supprimée")')
+		names = await page.$$eval('.wm-rule-name', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(names, ['Grosses pièces jointes'])
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('rich text editor and drafts', async () => {
 		// a new message with formatting, saved as a draft while writing
 		await page.click('.wm-compose-btn')

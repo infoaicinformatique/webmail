@@ -744,3 +744,19 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 @media (max-width: 800px) { .wm-cal-search { order: 10; width: 100%; } }
 .wm-agenda-day.past { color: var(--color-text-maxcontrast); }
 .wm-cal-results .wm-agenda-item { border-inline-start: 3px solid var(--ev-color, var(--color-primary-element)); }
+
+/* inbox rules */
+.wm-rule-list { list-style: none; margin: 12px 0; padding: 0; }
+.wm-rule { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--color-border); }
+.wm-rule.off .wm-rule-text { opacity: .55; }
+.wm-rule input.wm-rule-enabled { margin-top: 3px; }
+.wm-rule-name { margin-right: 6px; }
+.wm-rule-summary { margin-top: 2px; font-size: .92em; }
+.wm-rule-buttons { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.wm-rule-buttons button { margin: 0; min-height: 30px; padding: 2px 10px; }
+.wm-rule-form { max-width: 720px; }
+.wm-rule-form h4 { margin: 18px 0 4px; }
+.wm-rule-checks { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 6px 0 6px 0; }
+.wm-rule-tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--color-background-dark); color: var(--color-text-maxcontrast); white-space: nowrap; }
+.wm-rule-tag-error { background: var(--color-error); color: #fff; }
+@media (max-width: 800px) { .wm-rule { grid-template-columns: 24px minmax(0, 1fr); } .wm-rule-buttons { grid-column: 2; justify-content: flex-start; } }

@@ -765,6 +765,22 @@
 		sync()
 	}
 
+	function openRules(account, prefill) {
+		if (!window.WebmailRules) { toast('Module indisponible', true); return }
+		window.WebmailRules.open(core, account, prefill)
+	}
+
+	/** A new rule for the messages of this sender, to be completed. */
+	function ruleFromMessage(m) {
+		const account = state.accounts.find((a) => a.id === state.accountId)
+		const from = m.from && m.from.email && !m.from.email.startsWith('/') ? m.from.email : ''
+		openRules(account, {
+			name: 'Messages de ' + ((m.from && (m.from.name || m.from.email)) || 'cet expéditeur'),
+			conditions: from ? { from: [from] } : { subject: [m.subject || ''] },
+			actions: {},
+		})
+	}
+
 	function selectFolder(id) {
 		saveListCache()
 		state.folderId = id
@@ -1436,6 +1452,7 @@
 			h('button', { class: 'wm-danger', onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? 'Supprimer définitivement' : '🗑 Supprimer'),
 			junkButton([m.id], role),
 			h('button', { class: 'wm-print-btn', title: 'Imprimer', 'aria-label': 'Imprimer', onclick: () => printMessage(m) }, '🖨'),
+			h('button', { class: 'wm-rule-from-msg', title: 'Créer une règle pour les messages de cet expéditeur', onclick: () => ruleFromMessage(m) }, '📋 Règle…'),
 		)
 		detailEl.appendChild(toolbar)
 
@@ -2221,6 +2238,7 @@
 				h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Signature'), sig),
 				h('div', { class: 'wm-compose-actions' }, save,
 					h('button', { type: 'button', class: 'wm-oof-btn', onclick: () => openOof(a) }, '🌴 Réponse automatique'),
+					h('button', { type: 'button', class: 'wm-rules-btn', onclick: () => openRules(a) }, '📋 Règles'),
 					h('button', {
 						type: 'button',
 						class: 'wm-delegates-btn',

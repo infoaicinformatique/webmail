@@ -23,6 +23,7 @@ import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import fake_ews_pim as pim
+import fake_ews_rules as rules
 
 NS = {
     's': 'http://schemas.xmlsoap.org/soap/envelope/',
@@ -190,7 +191,8 @@ def folder_xml(f, with_size=False):
 def deliver_to_self(m, user):
     """A message sent to oneself also arrives in the inbox (unread)."""
     if any(email.lower() == user.lower() for _, email in m['to'] + m['cc']):
-        add_message('F-INBOX', m['subject'], ('Utilisateur', user), m['body'], 0, to=m['to'], cc=m['cc'])
+        mid = add_message('F-INBOX', m['subject'], ('Utilisateur', user), m['body'], 0, to=m['to'], cc=m['cc'])
+        rules.apply(user, MESSAGES[mid], lambda msg, folder: move_message(msg['id'], folder))
 
 
 def item_summary_xml(m, with_folder=False):
@@ -315,6 +317,9 @@ def manage_folder(op, el):
 
 
 def handle(op, el, user):
+    r = rules.handle(op, el, user, lambda fid: any(f[0] == fid for f in FOLDERS))
+    if r is not None:
+        return r
     r = pim.handle(op, el, user, CURRENT_TZ, MESSAGES, move_message)
     if r is not None:
         return r
