@@ -10,6 +10,7 @@ use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\HtmlSanitizer;
 use OCA\Webmail\Service\MailNotificationService;
+use OCA\Webmail\Service\SharedFolderService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
@@ -34,6 +35,7 @@ class MailController extends Controller {
 		private AccountService $accounts,
 		private HtmlSanitizer $sanitizer,
 		private MailNotificationService $bell,
+		private SharedFolderService $shared,
 		private IRootFolder $rootFolder,
 		private IURLGenerator $urlGenerator,
 		private LoggerInterface $logger,
@@ -95,10 +97,14 @@ class MailController extends Controller {
 	}
 
 	#[NoAdminRequired]
-	public function folders(int $id): Response {
-		return $this->handle(function () use ($id) {
+	public function folders(int $id, string $mailbox = ''): Response {
+		return $this->handle(function () use ($id, $mailbox) {
 			$account = $this->accounts->find((string)$this->userId, $id);
 			$client = $this->accounts->getClient($account);
+			if ($mailbox !== '') {
+				$this->sharedMailbox($id, $mailbox);
+				return ['folders' => $client->listFolders($unused, $mailbox), 'usage' => null];
+			}
 			$used = null;
 			$folders = $client->listFolders($used);
 			return ['folders' => $folders, 'usage' => ['used' => $used, 'limit' => $this->accounts->mailboxQuota($account, $client)]];
@@ -131,6 +137,71 @@ class MailController extends Controller {
 	#[NoAdminRequired]
 	public function newMessages(int $id, string $since = ''): Response {
 		return $this->handle(fn () => $this->client($id)->newMessages($since !== '' ? $since : null));
+	}
+
+	/** @return array{email: string, name: string} a shared mailbox added to this account */
+	private function sharedMailbox(int $id, string $email): array {
+		$entry = $this->shared->find(SharedFolderService::MAILBOXES, (string)$this->userId, $id, $email);
+		if ($entry === null) {
+			throw new MailException('Boîte partagée inconnue : ' . $email);
+		}
+		return $entry;
+	}
+
+	/**
+	 * Shared mailboxes (contact@…, accueil@…) added to an account.
+	 */
+	#[NoAdminRequired]
+	public function mailboxes(int $id): Response {
+		return $this->handle(function () use ($id) {
+			$this->accounts->find((string)$this->userId, $id);
+			return ['mailboxes' => array_map(fn ($m) => ['email' => $m['email'], 'name' => $m['name']], $this->shared->list(SharedFolderService::MAILBOXES, (string)$this->userId, $id))];
+		});
+	}
+
+	/**
+	 * Add a shared mailbox: Exchange must give this account access to it
+	 * (« Accès total » set by the administrator).
+	 */
+	#[NoAdminRequired]
+	#[\OCP\AppFramework\Http\Attribute\UserRateLimit(limit: 20, period: 300)]
+	public function addMailbox(int $id, string $email, string $name = ''): Response {
+		return $this->handle(function () use ($id, $email, $name) {
+			$account = $this->accounts->find((string)$this->userId, $id);
+			$email = strtolower(trim($email));
+			if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+				throw new MailException('Adresse invalide');
+			}
+			if ($email === strtolower($account->getEmail())) {
+				throw new MailException('C\'est l\'adresse de ce compte');
+			}
+			$client = $this->accounts->getClient($account);
+			$client->listFolders($unused, $email); // access checked here
+			if (trim($name) === '') {
+				// its name in the directory (« Contact Société A »), else its address
+				try {
+					foreach ((new \OCA\Webmail\Ews\EwsContacts($client))->resolve($email) as $r) {
+						if (strtolower($r['email']) === $email && trim($r['name']) !== '') {
+							$name = trim($r['name']);
+							break;
+						}
+					}
+				} catch (MailException) {
+				}
+			}
+			$name = trim($name) !== '' ? trim($name) : $email;
+			$this->shared->save(SharedFolderService::MAILBOXES, (string)$this->userId, $id, ['email' => $email, 'name' => $name, 'mode' => 'full', 'canEdit' => true]);
+			return ['mailboxes' => array_map(fn ($m) => ['email' => $m['email'], 'name' => $m['name']], $this->shared->list(SharedFolderService::MAILBOXES, (string)$this->userId, $id))];
+		});
+	}
+
+	#[NoAdminRequired]
+	public function removeMailbox(int $id, string $email): Response {
+		return $this->handle(function () use ($id, $email) {
+			$this->accounts->find((string)$this->userId, $id);
+			$this->shared->remove(SharedFolderService::MAILBOXES, (string)$this->userId, $id, $email);
+			return ['mailboxes' => array_map(fn ($m) => ['email' => $m['email'], 'name' => $m['name']], $this->shared->list(SharedFolderService::MAILBOXES, (string)$this->userId, $id))];
+		});
 	}
 
 	/**
@@ -372,6 +443,11 @@ class MailController extends Controller {
 				'readReceipt' => $receipt === true || $receipt === '1' || $receipt === 'true',
 				'sendAt' => (string)$this->request->getParam('sendAt', ''),
 			];
+			// sent as a shared mailbox added to this account
+			$from = strtolower(trim((string)$this->request->getParam('from', '')));
+			if ($from !== '' && $from !== strtolower($account->getEmail())) {
+				$options['from'] = $this->sharedMailbox($id, $from)['email'];
+			}
 			if ($m['mode'] === 'draft') {
 				// a draft opened from « Brouillons »: sent as it is in Exchange, with the changes made here
 				if ($m['to'] === [] && $m['cc'] === [] && $m['bcc'] === []) {

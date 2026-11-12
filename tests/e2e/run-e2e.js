@@ -847,6 +847,57 @@ async function main() {
 		await page.waitForSelector('.wm-message-header h2:has-text("Sans notification")')
 	})
 
+	await step('shared mailbox: add, read, reply as it, move, remove', async () => {
+		await page.click('text=Comptes et signature')
+		const card = '.wm-account-card:has-text("user@societe-a.fr")'
+		// no access: a clear message
+		await page.fill(card + ' input[name=sharedMailbox]', 'direction@societe-a.fr')
+		await page.click(card + ' .wm-shared-editor button:has-text("Ajouter")')
+		await page.waitForSelector(card + ' .wm-shared-editor .wm-form-error:has-text("Vous n\'avez pas accès à la boîte direction@societe-a.fr")')
+		await page.fill(card + ' input[name=sharedMailbox]', 'contact@societe-a.fr')
+		await page.click(card + ' .wm-shared-editor button:has-text("Ajouter")')
+		await page.waitForSelector('.wm-toast:has-text("Boîte partagée ajoutée")')
+		await page.waitForSelector(card + ' .wm-shared-list li:has-text("contact@societe-a.fr")')
+		// its folders under the account's own
+		const mb = '.wm-shared-mailbox[data-mailbox="contact@societe-a.fr"]'
+		await page.waitForSelector(mb + ' .wm-folder:has-text("Boîte de réception") .wm-badge:text-is("1")')
+		await page.waitForSelector(mb + ' .wm-folder:has-text("Demandes de devis")')
+		await page.click(mb + ' .wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector('.wm-message:has-text("Demande de devis cuisine")')
+		assert(await page.$('.wm-message:has-text("Horaires d\'ouverture")'))
+		await page.click('.wm-message:has-text("Demande de devis cuisine")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Demande de devis cuisine")')
+		await shot('55-shared-mailbox')
+		// moved within that mailbox only
+		const targets = await page.$$eval('.wm-toolbar select.wm-move option', (els) => els.map((e) => e.textContent))
+		assert(targets.includes('Demandes de devis') && !targets.includes('Factures'), targets.join(', '))
+		// answered as the shared mailbox
+		await page.click('.wm-toolbar button:has-text("↩ Répondre")')
+		assert.strictEqual(await page.inputValue('.wm-compose select[name=from]'), 'contact@societe-a.fr')
+		await page.fill('.wm-editor', 'Bonjour Madame, nous vous rappelons demain.')
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		// the account's own folders come first
+		await page.click('.wm-folder:has-text("Éléments envoyés") >> nth=0')
+		await page.click('.wm-message:has-text("RE: Demande de devis cuisine")')
+		await page.waitForSelector('.wm-message-header:has-text("Contact Société A <contact@societe-a.fr>")')
+		// a message moved to a folder of the shared mailbox
+		await page.click(mb + ' .wm-folder:has-text("Boîte de réception")')
+		await page.click('.wm-message:has-text("Horaires d\'ouverture")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Horaires d\'ouverture")')
+		await page.selectOption('.wm-toolbar select.wm-move', { label: 'Demandes de devis' })
+		await page.waitForSelector('.wm-toast:has-text("Demandes de devis")')
+		await page.click(mb + ' .wm-folder:has-text("Demandes de devis")')
+		await page.waitForSelector('.wm-message:has-text("Horaires d\'ouverture")')
+		// removed from the webmail: nothing deleted in Exchange
+		await page.click('text=Comptes et signature')
+		await page.click(card + ' .wm-shared-list li:has-text("contact@societe-a.fr") button')
+		await page.waitForSelector(card + ' .wm-shared-list li:has-text("Aucune")')
+		await page.waitForSelector(mb, { state: 'detached' })
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('calendar reminders in Nextcloud notifications', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\ReminderJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]

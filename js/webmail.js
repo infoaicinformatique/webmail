@@ -202,8 +202,28 @@
 		return p.name || (p.email && !p.email.startsWith('/') ? p.email : '') || ''
 	}
 
+	// shared mailboxes (contact@…) of the account: their folders, apart from the account's own
+	const shared = { accountId: null, list: [] } // [{ email, name, folders, open }]
+
+	function sharedFolders() {
+		return shared.accountId === state.accountId ? shared.list.flatMap((m) => m.folders || []) : []
+	}
+
+	/** The shared mailbox shown, or null for the account's own mailbox. */
+	function currentMailbox() {
+		if (shared.accountId !== state.accountId) return null
+		return shared.list.find((m) => (m.folders || []).some((f) => f.id === state.folderId)) || null
+	}
+
+	/** Where a message of the folder shown can be moved: a folder of the same mailbox. */
+	function moveTargets() {
+		const mb = currentMailbox()
+		return (mb ? mb.folders : state.folders).filter((f) => f.id !== state.folderId)
+	}
+
 	function currentFolder() {
 		return state.folders.find((f) => f.id === state.folderId || f.role === state.folderId)
+			|| sharedFolders().find((f) => f.id === state.folderId)
 	}
 
 	function folderRole() {
@@ -560,9 +580,86 @@
 		top.forEach((f) => addFolder(f, 0))
 		navEl.appendChild(ul)
 		navEl.appendChild(h('a', { href: '#', class: 'wm-new-folder', onclick: (e) => { e.preventDefault(); createFolder(null) } }, '＋ Nouveau dossier'))
+		if (shared.accountId === state.accountId) shared.list.forEach((mb) => navEl.appendChild(sharedMailboxNav(mb)))
 		const usage = usageGauge()
 		if (usage) navEl.appendChild(usage)
 		navEl.appendChild(navFooter())
+	}
+
+	/** A shared mailbox in the folder pane: its name, its folders (inbox first). */
+	function sharedMailboxNav(mb) {
+		const box = h('div', { class: 'wm-shared-mailbox', dataset: { mailbox: mb.email } })
+		const toggle = h('button', {
+			type: 'button',
+			class: 'wm-shared-mailbox-title',
+			'aria-expanded': String(mb.open),
+			title: 'Boîte partagée ' + mb.email,
+			onclick: () => {
+				mb.open = !mb.open
+				try { localStorage.setItem('webmail.shared.' + mb.email, mb.open ? '1' : '0') } catch (e) { /* ignore */ }
+				if (mb.open && !mb.folders) loadSharedFolders(mb)
+				renderNav()
+			},
+		}, (mb.open ? '▾ ' : '▸ ') + '📮 ' + mb.name)
+		box.appendChild(toggle)
+		if (!mb.open) return box
+		if (mb.error) {
+			box.appendChild(h('div', { class: 'wm-muted wm-shared-error' }, mb.error))
+			return box
+		}
+		if (!mb.folders) {
+			box.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading-small' })))
+			return box
+		}
+		const ul = h('ul', { class: 'wm-folders' })
+		const byParent = {}
+		mb.folders.forEach((f) => { (byParent[f.parentId || ''] = byParent[f.parentId || ''] || []).push(f) })
+		const add = (f, depth) => {
+			const active = f.id === state.folderId
+			ul.appendChild(h('li', { class: 'wm-folder-row' }, h('a', {
+				href: '#',
+				class: 'wm-folder' + (active ? ' active' : '') + (f.unread ? ' has-unread' : ''),
+				style: 'padding-inline-start:' + (12 + depth * 16) + 'px',
+				onclick: (e) => { e.preventDefault(); selectFolder(f.id) },
+				dataset: { folderId: f.id },
+			},
+			h('span', { class: 'wm-folder-icon', 'aria-hidden': 'true' }, ROLE_ICON[f.role] || '📁'),
+			h('span', { class: 'wm-folder-name' }, f.name),
+			f.unread && f.role !== 'sentitems' && f.role !== 'deleteditems' ? h('span', { class: 'wm-badge' }, String(f.unread)) : null)))
+			;(byParent[f.id] || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).forEach((c) => add(c, depth + 1))
+		}
+		;(byParent[''] || []).slice().sort((a, b) => {
+			const ra = a.role ? ROLE_ORDER.indexOf(a.role) : 99
+			const rb = b.role ? ROLE_ORDER.indexOf(b.role) : 99
+			return ra !== rb ? ra - rb : a.name.localeCompare(b.name, 'fr')
+		}).forEach((f) => add(f, 0))
+		box.appendChild(ul)
+		return box
+	}
+
+	async function loadShared(accountId) {
+		try {
+			const r = await api('/accounts/' + accountId + '/mailboxes')
+			if (accountId !== state.accountId) return
+			shared.accountId = accountId
+			shared.list = r.mailboxes.map((m) => {
+				let open = true
+				try { open = localStorage.getItem('webmail.shared.' + m.email) !== '0' } catch (e) { /* ignore */ }
+				return Object.assign({ folders: null, open, error: null }, m)
+			})
+			shared.list.filter((m) => m.open).forEach(loadSharedFolders)
+			if (state.module === 'mail') renderNav()
+		} catch (e) { /* no shared mailbox */ }
+	}
+
+	async function loadSharedFolders(mb) {
+		try {
+			mb.folders = (await api('/accounts/' + state.accountId + '/folders', { query: { mailbox: mb.email } })).folders
+			mb.error = null
+		} catch (e) {
+			mb.error = e.message
+		}
+		if (state.module === 'mail') renderNav()
 	}
 
 	// ------------------------------------------------------------------
@@ -628,6 +725,7 @@
 		renderNav()
 		renderEmptyDetail()
 		loadOof(id)
+		loadShared(id)
 		loadCategories(id)
 		await Promise.all([loadFolders(), loadMessages(true)])
 	}
@@ -1066,7 +1164,7 @@
 			'aria-label': 'Déplacer les messages sélectionnés vers',
 			onchange: (e) => { if (e.target.value) moveMessages(ids(), e.target.value) },
 		}, h('option', { value: '' }, 'Déplacer vers…'),
-		state.folders.filter((f) => f.id !== state.folderId).map((f) => h('option', { value: f.id }, f.name)))
+		moveTargets().map((f) => h('option', { value: f.id }, f.name)))
 		const allTicked = state.checked.size === state.messages.length
 		bulkBarEl.appendChild(h('div', { class: 'wm-bulk', role: 'toolbar', 'aria-label': 'Messages sélectionnés' },
 			h('strong', {}, state.checked.size + ' sélectionné' + (state.checked.size > 1 ? 's' : '')),
@@ -1396,7 +1494,7 @@
 	}
 
 	function folderName(id) {
-		const f = state.folders.find((x) => x.id === id)
+		const f = state.folders.find((x) => x.id === id) || sharedFolders().find((x) => x.id === id)
 		return f ? f.name : ''
 	}
 
@@ -1597,7 +1695,7 @@
 			onchange: (e) => { if (e.target.value) moveMessages([m.id], e.target.value) },
 		},
 		h('option', { value: '' }, 'Déplacer vers…'),
-		state.folders.filter((f) => f.id !== state.folderId).map((f) => h('option', { value: f.id }, f.name)))
+		moveTargets().map((f) => h('option', { value: f.id }, f.name)))
 
 		const toolbar = h('div', { class: 'wm-toolbar' },
 			h('button', { class: 'wm-back wm-mobile-only', onclick: () => setView('list'), 'aria-label': 'Retour' }, '←'),
@@ -2172,6 +2270,16 @@
 		const ncFiles = [] // paths from Nextcloud Files
 
 		const titles = { new: 'Nouveau message', reply: 'Répondre', replyAll: 'Répondre à tous', forward: 'Transférer', draft: 'Brouillon' }
+		// sender: the account, or one of its shared mailboxes (by default the one the original message is in)
+		const mailboxes = shared.accountId === state.accountId ? shared.list : []
+		const fromMailbox = original && mailboxes.find((mb) => (mb.folders || []).some((f) => f.id === original.folderId))
+		const defaultFrom = (fromMailbox || (mode === 'new' && currentMailbox()) || null)
+		const fromSelect = mailboxes.length ? h('select', { name: 'from', class: 'wm-from', 'aria-label': 'De' },
+			h('option', { value: account ? account.email : '' }, account ? account.email : ''),
+			mailboxes.map((mb) => h('option', { value: mb.email, selected: defaultFrom === mb }, mb.name !== mb.email ? mb.name + ' <' + mb.email + '>' : mb.email))) : null
+		const fromField = fromSelect
+			? h('label', { class: 'wm-muted wm-from-label' }, 'De : ', fromSelect)
+			: h('span', { class: 'wm-muted' }, 'De : ' + (account ? account.email : ''))
 		const isResponse = mode === 'reply' || mode === 'replyAll'
 		// a draft opened from « Brouillons »: original is the draft itself
 		const isDraft = mode === 'draft'
@@ -2376,6 +2484,7 @@
 			importance: importance.value,
 			referenceId: original && !isDraft ? original.id : '',
 			draftId: draftId || '',
+			from: fromSelect ? fromSelect.value : '',
 		})
 		const saveDraft = () => {
 			clearTimeout(draftTimer)
@@ -2493,7 +2602,7 @@
 		h('div', { class: 'wm-compose-title' },
 			h('button', { type: 'button', class: 'wm-back wm-mobile-only', onclick: cancel, 'aria-label': 'Retour' }, '←'),
 			h('h2', {}, titles[mode]),
-			h('span', { class: 'wm-muted' }, 'De : ' + (account ? account.email : '')),
+			fromField,
 			draftStatus),
 		isResponse
 			? h('div', { class: 'wm-info' }, mode === 'reply'
@@ -2543,6 +2652,51 @@
 	// ------------------------------------------------------------------
 	// accounts
 	// ------------------------------------------------------------------
+
+	/** The shared mailboxes of an account, in its settings: add by address, remove. */
+	function sharedMailboxesEditor(a) {
+		const box = h('div', { class: 'wm-shared-editor' }, h('span', { class: 'wm-shared-editor-title' }, '📮 Boîtes partagées'))
+		const list = h('ul', { class: 'wm-shared-list' })
+		const email = h('input', { type: 'email', name: 'sharedMailbox', placeholder: 'contact@exemple.fr' })
+		const err = h('div', { class: 'wm-form-error' })
+		const add = h('button', { type: 'button', class: 'wm-small' }, 'Ajouter')
+		const show = (mailboxes) => {
+			clear(list)
+			mailboxes.forEach((m) => list.appendChild(h('li', {}, m.name !== m.email ? m.name + ' <' + m.email + '>' : m.email, ' ',
+				h('button', {
+					type: 'button',
+					class: 'wm-small wm-icon-btn',
+					'aria-label': 'Retirer ' + m.email,
+					title: 'Retirer cette boîte du webmail (rien n\'est supprimé dans Exchange)',
+					onclick: async () => {
+						try {
+							show((await api('/accounts/' + a.id + '/mailboxes/delete', { method: 'POST', body: { email: m.email } })).mailboxes)
+							if (a.id === state.accountId) loadShared(a.id)
+						} catch (e) { toast(e.message, true) }
+					},
+				}, '✕'))))
+			if (!mailboxes.length) list.appendChild(h('li', { class: 'wm-muted' }, 'Aucune : ajoutez une boîte commune (contact@, accueil@…) dont l\'administrateur Exchange vous a donné l\'accès.'))
+		}
+		add.addEventListener('click', async () => {
+			err.textContent = ''
+			if (!email.value.trim()) return
+			add.disabled = true
+			try {
+				show((await api('/accounts/' + a.id + '/mailboxes', { method: 'POST', body: { email: email.value.trim() } })).mailboxes)
+				toast('Boîte partagée ajoutée : ses dossiers sont sous les vôtres')
+				email.value = ''
+				if (a.id === state.accountId) loadShared(a.id)
+			} catch (e) {
+				err.textContent = e.message
+			} finally {
+				add.disabled = false
+			}
+		})
+		email.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add.click() } })
+		api('/accounts/' + a.id + '/mailboxes').then((r) => show(r.mailboxes), () => show([]))
+		box.append(list, h('div', { class: 'wm-inline' }, email, add), err)
+		return box
+	}
 
 	function openAccountSettings() {
 		setView('detail')
@@ -2616,6 +2770,7 @@
 				h('label', { class: 'wm-field' }, h('span', {}, 'Nom'), name),
 				h('label', { class: 'wm-field' }, h('span', {}, 'Mot de passe'), pwd),
 				h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Signature'), sig),
+				sharedMailboxesEditor(a),
 				h('label', { class: 'wm-radio wm-bell' }, bell, ' 🔔 Signaler chaque nouveau message dans les notifications Nextcloud, même webmail fermé (et sur le téléphone avec l\'application Nextcloud)'),
 				h('label', { class: 'wm-radio wm-bell' }, remind, ' ⏰ Rappels des rendez-vous de l\'agenda dans les notifications Nextcloud (au moment choisi pour chaque rendez-vous : 15 minutes avant…)'),
 				h('div', { class: 'wm-compose-actions' }, save,

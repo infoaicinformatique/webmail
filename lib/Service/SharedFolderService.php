@@ -19,6 +19,8 @@ class SharedFolderService {
 	public const CONTACTS = 'contacts';
 	/** contact folders of the public folders: identified by folder id only (no owner address) */
 	public const PUBLIC_CONTACTS = 'public_contacts';
+	/** shared mailboxes (contact@…) the user reads and sends as */
+	public const MAILBOXES = 'mailboxes';
 
 	private const MAX = 30;
 
@@ -28,7 +30,7 @@ class SharedFolderService {
 	}
 
 	private static function key(string $type, int $accountId): string {
-		if ($type !== self::CALENDARS && $type !== self::CONTACTS && $type !== self::PUBLIC_CONTACTS) {
+		if (!in_array($type, [self::CALENDARS, self::CONTACTS, self::PUBLIC_CONTACTS, self::MAILBOXES], true)) {
 			throw new \InvalidArgumentException('Unknown shared folder type ' . $type);
 		}
 		return 'shared_' . $type . '_' . $accountId;
@@ -105,7 +107,7 @@ class SharedFolderService {
 
 	/** Forget every shared folder of an account (when the account is removed). */
 	public function removeAll(string $userId, int $accountId): void {
-		foreach ([self::CALENDARS, self::CONTACTS, self::PUBLIC_CONTACTS] as $type) {
+		foreach ([self::CALENDARS, self::CONTACTS, self::PUBLIC_CONTACTS, self::MAILBOXES] as $type) {
 			$this->config->deleteUserValue($userId, Application::APP_ID, self::key($type, $accountId));
 		}
 	}

@@ -12,6 +12,9 @@ return [
 		['name' => 'account#destroy', 'url' => '/api/accounts/{id}', 'verb' => 'DELETE'],
 
 		['name' => 'mail#folders', 'url' => '/api/accounts/{id}/folders', 'verb' => 'GET'],
+		['name' => 'mail#mailboxes', 'url' => '/api/accounts/{id}/mailboxes', 'verb' => 'GET'],
+		['name' => 'mail#addMailbox', 'url' => '/api/accounts/{id}/mailboxes', 'verb' => 'POST'],
+		['name' => 'mail#removeMailbox', 'url' => '/api/accounts/{id}/mailboxes/delete', 'verb' => 'POST'],
 		['name' => 'mail#messages', 'url' => '/api/accounts/{id}/messages', 'verb' => 'GET'],
 		['name' => 'mail#message', 'url' => '/api/accounts/{id}/message', 'verb' => 'GET'],
 		['name' => 'mail#conversation', 'url' => '/api/accounts/{id}/conversation', 'verb' => 'GET'],

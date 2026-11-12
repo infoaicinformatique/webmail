@@ -120,8 +120,11 @@ class EwsClient {
 	 *
 	 * @return array<int, array{id: string, name: string, parentId: ?string, total: int, unread: int, role: ?string}>
 	 */
-	public function listFolders(?int &$usedBytes = null): array {
-		$roles = $this->distinguishedFolderIds(['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'outbox', 'msgfolderroot']);
+	public function listFolders(?int &$usedBytes = null, ?string $mailbox = null): array {
+		$roles = $this->distinguishedFolderIds(['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'outbox', 'msgfolderroot'], $mailbox);
+		if ($mailbox !== null && !isset($roles['msgfolderroot']) && !isset($roles['inbox'])) {
+			throw new MailException('Vous n\'avez pas accès à la boîte ' . $mailbox . ' (demandez à l\'administrateur Exchange le droit « Accès total » sur cette boîte)');
+		}
 		$rootId = $roles['msgfolderroot'] ?? null;
 		unset($roles['msgfolderroot']);
 		$roleById = array_flip($roles);
@@ -133,7 +136,7 @@ class EwsClient {
 			// size of each folder (PR_MESSAGE_SIZE_EXTENDED): their sum is the space used by the mailbox
 			. '<t:ExtendedFieldURI PropertyTag="0x0E08" PropertyType="Long"/>'
 			. '</t:AdditionalProperties></m:FolderShape>'
-			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="msgfolderroot"/></m:ParentFolderIds>'
+			. '<m:ParentFolderIds>' . $this->distinguishedXml('msgfolderroot', $mailbox) . '</m:ParentFolderIds>'
 			. '</m:FindFolder>'
 		);
 		$usedBytes = 0;
@@ -264,10 +267,10 @@ class EwsClient {
 		);
 	}
 
-	public function distinguishedFolderIds(array $names): array {
+	public function distinguishedFolderIds(array $names, ?string $mailbox = null): array {
 		$ids = '';
 		foreach ($names as $n) {
-			$ids .= '<t:DistinguishedFolderId Id="' . $this->esc($n) . '"/>';
+			$ids .= $this->distinguishedXml($n, $mailbox);
 		}
 		$xp = $this->request(
 			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape></m:FolderShape>'
@@ -285,6 +288,13 @@ class EwsClient {
 			}
 		}
 		return $out;
+	}
+
+	/** A well-known folder (inbox…) of the account's mailbox, or of another one (a shared mailbox). */
+	public function distinguishedXml(string $name, ?string $mailbox = null): string {
+		return $mailbox === null
+			? '<t:DistinguishedFolderId Id="' . $this->esc($name) . '"/>'
+			: '<t:DistinguishedFolderId Id="' . $this->esc($name) . '"><t:Mailbox><t:EmailAddress>' . $this->esc($mailbox) . '</t:EmailAddress></t:Mailbox></t:DistinguishedFolderId>';
 	}
 
 	/** Cheap call used to validate credentials. */
@@ -772,6 +782,19 @@ class EwsClient {
 	 */
 	public function sendMessage(string $mode, string $subject, string $htmlBody, array $to, array $cc, array $bcc,
 		array $attachments = [], ?string $referenceId = null, string $importance = 'Normal', array $options = []): void {
+		$this->sendFrom = !empty($options['from']) ? (string)$options['from'] : null;
+		try {
+			$this->send($mode, $subject, $htmlBody, $to, $cc, $bcc, $attachments, $referenceId, $importance, $options);
+		} finally {
+			$this->sendFrom = null;
+		}
+	}
+
+	/** Sender of the message being composed, when it is not the account (a shared mailbox). */
+	private ?string $sendFrom = null;
+
+	private function send(string $mode, string $subject, string $htmlBody, array $to, array $cc, array $bcc,
+		array $attachments, ?string $referenceId, string $importance, array $options): void {
 		if (!empty($options['readReceipt']) || !empty($options['sendAt'])) {
 			// options are set on a draft, then the draft is sent (also for replies and forwards)
 			$draft = $this->createDraft($this->composeItemXml($mode, $subject, $htmlBody, $to, $cc, $bcc, $referenceId, $importance));
@@ -812,7 +835,9 @@ class EwsClient {
 		?string $referenceId, string $importance, string $attachmentsXml = ''): string {
 		$recipients = $this->recipientsXml('ToRecipients', $to)
 			. $this->recipientsXml('CcRecipients', $cc)
-			. $this->recipientsXml('BccRecipients', $bcc);
+			. $this->recipientsXml('BccRecipients', $bcc)
+			// sent as a shared mailbox (« De : contact@… »): needs the right « Envoyer en tant que »
+			. ($this->sendFrom !== null ? '<t:From><t:Mailbox><t:EmailAddress>' . $this->esc($this->sendFrom) . '</t:EmailAddress></t:Mailbox></t:From>' : '');
 		$importance = in_array($importance, ['Low', 'Normal', 'High'], true) ? $importance : 'Normal';
 		if ($mode === 'new') {
 			return '<t:Message>'
@@ -905,6 +930,10 @@ class EwsClient {
 		}
 		if (!empty($options['readReceipt'])) {
 			$updates .= '<t:SetItemField><t:FieldURI FieldURI="message:IsReadReceiptRequested"/><t:Message><t:IsReadReceiptRequested>true</t:IsReadReceiptRequested></t:Message></t:SetItemField>';
+		}
+		if (!empty($options['from'])) {
+			$updates .= '<t:SetItemField><t:FieldURI FieldURI="message:From"/><t:Message><t:From><t:Mailbox><t:EmailAddress>'
+				. $this->esc((string)$options['from']) . '</t:EmailAddress></t:Mailbox></t:From></t:Message></t:SetItemField>';
 		}
 		if ($updates === '') {
 			return;
@@ -1100,6 +1129,7 @@ class EwsClient {
 			'ErrorItemNotFound' => 'Ce message n\'existe plus (déplacé ou supprimé)',
 			'ErrorFolderNotFound' => 'Dossier introuvable',
 			'ErrorAccessDenied' => 'Accès refusé par Exchange (élément non partagé ou droits insuffisants)',
+			'ErrorSendAsDenied' => 'Vous n\'avez pas le droit d\'envoyer au nom de cette boîte (demandez à l\'administrateur Exchange le droit « Envoyer en tant que »)',
 			'ErrorQuotaExceeded' => 'Boîte aux lettres pleine',
 			'ErrorMessageSizeExceeded' => 'Message trop volumineux',
 			'ErrorInvalidRecipients', 'ErrorInvalidSmtpAddress' => 'Adresse de destinataire invalide',

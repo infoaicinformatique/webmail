@@ -58,6 +58,29 @@ FOLDERS = [
 # junk e-mail options of the mailbox (MarkAsJunk)
 BLOCKED_SENDERS, SAFE_SENDERS = set(), set()
 ROLE_TO_ID = {f[3]: f[0] for f in FOLDERS if f[3]}
+# a shared mailbox (contact@…): user@societe-a.fr has full access and may send as it
+SHARED_MAILBOXES = {
+    'contact@societe-a.fr': dict(name='Contact Société A', allowed={'user@societe-a.fr'}, folders=[
+        ('C-ROOT', 'Haut de la banque d\'informations', None, 'msgfolderroot'),
+        ('C-INBOX', 'Boîte de réception', 'C-ROOT', 'inbox'),
+        ('C-DRAFTS', 'Brouillons', 'C-ROOT', 'drafts'),
+        ('C-SENT', 'Éléments envoyés', 'C-ROOT', 'sentitems'),
+        ('C-DELETED', 'Éléments supprimés', 'C-ROOT', 'deleteditems'),
+        ('C-JUNK', 'Courrier indésirable', 'C-ROOT', 'junkemail'),
+        ('C-DEVIS', 'Demandes de devis', 'C-INBOX', None),
+    ]),
+}
+for _mb in SHARED_MAILBOXES.values():
+    FOLDERS.extend(_mb['folders'])
+CURRENT_USER = ''
+
+
+def root_of(fid):
+    """The msgfolderroot a folder belongs to (its mailbox)."""
+    parents = {f[0]: f[2] for f in FOLDERS}
+    while parents.get(fid):
+        fid = parents[fid]
+    return fid
 
 def make_png(w, h, top, bottom):
     """A small vertical gradient, as a real PNG (for attachment previews)."""
@@ -120,6 +143,20 @@ def seed():
 
 
 seed()
+
+
+def seed_shared():
+    """Messages of the shared mailbox contact@societe-a.fr."""
+    to = (('Contact Société A', 'contact@societe-a.fr'),)
+    add_message('C-INBOX', 'Demande de devis cuisine', ('Claire Leroux', 'claire.leroux@particulier.example'),
+                '<p>Bonjour,</p><p>Pourriez-vous me faire un devis pour la rénovation de ma cuisine ?</p><p>Claire Leroux</p>', 45, to=to)
+    add_message('C-INBOX', 'Horaires d\'ouverture', ('Marc Petit', 'marc.petit@particulier.example'),
+                '<p>Bonjour, êtes-vous ouverts le samedi ?</p>', 300, is_read=True, to=to)
+    add_message('C-DEVIS', 'Devis salle de bains', ('Nadia Benali', 'nadia.benali@particulier.example'),
+                '<p>Bonjour, je souhaite un devis pour ma salle de bains.</p>', 60 * 30, is_read=True, to=to)
+
+
+seed_shared()
 _mr, _meeting = pim.seed_meeting_request(add_message)
 MESSAGES[_mr]['kind'] = 'MeetingRequest'
 MESSAGES[_mr]['meeting'] = _meeting
@@ -160,6 +197,12 @@ def err(op, code, text):
 def folder_id(el):
     """Resolve a t:FolderId / t:DistinguishedFolderId element to our folder id."""
     if el.tag == T + 'DistinguishedFolderId':
+        mailbox = (el.findtext('t:Mailbox/t:EmailAddress', default='', namespaces=NS) or '').lower()
+        if mailbox and mailbox != CURRENT_USER.lower():
+            shared = SHARED_MAILBOXES.get(mailbox)
+            if not shared or CURRENT_USER.lower() not in shared['allowed']:
+                return None
+            return {f[3]: f[0] for f in shared['folders'] if f[3]}.get(el.get('Id'))
         return ROLE_TO_ID.get(el.get('Id'))
     return el.get('Id')
 
@@ -367,6 +410,8 @@ def handle_user_configuration(op, el, user):
 
 
 def handle(op, el, user):
+    global CURRENT_USER
+    CURRENT_USER = user
     if op == 'GetConversationItems':
         cid = el.find('m:Conversations/t:Conversation/t:ConversationId', NS).get('Id')
         skip = el.find('m:FoldersToIgnore', NS)
@@ -381,7 +426,9 @@ def handle(op, el, user):
     r = rules.handle(op, el, user, lambda fid: any(f[0] == fid for f in FOLDERS))
     if r is not None:
         return r
-    r = pim.handle(op, el, user, CURRENT_TZ, MESSAGES, move_message)
+    # the folders of a shared mailbox are mail folders (not a colleague's calendar or contacts)
+    in_shared = any((e.text or '').lower() in SHARED_MAILBOXES for e in el.iter(T + 'EmailAddress'))
+    r = None if in_shared and op in ('FindFolder', 'GetFolder') else pim.handle(op, el, user, CURRENT_TZ, MESSAGES, move_message)
     if r is not None:
         return r
     if op == 'GetFolder':
@@ -420,7 +467,11 @@ def handle(op, el, user):
                '<t:FolderClass>IPF.Contact.RecipientCache</t:FolderClass><t:DisplayName>Recipient Cache</t:DisplayName><t:TotalCount>0</t:TotalCount>'
                '<t:ChildFolderCount>0</t:ChildFolderCount></t:ContactsFolder>')
         with_size = any(u.get('PropertyTag') == '0x0E08' for u in el.iter(T + 'ExtendedFieldURI'))
-        folders = ''.join(folder_xml(f, with_size) for f in FOLDERS if f[3] != 'msgfolderroot') + cal
+        root = folder_id(el.find('m:ParentFolderIds', NS)[0])
+        if root is None:
+            return wrap(op, [err(op, 'ErrorFolderNotFound', 'The specified folder could not be found in the store.')])
+        mine = [f for f in FOLDERS if f[3] != 'msgfolderroot' and root_of(f[0]) == root]
+        folders = ''.join(folder_xml(f, with_size) for f in mine) + (cal if root == 'F-ROOT' else '')
         return wrap(op, [ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Folders>%s</t:Folders></m:RootFolder>'
                             % (len(FOLDERS), folders))])
 
@@ -603,7 +654,15 @@ def handle(op, el, user):
             if tag == 'ForwardItem':
                 atts += list(ref['attachments'])
             folder = 'F-SENT' if disposition == 'SendAndSaveCopy' else 'F-DRAFTS'
-            mid = add_message(folder, subject, ('Utilisateur', user), body, 0, is_read=True, to=to, cc=recipients(it, 'CcRecipients'),
+            sender = ('Utilisateur', user)
+            as_ = (it.findtext('t:From/t:Mailbox/t:EmailAddress', default='', namespaces=NS) or '').lower()
+            if as_ and as_ != user.lower():
+                mb = SHARED_MAILBOXES.get(as_)
+                if not mb or user.lower() not in mb['allowed']:
+                    msgs.append(err(op, 'ErrorSendAsDenied', 'The user account which was used to submit this request does not have the right to send mail on behalf of the specified sending account.'))
+                    continue
+                sender = (mb['name'], as_)
+            mid = add_message(folder, subject, sender, body, 0, is_read=True, to=to, cc=recipients(it, 'CcRecipients'),
                               importance=it.findtext('t:Importance', default='Normal', namespaces=NS))
             MESSAGES[mid]['attachments'] = atts
             MESSAGES[mid]['bcc'] = recipients(it, 'BccRecipients')
