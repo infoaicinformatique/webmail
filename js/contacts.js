@@ -114,6 +114,13 @@
 			h('span', { class: 'wm-book-icon', 'aria-hidden': 'true' }, b.kind === 'directory' ? '🏢' : (b.kind === 'shared' ? '👥' : '📇')),
 			h('span', { class: 'wm-cal-name' }, b.name)),
 			b.kind === 'shared' ? h('span', { class: 'wm-cal-mode' + (b.canEdit ? ' wm-cal-mode-edit' : '') }, b.canEdit ? 'modification' : 'lecture') : null,
+			b.kind === 'own' ? h('button', {
+				type: 'button',
+				class: 'wm-cal-share',
+				title: 'Partager ce carnet',
+				'aria-label': 'Partager ' + b.name,
+				onclick: () => openShare(b),
+			}, '🔗') : null,
 			b.kind === 'shared' ? h('button', {
 				type: 'button',
 				class: 'wm-cal-remove',
@@ -131,6 +138,30 @@
 			shared.length ? h('ul', {}, shared.map(row)) : null,
 			h('button', { type: 'button', class: 'wm-cal-add', onclick: openAddShared }, '＋ Ajouter les contacts d\'un collègue'),
 			directory.length ? h('ul', { class: 'wm-directory' }, directory.map(row)) : null)
+	}
+
+	/**
+	 * Share one of my address books without delegation (Outlook: right-click
+	 * on the contacts folder > Properties > Permissions).
+	 */
+	function openShare(b) {
+		const base = '/accounts/' + core.accountId + '/contacts/permissions'
+		window.WebmailSharing.open(core, {
+			title: 'Partager « ' + b.name + ' »',
+			intro: 'Choisissez qui peut consulter ou modifier ce carnet d\'adresses, sans en faire un délégué. '
+				+ 'C\'est le réglage « Autorisations » du dossier dans Outlook. Vos collègues l\'ajoutent ensuite avec « Ajouter les contacts d\'un collègue » '
+				+ '(seul le carnet « Contacts » principal peut être ajouté de cette façon).',
+			levels: [
+				['None', 'Aucun accès'],
+				['Reviewer', 'Lecture'],
+				['Author', 'Lecture et ajout de contacts'],
+				['Editor', 'Modification'],
+			],
+			newLevel: 'Reviewer',
+			load: async () => (await core.api(base, { query: { book: b.key } })).permissions,
+			save: (permissions) => core.api(base, { method: 'POST', body: { book: b.key, permissions } }),
+			savedMessage: 'Partage de « ' + b.name + ' » enregistré',
+		})
 	}
 
 	function openAddShared() {

@@ -56,6 +56,29 @@ class ContactController extends Controller {
 		});
 	}
 
+	/**
+	 * Who one of my address books is shared with.
+	 */
+	#[NoAdminRequired]
+	public function permissions(int $id, string $book = 'contacts'): Response {
+		return $this->handle(fn () => ['permissions' => $this->contacts($id)->getPermissions($book)]);
+	}
+
+	/**
+	 * Share one of my address books without delegation.
+	 * @param array<int, array{user: string, level: string}> $permissions
+	 */
+	#[NoAdminRequired]
+	#[\OCP\AppFramework\Http\Attribute\UserRateLimit(limit: 30, period: 300)]
+	public function setPermissions(int $id, array $permissions, string $book = 'contacts'): Response {
+		return $this->handle(function () use ($id, $permissions, $book) {
+			$account = $this->accounts->find((string)$this->userId, $id);
+			$contacts = new EwsContacts($this->accounts->getClient($account));
+			$contacts->setPermissions($book, $permissions, $account->getEmail());
+			return ['permissions' => $contacts->getPermissions($book)];
+		});
+	}
+
 	#[NoAdminRequired]
 	public function addShared(int $id, string $email): Response {
 		return $this->handle(function () use ($id, $email) {

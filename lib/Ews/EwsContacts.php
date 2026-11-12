@@ -111,6 +111,29 @@ class EwsContacts {
 	}
 
 	/**
+	 * Who one of my address books is shared with (folder permissions, without delegation).
+	 * @return array<int, array{user: string, name: string, level: string}>
+	 */
+	public function getPermissions(string $book): array {
+		self::assertOwn($book);
+		return (new EwsPermissions($this->client, EwsPermissions::CONTACTS))->get($this->folderXml($book));
+	}
+
+	/**
+	 * @param array<int, array{user: string, level: string}> $entries level "keep" = leave as it is
+	 */
+	public function setPermissions(string $book, array $entries, string $ownEmail): void {
+		self::assertOwn($book);
+		(new EwsPermissions($this->client, EwsPermissions::CONTACTS))->set($this->folderXml($book), $entries, $ownEmail);
+	}
+
+	private static function assertOwn(string $book): void {
+		if (str_starts_with($book, 'shared:') || $book === 'directory') {
+			throw new MailException('Seul le propriétaire d\'un carnet peut le partager');
+		}
+	}
+
+	/**
 	 * Search the company directory (Global Address List). Exchange only allows
 	 * searching it, not listing it entirely, and returns at most 100 entries.
 	 * @return array<int, array<string, mixed>> full contact cards

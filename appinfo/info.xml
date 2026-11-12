@@ -11,8 +11,8 @@
 * Courrier : lecture, recherche, dossiers, envoi, réponse, transfert, pièces jointes (depuis/vers Fichiers).
 * Agenda Exchange : vues mois, semaine et liste, plusieurs agendas, agendas partagés par les collègues, partage de ses agendas sans délégation, création, modification (y compris des séries périodiques), glisser-déposer, invitations, réponses aux réunions, y compris au nom d'un collègue (délégation).
 * Délégués : gestion de l'accès délégué de chaque boîte (droits sur l'agenda, le courrier, les contacts et les tâches, copie des invitations).
-* Contacts Exchange : plusieurs carnets, contacts partagés par les collègues, annuaire de l'entreprise, consultation, recherche, création, modification ; complétion des adresses (contacts + annuaire).]]></description>
-	<version>1.9.0</version>
+* Contacts Exchange : plusieurs carnets, contacts partagés par les collègues, partage de ses carnets sans délégation, annuaire de l'entreprise, consultation, recherche, création, modification ; complétion des adresses (contacts + annuaire).]]></description>
+	<version>1.10.0</version>
 	<licence>agpl</licence>
 	<author>AIC Informatique</author>
 	<namespace>Webmail</namespace>
