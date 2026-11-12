@@ -2935,7 +2935,14 @@
 		backgroundStarted = true
 		refreshTimer = setInterval(refresh, REFRESH_MS)
 		document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); checkNewMessages() } })
-		notifyTimer = setInterval(checkNewMessages, NOTIFY_MS)
+		// a hidden tab without browser notifications only keeps the count in its title up to date: every 5 minutes
+		let lastCheck = 0
+		notifyTimer = setInterval(() => {
+			if (document.hidden && !notificationsOn() && Date.now() - lastCheck < 5 * NOTIFY_MS) return
+			lastCheck = Date.now()
+			checkNewMessages()
+		}, NOTIFY_MS)
+		lastCheck = Date.now()
 		checkNewMessages()
 		document.addEventListener('keydown', onShortcut)
 	}

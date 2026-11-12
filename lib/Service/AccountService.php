@@ -8,10 +8,13 @@ use OCA\Webmail\Db\Account;
 use OCA\Webmail\Db\AccountMapper;
 use OCA\Webmail\Ews\EwsClient;
 use OCA\Webmail\Exception\MailException;
+use OCP\App\IAppManager;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\ICacheFactory;
+use OCP\ICertificateManager;
 use OCP\IConfig;
 use OCP\Security\ICrypto;
+use Psr\Log\LoggerInterface;
 
 class AccountService {
 	public function __construct(
@@ -20,8 +23,14 @@ class AccountService {
 		private ICrypto $crypto,
 		private IConfig $config,
 		private ICacheFactory $cacheFactory,
+		private ICertificateManager $certificates,
+		private IAppManager $apps,
+		private LoggerInterface $logger,
 	) {
 	}
+
+	/** Timeout of the requests made by the background jobs: one server down must not hold up the others. */
+	public const BACKGROUND_TIMEOUT = 20;
 
 	/** @return Account[] */
 	public function findAll(string $userId): array {
@@ -88,22 +97,33 @@ class AccountService {
 
 	public function delete(string $userId, int $id): void {
 		$this->mapper->delete($this->find($userId, $id));
-		// shared calendars and contacts added to this account
-		foreach (['calendars', 'contacts'] as $type) {
-			$this->config->deleteUserValue($userId, 'webmail', 'shared_' . $type . '_' . $id);
+		// everything remembered for this account: shared and public calendars
+		// and address books, shared mailboxes, notification settings and state
+		foreach (self::accountKeys($this->config->getUserKeys($userId, 'webmail'), $id) as $key) {
+			$this->config->deleteUserValue($userId, 'webmail', $key);
 		}
+	}
+
+	/**
+	 * The preferences of an account: their keys end with « _<id> »
+	 * (shared_calendars_3, public_contacts_3, mailboxes_3, bell_seen_3…).
+	 * @param string[] $keys
+	 * @return string[]
+	 */
+	public static function accountKeys(array $keys, int $id): array {
+		return array_values(array_filter($keys, fn ($k) => preg_match('/^[a-z_]+_' . $id . '$/', $k) === 1));
 	}
 
 	/**
 	 * @throws MailException
 	 */
-	public function getClient(Account $account): EwsClient {
+	public function getClient(Account $account, ?int $timeout = null): EwsClient {
 		try {
 			$password = $this->crypto->decrypt($account->getPassword());
 		} catch (\Exception) {
 			throw new MailException('Mot de passe enregistré illisible, merci de le saisir à nouveau dans les paramètres du compte');
 		}
-		return $this->buildClient($this->servers->resolveUrl($account->getEmail()), $account->getEmail(), $password);
+		return $this->buildClient($this->servers->resolveUrl($account->getEmail()), $account->getEmail(), $password, $timeout);
 	}
 
 	/**
@@ -141,8 +161,38 @@ class AccountService {
 		return $value > 0 ? $value : null;
 	}
 
-		private function buildClient(string $url, string $email, string $password): EwsClient {
+		private function buildClient(string $url, string $email, string $password, ?int $timeout = null): EwsClient {
 		$verify = $this->config->getAppValue('webmail', 'verify_tls', 'yes') !== 'no';
-		return new EwsClient($url, $email, $password, 60, $verify);
+		$client = new EwsClient($url, $email, $password, $timeout ?? 60, $verify);
+		$client->setNetwork(...$this->network());
+		return $client;
+	}
+
+	/** @var array{0: ?string, 1: ?string, 2: string[], 3: ?string, 4: string}|null */
+	private ?array $network = null;
+
+	/**
+	 * The proxy and certificates of Nextcloud (config.php, imported
+	 * certificates), read once per request.
+	 * @return array{0: ?string, 1: ?string, 2: string[], 3: ?string, 4: string}
+	 */
+	private function network(): array {
+		if ($this->network === null) {
+			$exclude = $this->config->getSystemValue('proxyexclude', []);
+			try {
+				$bundle = $this->certificates->getAbsoluteBundlePath();
+			} catch (\Throwable $e) {
+				$this->logger->warning('Webmail: certificate bundle of Nextcloud unavailable, the system one is used', ['app' => 'webmail', 'exception' => $e]);
+				$bundle = null;
+			}
+			$this->network = [
+				$this->config->getSystemValueString('proxy', '') ?: null,
+				$this->config->getSystemValueString('proxyuserpwd', '') ?: null,
+				is_array($exclude) ? array_map('strval', $exclude) : [],
+				$bundle,
+				'Nextcloud-Webmail/' . $this->apps->getAppVersion('webmail'),
+			];
+		}
+		return $this->network;
 	}
 }

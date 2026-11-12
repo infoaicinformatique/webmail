@@ -10,6 +10,7 @@ use OCA\Webmail\Ews\EwsContacts;
 use OCA\Webmail\Ews\TimeZones;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
+use OCA\Webmail\Service\MeetingReminderService;
 use OCA\Webmail\Service\SharedFolderService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -28,6 +29,7 @@ class CalendarController extends Controller {
 		IRequest $request,
 		private AccountService $accounts,
 		private SharedFolderService $shared,
+		private MeetingReminderService $reminders,
 		private LoggerInterface $logger,
 		private ?string $userId,
 	) {
@@ -278,7 +280,9 @@ class CalendarController extends Controller {
 					throw new MailException('Vous ne pouvez pas ajouter d\'événement dans cet agenda');
 				}
 			}
-			return ['id' => $this->calendar($id, $tz, $calendar, true)->createEvent($event, $calendar)];
+			$eventId = $this->calendar($id, $tz, $calendar, true)->createEvent($event, $calendar);
+			$this->reminders->changed($id);
+			return ['id' => $eventId];
 		});
 	}
 
@@ -298,6 +302,7 @@ class CalendarController extends Controller {
 	public function update(int $id, string $eventId, array $event, string $tz = 'UTC', bool $series = false, string $calendar = ''): Response {
 		return $this->handle(function () use ($id, $eventId, $event, $tz, $series, $calendar) {
 			$this->calendar($id, $tz, $calendar, true)->updateEvent($eventId, $event, $series);
+			$this->reminders->changed($id);
 			return ['status' => 'ok'];
 		});
 	}
@@ -309,6 +314,7 @@ class CalendarController extends Controller {
 	public function move(int $id, string $eventId, string $start, string $end, bool $allDay = false, bool $notify = false, string $tz = 'UTC', string $calendar = ''): Response {
 		return $this->handle(function () use ($id, $eventId, $start, $end, $allDay, $notify, $tz, $calendar) {
 			$this->calendar($id, $tz, $calendar, true)->moveEvent($eventId, $start, $end, $allDay, $notify);
+			$this->reminders->changed($id);
 			return ['status' => 'ok'];
 		});
 	}
@@ -317,6 +323,7 @@ class CalendarController extends Controller {
 	public function delete(int $id, string $eventId, bool $series = false, string $calendar = ''): Response {
 		return $this->handle(function () use ($id, $eventId, $series, $calendar) {
 			$this->calendar($id, 'UTC', $calendar, true)->deleteEvent($eventId, $series, str_starts_with($calendar, 'public:'));
+			$this->reminders->changed($id);
 			return ['status' => 'ok'];
 		});
 	}
@@ -379,6 +386,7 @@ class CalendarController extends Controller {
 				}
 			}
 			$this->calendar($id, 'UTC', $calendar)->respond($eventId, $response, $message);
+			$this->reminders->changed($id);
 			return ['status' => 'ok'];
 		});
 	}

@@ -75,7 +75,7 @@ class MailNotificationService {
 		$id = $account->getId();
 		$since = $this->config->getUserValue($userId, Application::APP_ID, 'bell_since_' . $id, '');
 		$seen = json_decode($this->config->getUserValue($userId, Application::APP_ID, 'bell_seen_' . $id, '[]'), true);
-		$client = $this->accounts->getClient($account);
+		$client = $this->accounts->getClient($account, AccountService::BACKGROUND_TIMEOUT);
 
 		if ($since === '') {
 			// first check: what is there already is not new

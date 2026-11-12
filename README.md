@@ -213,7 +213,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.41.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.42.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -235,7 +235,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.41 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.42 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -256,6 +256,20 @@ La même configuration peut se faire en ligne de commande :
 ```bash
 sudo -u www-data php occ config:app:set webmail servers --value='[{"domain":"societe-a.fr","label":"OVH ex3","url":"ex3.mail.ovh.net"},{"domain":"societe-b.fr","label":"OVH ex5","url":"ex5.mail.ovh.net"}]'
 ```
+
+### Réseau, proxy et certificats
+
+Les requêtes vers Exchange suivent les réglages réseau de Nextcloud, comme ses autres connexions sortantes :
+
+- le **proxy** de `config.php` (`proxy`, `proxyuserpwd`, et `proxyexclude` pour les hôtes à joindre en direct) ;
+- les **certificats** de Nextcloud, y compris ceux importés par l'administrateur (`occ security:certificates:import`), par exemple pour un proxy qui inspecte le HTTPS.
+
+### Tâches de fond et performances
+
+- Réglez les tâches de fond de Nextcloud sur **Cron** : les notifications de nouveaux messages (toutes les 5 minutes) et les rappels des rendez-vous (chaque minute) en dépendent.
+- Une exécution encore en cours n'est pas relancée à côté d'elle. Chaque requête faite en tâche de fond abandonne au bout de 20 secondes, pour qu'un serveur injoignable ne retarde pas les autres comptes.
+- Les rappels ne demandent les prochains rendez-vous à Exchange qu'une fois toutes les 5 minutes par compte. Le calcul se refait chaque minute sans requête, et immédiatement après une modification de l'agenda dans le webmail.
+- Un cache partagé est recommandé, par exemple **Redis** dans `memcache.distributed`. Le tableau de bord, les rappels, l'espace utilisé et la boîte des dossiers publics y sont gardés. APCu seul ne sert pas aux tâches de fond, qui tournent chacune dans un nouveau processus. Sans cache, tout fonctionne, avec plus de requêtes vers Exchange.
 
 ## Utilisation
 
