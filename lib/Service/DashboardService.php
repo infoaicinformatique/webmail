@@ -31,18 +31,20 @@ class DashboardService {
 	 * @return array<int, array{accountId: int, account: string, id: string, subject: string, from: string, date: string}>
 	 */
 	public function unread(string $userId, int $limit = 7): array {
-		return $this->cached($userId, 'unread', function () use ($userId, $limit) {
+		return $this->cached($userId, 'unread', function (array $accounts) use ($limit) {
 			$lists = [];
-			foreach ($this->accounts->findAll($userId) as $account) {
+			$complete = true;
+			foreach ($accounts as $account) {
 				try {
 					$r = $this->accounts->getClient($account)->findItems('inbox', 0, $limit, EwsClient::searchQuery(null, ['unread' => true]));
 				} catch (MailException $e) {
 					$this->logger->warning('Webmail dashboard: ' . $account->getEmail() . ': ' . $e->getMessage());
+					$complete = false;
 					continue;
 				}
 				$lists[] = ['id' => $account->getId(), 'email' => $account->getEmail(), 'items' => $r['items']];
 			}
-			return self::mergeUnread($lists, $limit);
+			return [self::mergeUnread($lists, $limit), $complete];
 		});
 	}
 
@@ -51,14 +53,16 @@ class DashboardService {
 	 * @return array<int, array{accountId: int, account: string, id: string, subject: string, start: string, end: string, allDay: bool, location: string}>
 	 */
 	public function upcoming(string $userId, int $limit = 7, ?\DateTimeImmutable $now = null): array {
-		return $this->cached($userId, 'upcoming', function () use ($userId, $limit, $now) {
+		return $this->cached($userId, 'upcoming', function (array $accounts) use ($limit, $now) {
 			$now ??= new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 			$out = [];
-			foreach ($this->accounts->findAll($userId) as $account) {
+			$complete = true;
+			foreach ($accounts as $account) {
 				try {
 					$events = (new EwsCalendar($this->accounts->getClient($account)))->findEvents($now, $now->modify('+7 days'));
 				} catch (MailException $e) {
 					$this->logger->warning('Webmail dashboard: ' . $account->getEmail() . ': ' . $e->getMessage());
+					$complete = false;
 					continue;
 				}
 				foreach ($events as $e) {
@@ -78,7 +82,7 @@ class DashboardService {
 				}
 			}
 			usort($out, fn ($a, $b) => strtotime($a['start']) <=> strtotime($b['start']));
-			return array_slice($out, 0, $limit);
+			return [array_slice($out, 0, $limit), $complete];
 		});
 	}
 
@@ -126,19 +130,26 @@ class DashboardService {
 	}
 
 	/**
-	 * @template T
-	 * @param callable(): T $load
-	 * @return T
+	 * A minute of cache, per user and per set of accounts (adding or removing
+	 * an account is seen at once). Nothing is kept when there is no account
+	 * or when an account did not answer.
+	 * @param callable(array<int, \OCA\Webmail\Db\Account>): array{0: array, 1: bool} $load the result, and whether every account answered
 	 */
-	private function cached(string $userId, string $what, callable $load): mixed {
+	private function cached(string $userId, string $what, callable $load): array {
+		$accounts = $this->accounts->findAll($userId);
+		if ($accounts === []) {
+			return [];
+		}
 		$cache = $this->cacheFactory->createDistributed('webmail-dashboard');
-		$key = $what . '_' . md5($userId);
+		$key = $what . '_' . md5($userId . '|' . implode(',', array_map(fn ($a) => $a->getId(), $accounts)));
 		$value = $cache->get($key);
 		if (is_array($value)) {
 			return $value;
 		}
-		$value = $load();
-		$cache->set($key, $value, self::TTL);
+		[$value, $complete] = $load($accounts);
+		if ($complete) {
+			$cache->set($key, $value, self::TTL);
+		}
 		return $value;
 	}
 }
