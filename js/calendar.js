@@ -189,6 +189,13 @@
 					h('span', { class: 'wm-cal-dot', style: c.color ? 'background:' + c.color : '' }),
 					h('span', { class: 'wm-cal-name' }, c.name)),
 				mode ? h('span', { class: 'wm-cal-mode wm-cal-mode-' + mode }, MODE_LABEL[mode]) : null,
+				c.kind !== 'shared' ? h('button', {
+					type: 'button',
+					class: 'wm-cal-share',
+					title: 'Partager cet agenda',
+					'aria-label': 'Partager ' + c.name,
+					onclick: () => openShare(c),
+				}, '🔗') : null,
 				c.kind === 'shared' ? h('button', {
 					type: 'button',
 					class: 'wm-cal-remove',
@@ -205,6 +212,120 @@
 			h('div', { class: 'wm-cal-section' }, 'Agendas partagés'),
 			shared.length ? h('ul', {}, shared.map(row)) : h('p', { class: 'wm-muted wm-cal-hint' }, 'Ajoutez l\'agenda d\'un collègue qui vous l\'a partagé dans Outlook.'),
 			h('button', { type: 'button', class: 'wm-cal-add', onclick: openAddShared }, '＋ Ajouter un agenda partagé'))
+	}
+
+	const SHARE_LEVELS = [
+		['None', 'Aucun accès'],
+		['FreeBusyTimeOnly', 'Disponibilités seulement'],
+		['FreeBusyTimeAndSubjectAndLocation', 'Disponibilités, objet et lieu'],
+		['Reviewer', 'Lecture (tous les détails)'],
+		['Author', 'Lecture et ajout d\'événements'],
+		['Editor', 'Modification'],
+	]
+
+	/**
+	 * Share one of my calendars without delegation (Outlook: right-click on
+	 * the calendar > Permissions).
+	 */
+	async function openShare(c) {
+		const h = core.h
+		const body = h('div', { class: 'wm-event-form wm-share' }, h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
+		const close = modal('Partager « ' + c.name + ' »', body)
+		let perms
+		try {
+			perms = (await core.api('/accounts/' + core.accountId + '/calendar/permissions', { query: { calendar: c.key } })).permissions
+		} catch (e) {
+			core.clear(body)
+			body.appendChild(h('div', { class: 'wm-form-error' }, e.message))
+			return
+		}
+		// rows edited locally, saved together
+		const rows = perms.filter((p) => p.user !== 'Anonymous').map((p) => ({ ...p, original: p.level }))
+		if (!rows.some((p) => p.user === 'Default')) rows.unshift({ user: 'Default', name: '', level: 'None', original: 'None' })
+
+		const levelSelect = (row) => {
+			const known = SHARE_LEVELS.some(([v]) => v === row.level)
+			const sel = h('select', { name: 'level', 'aria-label': 'Niveau' },
+				known ? null : h('option', { value: 'keep', selected: true }, 'Autre (défini dans Outlook)'),
+				SHARE_LEVELS.map(([v, l]) => h('option', { value: v, selected: v === row.level }, l)))
+			sel.addEventListener('change', () => { row.level = sel.value === 'keep' ? row.original : sel.value })
+			return sel
+		}
+		const list = h('div', { class: 'wm-share-list' })
+		const renderRows = () => {
+			core.clear(list)
+			rows.forEach((row, i) => {
+				const isDefault = row.user === 'Default'
+				list.appendChild(h('div', { class: 'wm-share-row', dataset: { user: row.user } },
+					h('div', { class: 'wm-share-who' },
+						isDefault ? h('strong', {}, 'Tout le monde dans l\'organisation') : h('strong', {}, row.name || row.user),
+						isDefault ? h('span', { class: 'wm-muted' }, ' (par défaut)') : (row.name ? h('span', { class: 'wm-muted' }, ' ' + row.user) : null)),
+					levelSelect(row),
+					isDefault ? h('span', { class: 'wm-share-spacer' }) : h('button', {
+						type: 'button',
+						class: 'wm-cal-remove',
+						'aria-label': 'Retirer ' + (row.name || row.user),
+						title: 'Ne plus partager avec cette personne',
+						onclick: () => { rows.splice(i, 1); renderRows() },
+					}, '✕')))
+			})
+		}
+		renderRows()
+
+		const email = h('input', { type: 'text', name: 'shareEmail', placeholder: 'Ajouter une personne (adresse e-mail)' })
+		const newLevel = h('select', { name: 'newLevel', 'aria-label': 'Niveau pour la nouvelle personne' },
+			SHARE_LEVELS.filter(([v]) => v !== 'None').map(([v, l]) => h('option', { value: v, selected: v === 'Reviewer' }, l)))
+		const err = h('div', { class: 'wm-form-error', role: 'alert' })
+		const addPerson = () => {
+			err.textContent = ''
+			let value = email.value.trim().replace(/,\s*$/, '')
+			const m = value.match(/<([^>]+)>/)
+			const address = (m ? m[1] : value).trim().toLowerCase()
+			if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) { err.textContent = 'Adresse e-mail invalide'; return }
+			if (rows.some((r) => r.user.toLowerCase() === address)) { err.textContent = 'Cette personne est déjà dans la liste'; return }
+			rows.push({ user: address, name: m ? value.replace(/<[^>]+>/, '').trim() : '', level: newLevel.value, original: null })
+			email.value = ''
+			renderRows()
+		}
+
+		const save = h('button', { type: 'submit', class: 'primary' }, 'Enregistrer')
+		const form = h('form', {
+			class: 'wm-event-form',
+			onsubmit: async (e) => {
+				e.preventDefault()
+				if (email.value.trim()) addPerson()
+				save.disabled = true
+				try {
+					await core.api('/accounts/' + core.accountId + '/calendar/permissions', {
+						method: 'POST',
+						body: {
+							calendar: c.key,
+							permissions: rows.map((r) => ({
+								user: r.user,
+								// levels set in Outlook that this form does not offer are left as they are
+								level: r.original !== null && r.level === r.original && !SHARE_LEVELS.some(([v]) => v === r.level) ? 'keep' : r.level,
+							})),
+						},
+					})
+					core.toast('Partage de « ' + c.name + ' » enregistré')
+					close()
+				} catch (ex) {
+					err.textContent = ex.message
+					save.disabled = false
+				}
+			},
+		},
+		h('p', { class: 'wm-muted' }, 'Choisissez ce que chacun peut voir ou faire dans cet agenda, sans en faire un délégué. '
+			+ 'C\'est le réglage « Autorisations » de l\'agenda dans Outlook. Vos collègues l\'ajoutent ensuite avec « Ajouter un agenda partagé ».'),
+		list,
+		h('div', { class: 'wm-share-add' }, h('div', { class: 'wm-ac-wrap' }, core.attachAutocomplete(email)), newLevel,
+			h('button', { type: 'button', onclick: addPerson }, 'Ajouter')),
+		err,
+		h('div', { class: 'wm-compose-actions' }, save, h('button', { type: 'button', onclick: () => close() }, 'Annuler')))
+		// after the autocompletion handler: Enter picks a suggestion first
+		email.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.defaultPrevented) { e.preventDefault(); addPerson() } })
+		core.clear(body)
+		body.appendChild(form)
 	}
 
 	function openAddShared() {

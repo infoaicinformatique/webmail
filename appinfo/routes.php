@@ -22,6 +22,8 @@ return [
 		['name' => 'mail#send', 'url' => '/api/accounts/{id}/send', 'verb' => 'POST'],
 
 		['name' => 'calendar#calendars', 'url' => '/api/accounts/{id}/calendar/calendars', 'verb' => 'GET'],
+		['name' => 'calendar#permissions', 'url' => '/api/accounts/{id}/calendar/permissions', 'verb' => 'GET'],
+		['name' => 'calendar#setPermissions', 'url' => '/api/accounts/{id}/calendar/permissions', 'verb' => 'POST'],
 		['name' => 'calendar#addShared', 'url' => '/api/accounts/{id}/calendar/shared', 'verb' => 'POST'],
 		['name' => 'calendar#removeShared', 'url' => '/api/accounts/{id}/calendar/shared/delete', 'verb' => 'POST'],
 		['name' => 'calendar#events', 'url' => '/api/accounts/{id}/calendar/events', 'verb' => 'GET'],

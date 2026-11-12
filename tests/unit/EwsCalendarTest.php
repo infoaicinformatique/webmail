@@ -382,6 +382,79 @@ class EwsCalendarTest extends EwsTestCase {
 		$this->calendar()->freeBusy('x@x.fr', new \DateTimeImmutable('2026-01-01'), new \DateTimeImmutable('2026-06-01'));
 	}
 
+	private static function permissionResponse(): string {
+		return self::ok('GetFolder', '<m:Folders><t:CalendarFolder><t:FolderId Id="CAL"/><t:PermissionSet><t:CalendarPermissions>'
+			. '<t:CalendarPermission><t:UserId><t:DistinguishedUser>Default</t:DistinguishedUser></t:UserId><t:CanCreateItems>false</t:CanCreateItems>'
+			. '<t:ReadItems>TimeOnly</t:ReadItems><t:CalendarPermissionLevel>FreeBusyTimeOnly</t:CalendarPermissionLevel></t:CalendarPermission>'
+			. '<t:CalendarPermission><t:UserId><t:DistinguishedUser>Anonymous</t:DistinguishedUser></t:UserId><t:CalendarPermissionLevel>None</t:CalendarPermissionLevel></t:CalendarPermission>'
+			. '<t:CalendarPermission><t:UserId><t:SID>S-1-5-21-1</t:SID><t:PrimarySmtpAddress>Paul@x.fr</t:PrimarySmtpAddress><t:DisplayName>Paul Durand</t:DisplayName></t:UserId>'
+			. '<t:CanCreateItems>true</t:CanCreateItems><t:CanCreateSubFolders>false</t:CanCreateSubFolders><t:IsFolderOwner>false</t:IsFolderOwner>'
+			. '<t:IsFolderVisible>true</t:IsFolderVisible><t:IsFolderContact>false</t:IsFolderContact><t:EditItems>Owned</t:EditItems><t:DeleteItems>Owned</t:DeleteItems>'
+			. '<t:ReadItems>FullDetails</t:ReadItems><t:CalendarPermissionLevel>Custom</t:CalendarPermissionLevel></t:CalendarPermission>'
+			. '<t:CalendarPermission><t:UserId><t:PrimarySmtpAddress>marie@x.fr</t:PrimarySmtpAddress><t:DisplayName>Marie &amp; Co</t:DisplayName></t:UserId>'
+			. '<t:CalendarPermissionLevel>Reviewer</t:CalendarPermissionLevel></t:CalendarPermission>'
+			. '</t:CalendarPermissions></t:PermissionSet></t:CalendarFolder></m:Folders>');
+	}
+
+	public function testGetPermissions(): void {
+		$this->queue(self::permissionResponse());
+		$perms = $this->calendar()->getPermissions('calendar');
+		$this->assertSame([
+			['user' => 'Default', 'name' => '', 'level' => 'FreeBusyTimeOnly'],
+			['user' => 'Anonymous', 'name' => '', 'level' => 'None'],
+			['user' => 'paul@x.fr', 'name' => 'Paul Durand', 'level' => 'Custom'],
+			['user' => 'marie@x.fr', 'name' => 'Marie & Co', 'level' => 'Reviewer'],
+		], $perms);
+		$this->assertStringContainsString('<t:FieldURI FieldURI="folder:PermissionSet"/>', $this->lastRequest());
+	}
+
+	public function testSetPermissionsKeepsCustomEntriesAndDistinguishedUsers(): void {
+		$this->queue(self::permissionResponse());
+		$this->queue(self::ok('UpdateFolder', '<m:Folders><t:CalendarFolder><t:FolderId Id="CAL"/></t:CalendarFolder></m:Folders>'));
+		$this->calendar()->setPermissions('CAL-2', [
+			['user' => 'Default', 'level' => 'FreeBusyTimeAndSubjectAndLocation'],
+			['user' => 'paul@x.fr', 'level' => 'keep'],
+			['user' => 'Anne <ANNE@x.fr>', 'level' => 'Editor'],
+			// marie removed
+		], 'user@example.fr');
+		$req = $this->lastRequest();
+		$this->assertStringContainsString('<m:UpdateFolder><m:FolderChanges><t:FolderChange><t:FolderId Id="CAL-2"/>', $req);
+		$this->assertStringContainsString('<t:CalendarPermission><t:UserId><t:DistinguishedUser>Default</t:DistinguishedUser></t:UserId><t:CalendarPermissionLevel>FreeBusyTimeAndSubjectAndLocation</t:CalendarPermissionLevel></t:CalendarPermission>', $req);
+		// custom entry rebuilt with all its settings, without the SID
+		$this->assertStringContainsString('<t:UserId><t:PrimarySmtpAddress>Paul@x.fr</t:PrimarySmtpAddress><t:DisplayName>Paul Durand</t:DisplayName></t:UserId><t:CanCreateItems>true</t:CanCreateItems>', $req);
+		$this->assertStringContainsString('<t:EditItems>Owned</t:EditItems><t:DeleteItems>Owned</t:DeleteItems><t:ReadItems>FullDetails</t:ReadItems><t:CalendarPermissionLevel>Custom</t:CalendarPermissionLevel>', $req);
+		$this->assertStringNotContainsString('S-1-5-21-1', $req);
+		$this->assertStringContainsString('<t:PrimarySmtpAddress>anne@x.fr</t:PrimarySmtpAddress></t:UserId><t:CalendarPermissionLevel>Editor</t:CalendarPermissionLevel>', $req);
+		$this->assertStringNotContainsString('marie@x.fr', $req);
+		// Anonymous was not sent by the UI: kept from Exchange
+		$this->assertStringContainsString('<t:DistinguishedUser>Anonymous</t:DistinguishedUser></t:UserId><t:CalendarPermissionLevel>None</t:CalendarPermissionLevel>', $req);
+	}
+
+	/**
+	 * @dataProvider badPermissions
+	 */
+	public function testSetPermissionsValidation(array $entries, string $message): void {
+		$this->queue(self::permissionResponse());
+		$this->expectException(MailException::class);
+		$this->expectExceptionMessage($message);
+		$this->calendar()->setPermissions('calendar', $entries, 'user@example.fr');
+	}
+
+	public static function badPermissions(): array {
+		return [
+			[[['user' => 'pas-une-adresse', 'level' => 'Reviewer']], 'Adresse invalide'],
+			[[['user' => 'user@example.fr', 'level' => 'Reviewer']], 'déjà propriétaire'],
+			[[['user' => 'a@x.fr', 'level' => 'Reviewer'], ['user' => 'A@x.fr', 'level' => 'Editor']], 'en double'],
+			[[['user' => 'a@x.fr', 'level' => 'Owner']], 'Niveau de partage inconnu'],
+			[[['user' => 'nobody@x.fr', 'level' => 'keep']], 'introuvable'],
+		];
+	}
+
+	public function testCannotShareSomeoneElsesCalendar(): void {
+		$this->expectException(MailException::class);
+		$this->calendar()->setPermissions('shared:marie@x.fr', [], 'user@example.fr');
+	}
+
 	public function testTimeZoneMapping(): void {
 		$this->assertSame('Romance Standard Time', TimeZones::toWindows('Europe/Paris'));
 		$this->assertSame('Mauritius Standard Time', TimeZones::toWindows('Indian/Reunion'));

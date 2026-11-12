@@ -98,6 +98,34 @@ SHARED_ACCESS = {
 FREEBUSY = {}
 
 
+# permissions of my own calendars: folder -> list of (user, name, level, extra xml)
+PERMISSIONS = {
+    'F-CAL': [('Default', '', 'FreeBusyTimeOnly', ''), ('Anonymous', '', 'None', ''),
+              ('paul.durand@societe-a.fr', 'Paul Durand', 'Custom',
+               '<t:CanCreateItems>true</t:CanCreateItems><t:EditItems>Owned</t:EditItems><t:DeleteItems>Owned</t:DeleteItems><t:ReadItems>FullDetails</t:ReadItems>')],
+    'F-CAL2': [('Default', '', 'None', ''), ('Anonymous', '', 'None', '')],
+}
+
+
+def permission_set_xml(folder):
+    out = ''
+    for user, name, level, extra in PERMISSIONS[folder]:
+        uid = ('<t:DistinguishedUser>%s</t:DistinguishedUser>' % user if user in ('Default', 'Anonymous')
+               else '<t:SID>S-1-5-21-%d</t:SID><t:PrimarySmtpAddress>%s</t:PrimarySmtpAddress><t:DisplayName>%s</t:DisplayName>'
+               % (abs(hash(user)) % 1000, esc(user), esc(name)))
+        out += '<t:CalendarPermission><t:UserId>%s</t:UserId>%s<t:CalendarPermissionLevel>%s</t:CalendarPermissionLevel></t:CalendarPermission>' % (uid, extra, level)
+    return '<t:PermissionSet><t:CalendarPermissions>%s</t:CalendarPermissions></t:PermissionSet>' % out
+
+
+def own_calendar_ref(ref):
+    """F-CAL / F-CAL2 for a reference to one of my calendars, else None."""
+    if ref.tag == T + 'FolderId' and ref.get('Id') in PERMISSIONS:
+        return ref.get('Id')
+    if ref.tag == T + 'DistinguishedFolderId' and ref.get('Id') == 'calendar' and ref.find('t:Mailbox', NS) is None:
+        return 'F-CAL'
+    return None
+
+
 def calendar_folder(ref):
     """Resolve a calendar folder reference -> (folder key, error code or None)."""
     if ref.tag == T + 'FolderId':
@@ -421,6 +449,46 @@ def delete_contact_field(c, path):
 # ----------------------------------------------------------------------------
 def handle(op, el, user, tz, messages, move_message):
     """messages / move_message give access to the mail store of fake_ews.py (meeting requests)."""
+
+    if op == 'GetFolder' and any(f.get('FieldURI') == 'folder:PermissionSet' for f in el.findall('m:FolderShape/t:AdditionalProperties/t:FieldURI', NS)):
+        out = []
+        for r in el.find('m:FolderIds', NS):
+            folder = own_calendar_ref(r)
+            if folder is None:
+                out.append(err(op, 'ErrorAccessDenied', 'Access is denied.'))
+            else:
+                out.append(ok(op, '<m:Folders><t:CalendarFolder><t:FolderId Id="%s" ChangeKey="AQ"/>%s</t:CalendarFolder></m:Folders>'
+                              % (folder, permission_set_xml(folder))))
+        return wrap(op, out)
+
+    if op == 'UpdateFolder':
+        out = []
+        for ch in el.findall('m:FolderChanges/t:FolderChange', NS):
+            folder = own_calendar_ref(ch[0])
+            if folder is None:
+                out.append(err(op, 'ErrorAccessDenied', 'Access is denied.'))
+                continue
+            perms = ch.findall('t:Updates/t:SetFolderField/t:CalendarFolder/t:PermissionSet/t:CalendarPermissions/t:CalendarPermission', NS)
+            new = []
+            bad = None
+            for p in perms:
+                user = text(p, 't:UserId/t:DistinguishedUser') or text(p, 't:UserId/t:PrimarySmtpAddress').lower()
+                level = text(p, 't:CalendarPermissionLevel')
+                if user not in ('Default', 'Anonymous') and user not in [e for _, e in DIRECTORY]:
+                    bad = 'ErrorInvalidUserInfo'
+                    break
+                extra = ''.join('<t:%s>%s</t:%s>' % (c.tag.replace(T, ''), esc(c.text or ''), c.tag.replace(T, ''))
+                                for c in p if c.tag.replace(T, '') not in ('UserId', 'CalendarPermissionLevel'))
+                name = next((n for n, e in DIRECTORY if e == user), '')
+                new.append((user, name, level, extra))
+            if bad is None and not any(u == 'Default' for u, _, _, _ in new):
+                bad = 'ErrorInvalidPermissionSettings'
+            if bad:
+                out.append(err(op, bad, bad))
+                continue
+            PERMISSIONS[folder] = new
+            out.append(ok(op, '<m:Folders><t:CalendarFolder><t:FolderId Id="%s" ChangeKey="AQ"/></t:CalendarFolder></m:Folders>' % folder))
+        return wrap(op, out)
 
     if op == 'GetFolder':
         refs = list(el.find('m:FolderIds', NS))
