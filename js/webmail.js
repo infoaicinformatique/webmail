@@ -922,13 +922,16 @@
 					const ids = state.checked.has(m.id) ? [...state.checked] : [m.id]
 					e.dataTransfer.setData('application/x-webmail-ids', JSON.stringify(ids))
 					e.dataTransfer.effectAllowed = 'move'
-					const ghost = h('div', { class: 'wm-drag-ghost' }, ids.length > 1 ? ids.length + ' messages' : (m.subject || '(sans objet)'))
-					document.body.appendChild(ghost)
-					e.dataTransfer.setDragImage(ghost, 10, 10)
-					setTimeout(() => ghost.remove(), 0)
+					// the image shown under the pointer, kept until the drag ends
+					dragGhost = h('div', { class: 'wm-drag-ghost' }, ids.length > 1 ? ids.length + ' messages' : (m.subject || '(sans objet)'))
+					document.body.appendChild(dragGhost)
+					e.dataTransfer.setDragImage(dragGhost, 10, 10)
 					root.classList.add('wm-dragging')
 				},
-				ondragend: () => root.classList.remove('wm-dragging'),
+				ondragend: () => {
+					root.classList.remove('wm-dragging')
+					if (dragGhost) { dragGhost.remove(); dragGhost = null }
+				},
 				onkeydown: (e) => { if (e.key === 'Enter') openMessage(m.id) },
 				// hovering a message for a moment loads it in advance
 				onmouseenter: () => { clearTimeout(hoverTimer); hoverTimer = setTimeout(() => prefetchMessage(m.id), 150) },
@@ -981,6 +984,7 @@
 	// ------------------------------------------------------------------
 
 	let bulkBarEl = null
+	let dragGhost = null
 	let checkAnchor = null
 
 	function toggleChecked(id) {
@@ -2058,12 +2062,9 @@
 					const acc = await api('/accounts', { method: 'POST', body: { email: email.value, password: pwd.value, displayName: name.value } })
 					state.accounts.push(acc)
 					toast('Compte ajouté')
-					if (!navEl || !root.contains(navEl)) {
-						buildLayout()
-						clearInterval(refreshTimer)
-						refreshTimer = setInterval(refresh, REFRESH_MS)
-					}
+					if (!navEl || !root.contains(navEl)) buildLayout()
 					await selectAccount(acc.id)
+					startBackground()
 					renderEmptyDetail()
 					setView('list')
 				} catch (ex) {
@@ -2155,11 +2156,19 @@
 		buildLayout()
 		const first = state.accounts.find((a) => a.id === saved) || state.accounts[0]
 		await selectAccount(first.id)
+		startBackground()
+	}
 
-		clearInterval(refreshTimer)
+	let backgroundStarted = false
+	/**
+	 * Refresh, new message checks and keyboard shortcuts: once there is an
+	 * account (at start, or after the first account is added).
+	 */
+	function startBackground() {
+		if (backgroundStarted) return
+		backgroundStarted = true
 		refreshTimer = setInterval(refresh, REFRESH_MS)
 		document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); checkNewMessages() } })
-		clearInterval(notifyTimer)
 		notifyTimer = setInterval(checkNewMessages, NOTIFY_MS)
 		checkNewMessages()
 		document.addEventListener('keydown', onShortcut)

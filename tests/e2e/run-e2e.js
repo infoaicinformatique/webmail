@@ -420,8 +420,20 @@ async function main() {
 		await page.keyboard.press('Escape')
 		await page.waitForSelector('.wm-bulk', { state: 'detached' })
 
-		// drag a message onto a folder
-		await page.dragAndDrop(msg(10), '.wm-folder:has-text("Factures")')
+		// drag a message onto a folder (the browser's drag events, fired here:
+		// Playwright's drag emulation hangs with this headless Chromium)
+		const accepted = await page.evaluate(() => {
+			const li = [...document.querySelectorAll('.wm-message')].find((e) => e.querySelector('.wm-message-subject').textContent === 'Newsletter n°10')
+			const folder = [...document.querySelectorAll('.wm-folder')].find((e) => e.textContent.includes('Factures'))
+			const dt = new DataTransfer()
+			li.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }))
+			const over = new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt })
+			folder.dispatchEvent(over)
+			folder.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
+			li.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }))
+			return over.defaultPrevented
+		})
+		assert(accepted, 'the folder accepts the drop')
 		await page.waitForSelector('.wm-toast:has-text("Message déplacé vers « Factures »")')
 		assert(!(await page.$(msg(10))))
 		await page.click('.wm-folder:has-text("Factures")')
