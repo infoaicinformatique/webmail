@@ -53,6 +53,8 @@ return [
 		['name' => 'contact#delete', 'url' => '/api/accounts/{id}/contacts/delete', 'verb' => 'POST'],
 		['name' => 'contact#resolve', 'url' => '/api/accounts/{id}/contacts/resolve', 'verb' => 'GET'],
 
+		['name' => 'oof#show', 'url' => '/api/accounts/{id}/oof', 'verb' => 'GET'],
+		['name' => 'oof#update', 'url' => '/api/accounts/{id}/oof', 'verb' => 'POST'],
 		['name' => 'delegate#index', 'url' => '/api/accounts/{id}/delegates', 'verb' => 'GET'],
 		['name' => 'delegate#create', 'url' => '/api/accounts/{id}/delegates', 'verb' => 'POST'],
 		['name' => 'delegate#update', 'url' => '/api/accounts/{id}/delegates/update', 'verb' => 'POST'],

@@ -36,6 +36,7 @@ et sur les téléphones, et inversement.
 | Aperçu | Miniatures des photos ; **aperçu plein écran** des images, des PDF et des fichiers texte (← / → pour passer de l'une à l'autre, Échap pour fermer). Le texte est affiché tel quel, rien n'y est interprété ; les autres types (Word, zip…) se téléchargent |
 | Destinataires | Complétion automatique des adresses à partir des contacts Exchange **et de l'annuaire de l'entreprise** |
 | Invitations | Une invitation reçue par e-mail affiche la date et le lieu, avec les boutons **Accepter / Provisoire / Refuser** |
+| Réponse automatique | « 🌴 Réponse automatique » (dans « Comptes et signature ») : comme dans Outlook, activée tout de suite ou **pendant une période**, avec un message pour vos collègues et, au choix, aucune réponse, une réponse à vos contacts extérieurs ou à tout le monde à l'extérieur (même message ou un autre). Tant qu'elle est active, un rappel avec « Modifier » et « Désactiver » s'affiche au-dessus des dossiers |
 | Délégation | Si vous êtes **délégué** d'un collègue dans Outlook, Exchange vous transmet une copie de ses invitations : le bandeau indique « Invitation reçue pour Marie Martin (vous êtes son délégué) » et la réponse est envoyée **en son nom** (après confirmation) |
 | Nouveaux messages | Le nombre de non-lus de la boîte de réception s'affiche dans le **titre de l'onglet** (« (3) Webmail »). Avec « 🔔 Activer les notifications » (en bas à gauche), chaque nouveau message de chaque compte déclenche une **notification du navigateur** quand la fenêtre n'est pas au premier plan (un clic ouvre le message), ou un message dans la page sinon. Vérification chaque minute, tant que Nextcloud est ouvert dans un onglet |
 | Mobile | Affichage adapté aux téléphones ; le bouton **Retour** du téléphone ferme le message (ou le menu) au lieu de quitter le webmail |
@@ -43,6 +44,8 @@ et sur les téléphones, et inversement.
 ![Raccourcis clavier](docs/capture-raccourcis.png)
 
 ![Éditeur et brouillons](docs/capture-editeur.png)
+
+![Réponse automatique](docs/capture-absence.png)
 
 ![Aperçu des pièces jointes](docs/capture-apercu.png)
 
@@ -131,7 +134,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.18.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.19.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -153,7 +156,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.18 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.19 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -241,7 +244,7 @@ templates/          page principale et page d'administration
 - Affichage par conversation (fil de discussion)
 - Sélection multiple (cases à cocher, Maj+clic) et glisser-déposer des messages vers un dossier
 - Gestion des dossiers : créer, renommer, déplacer, supprimer
-- Réponse automatique d'absence et règles de la boîte de réception
+- Règles de la boîte de réception
 - Catégories Outlook (couleurs), « Ce n'est pas du courrier indésirable », bloquer un expéditeur
 - Lien de partage Nextcloud à la place d'une pièce jointe trop lourde
 - Boîtes partagées (contact@…) et boîtes des collègues dont on est délégué

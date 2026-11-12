@@ -585,8 +585,37 @@ def delete_contact_field(c, path):
 
 
 # ----------------------------------------------------------------------------
+# automatic replies per mailbox
+OOF = {}
+
+
+def handle_oof(op, el, user):
+    mailbox = el.findtext('t:Mailbox/t:Address', default='', namespaces=NS).lower()
+    resp = op.replace('Request', 'Response')
+    if mailbox != user.lower():
+        return ('<m:%s xmlns:m="%s"><m:ResponseMessage ResponseClass="Error"><m:MessageText>Access is denied.</m:MessageText>'
+                '<m:ResponseCode>ErrorAccessDenied</m:ResponseCode></m:ResponseMessage></m:%s>' % (resp, NS['m'], resp))
+    if op == 'SetUserOofSettingsRequest':
+        s = el.find('t:UserOofSettings', NS)
+        OOF[mailbox] = dict(
+            state=s.findtext('t:OofState', namespaces=NS), audience=s.findtext('t:ExternalAudience', namespaces=NS),
+            start=s.findtext('t:Duration/t:StartTime', default='', namespaces=NS), end=s.findtext('t:Duration/t:EndTime', default='', namespaces=NS),
+            internal=s.findtext('t:InternalReply/t:Message', default='', namespaces=NS), external=s.findtext('t:ExternalReply/t:Message', default='', namespaces=NS))
+        return '<m:%s xmlns:m="%s"><m:ResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode></m:ResponseMessage></m:%s>' % (resp, NS['m'], resp)
+    o = OOF.get(mailbox, dict(state='Disabled', audience='All', start='2026-01-01T00:00:00Z', end='2026-01-02T00:00:00Z', internal='', external=''))
+    return ('<m:%s xmlns:m="%s" xmlns:t="%s"><m:ResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode></m:ResponseMessage>'
+            '<t:OofSettings><t:OofState>%s</t:OofState><t:ExternalAudience>%s</t:ExternalAudience>'
+            '<t:Duration><t:StartTime>%s</t:StartTime><t:EndTime>%s</t:EndTime></t:Duration>'
+            '<t:InternalReply><t:Message>%s</t:Message></t:InternalReply><t:ExternalReply><t:Message>%s</t:Message></t:ExternalReply></t:OofSettings>'
+            '<m:AllowExternalOof>All</m:AllowExternalOof></m:%s>'
+            % (resp, NS['m'], NS['t'], o['state'], o['audience'], o['start'] or '2026-01-01T00:00:00Z', o['end'] or '2026-01-02T00:00:00Z',
+               esc(o['internal']), esc(o['external']), resp))
+
+
 def handle(op, el, user, tz, messages, move_message):
     """messages / move_message give access to the mail store of fake_ews.py (meeting requests)."""
+    if op in ('GetUserOofSettingsRequest', 'SetUserOofSettingsRequest'):
+        return handle_oof(op, el, user)
     # Exchange 2013+: public folder requests must be routed to the public folder mailbox, and only them
     public = touches_public(el)
     if public != routed_to_public():

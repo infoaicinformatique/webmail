@@ -514,6 +514,8 @@
 			return
 		}
 		navEl.appendChild(h('button', { class: 'wm-compose-btn primary', onclick: () => openCompose('new') }, '✉️  Nouveau message'))
+		const away = oofBanner()
+		if (away) navEl.appendChild(away)
 		const sel = accountSelector()
 		if (sel) navEl.appendChild(sel)
 
@@ -613,7 +615,142 @@
 		}
 		renderNav()
 		renderEmptyDetail()
+		loadOof(id)
 		await Promise.all([loadFolders(), loadMessages(true)])
+	}
+
+	// ------------------------------------------------------------------
+	// automatic replies (out of office)
+	// ------------------------------------------------------------------
+
+	/** account id -> automatic reply settings */
+	const oofState = {}
+
+	async function loadOof(accountId) {
+		try {
+			oofState[accountId] = await api('/accounts/' + accountId + '/oof')
+			if (accountId === state.accountId && state.module === 'mail') renderNav()
+		} catch (e) { /* not shown when Exchange does not answer */ }
+	}
+
+	const shortDate = (iso) => new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+
+	/** Reminder in the folder pane while automatic replies are on. */
+	function oofBanner() {
+		const o = oofState[state.accountId]
+		if (!o || !o.active) return null
+		const account = state.accounts.find((a) => a.id === state.accountId)
+		return h('div', { class: 'wm-oof-banner', role: 'status' },
+			h('div', {}, '🌴 Réponse automatique activée' + (o.state === 'Scheduled' && o.end ? ' jusqu\'au ' + shortDate(o.end) : '')),
+			h('div', {},
+				h('a', { href: '#', onclick: (e) => { e.preventDefault(); openOof(account) } }, 'Modifier'), ' · ',
+				h('a', {
+					href: '#',
+					onclick: async (e) => {
+						e.preventDefault()
+						try {
+							oofState[account.id] = await api('/accounts/' + account.id + '/oof', { method: 'POST', body: { state: 'Disabled', audience: o.audience, internal: o.internal, external: o.external } })
+							toast('Réponse automatique désactivée')
+							renderNav()
+						} catch (err) { toast(err.message, true) }
+					},
+				}, 'Désactiver')))
+	}
+
+	/** Same settings as Outlook's "Automatic replies". */
+	async function openOof(account) {
+		const overlay = h('div', { class: 'wm-overlay' })
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const body = h('div', { class: 'wm-event-form' }, h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
+		overlay.appendChild(h('div', { class: 'wm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Réponse automatique' },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, 'Réponse automatique – ' + account.email),
+				h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
+			body))
+		document.body.appendChild(overlay)
+		let o
+		try {
+			o = await api('/accounts/' + account.id + '/oof')
+		} catch (e) {
+			clear(body)
+			body.appendChild(h('div', { class: 'wm-form-error' }, e.message))
+			return
+		}
+		const local = (iso, fallbackDays) => {
+			const d = iso ? new Date(iso) : new Date(Date.now() + fallbackDays * 86400000)
+			if (!iso) d.setHours(fallbackDays ? 18 : 8, 0, 0, 0)
+			const p = (n) => String(n).padStart(2, '0')
+			return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes())
+		}
+		const radio = (value, label) => h('label', { class: 'wm-radio' },
+			h('input', { type: 'radio', name: 'oofState', value, checked: o.state === value, onchange: sync }), ' ' + label)
+		// Exchange keeps an old period when none is set: propose today → in a week instead
+		const current = o.state === 'Scheduled' && o.end && new Date(o.end) > new Date()
+		const start = h('input', { type: 'datetime-local', name: 'oofStart', value: local(current ? o.start : null, 0) })
+		const end = h('input', { type: 'datetime-local', name: 'oofEnd', value: local(current ? o.end : null, 7) })
+		const internal = h('textarea', { name: 'oofInternal', rows: '5', placeholder: 'Bonjour, je suis absent jusqu\'au … Pour toute urgence, contactez …' })
+		internal.value = o.internal || ''
+		const audience = h('select', { name: 'oofAudience' },
+			[['None', 'Ne pas répondre aux personnes extérieures'], ['Known', 'Répondre seulement à mes contacts extérieurs'], ['All', 'Répondre à toutes les personnes extérieures']]
+				.map(([v, l]) => h('option', { value: v, selected: o.audience === v }, l)))
+		const differs = h('input', { type: 'checkbox', name: 'oofDiffers', checked: !!o.external && o.external !== o.internal, onchange: sync })
+		const external = h('textarea', { name: 'oofExternal', rows: '4', placeholder: 'Message pour les personnes extérieures' })
+		external.value = o.external && o.external !== o.internal ? o.external : ''
+		const period = h('div', { class: 'wm-oof-period' }, h('label', {}, 'Du ', start), h('label', {}, ' au ', end))
+		const externalBox = h('div', {}, h('label', { class: 'wm-radio' }, differs, ' Message différent pour l\'extérieur'), external)
+		const details = h('div', {}, h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Message'), internal),
+			h('label', { class: 'wm-field' }, h('span', {}, 'Extérieur'), audience), externalBox)
+		function sync() {
+			const st = overlay.querySelector('input[name=oofState]:checked').value
+			period.hidden = st !== 'Scheduled'
+			details.hidden = st === 'Disabled'
+			externalBox.hidden = audience.value === 'None'
+			external.hidden = !differs.checked
+		}
+		audience.addEventListener('change', sync)
+		const err = h('div', { class: 'wm-form-error', role: 'alert' })
+		const save = h('button', { type: 'submit', class: 'primary' }, 'Enregistrer')
+		clear(body)
+		body.appendChild(h('form', {
+			class: 'wm-event-form',
+			onsubmit: async (e) => {
+				e.preventDefault()
+				err.textContent = ''
+				const st = overlay.querySelector('input[name=oofState]:checked').value
+				save.disabled = true
+				try {
+					oofState[account.id] = await api('/accounts/' + account.id + '/oof', {
+						method: 'POST',
+						body: {
+							state: st,
+							audience: audience.value,
+							start: st === 'Scheduled' ? new Date(start.value).toISOString() : '',
+							end: st === 'Scheduled' ? new Date(end.value).toISOString() : '',
+							internal: internal.value,
+							external: differs.checked ? external.value : '',
+						},
+					})
+					close()
+					const r = oofState[account.id]
+					toast(r.state === 'Disabled' ? 'Réponse automatique désactivée'
+						: r.state === 'Enabled' ? 'Réponse automatique activée'
+							: 'Réponse automatique programmée du ' + shortDate(r.start) + ' au ' + shortDate(r.end))
+					if (account.id === state.accountId) renderNav()
+				} catch (ex) {
+					err.textContent = ex.message
+					save.disabled = false
+				}
+			},
+		},
+		h('div', { class: 'wm-oof-states' },
+			radio('Disabled', 'Ne pas envoyer de réponse automatique'),
+			radio('Enabled', 'Envoyer une réponse automatique'),
+			radio('Scheduled', 'Envoyer une réponse automatique pendant une période')),
+		period, details, err,
+		h('div', { class: 'wm-compose-actions' }, save, h('button', { type: 'button', onclick: close }, 'Annuler'))))
+		sync()
 	}
 
 	function selectFolder(id) {
@@ -1716,6 +1853,7 @@
 				h('label', { class: 'wm-field' }, h('span', {}, 'Mot de passe'), pwd),
 				h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Signature'), sig),
 				h('div', { class: 'wm-compose-actions' }, save,
+					h('button', { type: 'button', class: 'wm-oof-btn', onclick: () => openOof(a) }, '🌴 Réponse automatique'),
 					h('button', {
 						type: 'button',
 						class: 'wm-delegates-btn',

@@ -399,6 +399,36 @@ async function main() {
 		assert(/--\s*\nUtilisateur\nSociété A/.test(signed), signed)
 	})
 
+	await step('automatic replies (out of office)', async () => {
+		await page.click('text=Comptes et signature')
+		await page.click('.wm-account-card:has-text("user@societe-a.fr") .wm-oof-btn')
+		await page.waitForSelector('.wm-modal input[name=oofState][value=Disabled]:checked')
+		assert(!(await page.isVisible('.wm-modal textarea[name=oofInternal]')), 'nothing to fill while disabled')
+		await page.check('.wm-modal input[name=oofState][value=Scheduled]')
+		const local = (d) => { const p = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()) }
+		const end = new Date(Date.now() + 3 * 86400000)
+		await page.fill('.wm-modal input[name=oofStart]', local(new Date(Date.now() - 3600000)))
+		await page.fill('.wm-modal input[name=oofEnd]', local(end))
+		await page.fill('.wm-modal textarea[name=oofInternal]', 'Bonjour,\nje suis absent. Pour toute urgence : Paul Durand.')
+		await page.selectOption('.wm-modal select[name=oofAudience]', 'Known')
+		await shot('37-out-of-office')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Réponse automatique programmée du")')
+		// reminder in the folder pane
+		await page.waitForSelector('.wm-oof-banner:has-text("Réponse automatique activée jusqu\'au")')
+		// saved as set
+		await page.click('.wm-oof-banner a:has-text("Modifier")')
+		await page.waitForSelector('.wm-modal input[name=oofState][value=Scheduled]:checked')
+		assert.strictEqual(await page.inputValue('.wm-modal textarea[name=oofInternal]'), 'Bonjour,\nje suis absent. Pour toute urgence : Paul Durand.')
+		assert.strictEqual(await page.inputValue('.wm-modal select[name=oofAudience]'), 'Known')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=oofEnd]'), local(end))
+		await page.click('.wm-modal-close')
+		// switched off from the reminder
+		await page.click('.wm-oof-banner a:has-text("Désactiver")')
+		await page.waitForSelector('.wm-toast:has-text("Réponse automatique désactivée")')
+		await page.waitForSelector('.wm-oof-banner', { state: 'detached' })
+	})
+
 	await step('rich text editor and drafts', async () => {
 		// a new message with formatting, saved as a draft while writing
 		await page.click('.wm-compose-btn')
