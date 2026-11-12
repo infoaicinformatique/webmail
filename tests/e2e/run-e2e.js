@@ -1598,7 +1598,7 @@ async function main() {
 		await ocs('/v3/layout', { method: 'POST', body: { layout: ['webmail-unread', 'webmail-agenda'] } })
 		const items = (await ocs('/v2/widget-items?widgets[]=webmail-unread&widgets[]=webmail-agenda')).data
 		const unread = items['webmail-unread'].items
-		assert(unread.length > 0 && unread.every((i) => /[?&]account=\d+&message=/.test(i.link)), JSON.stringify(unread[0]))
+		assert(unread.length > 0 && unread.every((i) => /[?&]account=\d+&message=/.test(i.link)), 'unread widget: ' + JSON.stringify(items['webmail-unread']))
 		assert(unread.some((i) => i.title === 'Rappel 2'), unread.map((i) => i.title).join('|'))
 		const events = items['webmail-agenda'].items
 		assert(events.length > 0, 'next events')

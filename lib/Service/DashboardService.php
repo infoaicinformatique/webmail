@@ -37,7 +37,7 @@ class DashboardService {
 				try {
 					$r = $this->accounts->getClient($account)->findItems('inbox', 0, $limit, EwsClient::searchQuery(null, ['unread' => true]));
 				} catch (MailException $e) {
-					$this->logger->info('Webmail dashboard: ' . $account->getEmail() . ': ' . $e->getMessage());
+					$this->logger->warning('Webmail dashboard: ' . $account->getEmail() . ': ' . $e->getMessage());
 					continue;
 				}
 				$lists[] = ['id' => $account->getId(), 'email' => $account->getEmail(), 'items' => $r['items']];
@@ -58,7 +58,7 @@ class DashboardService {
 				try {
 					$events = (new EwsCalendar($this->accounts->getClient($account)))->findEvents($now, $now->modify('+7 days'));
 				} catch (MailException $e) {
-					$this->logger->info('Webmail dashboard: ' . $account->getEmail() . ': ' . $e->getMessage());
+					$this->logger->warning('Webmail dashboard: ' . $account->getEmail() . ': ' . $e->getMessage());
 					continue;
 				}
 				foreach ($events as $e) {
