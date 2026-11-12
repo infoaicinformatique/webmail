@@ -78,6 +78,105 @@ def add_event(subject, start, end, all_day=False, location='', body='', organize
     return eid
 
 
+# ----------------------------------------------------------------------------
+# recurring series: occurrences are stored in EVENTS, the rule here
+# ----------------------------------------------------------------------------
+SERIES = {}   # series id -> {'master': master item id, 'rule': {...}}
+MASTERS = {}  # master item id -> series id
+WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+
+def parse_rule(rec):
+    pattern = next(c for c in rec if c.tag.replace(T, '') not in ('NoEndRecurrence', 'EndDateRecurrence', 'NumberedRecurrence'))
+    until = text(rec, 't:EndDateRecurrence/t:EndDate')
+    count = text(rec, 't:NumberedRecurrence/t:NumberOfOccurrences')
+    return dict(pattern=pattern.tag.replace(T, ''), interval=int(text(pattern, 't:Interval', '1')),
+                days=text(pattern, 't:DaysOfWeek').split(), until=dt.date.fromisoformat(until[:10]) if until else None,
+                count=int(count) if count else None)
+
+
+def expand_rule(rule, start, end):
+    dur = end - start
+    n = rule['interval']
+    out = []
+
+    def add(s):
+        if rule['until'] and s.date() > rule['until']:
+            return False
+        out.append((s, s + dur))
+        return not (rule['count'] and len(out) >= rule['count']) and len(out) < 60
+
+    if rule['pattern'] == 'WeeklyRecurrence':
+        days = [WEEKDAYS.index(d) for d in (rule['days'] or [WEEKDAYS[start.weekday()]])]
+        monday = start - dt.timedelta(days=start.weekday())
+        for w in range(0, 200):
+            for d in sorted(days):
+                s = monday + dt.timedelta(days=7 * n * w + d)
+                if s.date() < start.date():
+                    continue
+                if not add(s):
+                    return out
+        return out
+    for i in range(0, 200):
+        if rule['pattern'] == 'DailyRecurrence':
+            s = start + dt.timedelta(days=n * i)
+        elif rule['pattern'] == 'AbsoluteMonthlyRecurrence':
+            m = start.month - 1 + n * i
+            try:
+                s = start.replace(year=start.year + m // 12, month=m % 12 + 1)
+            except ValueError:
+                continue
+        else:
+            try:
+                s = start.replace(year=start.year + i)
+            except ValueError:
+                continue
+        if not add(s):
+            return out
+    return out
+
+
+def rule_xml(rule, start):
+    p = rule['pattern']
+    inner = '' if p == 'AbsoluteYearlyRecurrence' else '<t:Interval>%d</t:Interval>' % rule['interval']
+    if p == 'WeeklyRecurrence':
+        inner += '<t:DaysOfWeek>%s</t:DaysOfWeek>' % ' '.join(rule['days'] or [WEEKDAYS[start.weekday()]])
+    elif p == 'AbsoluteMonthlyRecurrence':
+        inner += '<t:DayOfMonth>%d</t:DayOfMonth>' % start.day
+    elif p == 'AbsoluteYearlyRecurrence':
+        inner += '<t:DayOfMonth>%d</t:DayOfMonth><t:Month>%s</t:Month>' % (start.day, start.strftime('%B'))
+    sd = '<t:StartDate>%s</t:StartDate>' % start.date().isoformat()
+    if rule['until']:
+        rng = '<t:EndDateRecurrence>%s<t:EndDate>%s</t:EndDate></t:EndDateRecurrence>' % (sd, rule['until'].isoformat())
+    elif rule['count']:
+        rng = '<t:NumberedRecurrence>%s<t:NumberOfOccurrences>%d</t:NumberOfOccurrences></t:NumberedRecurrence>' % (sd, rule['count'])
+    else:
+        rng = '<t:NoEndRecurrence>%s</t:NoEndRecurrence>' % sd
+    return '<t:Recurrence><t:%s>%s</t:%s>%s</t:Recurrence>' % (p, inner, p, rng)
+
+
+def create_series(subject, start, end, rule, sid=None, master=None, **fields):
+    sid = sid or new_id('SER')
+    master = master or new_id('MS')
+    SERIES[sid] = dict(master=master, rule=rule)
+    MASTERS[master] = sid
+    first = None
+    for s, e in expand_rule(rule, start, end):
+        eid = add_event(subject, s, e, ev_type='Occurrence', series=sid, **fields)
+        first = first or eid
+    return first
+
+
+def occurrences(sid):
+    return sorted((e for e in EVENTS.values() if e['series'] == sid), key=lambda e: e['start'])
+
+
+def master_xml(sid):
+    first = occurrences(sid)[0]
+    m = dict(first, id=SERIES[sid]['master'], type='RecurringMaster')
+    return event_xml(m, True, recurrence=rule_xml(SERIES[sid]['rule'], first['start']))
+
+
 def seed():
     add_event('Point hebdo équipe', at(0, 9), at(0, 10), location='Salle Méditerranée',
               attendees=[('Marie Martin', 'marie.martin@societe-a.fr', 'Accept'), ('Paul Durand', 'paul.durand@societe-a.fr', 'NoResponseReceived')],
@@ -86,9 +185,9 @@ def seed():
     add_event('Salon Informatique', at(3, 0), at(5, 0), all_day=True, location='Nice Acropolis', reminder=-1)
     add_event('Revue budget', at(2, 15), at(2, 16), organizer=('Marie Martin', 'marie.martin@societe-a.fr'), response='NoResponseReceived',
               attendees=[(ME[0], ME[1], 'NoResponseReceived')])
-    series = new_id('SER')
-    for w in range(0, 6):
-        add_event('Sport', at(7 * w + 4, 18), at(7 * w + 4, 19), ev_type='Occurrence', series=series, free_busy='Free', reminder=-1)
+    first = at(4, 18)
+    create_series('Sport', first, at(4, 19), dict(pattern='WeeklyRecurrence', interval=1, days=[WEEKDAYS[first.weekday()]], until=None, count=6),
+                  free_busy='Free', reminder=-1)
 
     def contact(given, surname, company='', email='', email2='', mobile='', business='', job='', city='', street='', postal='', notes=''):
         cid = new_id('CT')
@@ -130,7 +229,7 @@ def attendees_xml(tag, lst):
     return '<t:%s>%s</t:%s>' % (tag, ''.join('<t:Attendee>%s<t:ResponseType>%s</t:ResponseType></t:Attendee>' % (mailbox(n, e), r) for n, e, r in lst), tag)
 
 
-def event_xml(e, detail):
+def event_xml(e, detail, recurrence=''):
     is_meeting = bool(e['attendees'] or e['optional']) or e['organizer'] != ME
     x = '<t:CalendarItem><t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject>' % (e['id'], e['ck'], esc(e['subject']))
     if detail:
@@ -148,7 +247,7 @@ def event_xml(e, detail):
              e['type'], e['response'], mailbox(*e['organizer'])))
     if detail:
         x += attendees_xml('RequiredAttendees', e['attendees']) + attendees_xml('OptionalAttendees', e['optional'])
-    return x + '</t:CalendarItem>'
+    return x + recurrence + '</t:CalendarItem>'
 
 
 def contact_xml(c, detail):
@@ -192,34 +291,6 @@ def read_attendees(el, tag):
         name = next((n for n, m in DIRECTORY if m == e), e.split('@')[0])
         out.append((name, e, 'NoResponseReceived'))
     return out
-
-
-def expand(freq, start, end, until):
-    occ = []
-    for i in range(0, 60):
-        if freq == 'DailyRecurrence':
-            d = dt.timedelta(days=i)
-            s, e = start + d, end + d
-        elif freq == 'WeeklyRecurrence':
-            d = dt.timedelta(weeks=i)
-            s, e = start + d, end + d
-        elif freq == 'AbsoluteMonthlyRecurrence':
-            m = start.month - 1 + i
-            try:
-                s = start.replace(year=start.year + m // 12, month=m % 12 + 1)
-            except ValueError:
-                continue
-            e = s + (end - start)
-        else:
-            try:
-                s = start.replace(year=start.year + i)
-            except ValueError:
-                continue
-            e = s + (end - start)
-        if until and s.date() > until:
-            break
-        occ.append((s, e))
-    return occ
 
 
 def contact_from(el, existing=None):
@@ -298,7 +369,13 @@ def handle(op, el, user, tz, messages, move_message):
         return None
 
     if op == 'GetItem':
-        ids = [i.get('Id') for i in el.find('m:ItemIds', NS)]
+        refs = list(el.find('m:ItemIds', NS))
+        if refs and refs[0].tag == T + 'RecurringMasterItemId':
+            occ = EVENTS.get(refs[0].get('OccurrenceId'))
+            if not occ or not occ['series']:
+                return wrap(op, [err(op, 'ErrorItemNotFound', 'not found')])
+            return wrap(op, [ok(op, '<m:Items>%s</m:Items>' % master_xml(occ['series']))])
+        ids = [i.get('Id') for i in refs]
         fields = [f.get('FieldURI') for f in el.findall('m:ItemShape/t:AdditionalProperties/t:FieldURI', NS)]
         if all(i in EVENTS for i in ids):
             return wrap(op, [ok(op, '<m:Items>%s</m:Items>' % event_xml(EVENTS[i], True)) for i in ids])
@@ -328,15 +405,7 @@ def handle(op, el, user, tz, messages, move_message):
                               reminder=int(text(it, 't:ReminderMinutesBeforeStart', '-1')) if text(it, 't:ReminderIsSet') == 'true' else -1)
                 rec = it.find('t:Recurrence', NS)
                 if rec is not None:
-                    pattern = rec[0].tag.replace(T, '')
-                    until = text(rec, 't:EndDateRecurrence/t:EndDate')
-                    until = dt.date.fromisoformat(until) if until else None
-                    series = new_id('SER')
-                    occ = expand(pattern, start, end, until)
-                    first = None
-                    for s, e in occ:
-                        eid = add_event(text(it, 't:Subject'), s, e, ev_type='Occurrence', series=series, **common)
-                        first = first or eid
+                    first = create_series(text(it, 't:Subject'), start, end, parse_rule(rec), **common)
                     out.append(ok(op, '<m:Items><t:CalendarItem><t:ItemId Id="%s" ChangeKey="CK"/></t:CalendarItem></m:Items>' % first))
                 else:
                     eid = add_event(text(it, 't:Subject'), start, end, **common)
@@ -379,12 +448,19 @@ def handle(op, el, user, tz, messages, move_message):
     if op == 'UpdateItem':
         changes = list(el.find('m:ItemChanges', NS))
         ids = [ch.find('t:ItemId', NS).get('Id') for ch in changes]
-        if ids and all(i in EVENTS for i in ids):
+        if ids and all(i in EVENTS or i in MASTERS for i in ids):
             if el.get('SendMeetingInvitationsOrCancellations') is None:
                 return wrap(op, [err(op, 'ErrorSendMeetingInvitationsOrCancellationsRequired', 'required for calendar items')])
             for ch in changes:
-                e = EVENTS[ch.find('t:ItemId', NS).get('Id')]
+                iid = ch.find('t:ItemId', NS).get('Id')
+                sid = MASTERS.get(iid)
+                # a series is edited on a copy of its first occurrence, then regenerated
+                e = dict(occurrences(sid)[0]) if sid else EVENTS[iid]
+                rule_change = 'keep'
                 for upd in ch.find('t:Updates', NS):
+                    if upd.find('t:FieldURI', NS).get('FieldURI') == 'calendar:Recurrence':
+                        rule_change = 'delete' if upd.tag == T + 'DeleteItemField' else parse_rule(upd.find('t:CalendarItem/t:Recurrence', NS))
+                        continue
                     uri = upd.find('t:FieldURI', NS).get('FieldURI')
                     if upd.tag == T + 'DeleteItemField':
                         if uri == 'calendar:Location':
@@ -420,6 +496,17 @@ def handle(op, el, user, tz, messages, move_message):
                 if e['end'] < e['start']:
                     return wrap(op, [err(op, 'ErrorCalendarEndDateIsEarlierThanStartDate', 'End before start')])
                 e['ck'] = new_id('CK')
+                if sid:
+                    for k in [k for k, x in EVENTS.items() if x['series'] == sid]:
+                        del EVENTS[k]
+                    fields = dict(location=e['location'], body=e['body'], all_day=e['all_day'], organizer=e['organizer'], response=e['response'],
+                                  attendees=e['attendees'], optional=e['optional'], free_busy=e['free_busy'], reminder=e['reminder'])
+                    if rule_change == 'delete':
+                        del SERIES[sid], MASTERS[iid]
+                        add_event(e['subject'], e['start'], e['end'], **fields)
+                    else:
+                        rule = SERIES[sid]['rule'] if rule_change == 'keep' else rule_change
+                        create_series(e['subject'], e['start'], e['end'], rule, sid=sid, master=iid, **fields)
             return wrap(op, [ok(op, '<m:Items/><m:ConflictResults><t:Count>0</t:Count></m:ConflictResults>') for _ in ids])
         if ids and all(i in CONTACTS for i in ids):
             for ch in changes:

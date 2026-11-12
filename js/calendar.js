@@ -389,6 +389,124 @@
 	}
 
 	// ------------------------------------------------------------------
+	// recurrence rules
+	// ------------------------------------------------------------------
+
+	const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+	const WEEKDAY_FR = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
+	const UNITS = { daily: ['jour', 'jours'], weekly: ['semaine', 'semaines'], monthly: ['mois', 'mois'], yearly: ['an', 'ans'] }
+
+	function weekdayOf(d) { return WEEKDAYS[(d.getDay() + 6) % 7] }
+
+	function joinFr(list) {
+		return list.length > 1 ? list.slice(0, -1).join(', ') + ' et ' + list[list.length - 1] : (list[0] || '')
+	}
+
+	/** "Toutes les 2 semaines le lundi et le jeudi, jusqu'au 31 mars 2027" */
+	function describeRule(r, start) {
+		if (!r) return 'Ne se répète pas'
+		if (r.freq === 'other' || r.freq === 'keep') return 'Répétition personnalisée (définie dans Outlook)'
+		const n = r.interval || 1
+		const fem = r.freq === 'weekly' // « semaine » est féminin
+		let text = n === 1
+			? { daily: 'Tous les jours', weekly: 'Toutes les semaines', monthly: 'Tous les mois', yearly: 'Tous les ans' }[r.freq]
+			: (fem ? 'Toutes les ' : 'Tous les ') + n + ' ' + UNITS[r.freq][1]
+		if (r.freq === 'weekly') {
+			const days = (r.days && r.days.length ? r.days : [weekdayOf(start)])
+			text += ' ' + joinFr(WEEKDAYS.filter((d) => days.includes(d)).map((d) => 'le ' + WEEKDAY_FR[WEEKDAYS.indexOf(d)]))
+		} else if (r.freq === 'monthly') {
+			text += ' le ' + (start.getDate() === 1 ? '1er' : start.getDate())
+		} else if (r.freq === 'yearly') {
+			text += ' le ' + start.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+		}
+		if (r.until) {
+			text += ', jusqu\'au ' + new Date(r.until + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+		} else if (r.count) {
+			text += ', ' + r.count + ' fois'
+		}
+		return text
+	}
+
+	/**
+	 * Recurrence editor. `initial` is a rule from the server (or null);
+	 * `getStart()` returns the current start date of the form.
+	 * Returns { el, value() } where value() is the rule to send.
+	 */
+	function recurrenceEditor(initial, getStart, allowKeep) {
+		const h = core.h
+		const repeat = h('select', { name: 'repeat', 'aria-label': 'Répétition' },
+			allowKeep ? h('option', { value: 'keep' }, 'Conserver la répétition actuelle') : null,
+			h('option', { value: '' }, 'Ne se répète pas'),
+			h('option', { value: 'daily' }, 'Tous les jours'),
+			h('option', { value: 'weekly' }, 'Toutes les semaines'),
+			h('option', { value: 'monthly' }, 'Tous les mois'),
+			h('option', { value: 'yearly' }, 'Tous les ans'))
+		const interval = h('input', { type: 'number', name: 'interval', min: '1', max: '99', value: String((initial && initial.interval) || 1), 'aria-label': 'Intervalle' })
+		const unit = h('span', {})
+		const intervalWrap = h('label', { class: 'wm-inline' }, 'tous les ', interval, ' ', unit)
+		const dayBoxes = WEEKDAYS.map((d, i) => {
+			const box = h('input', { type: 'checkbox', name: 'day-' + d, value: d })
+			return { d, box, el: h('label', { class: 'wm-day-check', title: WEEKDAY_FR[i] }, box, WEEKDAY_FR[i].slice(0, 2)) }
+		})
+		const daysWrap = h('div', { class: 'wm-days' }, dayBoxes.map((x) => x.el))
+		const ends = h('select', { name: 'ends', 'aria-label': 'Fin de la répétition' },
+			h('option', { value: 'never' }, 'sans fin'),
+			h('option', { value: 'until' }, 'jusqu\'au'),
+			h('option', { value: 'count' }, 'après'))
+		const until = h('input', { type: 'date', name: 'until', 'aria-label': 'Jusqu\'au' })
+		const count = h('input', { type: 'number', name: 'count', min: '1', max: '999', value: '10', 'aria-label': 'Nombre d\'occurrences' })
+		const countWrap = h('span', { class: 'wm-inline' }, count, ' occurrences')
+		const summary = h('div', { class: 'wm-muted wm-rule-summary', 'aria-live': 'polite' })
+
+		if (initial && initial.freq !== 'other') {
+			repeat.value = initial.freq
+			if (initial.until) { ends.value = 'until'; until.value = initial.until }
+			else if (initial.count) { ends.value = 'count'; count.value = String(initial.count) }
+		} else if (initial && allowKeep) {
+			repeat.value = 'keep'
+		} else {
+			repeat.value = ''
+		}
+		const initialDays = initial && initial.days && initial.days.length ? initial.days : null
+		dayBoxes.forEach((x) => { x.box.checked = initialDays ? initialDays.includes(x.d) : false })
+
+		const value = () => {
+			if (repeat.value === 'keep') return { freq: 'keep' }
+			if (!repeat.value) return null
+			const r = { freq: repeat.value, interval: parseInt(interval.value, 10) || 1 }
+			if (r.freq === 'weekly') r.days = dayBoxes.filter((x) => x.box.checked).map((x) => x.d)
+			if (ends.value === 'until' && until.value) r.until = until.value
+			if (ends.value === 'count') r.count = parseInt(count.value, 10) || 1
+			return r
+		}
+		const sync = () => {
+			const f = repeat.value
+			const active = f !== '' && f !== 'keep'
+			intervalWrap.hidden = !active || f === 'yearly'
+			daysWrap.hidden = f !== 'weekly'
+			ends.hidden = !active
+			until.hidden = !active || ends.value !== 'until'
+			countWrap.hidden = !active || ends.value !== 'count'
+			if (f && UNITS[f]) unit.textContent = (parseInt(interval.value, 10) || 1) > 1 ? UNITS[f][1] : UNITS[f][0]
+			// a weekly rule always includes the weekday of the start date
+			const start = getStart()
+			if (f === 'weekly' && !isNaN(start) && !dayBoxes.some((x) => x.box.checked)) {
+				dayBoxes.find((x) => x.d === weekdayOf(start)).box.checked = true
+			}
+			summary.textContent = f === 'keep' ? describeRule(initial, start) : (active && !isNaN(start) ? describeRule(value(), start) : '')
+		}
+		;[repeat, interval, ends, until, count].forEach((i) => { i.addEventListener('change', sync); i.addEventListener('input', sync) })
+		dayBoxes.forEach((x) => x.box.addEventListener('change', sync))
+		sync()
+
+		const el = h('div', { class: 'wm-recurrence' },
+			h('div', { class: 'wm-inline wm-wrap' }, repeat, intervalWrap, ends, until, countWrap),
+			daysWrap,
+			summary)
+		return { el, value, sync }
+	}
+
+	// ------------------------------------------------------------------
 	// dialogs
 	// ------------------------------------------------------------------
 
@@ -438,7 +556,7 @@
 		body.append(...[
 			ev.isCancelled ? h('div', { class: 'wm-warning' }, 'Cet événement a été annulé.') : null,
 			h('div', { class: 'wm-event-when' }, '🕑 ' + ucfirst(core.formatRange(ev.start, ev.end, ev.allDay))),
-			ev.isRecurring ? h('div', { class: 'wm-muted' }, '🔁 Événement périodique') : null,
+			ev.isRecurring ? h('div', { class: 'wm-muted wm-event-rule' }, '🔁 Événement périodique') : null,
 			ev.location ? h('div', {}, '📍 ' + ev.location) : null,
 			ev.isMeeting && ev.organizer ? h('div', {}, '👤 Organisateur : ' + core.personLabel(ev.organizer)) : null,
 			ev.attendees.length ? h('div', {}, h('strong', {}, 'Participants'), h('ul', { class: 'wm-attendees' }, people(ev.attendees))) : null,
@@ -462,8 +580,20 @@
 				h('button', { onclick: () => answer('tentative', 'provisoire') }, '? Provisoire'),
 				h('button', { class: 'wm-danger', onclick: () => answer('decline', 'refusé') }, '✗ Refuser'))
 		}
+		const isOccurrence = ev.type === 'Occurrence' || ev.type === 'Exception'
 		if (ev.isOrganizer) {
-			actions.appendChild(h('button', { class: 'primary', onclick: () => { close(); openForm(ev) } }, '✏️ Modifier'))
+			actions.appendChild(h('button', { class: 'primary', onclick: () => { close(); openForm(ev) } }, isOccurrence ? '✏️ Modifier cette occurrence' : '✏️ Modifier'))
+		}
+		if (isOccurrence) {
+			// describe the rule, and allow editing the whole series
+			const ruleLine = body.querySelector('.wm-event-rule')
+			const editSeries = h('button', { disabled: true, onclick: () => { close(); openForm(editSeries.series, null, false, { series: true }) } }, '🔁 Modifier la série')
+			if (ev.isOrganizer) actions.appendChild(editSeries)
+			core.api('/accounts/' + core.accountId + '/calendar/series', { query: { eventId: ev.id, tz: core.TZ } }).then((series) => {
+				editSeries.series = series
+				editSeries.disabled = false
+				if (ruleLine) ruleLine.textContent = '🔁 ' + describeRule(series.recurrence, new Date(series.start))
+			}).catch(() => { editSeries.remove() })
 		}
 		if (ev.attendees.length || ev.optionalAttendees.length) {
 			const emails = ev.attendees.concat(ev.optionalAttendees).map((a) => a.email).filter((e) => e && !e.startsWith('/'))
@@ -491,9 +621,14 @@
 	/**
 	 * Create (ev = null, on `day`) or edit an event.
 	 */
-	function openForm(ev, day, withTime) {
+	/**
+	 * opts.series: `ev` is a series master (from /calendar/series); the rule
+	 * and all occurrences are edited.
+	 */
+	function openForm(ev, day, withTime, opts) {
 		const h = core.h
 		const isNew = !ev
+		const isSeries = !!(opts && opts.series)
 		let start
 		let end
 		if (ev) {
@@ -527,15 +662,16 @@
 		description.value = ev ? ev.body : ''
 		const reminder = h('select', { name: 'reminder' }, REMINDERS.map(([v, l]) => h('option', { value: String(v), selected: (ev ? ev.reminder : 15) === v }, l)))
 		const freeBusy = h('select', { name: 'freeBusy' }, FREEBUSY.map(([v, l]) => h('option', { value: v, selected: (ev ? ev.freeBusy : 'Busy') === v }, l)))
-		const repeat = h('select', { name: 'repeat' },
-			h('option', { value: '' }, 'Ne se répète pas'),
-			h('option', { value: 'daily' }, 'Tous les jours'),
-			h('option', { value: 'weekly' }, 'Toutes les semaines'),
-			h('option', { value: 'monthly' }, 'Tous les mois'),
-			h('option', { value: 'yearly' }, 'Tous les ans'))
-		const until = h('input', { type: 'date', name: 'until', 'aria-label': 'Jusqu\'au' })
-		const untilWrap = h('label', { class: 'wm-inline', hidden: true }, 'jusqu\'au ', until, h('span', { class: 'wm-muted' }, ' (facultatif)'))
-		repeat.addEventListener('change', () => { untilWrap.hidden = !repeat.value })
+		const customRule = isSeries && ev.recurrence && ev.recurrence.freq === 'other'
+		const rule = (isNew || isSeries)
+			? recurrenceEditor(isSeries ? ev.recurrence : null, () => new Date(startDate.value + 'T12:00'), customRule)
+			: null
+		if (rule) startDate.addEventListener('change', rule.sync)
+		if (customRule) {
+			// the start date is part of a rule this form cannot rewrite: only times can change
+			startDate.disabled = true
+			endDate.disabled = true
+		}
 		const syncAllDay = () => { startTime.hidden = allDay.checked; endTime.hidden = allDay.checked }
 		allDay.addEventListener('change', syncAllDay)
 		syncAllDay()
@@ -576,16 +712,20 @@
 					reminder: parseInt(reminder.value, 10),
 					freeBusy: freeBusy.value,
 				}
-				if (isNew && repeat.value) data.recurrence = { freq: repeat.value, until: until.value || null }
+				if (rule) data.recurrence = rule.value()
+				if (isSeries && !window.confirm('Modifier toutes les occurrences de « ' + (subject.value || ev.subject) + ' » ?'
+					+ (ev.attendees.length || ev.optionalAttendees.length ? ' Les participants recevront la mise à jour.' : ''))) return
 				save.disabled = true
 				try {
 					if (isNew) {
 						await core.api('/accounts/' + core.accountId + '/calendar/events', { method: 'POST', body: { event: data, tz: core.TZ } })
 					} else {
-						await core.api('/accounts/' + core.accountId + '/calendar/update', { method: 'POST', body: { eventId: ev.id, event: data, tz: core.TZ } })
+						await core.api('/accounts/' + core.accountId + '/calendar/update', { method: 'POST', body: { eventId: ev.id, event: data, tz: core.TZ, series: isSeries } })
 					}
 					const invited = (attendees.value + optional.value).trim() !== ''
-					core.toast(isNew ? (invited ? 'Événement créé, invitations envoyées' : 'Événement créé') : (invited ? 'Événement modifié, participants prévenus' : 'Événement modifié'))
+					core.toast(isNew ? (invited ? 'Événement créé, invitations envoyées' : 'Événement créé')
+						: isSeries ? (invited ? 'Série modifiée, participants prévenus' : 'Série modifiée')
+							: (invited ? 'Événement modifié, participants prévenus' : 'Événement modifié'))
 					close()
 					const s = readStart()
 					const [from, to] = visibleRange()
@@ -609,14 +749,17 @@
 		field('Lieu', location),
 		field('Participants', core.attachAutocomplete(attendees)),
 		field('Facultatifs', core.attachAutocomplete(optional)),
-		isNew ? field('Répétition', repeat, untilWrap) : (ev.isRecurring ? h('p', { class: 'wm-muted' }, '🔁 Seule cette occurrence sera modifiée.') : null),
+		rule ? h('div', { class: 'wm-field wm-field-top' }, h('span', {}, 'Répétition'), rule.el) : (ev.isRecurring ? h('p', { class: 'wm-muted' }, '🔁 Seule cette occurrence sera modifiée.') : null),
+		isSeries ? h('p', { class: 'wm-muted' }, customRule
+			? '🔁 Les modifications s\'appliquent à toutes les occurrences. La répétition a été définie dans Outlook : seuls les horaires sont modifiables ici, pas les dates.'
+			: '🔁 Les modifications s\'appliquent à toutes les occurrences, à partir du début de la série. Les occurrences modifiées une par une peuvent reprendre les valeurs de la série.') : null,
 		field('Rappel', reminder),
 		field('Afficher comme', freeBusy),
 		description,
 		err,
 		h('div', { class: 'wm-compose-actions' }, save, h('button', { type: 'button', onclick: () => close() }, 'Annuler')))
 
-		const close = modal(isNew ? 'Nouvel événement' : 'Modifier l\'événement', form)
+		const close = modal(isNew ? 'Nouvel événement' : isSeries ? 'Modifier la série' : 'Modifier l\'événement', form)
 	}
 
 	// ------------------------------------------------------------------

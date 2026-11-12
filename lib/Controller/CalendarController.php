@@ -68,12 +68,21 @@ class CalendarController extends Controller {
 	}
 
 	/**
-	 * @param array<string, mixed> $event
+	 * The recurring series of an occurrence, with its recurrence rule.
 	 */
 	#[NoAdminRequired]
-	public function update(int $id, string $eventId, array $event, string $tz = 'UTC'): Response {
-		return $this->handle(function () use ($id, $eventId, $event, $tz) {
-			$this->calendar($id, $tz)->updateEvent($eventId, $event);
+	public function series(int $id, string $eventId, string $tz = 'UTC'): Response {
+		return $this->handle(fn () => $this->calendar($id, $tz)->getSeries($eventId));
+	}
+
+	/**
+	 * @param array<string, mixed> $event
+	 * @param bool $series true: $eventId is a series master, the recurrence rule is updated too
+	 */
+	#[NoAdminRequired]
+	public function update(int $id, string $eventId, array $event, string $tz = 'UTC', bool $series = false): Response {
+		return $this->handle(function () use ($id, $eventId, $event, $tz, $series) {
+			$this->calendar($id, $tz)->updateEvent($eventId, $event, $series);
 			return ['status' => 'ok'];
 		});
 	}
