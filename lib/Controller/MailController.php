@@ -79,6 +79,14 @@ class MailController extends Controller {
 		});
 	}
 
+	/**
+	 * New unread messages of the inbox since a date (polled for notifications).
+	 */
+	#[NoAdminRequired]
+	public function newMessages(int $id, string $since = ''): Response {
+		return $this->handle(fn () => $this->client($id)->newMessages($since !== '' ? $since : null));
+	}
+
 	#[NoAdminRequired]
 	public function message(int $id, string $itemId, bool $remote = false, bool $markRead = true): Response {
 		return $this->handle(function () use ($id, $itemId, $remote, $markRead) {

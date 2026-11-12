@@ -281,7 +281,125 @@
 	function navFooter() {
 		return h('div', { class: 'wm-nav-footer' },
 			h('a', { href: '#', onclick: (e) => { e.preventDefault(); openAccountSettings() } }, '⚙️  Comptes et signature'),
-			h('a', { href: '#', class: 'wm-shortcuts-link wm-desktop-only', onclick: (e) => { e.preventDefault(); showShortcuts() } }, '⌨️  Raccourcis clavier'))
+			h('a', { href: '#', class: 'wm-shortcuts-link wm-desktop-only', onclick: (e) => { e.preventDefault(); showShortcuts() } }, '⌨️  Raccourcis clavier'),
+			'Notification' in window
+				? h('a', { href: '#', class: 'wm-notify-toggle', onclick: (e) => { e.preventDefault(); toggleNotifications() } },
+					notificationsOn() ? '🔔  Notifications activées' : '🔕  Activer les notifications')
+				: null)
+	}
+
+	// ------------------------------------------------------------------
+	// new messages: notifications and unread count in the tab title
+	// ------------------------------------------------------------------
+
+	const NOTIFY_MS = 60000
+	/** account id -> date of the newest message already announced */
+	const notifySince = {}
+	const baseTitle = document.title
+	let notifyTimer = null
+
+	function notificationsOn() {
+		try { return localStorage.getItem('webmail.notify') === 'on' && window.Notification.permission === 'granted' } catch (e) { return false }
+	}
+
+	async function toggleNotifications() {
+		if (notificationsOn()) {
+			try { localStorage.setItem('webmail.notify', 'off') } catch (e) { /* ignore */ }
+			toast('Notifications désactivées')
+		} else {
+			const permission = window.Notification.permission === 'granted' ? 'granted' : await window.Notification.requestPermission()
+			if (permission !== 'granted') {
+				toast('Le navigateur refuse les notifications pour ce site : autorisez-les dans les réglages du site (icône à gauche de l\'adresse).', true)
+				return
+			}
+			try { localStorage.setItem('webmail.notify', 'on') } catch (e) { /* ignore */ }
+			toast('Vous serez prévenu des nouveaux messages tant que Nextcloud est ouvert dans un onglet')
+		}
+		renderNav()
+	}
+
+	function setUnreadTitle(n) {
+		document.title = (n > 0 ? '(' + n + ') ' : '') + baseTitle
+	}
+
+	/**
+	 * Ask each account for the unread messages received since the last check.
+	 * Runs every minute, also when the tab is in the background.
+	 */
+	let checking = null
+	let checkAgain = false
+	const announced = new Set()
+	/**
+	 * One check at a time (timer, tab shown again...): no message announced
+	 * twice; a check asked for meanwhile runs right after.
+	 */
+	function checkNewMessages() {
+		if (checking) {
+			checkAgain = true
+			return checking
+		}
+		checking = (async () => {
+			do {
+				checkAgain = false
+				await runNewMessagesCheck()
+			} while (checkAgain)
+		})().finally(() => { checking = null })
+		return checking
+	}
+
+	async function runNewMessagesCheck() {
+		for (const account of state.accounts) {
+			let r
+			try {
+				r = await api('/accounts/' + account.id + '/new', { query: { since: notifySince[account.id] || '' } })
+			} catch (e) { continue }
+			const first = !notifySince[account.id]
+			notifySince[account.id] = r.latest
+			if (account.id === state.accountId) {
+				setUnreadTitle(r.unread)
+				const inbox = state.folders.find((f) => f.role === 'inbox')
+				if (inbox && inbox.unread !== r.unread && state.module === 'mail') {
+					inbox.unread = r.unread
+					renderNav()
+				}
+			}
+			const fresh = r.items.filter((m) => !announced.has(m.id))
+			fresh.forEach((m) => announced.add(m.id))
+			if (!first && fresh.length) announce(account, fresh)
+		}
+	}
+
+	function announce(account, items) {
+		const many = state.accounts.length > 1 ? ' (' + account.email + ')' : ''
+		const sender = (m) => (m.from && (m.from.name || m.from.email)) || 'Nouveau message'
+		const inFront = !document.hidden && document.hasFocus()
+		if (account.id === state.accountId && state.module === 'mail' && folderRole() === 'inbox' && !isSearching()) refresh()
+		if (inFront || !notificationsOn()) {
+			if (inFront) {
+				toast(items.length > 1
+					? items.length + ' nouveaux messages' + many
+					: '✉️ Nouveau message de ' + sender(items[0]) + many + ' : ' + (items[0].subject || '(sans objet)'))
+			}
+			return
+		}
+		const open = (id) => async () => {
+			window.focus()
+			if (state.accountId !== account.id) await selectAccount(account.id)
+			if (state.module !== 'mail') selectModule('mail')
+			const inbox = state.folders.find((f) => f.role === 'inbox')
+			if (inbox && state.folderId !== inbox.id) selectFolder(inbox.id)
+			if (id) openMessage(id)
+		}
+		const icon = OC.imagePath('webmail', 'app-dark')
+		if (items.length > 3) {
+			const n = new window.Notification(items.length + ' nouveaux messages' + many, { body: items.slice(0, 3).map((m) => sender(m) + ' : ' + m.subject).join('\n'), icon, tag: 'webmail-' + account.id })
+			n.onclick = open(null)
+			return
+		}
+		items.forEach((m) => {
+			const n = new window.Notification(sender(m) + many, { body: m.subject || '(sans objet)', icon, tag: 'webmail-' + m.id })
+			n.onclick = open(m.id)
+		})
 	}
 
 	// ------------------------------------------------------------------
@@ -1583,7 +1701,10 @@
 
 		clearInterval(refreshTimer)
 		refreshTimer = setInterval(refresh, REFRESH_MS)
-		document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh() })
+		document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); checkNewMessages() } })
+		clearInterval(notifyTimer)
+		notifyTimer = setInterval(checkNewMessages, NOTIFY_MS)
+		checkNewMessages()
 		document.addEventListener('keydown', onShortcut)
 	}
 

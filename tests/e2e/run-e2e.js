@@ -1314,6 +1314,61 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('new messages: notification, tab title, toast', async () => {
+		await page.selectOption('.wm-account-select', { label: 'user@societe-a.fr' })
+		await page.waitForSelector('.wm-message')
+		// the browser's notifications, recorded
+		await page.evaluate(() => {
+			window.__notes = []
+			window.Notification = class {
+				constructor(title, opts) { this.title = title; this.body = opts.body; window.__notes.push(this) }
+				static get permission() { return 'granted' }
+				static requestPermission() { return Promise.resolve('granted') }
+			}
+		})
+		await page.click('.wm-notify-toggle')
+		await page.waitForSelector('.wm-notify-toggle:has-text("Notifications activées")')
+		const sendToMe = async (subject) => {
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'user@societe-a.fr')
+			await page.fill('input[name=subject]', subject)
+			await page.fill('textarea[name=body]', 'À ne pas oublier.')
+			await page.click('.wm-compose button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		}
+		const check = () => page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+
+		// window in the background: a notification
+		await sendToMe('Rappel : rapport mensuel')
+		await page.evaluate(() => { document.hasFocus = () => false })
+		await check()
+		await page.waitForFunction(() => window.__notes.length === 1)
+		// (both test accounts share the fake server's inbox: either may announce it first)
+		const [title, body] = await page.evaluate(() => [window.__notes[0].title, window.__notes[0].body])
+		assert(/^Utilisateur \((user@societe-a|compta@societe-b)\.fr\)$/.test(title), title)
+		assert.strictEqual(body, 'Rappel : rapport mensuel')
+		// unread count in the tab title
+		const badge = await page.textContent('.wm-folder:has-text("Boîte de réception") .wm-badge')
+		await page.waitForFunction((n) => document.title.startsWith('(' + n + ') '), badge)
+		// clicking it opens the message
+		await page.evaluate(() => window.__notes[0].onclick())
+		await page.waitForSelector('.wm-message-header h2:has-text("Rappel : rapport mensuel")')
+		await page.selectOption('.wm-account-select', { label: 'user@societe-a.fr' })
+		await page.waitForSelector('.wm-message')
+
+		// window in front: a message in the page, no notification
+		await page.evaluate(() => { document.hasFocus = () => true })
+		await sendToMe('Rappel 2')
+		await check()
+		await page.locator('.wm-toast', { hasText: /Nouveau message de Utilisateur \(.+\) : Rappel 2/ }).waitFor()
+		await page.waitForSelector('.wm-message:has-text("Rappel 2")')
+		assert.strictEqual(await page.evaluate(() => window.__notes.length), 1)
+		await shot('35-new-message')
+
+		await page.click('.wm-notify-toggle')
+		await page.waitForSelector('.wm-notify-toggle:has-text("Activer les notifications")')
+	})
+
 	await step('mobile layout', async () => {
 		await page.setViewportSize({ width: 390, height: 844 })
 		await page.goto(NC + '/apps/webmail/')

@@ -184,6 +184,12 @@ def folder_xml(f, with_size=False):
             % (fid, '<t:ParentFolderId Id="%s" ChangeKey="AQ"/>' % parent if parent else '', esc(name), total, children, unread, size))
 
 
+def deliver_to_self(m, user):
+    """A message sent to oneself also arrives in the inbox (unread)."""
+    if any(email.lower() == user.lower() for _, email in m['to'] + m['cc']):
+        add_message('F-INBOX', m['subject'], ('Utilisateur', user), m['body'], 0, to=m['to'], cc=m['cc'])
+
+
 def item_summary_xml(m, with_folder=False):
     import re
     text = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', m['body'], flags=re.S)
@@ -264,6 +270,8 @@ def handle(op, el, user):
                 if fid == 'F-ROOT' and any(u.get('PropertyTag', '').lower() == '0x666e' for u in el.iter(T + 'ExtendedFieldURI')):
                     quota = ('<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0x666e" PropertyType="Integer"/><t:Value>%d</t:Value></t:ExtendedProperty>'
                              % QUOTA_KB)
+                if any(u.get('FieldURI') == 'folder:UnreadCount' for u in el.iter(T + 'FieldURI')):
+                    quota += '<t:UnreadCount>%d</t:UnreadCount>' % counts(fid)[1]
                 msgs.append(ok(op, '<m:Folders><t:Folder><t:FolderId Id="%s" ChangeKey="AQ"/>%s</t:Folder></m:Folders>' % (fid, quota)))
         return wrap(op, msgs)
 
@@ -308,6 +316,13 @@ def handle(op, el, user):
             else:
                 words.append(tok)
         text = ' '.join(words)
+        # Restriction used for notifications: received after a date, unread
+        after = el.find('m:Restriction//t:IsGreaterThan/t:FieldURIOrConstant/t:Constant', NS)
+        if after is not None:
+            conds.append(lambda m, d=after.get('Value'): m['date'] > d)
+        unread = el.find('m:Restriction//t:IsEqualTo[t:FieldURI]', NS)
+        if unread is not None and unread.find('t:FieldURI', NS).get('FieldURI') == 'message:IsRead':
+            conds.append(lambda m: not m['is_read'])
         out = []
         for parent in el.find('m:ParentFolderIds', NS):
             fid = folder_id(parent)
@@ -416,6 +431,8 @@ def handle(op, el, user):
             folder = 'F-SENT' if disposition == 'SendAndSaveCopy' else 'F-DRAFTS'
             mid = add_message(folder, subject, ('Utilisateur', user), body, 0, is_read=True, to=to, cc=recipients(it, 'CcRecipients'))
             MESSAGES[mid]['attachments'] = atts
+            if disposition == 'SendAndSaveCopy':
+                deliver_to_self(MESSAGES[mid], user)
             items = '<m:Items/>' if disposition == 'SendAndSaveCopy' else '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/></t:Message></m:Items>' % (mid, MESSAGES[mid]['ck'])
             msgs.append(ok(op, items))
         return wrap(op, msgs)
@@ -445,6 +462,7 @@ def handle(op, el, user):
                 msgs.append(err(op, 'ErrorIrresolvableConflict', 'The send or update operation could not be performed because the change key passed in the request does not match the current change key for the item.'))
             else:
                 m['folder'] = 'F-SENT'
+                deliver_to_self(m, user)
                 msgs.append(ok(op))
         return wrap(op, msgs)
 

@@ -354,6 +354,55 @@ class EwsClient {
 		return $item;
 	}
 
+	/**
+	 * Unread messages received in the inbox after $since (for notifications),
+	 * and the number of unread messages of the inbox. Without $since, only
+	 * gives the date to start from (the newest message).
+	 * @return array{items: array<int, array<string, mixed>>, latest: string, unread: int}
+	 */
+	public function newMessages(?string $since, int $max = 10): array {
+		$restriction = '';
+		if ($since !== null) {
+			$d = date_create_immutable($since);
+			if ($d === false) {
+				throw new MailException('Date invalide');
+			}
+			$since = $d->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
+			$restriction = '<m:Restriction><t:And>'
+				. '<t:IsGreaterThan><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURIOrConstant><t:Constant Value="' . $since . '"/></t:FieldURIOrConstant></t:IsGreaterThan>'
+				. '<t:IsEqualTo><t:FieldURI FieldURI="message:IsRead"/><t:FieldURIOrConstant><t:Constant Value="false"/></t:FieldURIOrConstant></t:IsEqualTo>'
+				. '</t:And></m:Restriction>';
+		}
+		$xp = $this->request(
+			'<m:FindItem Traversal="Shallow">'
+			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $this->summaryFields() . '</t:AdditionalProperties></m:ItemShape>'
+			. '<m:IndexedPageItemView MaxEntriesReturned="' . ($since !== null ? max(1, $max) : 1) . '" Offset="0" BasePoint="Beginning"/>'
+			. $restriction
+			. '<m:SortOrder><t:FieldOrder Order="Descending"><t:FieldURI FieldURI="item:DateTimeReceived"/></t:FieldOrder></m:SortOrder>'
+			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="inbox"/></m:ParentFolderIds>'
+			. '</m:FindItem>'
+		);
+		$items = [];
+		foreach ($xp->query('//m:RootFolder/t:Items/*') as $node) {
+			$items[] = $this->summary($xp, $node);
+		}
+		// next time, start from the newest message seen (ISO dates in UTC compare as text)
+		$dates = array_values(array_filter(array_map(fn ($i) => (string)$i['date'], $items)));
+		if ($since !== null) {
+			$dates[] = $since;
+		}
+		$latest = $dates !== [] ? max($dates) : gmdate('Y-m-d\TH:i:s\Z');
+		$folder = $this->request(
+			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties><t:FieldURI FieldURI="folder:UnreadCount"/></t:AdditionalProperties></m:FolderShape>'
+			. '<m:FolderIds><t:DistinguishedFolderId Id="inbox"/></m:FolderIds></m:GetFolder>'
+		);
+		return [
+			'items' => $since !== null ? $items : [],
+			'latest' => $latest,
+			'unread' => (int)$this->text($folder, '//m:Folders/*/t:UnreadCount'),
+		];
+	}
+
 	public function findItems(string $folderId, int $offset = 0, int $limit = 50, ?string $query = null): array {
 		$fields = $this->summaryFields();
 		$queryXml = '';

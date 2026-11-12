@@ -99,6 +99,41 @@ class EwsClientTest extends EwsTestCase {
 		$this->client()->searchFolders(['INBOX'], 0, 50, 'x');
 	}
 
+	private function inboxUnread(int $n): string {
+		return self::ok('GetFolder', '<m:Folders><t:Folder><t:FolderId Id="INBOX"/><t:UnreadCount>' . $n . '</t:UnreadCount></t:Folder></m:Folders>');
+	}
+
+	public function testNewMessagesWithoutDateGivesTheStartingPoint(): void {
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="60" IncludesLastItemInRange="false"><t:Items>'
+			. '<t:Message><t:ItemId Id="M1" ChangeKey="c"/><t:Subject>Old</t:Subject><t:DateTimeReceived>2026-11-12T08:00:00Z</t:DateTimeReceived><t:IsRead>false</t:IsRead></t:Message>'
+			. '</t:Items></m:RootFolder>'));
+		$this->queue($this->inboxUnread(4));
+		$r = $this->client()->newMessages(null);
+		$this->assertSame(['items' => [], 'latest' => '2026-11-12T08:00:00Z', 'unread' => 4], $r, 'nothing announced the first time');
+		$this->assertStringNotContainsString('Restriction', $this->requests[0]);
+		$this->assertStringContainsString('MaxEntriesReturned="1"', $this->requests[0]);
+	}
+
+	public function testNewMessagesSince(): void {
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="2" IncludesLastItemInRange="true"><t:Items>'
+			. '<t:Message><t:ItemId Id="N2" ChangeKey="c"/><t:Subject>Deux</t:Subject><t:DateTimeReceived>2026-11-12T09:05:00Z</t:DateTimeReceived><t:IsRead>false</t:IsRead></t:Message>'
+			. '<t:Message><t:ItemId Id="N1" ChangeKey="c"/><t:Subject>Un</t:Subject><t:DateTimeReceived>2026-11-12T09:01:00Z</t:DateTimeReceived><t:IsRead>false</t:IsRead></t:Message>'
+			. '</t:Items></m:RootFolder>'));
+		$this->queue($this->inboxUnread(6));
+		$r = $this->client()->newMessages('2026-11-12T10:00:00+01:00');
+		$this->assertSame(['N2', 'N1'], array_column($r['items'], 'id'));
+		$this->assertSame('2026-11-12T09:05:00Z', $r['latest']);
+		$this->assertSame(6, $r['unread']);
+		$this->assertStringContainsString('<t:IsGreaterThan><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURIOrConstant><t:Constant Value="2026-11-12T09:00:00Z"/></t:FieldURIOrConstant></t:IsGreaterThan>', $this->requests[0]);
+		$this->assertStringContainsString('<t:FieldURI FieldURI="message:IsRead"/><t:FieldURIOrConstant><t:Constant Value="false"/>', $this->requests[0]);
+	}
+
+	public function testNewMessagesNothingNew(): void {
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="0" IncludesLastItemInRange="true"><t:Items/></m:RootFolder>'));
+		$this->queue($this->inboxUnread(0));
+		$this->assertSame('2026-11-12T09:00:00Z', $this->client()->newMessages('2026-11-12T09:00:00Z')['latest']);
+	}
+
 	public function testFindItemsWithSearchAndPaging(): void {
 		$this->queue(self::ok('FindItem', '<m:RootFolder IndexedPagingOffset="50" TotalItemsInView="120" IncludesLastItemInRange="false"><t:Items>'
 			. '<t:Message><t:ItemId Id="M1" ChangeKey="CK1"/><t:Subject>Facture &amp; devis</t:Subject><t:DateTimeReceived>2026-11-10T08:15:00Z</t:DateTimeReceived>'
