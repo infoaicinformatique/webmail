@@ -204,6 +204,7 @@ def item_summary_xml(m, with_folder=False):
     return (('<t:Message><t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject><t:DateTimeReceived>%s</t:DateTimeReceived>'
             '<t:HasAttachments>%s</t:HasAttachments><t:Importance>%s</t:Importance><t:DisplayTo>%s</t:DisplayTo><t:Preview>%s</t:Preview>'
             '<t:Flag><t:FlagStatus>%s</t:FlagStatus></t:Flag><t:IsRead>%s</t:IsRead><t:From>%s</t:From></t:Message>').replace('Message>', m.get('kind', 'Message') + '>')
+            .replace('<t:Importance>', categories_xml(m) + '<t:Importance>', 1)
             .replace('<t:Subject>', ('<t:ParentFolderId Id="%s" ChangeKey="AQ"/>' % m['folder'] if with_folder else '') + '<t:Subject>', 1)
             % (m['id'], m['ck'], esc(m['subject']), m['date'],
                'true' if any(not ATTACHMENTS[a].get('inline') for a in m['attachments']) else 'false',
@@ -211,8 +212,13 @@ def item_summary_xml(m, with_folder=False):
                'Flagged' if m['flagged'] else 'NotFlagged', 'true' if m['is_read'] else 'false', mailbox(*m['sender'])))
 
 
+def categories_xml(m):
+    cats = m.get('categories') or []
+    return '<t:Categories>%s</t:Categories>' % ''.join('<t:String>%s</t:String>' % esc(c) for c in cats) if cats else ''
+
+
 def item_full_xml(m):
-    xml = _item_full_xml(m)
+    xml = _item_full_xml(m).replace('<t:Importance>', categories_xml(m) + '<t:Importance>', 1)
     kind = m.get('kind', 'Message')
     head, _, tail = xml.replace('<t:Message>', '<t:%s>' % kind, 1).rpartition('</t:Message>')
     return head + '</t:%s>' % kind + tail
@@ -316,7 +322,45 @@ def manage_folder(op, el):
     return wrap(op, out)
 
 
+# Outlook's master category list, kept per mailbox as Outlook does (XmlData of "CategoryList")
+CATEGORY_LISTS = {}
+DEFAULT_CATEGORIES = ('<?xml version="1.0"?><categories default="Catégorie rouge" lastSavedSession="1" xmlns="CategoryList.xsd">'
+                      '<category name="Catégorie rouge" color="0" keyboardShortcut="0" guid="{00000000-0000-0000-0000-000000000001}" renameOnFirstUse="1"/>'
+                      '<category name="Catégorie verte" color="4" keyboardShortcut="0" guid="{00000000-0000-0000-0000-000000000002}" renameOnFirstUse="1"/>'
+                      '<category name="Clients" color="7" keyboardShortcut="0" guid="{00000000-0000-0000-0000-000000000003}"/>'
+                      '</categories>')
+
+
+def handle_user_configuration(op, el, user):
+    if op not in ('GetUserConfiguration', 'UpdateUserConfiguration', 'CreateUserConfiguration'):
+        return None
+    name = el.find('.//t:UserConfigurationName', NS)
+    if name is None:
+        name = el.find('m:UserConfigurationName', NS)
+    if name is None or name.get('Name') != 'CategoryList':
+        return wrap(op, [err(op, 'ErrorItemNotFound', 'The specified object was not found in the store.')])
+    key = user.lower()
+    if key not in CATEGORY_LISTS:
+        # the second test account has no list yet: Outlook was never used there
+        CATEGORY_LISTS[key] = DEFAULT_CATEGORIES if key.endswith('@societe-a.fr') else None
+    if op == 'GetUserConfiguration':
+        xml = CATEGORY_LISTS[key]
+        if xml is None:
+            return wrap(op, [err(op, 'ErrorItemNotFound', 'The specified object was not found in the store.')])
+        return wrap(op, [ok(op, '<m:UserConfiguration><t:UserConfigurationName Name="CategoryList"><t:FolderId Id="F-CALENDAR"/></t:UserConfigurationName>'
+                            '<t:XmlData>%s</t:XmlData></m:UserConfiguration>' % base64.b64encode(xml.encode('utf-8')).decode())])
+    if (op == 'CreateUserConfiguration') != (CATEGORY_LISTS[key] is None):
+        return wrap(op, [err(op, 'ErrorItemSave' if op == 'CreateUserConfiguration' else 'ErrorItemNotFound', 'wrong operation')])
+    data = el.findtext('.//t:XmlData', default='', namespaces=NS)
+    CATEGORY_LISTS[key] = base64.b64decode(data).decode('utf-8')
+    ET.fromstring(CATEGORY_LISTS[key].encode('utf-8'))  # must stay valid XML
+    return wrap(op, [ok(op)])
+
+
 def handle(op, el, user):
+    r = handle_user_configuration(op, el, user)
+    if r is not None:
+        return r
     r = rules.handle(op, el, user, lambda fid: any(f[0] == fid for f in FOLDERS))
     if r is not None:
         return r
@@ -370,6 +414,10 @@ def handle(op, el, user):
         with_folder = any(u.get('FieldURI') == 'item:ParentFolderId' for u in el.iter(T + 'FieldURI'))
         # the AQS keywords the webmail uses; the other words are searched in the text
         conds, words = [], []
+        import re as _re
+        for cat in _re.findall(r'category:"([^"]*)"', q):
+            conds.append(lambda m, cat=cat: any(c.lower() == cat for c in m.get('categories') or []))
+        q = _re.sub(r'category:"[^"]*"', ' ', q)
         for tok in q.split():
             if tok == 'isread:false':
                 conds.append(lambda m: not m['is_read'])
@@ -447,6 +495,9 @@ def handle(op, el, user):
                 rcpt = {'message:ToRecipients': 'to', 'message:CcRecipients': 'cc', 'message:BccRecipients': 'bcc'}
                 if upd.tag == T + 'DeleteItemField' and uri in rcpt:
                     m[rcpt[uri]] = []
+                    continue
+                if uri == 'item:Categories':
+                    m['categories'] = [] if upd.tag == T + 'DeleteItemField' else [x.text or '' for x in upd.findall('t:Message/t:Categories/t:String', NS)]
                     continue
                 item = upd.find('t:Message', NS)
                 if item is not None:

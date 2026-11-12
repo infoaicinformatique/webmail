@@ -628,6 +628,7 @@
 		renderNav()
 		renderEmptyDetail()
 		loadOof(id)
+		loadCategories(id)
 		await Promise.all([loadFolders(), loadMessages(true)])
 	}
 
@@ -914,7 +915,8 @@
 		if (isSearching()) {
 			const where = state.filters.all ? 'dans tous les dossiers' : 'dans ' + (f ? f.name : 'le dossier')
 			listEl.appendChild(h('div', { class: 'wm-search-info' },
-				(state.query ? 'Résultats pour « ' + state.query + ' » ' : 'Messages filtrés ') + where
+				(/^category:"[^"]*"$/.test(state.query) ? 'Catégorie « ' + state.query.slice(10, -1) + ' » '
+					: state.query ? 'Résultats pour « ' + state.query + ' » ' : 'Messages filtrés ') + where
 				+ (state.loadingList ? '' : ' (' + state.total + ') '),
 				h('a', { href: '#', onclick: (e) => { e.preventDefault(); resetSearch(); loadMessages(true) } }, 'effacer')))
 		}
@@ -976,6 +978,7 @@
 			h('div', { class: 'wm-message-line2' },
 				m.importance === 'High' ? h('span', { class: 'wm-important', title: 'Importance haute' }, '❗') : null,
 				h('span', { class: 'wm-message-subject' }, m.subject || '(sans objet)'),
+				categoryPills(m.categories),
 				m.hasAttachments ? h('span', { class: 'wm-attach-icon', title: 'Pièce jointe' }, '📎') : null,
 				h('button', {
 					class: 'wm-flag' + (m.flagged ? ' on' : ''),
@@ -1082,7 +1085,154 @@
 			h('button', { type: 'button', class: 'wm-small wm-danger', onclick: () => deleteMessages(ids(), role === 'deleteditems') },
 				role === 'deleteditems' ? 'Supprimer définitivement' : '🗑 Supprimer'),
 			junkButton(null, role, ids),
+			h('button', {
+				type: 'button',
+				class: 'wm-small wm-cat-btn',
+				onclick: (e) => categoryMenu(e.currentTarget, () => state.messages.filter((x) => state.checked.has(x.id))),
+			}, '🏷 Catégoriser'),
 			h('button', { type: 'button', class: 'wm-small wm-icon-btn', 'aria-label': 'Annuler la sélection', title: 'Annuler la sélection (Échap)', onclick: clearChecked }, '✕')))
+	}
+
+	// ------------------------------------------------------------------
+	// Outlook categories: names and colours of the mailbox, those of messages
+	// ------------------------------------------------------------------
+
+	const categories = { accountId: null, list: [], colors: [], colorNames: [] }
+
+	async function loadCategories(accountId) {
+		try {
+			const r = await api('/accounts/' + accountId + '/categories')
+			if (accountId !== state.accountId) return
+			Object.assign(categories, { accountId, list: r.categories, colors: r.colors, colorNames: r.colorNames })
+			// the pills already shown get their colours
+			listEl.querySelectorAll('.wm-cat').forEach((el) => paintCategory(el, el.dataset.name))
+			detailEl.querySelectorAll('.wm-cat').forEach((el) => paintCategory(el, el.dataset.name))
+		} catch (e) { /* no colours: grey pills */ }
+	}
+
+	function categoryColor(name) {
+		const c = categories.list.find((x) => x.name.toLowerCase() === String(name).toLowerCase())
+		return c ? c.color : null
+	}
+
+	function paintCategory(el, name) {
+		const color = categoryColor(name)
+		el.style.setProperty('--cat', color || 'var(--color-background-darker)')
+		el.classList.toggle('dark', !!color && isDark(color))
+	}
+
+	function isDark(hex) {
+		const n = parseInt(hex.slice(1), 16)
+		return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 < 140
+	}
+
+	/** Coloured pills; in the message header, a click shows every message of that category. */
+	function categoryPills(names, clickable) {
+		if (!names || !names.length) return null
+		return h('span', { class: 'wm-cats' }, names.map((n) => {
+			const pill = h(clickable ? 'button' : 'span', {
+				class: 'wm-cat',
+				title: clickable ? 'Tous les messages de la catégorie « ' + n + ' »' : 'Catégorie ' + n,
+				dataset: { name: n },
+				onclick: clickable ? () => searchCategory(n) : null,
+			}, n)
+			if (clickable) pill.type = 'button'
+			paintCategory(pill, n)
+			return pill
+		}))
+	}
+
+	function searchCategory(name) {
+		state.query = 'category:"' + name.replace(/"/g, '') + '"'
+		state.filters.all = true
+		setView('list')
+		loadMessages(true)
+	}
+
+	/** The categories of these messages become: each one had them, with or without `name`. */
+	async function assignCategory(messages, name, on) {
+		const groups = new Map()
+		messages.forEach((m) => {
+			const cur = (m.categories || []).filter((c) => c.toLowerCase() !== name.toLowerCase())
+			const next = on ? cur.concat(name) : cur
+			const key = JSON.stringify(next)
+			if (!groups.has(key)) groups.set(key, { next, items: [] })
+			groups.get(key).items.push(m)
+		})
+		const before = messages.map((m) => [m, m.categories || []])
+		const apply = (m, cats) => {
+			m.categories = cats
+			updateListItem(m.id, { categories: cats })
+			if (state.current && state.current.id === m.id) {
+				state.current.categories = cats
+				const box = detailEl.querySelector('.wm-header-cats')
+				if (box) { clear(box); const p = categoryPills(cats, true); if (p) box.appendChild(p) }
+			}
+		}
+		groups.forEach((g) => g.items.forEach((m) => apply(m, g.next)))
+		try {
+			for (const g of groups.values()) {
+				await api('/accounts/' + state.accountId + '/categories/assign', { method: 'POST', body: { itemIds: g.items.map((m) => m.id), categories: g.next } })
+			}
+		} catch (e) {
+			before.forEach(([m, cats]) => apply(m, cats))
+			toast(e.message, true)
+		}
+	}
+
+	/** The menu of the 🏷 button: tick the categories, or make a new one. */
+	function categoryMenu(anchor, getMessages) {
+		document.querySelectorAll('.wm-cat-menu').forEach((x) => x.remove())
+		const menu = h('div', { class: 'wm-cat-menu', role: 'dialog', 'aria-label': 'Catégories' })
+		const close = () => { menu.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', esc, true) }
+		const outside = (e) => { if (!menu.contains(e.target) && e.target !== anchor) close() }
+		const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close() } }
+		document.addEventListener('mousedown', outside, true)
+		document.addEventListener('keydown', esc, true)
+		function fill() {
+			clear(menu)
+			const messages = getMessages()
+			if (!messages.length) { close(); return }
+			const known = categories.list.map((c) => c.name)
+			messages.forEach((m) => (m.categories || []).forEach((c) => { if (!known.some((k) => k.toLowerCase() === c.toLowerCase())) known.push(c) }))
+			const list = h('div', { class: 'wm-cat-list' })
+			known.forEach((name) => {
+				const has = messages.filter((m) => (m.categories || []).some((c) => c.toLowerCase() === name.toLowerCase())).length
+				const box = h('input', { type: 'checkbox', checked: has === messages.length, onchange: () => assignCategory(messages, name, box.checked) })
+				box.indeterminate = has > 0 && has < messages.length
+				const dot = h('span', { class: 'wm-cat-dot' })
+				paintCategory(dot, name)
+				list.appendChild(h('label', { class: 'wm-cat-choice' }, box, dot, ' ' + name))
+			})
+			if (!known.length) list.appendChild(h('p', { class: 'wm-muted' }, 'Aucune catégorie pour l\'instant'))
+			const name = h('input', { type: 'text', name: 'newCategory', placeholder: 'Nouvelle catégorie', maxlength: '255' })
+			const color = h('select', { name: 'newCategoryColor', 'aria-label': 'Couleur' },
+				categories.colorNames.map((l, i) => h('option', { value: String(i), selected: i === 7 }, l)))
+			const err = h('div', { class: 'wm-form-error' })
+			menu.append(h('div', { class: 'wm-cat-title' }, 'Catégories'), list,
+				h('form', {
+					class: 'wm-cat-new',
+					onsubmit: async (e) => {
+						e.preventDefault()
+						const n = name.value.trim()
+						if (!n) return
+						err.textContent = ''
+						try {
+							const r = await api('/accounts/' + state.accountId + '/categories', { method: 'POST', body: { name: n, color: parseInt(color.value, 10) } })
+							categories.list = r.categories
+							await assignCategory(getMessages(), n, true)
+							fill()
+						} catch (ex) { err.textContent = ex.message }
+					},
+				}, name, color, h('button', { type: 'submit', class: 'primary' }, 'Créer'), err))
+		}
+		fill()
+		document.body.appendChild(menu)
+		const r = anchor.getBoundingClientRect()
+		menu.style.top = Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8) + 'px'
+		menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px'
+		const first = menu.querySelector('input')
+		if (first) first.focus()
 	}
 
 	/** Read / unread for several messages, at once on screen. */
@@ -1287,6 +1437,12 @@
 		const li = listItemEl(id)
 		if (!li) return
 		li.classList.toggle('unread', !m.isRead)
+		if ('categories' in changes) {
+			const old = li.querySelector('.wm-cats')
+			const pills = categoryPills(m.categories)
+			if (old) old.replaceWith(pills || h('span', { class: 'wm-cats' }))
+			else if (pills) li.querySelector('.wm-message-subject').after(pills)
+		}
 		const flag = li.querySelector('.wm-flag')
 		if (flag) {
 			flag.classList.toggle('on', !!m.flagged)
@@ -1451,6 +1607,7 @@
 			moveSelect,
 			h('button', { class: 'wm-danger', onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? 'Supprimer définitivement' : '🗑 Supprimer'),
 			junkButton([m.id], role),
+			h('button', { class: 'wm-cat-btn', title: 'Catégoriser', 'aria-label': 'Catégoriser', onclick: (e) => categoryMenu(e.currentTarget, () => [m]) }, '🏷'),
 			h('button', { class: 'wm-print-btn', title: 'Imprimer', 'aria-label': 'Imprimer', onclick: () => printMessage(m) }, '🖨'),
 			h('button', { class: 'wm-rule-from-msg', title: 'Créer une règle pour les messages de cet expéditeur', onclick: () => ruleFromMessage(m) }, '📋 Règle…'),
 		)
@@ -1462,6 +1619,7 @@
 
 		detailEl.appendChild(h('header', { class: 'wm-message-header' },
 			h('h2', { class: 'wm-subject' }, m.subject || '(sans objet)'),
+			h('div', { class: 'wm-header-cats' }, categoryPills(m.categories, true)),
 			h('div', { class: 'wm-header-line' }, h('span', { class: 'wm-header-label' }, 'De'), h('strong', {}, personLabel(m.from))),
 			recipients('À', m.to),
 			recipients('Cc', m.cc),

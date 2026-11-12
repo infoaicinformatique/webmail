@@ -385,7 +385,7 @@ class EwsClient {
 
 	private function summaryFields(bool $withFolder = false): string {
 		$props = ['item:Subject', 'message:From', 'item:DisplayTo', 'item:DateTimeReceived', 'message:IsRead',
-			'item:HasAttachments', 'item:Importance', 'item:Flag', 'item:Preview'];
+			'item:HasAttachments', 'item:Importance', 'item:Flag', 'item:Preview', 'item:Categories'];
 		if ($withFolder) {
 			$props[] = 'item:ParentFolderId';
 		}
@@ -409,6 +409,7 @@ class EwsClient {
 			'hasAttachments' => $this->text($xp, 't:HasAttachments', $node) === 'true',
 			'importance' => $this->text($xp, 't:Importance', $node) ?? 'Normal',
 			'flagged' => $this->text($xp, 't:Flag/t:FlagStatus', $node) === 'Flagged',
+			'categories' => $this->strings($xp, 't:Categories/t:String', $node),
 			'preview' => mb_substr((string)$this->text($xp, 't:Preview', $node), 0, 200),
 			'isMeeting' => $node->localName !== 'Message',
 		];
@@ -505,7 +506,8 @@ class EwsClient {
 	public function getItem(string $itemId): array {
 		$props = ['item:Subject', 'item:Body', 'message:From', 'message:Sender', 'message:ToRecipients', 'message:CcRecipients',
 			'message:BccRecipients', 'message:ReplyTo', 'item:DateTimeReceived', 'item:DateTimeSent', 'message:IsRead',
-			'item:Attachments', 'item:HasAttachments', 'item:Importance', 'item:Flag', 'message:InternetMessageId', 'item:ParentFolderId'];
+			'item:Attachments', 'item:HasAttachments', 'item:Importance', 'item:Flag', 'message:InternetMessageId', 'item:ParentFolderId',
+			'item:Categories'];
 		$fields = '';
 		foreach ($props as $p) {
 			$fields .= '<t:FieldURI FieldURI="' . $p . '"/>';
@@ -549,6 +551,7 @@ class EwsClient {
 			'isRead' => $this->text($xp, 't:IsRead', $node) !== 'false',
 			'importance' => $this->text($xp, 't:Importance', $node) ?? 'Normal',
 			'flagged' => $this->text($xp, 't:Flag/t:FlagStatus', $node) === 'Flagged',
+			'categories' => $this->strings($xp, 't:Categories/t:String', $node),
 			'messageId' => $this->text($xp, 't:InternetMessageId', $node),
 			'attachments' => $attachments,
 			'isMeeting' => $node->localName !== 'Message',
@@ -635,6 +638,33 @@ class EwsClient {
 	public function setFlagged(array $itemIds, bool $flagged): void {
 		$this->updateItems($itemIds, 'item:Flag',
 			'<t:Message><t:Flag><t:FlagStatus>' . ($flagged ? 'Flagged' : 'NotFlagged') . '</t:FlagStatus></t:Flag></t:Message>');
+	}
+
+	/**
+	 * Outlook categories of messages: these replace the ones they had.
+	 * @param string[] $itemIds
+	 * @param string[] $categories
+	 */
+	public function setCategories(array $itemIds, array $categories): void {
+		$categories = array_values(array_unique(array_filter(array_map(fn ($c) => trim((string)$c), $categories), fn ($c) => $c !== '')));
+		if ($itemIds === []) {
+			return;
+		}
+		if ($categories === []) {
+			$changes = '';
+			foreach ($itemIds as $id) {
+				$changes .= '<t:ItemChange><t:ItemId Id="' . $this->esc($id) . '"/><t:Updates><t:DeleteItemField>'
+					. '<t:FieldURI FieldURI="item:Categories"/></t:DeleteItemField></t:Updates></t:ItemChange>';
+			}
+			$this->request(
+				'<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite" SuppressReadReceipts="true">'
+				. '<m:ItemChanges>' . $changes . '</m:ItemChanges></m:UpdateItem>'
+			);
+			return;
+		}
+		$this->updateItems($itemIds, 'item:Categories', '<t:Message><t:Categories>'
+			. implode('', array_map(fn ($c) => '<t:String>' . $this->esc($c) . '</t:String>', $categories))
+			. '</t:Categories></t:Message>');
 	}
 
 	/** @param string[] $itemIds */
@@ -1108,6 +1138,15 @@ class EwsClient {
 	public function text(\DOMXPath $xp, string $query, ?\DOMNode $ctx = null): ?string {
 		$n = $xp->query($query, $ctx)->item(0);
 		return $n?->textContent;
+	}
+
+	/** @return string[] the texts of every node found */
+	public function strings(\DOMXPath $xp, string $query, ?\DOMNode $ctx = null): array {
+		$out = [];
+		foreach ($xp->query($query, $ctx) as $n) {
+			$out[] = $n->textContent;
+		}
+		return $out;
 	}
 
 	public function attr(\DOMXPath $xp, string $query, string $attr, ?\DOMNode $ctx = null): ?string {

@@ -668,6 +668,57 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('Outlook categories: colours, tick, create, filter, several messages', async () => {
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		const devis = '.wm-message:has-text("Devis pour la maintenance annuelle")'
+		await page.click(devis)
+		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+		// the mailbox's list, with Outlook's colours
+		await page.click('.wm-toolbar .wm-cat-btn')
+		await page.waitForSelector('.wm-cat-menu .wm-cat-choice:has-text("Clients")')
+		await page.check('.wm-cat-menu .wm-cat-choice:has-text("Clients") input')
+		const pill = '.wm-header-cats .wm-cat:text-is("Clients")'
+		await page.waitForSelector(pill)
+		assert.strictEqual(await page.$eval(pill, (e) => getComputedStyle(e).backgroundColor), 'rgb(157, 183, 232)')
+		await page.waitForSelector(devis + ' .wm-cat:text-is("Clients")')
+		// a new one, with its colour
+		await page.fill('.wm-cat-menu input[name=newCategory]', 'Fournisseurs')
+		await page.selectOption('.wm-cat-menu select[name=newCategoryColor]', { label: 'Vert foncé' })
+		await page.click('.wm-cat-menu button:has-text("Créer")')
+		await page.waitForSelector('.wm-header-cats .wm-cat:text-is("Fournisseurs")')
+		assert.strictEqual(await page.$eval('.wm-header-cats .wm-cat:text-is("Fournisseurs")', (e) => getComputedStyle(e).color), 'rgb(255, 255, 255)', 'white text on a dark colour')
+		await page.waitForSelector('.wm-cat-menu .wm-cat-choice:has-text("Fournisseurs") input:checked')
+		await shot('48-categories')
+		await page.keyboard.press('Escape')
+		await page.waitForSelector('.wm-cat-menu', { state: 'detached' })
+		// saved in Exchange: still there once reloaded
+		await page.reload()
+		await page.waitForSelector(devis + ' .wm-cat:text-is("Fournisseurs")')
+		// several messages at once
+		await page.click('.wm-message:has-text("Newsletter n°1") .wm-check')
+		await page.click('.wm-message:has-text("Newsletter n°2") .wm-check')
+		await page.click('.wm-bulk .wm-cat-btn')
+		await page.check('.wm-cat-menu .wm-cat-choice:has-text("Clients") input')
+		await page.waitForSelector('.wm-message:has-text("Newsletter n°2") .wm-cat:text-is("Clients")')
+		await page.waitForSelector('.wm-message:has-text("Newsletter n°1") .wm-cat:text-is("Clients")')
+		await page.keyboard.press('Escape')
+		await page.keyboard.press('Escape')
+		// a click on a pill: every message of that category, in all folders
+		await page.click(devis)
+		await page.click('.wm-header-cats .wm-cat:text-is("Clients")')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 3)
+		// removed from the newsletters, from the menu with them ticked
+		await page.click('.wm-message:has-text("Newsletter n°1") .wm-check')
+		await page.click('.wm-message:has-text("Newsletter n°2") .wm-check')
+		await page.click('.wm-bulk .wm-cat-btn')
+		await page.uncheck('.wm-cat-menu .wm-cat-choice:has-text("Clients") input')
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-message')].some((e) => /Newsletter/.test(e.textContent) && e.querySelector('.wm-cat')))
+		await page.keyboard.press('Escape')
+		await page.keyboard.press('Escape')
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector(devis + ' .wm-cat:text-is("Clients")')
+	})
+
 	await step('Nextcloud notifications (bell) for new messages, webmail closed', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\NewMailJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
