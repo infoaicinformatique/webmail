@@ -99,6 +99,7 @@
 		}
 		const t = h('div', { class: 'wm-toast' + (isError ? ' wm-toast-error' : ''), role: 'status' }, message)
 		box.appendChild(t)
+		while (box.children.length > 3) box.firstChild.remove()
 		setTimeout(() => t.classList.add('wm-toast-hide'), 4000)
 		setTimeout(() => t.remove(), 4600)
 	}

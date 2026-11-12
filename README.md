@@ -38,9 +38,12 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Agenda](docs/capture-agenda.png)
 
+![Vue semaine](docs/capture-semaine.png)
+
 | | |
 |---|---|
-| Vues | Mois (avec mini-calendrier) et liste des 30 prochains jours. Les événements périodiques sont dépliés |
+| Vues | **Mois**, **semaine** et **liste** des 30 prochains jours, avec mini-calendrier. Les événements périodiques sont dépliés |
+| Semaine | Grille horaire sur 7 jours. Une ligne « Journée » regroupe les événements sur la journée entière. Les événements qui se chevauchent sont placés côte à côte, et un trait rouge marque l'heure actuelle. Un clic sur un créneau libre crée un événement à cette heure. Un clic sur un jour du mini-calendrier affiche sa semaine |
 | Détail | Horaire, lieu, organisateur, participants et leur réponse, description |
 | Création / modification | Titre, journée entière, début et fin, lieu, participants et facultatifs (avec complétion), rappel, disponibilité, répétition (chaque jour, semaine, mois ou année, avec date de fin facultative) |
 | Réunions | Les participants reçoivent l'invitation, puis les mises à jour et les annulations (envoyées par Exchange) |
@@ -72,7 +75,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.1.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.2.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -94,7 +97,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. La version 1.1 ne modifie pas la base de données.
+Les comptes déjà configurés sont conservés. Les versions 1.1 et 1.2 ne modifient pas la base de données.
 
 ## Configuration (administrateur)
 
@@ -178,6 +181,6 @@ templates/          page principale et page d'administration
 ## Évolutions possibles
 
 - Autres agendas (secondaires ou partagés) et dossiers de contacts autres que les principaux
-- Vue semaine dans l'agenda, modification d'une série périodique entière
+- Modification d'une série périodique entière, déplacement d'un événement à la souris dans la vue semaine
 - Brouillons modifiables et éditeur HTML
 - Découverte automatique (Autodiscover) à la place de la table domaine/serveur
