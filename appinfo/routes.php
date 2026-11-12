@@ -33,6 +33,9 @@ return [
 		['name' => 'calendar#delete', 'url' => '/api/accounts/{id}/calendar/delete', 'verb' => 'POST'],
 		['name' => 'calendar#respond', 'url' => '/api/accounts/{id}/calendar/respond', 'verb' => 'POST'],
 
+		['name' => 'contact#books', 'url' => '/api/accounts/{id}/contacts/books', 'verb' => 'GET'],
+		['name' => 'contact#addShared', 'url' => '/api/accounts/{id}/contacts/shared', 'verb' => 'POST'],
+		['name' => 'contact#removeShared', 'url' => '/api/accounts/{id}/contacts/shared/delete', 'verb' => 'POST'],
 		['name' => 'contact#index', 'url' => '/api/accounts/{id}/contacts', 'verb' => 'GET'],
 		['name' => 'contact#show', 'url' => '/api/accounts/{id}/contact', 'verb' => 'GET'],
 		['name' => 'contact#create', 'url' => '/api/accounts/{id}/contacts', 'verb' => 'POST'],

@@ -86,8 +86,10 @@ class AccountService {
 
 	public function delete(string $userId, int $id): void {
 		$this->mapper->delete($this->find($userId, $id));
-		// shared calendars added to this account
-		$this->config->deleteUserValue($userId, 'webmail', 'shared_calendars_' . $id);
+		// shared calendars and contacts added to this account
+		foreach (['calendars', 'contacts'] as $type) {
+			$this->config->deleteUserValue($userId, 'webmail', 'shared_' . $type . '_' . $id);
+		}
 	}
 
 	/**

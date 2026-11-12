@@ -62,11 +62,16 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Contacts](docs/capture-contacts.png)
 
+![Contacts partagés](docs/capture-contacts-partages.png)
+
 | | |
 |---|---|
-| Liste | Contacts personnels de la boîte, triés et groupés par initiale, avec recherche |
+| Carnets | **Vos carnets d'adresses** Exchange (« Contacts » et les autres, par ex. « Fournisseurs »), les **contacts partagés** par vos collègues, et l'**annuaire de l'entreprise** |
+| Liste | Contacts du carnet choisi, triés et groupés par initiale, avec recherche |
+| Contacts partagés | « Ajouter les contacts d'un collègue » : saisissez son adresse. L'accès, **lecture** ou **modification**, est détecté automatiquement ; le collègue doit avoir partagé son dossier « Contacts » dans Outlook (clic droit → Propriétés → Autorisations). En lecture seule, un bouton « Ajouter à mes contacts » copie la fiche dans votre carnet. Retirer un carnet de la liste ne supprime rien dans Exchange |
+| Annuaire de l'entreprise | Toutes les personnes et listes de diffusion de l'organisation Exchange, avec service, fonction, téléphone et site. Exchange ne permet que la **recherche**, à partir de 2 lettres et dans la limite de 100 résultats. Lecture seule, avec « Écrire » et « Ajouter à mes contacts » |
 | Fiche | Société, fonction, jusqu'à 3 e-mails, mobile, téléphone du bureau et du domicile, adresse (lien vers la carte), notes |
-| Actions | Créer, modifier, supprimer, **écrire** (ouvre un nouveau message), appeler (lien `tel:`) |
+| Actions | Créer (dans le carnet choisi), modifier, supprimer, **écrire** (ouvre un nouveau message), appeler (lien `tel:`) |
 | Groupes | Les listes de distribution sont affichées, leur gestion reste dans Outlook |
 
 ## Prérequis
@@ -82,7 +87,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.5.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.6.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -104,7 +109,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.5 ne modifient pas la base de données (les agendas partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.6 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -187,7 +192,7 @@ templates/          page principale et page d'administration
 
 ## Évolutions possibles
 
-- Dossiers de contacts autres que le principal, contacts partagés
+- Contacts des dossiers publics Exchange
 - Répondre aux invitations au nom d'un collègue (délégation)
 - Règles « le 2e mardi du mois » (aujourd'hui conservées, mais pas modifiables ici)
 - Brouillons modifiables et éditeur HTML

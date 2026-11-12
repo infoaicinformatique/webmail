@@ -25,6 +25,13 @@ COUNTER = itertools.count(5000)
 EVENTS = {}
 CONTACTS = {}
 ME = ('Utilisateur', 'user@societe-a.fr')
+# directory details: email -> (company, department, job, business phone, office)
+DIRECTORY_DETAILS = {
+    'marie.martin@societe-a.fr': ('Société A', 'Direction', 'Directrice commerciale', '04 93 10 10 10', 'Nice'),
+    'paul.durand@societe-a.fr': ('Société A', 'Comptabilité', 'Comptable', '04 93 10 10 11', 'Nice'),
+    'compta@societe-b.fr': ('Société B', 'Comptabilité', '', '04 92 20 20 20', 'Cannes'),
+    'martine.leroy@societe-b.fr': ('Société B', 'Logistique', 'Responsable logistique', '04 92 20 20 21', 'Cannes'),
+}
 DIRECTORY = [
     ('Marie Martin', 'marie.martin@societe-a.fr'),
     ('Paul Durand', 'paul.durand@societe-a.fr'),
@@ -100,6 +107,23 @@ def calendar_folder(ref):
         return None, 'ErrorFolderNotFound'
     if mb is None or mb.lower() == ME[1]:
         return 'F-CAL', None
+    access = SHARED_ACCESS.get(mb.lower())
+    if access is None:
+        return None, 'ErrorNonExistentMailbox'
+    if access == 'freebusy':
+        return None, 'ErrorAccessDenied'
+    return 'shared:' + mb.lower(), None
+
+
+def contacts_folder(ref):
+    """Resolve a contacts folder reference -> (folder key, error code or None)."""
+    if ref.tag == T + 'FolderId':
+        return ref.get('Id'), None
+    mb = ref.findtext('t:Mailbox/t:EmailAddress', default=None, namespaces=NS)
+    if ref.get('Id') != 'contacts':
+        return None, 'ErrorFolderNotFound'
+    if mb is None or mb.lower() == ME[1]:
+        return 'F-CONTACTS', None
     access = SHARED_ACCESS.get(mb.lower())
     if access is None:
         return None, 'ErrorNonExistentMailbox'
@@ -229,12 +253,13 @@ def seed():
     create_series('Sport', first, at(4, 19), dict(pattern='WeeklyRecurrence', interval=1, days=[WEEKDAYS[first.weekday()]], until=None, count=6),
                   free_busy='Free', reminder=-1)
 
-    def contact(given, surname, company='', email='', email2='', mobile='', business='', job='', city='', street='', postal='', notes=''):
+    def contact(given, surname, company='', email='', email2='', mobile='', business='', job='', city='', street='', postal='', notes='',
+                folder='F-CONTACTS'):
         cid = new_id('CT')
         CONTACTS[cid] = dict(id=cid, kind='Contact', givenName=given, surname=surname, displayName=(given + ' ' + surname).strip() or company,
                              company=company, department='', jobTitle=job, emails=[e for e in (email, email2) if e],
                              mobilePhone=mobile, businessPhone=business, homePhone='', street=street, city=city,
-                             postalCode=postal, country='France' if city else '', notes=notes)
+                             postalCode=postal, country='France' if city else '', notes=notes, folder=folder)
     contact('Jean', 'Dupont', 'Client Exemple SA', 'jean.dupont@client-exemple.fr', mobile='06 12 34 56 78', job='Directeur', city='Nice',
             street='12 promenade des Anglais', postal='06000', notes='Client depuis 2019.')
     contact('Anne', 'Bernard', 'Cabinet Bernard', 'anne@cabinet-bernard.fr', business='04 93 00 00 00', job='Expert-comptable')
@@ -242,7 +267,12 @@ def seed():
     contact('Émilie', 'Roux', 'Roux Architectes', 'emilie@roux-archi.fr', 'emilie.roux@gmail.example', mobile='07 00 11 22 33')
     contact('', '', 'Plombier Express', 'contact@plombier-express.fr', business='04 92 11 11 11')
     gid = new_id('DL')
-    CONTACTS[gid] = dict(id=gid, kind='DistributionList', displayName='Équipe projet')
+    CONTACTS[gid] = dict(id=gid, kind='DistributionList', displayName='Équipe projet', folder='F-CONTACTS')
+    contact('', '', 'Électricité Azur', 'devis@elec-azur.example', business='04 93 55 55 55', folder='F-CONTACTS2')
+    contact('', '', 'Papeterie du Port', 'commandes@papeterie-port.example', folder='F-CONTACTS2')
+    contact('Hugo', 'Blanc', 'Client Riviera', 'hugo@client-riviera.example', mobile='06 77 77 77 77', folder='shared:marie.martin@societe-a.fr')
+    contact('Sophie', 'Girard', 'Transports Girard', 'sophie@transports-girard.example', job='Gérante', folder='shared:martine.leroy@societe-b.fr')
+    contact('Karim', 'Benali', 'Entrepôt Sud', 'karim@entrepot-sud.example', folder='shared:martine.leroy@societe-b.fr')
 
 
 seed()
@@ -387,13 +417,14 @@ def handle(op, el, user, tz, messages, move_message):
 
     if op == 'GetFolder':
         refs = list(el.find('m:FolderIds', NS))
-        if not any(r.get('Id') == 'calendar' for r in refs):
+        if not any(r.get('Id') in ('calendar', 'contacts') for r in refs):
             return None
         out = []
         for r in refs:
-            if r.get('Id') != 'calendar':
+            if r.get('Id') not in ('calendar', 'contacts'):
                 return None  # mixed request: let the mail handler answer
-            folder, code = calendar_folder(r)
+            kind = r.get('Id')
+            folder, code = calendar_folder(r) if kind == 'calendar' else contacts_folder(r)
             if code:
                 out.append(err(op, code, code))
                 continue
@@ -401,8 +432,9 @@ def handle(op, el, user, tz, messages, move_message):
             rights = ('<t:EffectiveRights><t:CreateAssociated>false</t:CreateAssociated><t:CreateContents>%s</t:CreateContents>'
                       '<t:CreateHierarchy>false</t:CreateHierarchy><t:Delete>%s</t:Delete><t:Modify>%s</t:Modify><t:Read>true</t:Read></t:EffectiveRights>'
                       % (write, write, write))
-            out.append(ok(op, '<m:Folders><t:CalendarFolder><t:FolderId Id="%s" ChangeKey="AQ"/>%s</t:CalendarFolder></m:Folders>'
-                          % ('F-CAL' if folder == 'F-CAL' else 'CAL-' + folder, rights)))
+            tag = 'CalendarFolder' if kind == 'calendar' else 'ContactsFolder'
+            fid = folder if folder in ('F-CAL', 'F-CONTACTS') else kind.upper() + '-' + folder
+            out.append(ok(op, '<m:Folders><t:%s><t:FolderId Id="%s" ChangeKey="AQ"/>%s</t:%s></m:Folders>' % (tag, fid, rights, tag)))
         return wrap(op, out)
 
     if op == 'GetUserAvailabilityRequest':
@@ -438,12 +470,16 @@ def handle(op, el, user, tz, messages, move_message):
             evs = sorted((e for e in EVENTS.values() if e['folder'] == folder and e['start'] < end and e['end'] > start), key=lambda e: e['start'])
             return wrap(op, [ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Items>%s</t:Items></m:RootFolder>'
                                 % (len(evs), ''.join(event_xml(e, False) for e in evs)))])
-        if pid == 'contacts':
+        if pid in ('contacts', 'F-CONTACTS', 'F-CONTACTS2'):
+            folder, code = contacts_folder(parent)
+            if code:
+                return wrap(op, [err(op, code, code)])
             view = el.find('m:IndexedPageItemView', NS)
             offset, limit = int(view.get('Offset', 0)), int(view.get('MaxEntriesReturned', 100))
             q = text(el, 'm:QueryString').lower()
             # Exchange sorts accent-insensitively (É with E)
-            cs = sorted(CONTACTS.values(), key=lambda c: unicodedata.normalize('NFD', c['displayName'].lower()).encode('ascii', 'ignore'))
+            cs = sorted((c for c in CONTACTS.values() if c['folder'] == folder),
+                        key=lambda c: unicodedata.normalize('NFD', c['displayName'].lower()).encode('ascii', 'ignore'))
             if q:
                 cs = [c for c in cs if q in c['displayName'].lower() or q in c.get('company', '').lower()
                       or any(q in e.lower() for e in c.get('emails', []))]
@@ -501,8 +537,13 @@ def handle(op, el, user, tz, messages, move_message):
             return wrap(op, out)
         if tag == 'Contact':
             out = []
+            target = el.find('m:SavedItemFolderId', NS)
+            folder, code = contacts_folder(target[0]) if target is not None else ('F-CONTACTS', None)
+            if code or not can_write(folder):
+                return wrap(op, [err(op, code or 'ErrorAccessDenied', 'Access is denied.')])
             for it in items:
                 c = contact_from(it)
+                c['folder'] = folder
                 c['id'] = new_id('CT')
                 apply_contact_fields(c, it)
                 c['emails'] = [e for e in c['emails'] if e]
@@ -599,6 +640,8 @@ def handle(op, el, user, tz, messages, move_message):
                         rule = SERIES[sid]['rule'] if rule_change == 'keep' else rule_change
                         create_series(e['subject'], e['start'], e['end'], rule, sid=sid, master=iid, **fields)
             return wrap(op, [ok(op, '<m:Items/><m:ConflictResults><t:Count>0</t:Count></m:ConflictResults>') for _ in ids])
+        if any(i in CONTACTS and not can_write(CONTACTS[i]['folder']) for i in ids):
+            return wrap(op, [err(op, 'ErrorAccessDenied', 'Access is denied.')])
         if ids and all(i in CONTACTS for i in ids):
             for ch in changes:
                 c = CONTACTS[ch.find('t:ItemId', NS).get('Id')]
@@ -626,6 +669,8 @@ def handle(op, el, user, tz, messages, move_message):
                 else:
                     del EVENTS[t.get('Id')]
             return wrap(op, [ok(op) for _ in targets])
+        if any(t.get('Id') in CONTACTS and not can_write(CONTACTS[t.get('Id')]['folder']) for t in targets):
+            return wrap(op, [err(op, 'ErrorAccessDenied', 'Access is denied.')])
         if targets and all(t.get('Id') in CONTACTS for t in targets):
             for t in targets:
                 del CONTACTS[t.get('Id')]
@@ -634,8 +679,13 @@ def handle(op, el, user, tz, messages, move_message):
 
     if op == 'ResolveNames':
         q = text(el, 'm:UnresolvedEntry').lower()
+        scope = el.get('SearchScope', 'ActiveDirectoryContacts')
+        full = el.get('ReturnFullContactData') == 'true'
         found = []
-        for c in CONTACTS.values():
+        # personal contacts (default folder) unless only the directory is searched
+        for c in (CONTACTS.values() if scope != 'ActiveDirectory' else []):
+            if c['folder'] != 'F-CONTACTS':
+                continue
             if c['kind'] == 'Contact' and c['emails'] and (q in c['displayName'].lower() or any(q in e.lower() for e in c['emails'])):
                 found.append((c['displayName'], c['emails'][0], 'Contact'))
         for n, e in DIRECTORY:
@@ -643,8 +693,18 @@ def handle(op, el, user, tz, messages, move_message):
                 found.append((n, e, 'Mailbox'))
         if not found:
             return wrap(op, [err(op, 'ErrorNameResolutionNoResults', 'No results were found.')])
+        def details(n, e, k):
+            if not full or k != 'Mailbox':
+                return ''
+            company, dept, job, phone, office = DIRECTORY_DETAILS.get(e, ('', '', '', '', ''))
+            given, _, surname = n.partition(' ')
+            return ('<t:Contact><t:DisplayName>%s</t:DisplayName><t:GivenName>%s</t:GivenName><t:CompanyName>%s</t:CompanyName>'
+                    '<t:EmailAddresses><t:Entry Key="EmailAddress1">SMTP:%s</t:Entry></t:EmailAddresses>'
+                    '<t:PhoneNumbers><t:Entry Key="BusinessPhone">%s</t:Entry></t:PhoneNumbers>'
+                    '<t:Department>%s</t:Department><t:JobTitle>%s</t:JobTitle><t:OfficeLocation>%s</t:OfficeLocation><t:Surname>%s</t:Surname></t:Contact>'
+                    % (esc(n), esc(given), esc(company), esc(e), esc(phone), esc(dept), esc(job), esc(office), esc(surname)))
         res = ''.join('<t:Resolution><t:Mailbox><t:Name>%s</t:Name><t:EmailAddress>%s</t:EmailAddress><t:RoutingType>SMTP</t:RoutingType>'
-                      '<t:MailboxType>%s</t:MailboxType></t:Mailbox></t:Resolution>' % (esc(n), esc(e), k) for n, e, k in found)
+                      '<t:MailboxType>%s</t:MailboxType></t:Mailbox>%s</t:Resolution>' % (esc(n), esc(e), k, details(n, e, k)) for n, e, k in found)
         cls = 'Warning' if len(found) > 1 else 'Success'
         code = 'ErrorNameResolutionMultipleResults' if len(found) > 1 else 'NoError'
         return wrap(op, ['<m:ResolveNamesResponseMessage ResponseClass="%s"><m:ResponseCode>%s</m:ResponseCode>'
