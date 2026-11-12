@@ -3,6 +3,9 @@
  *
  *   NC_URL=http://localhost:8080 NC_USER=admin NC_PASS=... SHOTS=/tmp/shots node tests/e2e/run-e2e.js
  *
+ * OCC: how to run occ in that Nextcloud (to run the background job of the
+ * new message notifications), by default "docker exec -u www-data nc php occ".
+ *
  * The Nextcloud must have the app enabled, verify_tls=no and the domain
  * societe-a.fr mapped to the fake server (see tests/e2e/README.md).
  */
@@ -10,9 +13,11 @@ const { chromium } = require('playwright')
 const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
+const { execSync } = require('child_process')
 
 const NC = process.env.NC_URL || 'http://localhost:8080'
 const SHOTS = process.env.SHOTS || '/tmp/webmail-shots'
+const OCC = process.env.OCC || 'docker exec -u www-data nc php occ'
 fs.mkdirSync(SHOTS, { recursive: true })
 
 async function main() {
@@ -500,6 +505,63 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('junk e-mail: junk and not junk', async () => {
+		const msg = (n) => '.wm-message:has(.wm-message-subject:text-is("Newsletter n°' + n + '"))'
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.click(msg(12))
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°12")')
+		await page.click('.wm-toolbar .wm-junk-btn:has-text("Indésirable")')
+		await page.waitForSelector('.wm-toast:has-text("Message dans « Courrier indésirable » ; l\'expéditeur est bloqué")')
+		assert(!(await page.$(msg(12))))
+		// several at once
+		await page.click(msg(13) + ' .wm-check')
+		await page.click(msg(14) + ' .wm-check')
+		await page.click('.wm-bulk .wm-junk-btn')
+		await page.waitForSelector('.wm-toast:has-text("2 messages dans « Courrier indésirable » ; leurs expéditeurs sont bloqués")')
+		// from the junk folder: not junk, back to the inbox
+		await page.click('.wm-folder:has-text("Courrier indésirable")')
+		await page.click(msg(12))
+		await page.waitForSelector('.wm-toolbar .wm-junk-btn:has-text("Pas indésirable")')
+		await shot('42-junk')
+		await page.click('.wm-toolbar .wm-junk-btn')
+		await page.waitForSelector('.wm-toast:has-text("Message remis dans la boîte de réception ; l\'expéditeur est considéré comme fiable")')
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector(msg(12))
+	})
+
+	await step('send options: later delivery, read receipt; printing', async () => {
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'client@exemple.fr')
+		await page.fill('input[name=subject]', 'Rapport trimestriel')
+		await page.fill('.wm-editor', 'Bonjour, voici le rapport.')
+		await page.check('.wm-send-options input[name=readReceipt]')
+		await page.check('.wm-send-options input[name=sendLater]')
+		// tomorrow 8:00 is proposed
+		assert(/T08:00$/.test(await page.inputValue('.wm-send-options input[name=sendAt]')))
+		await page.waitForSelector('.wm-compose button[type=submit]:has-text("Programmer l\'envoi")')
+		await shot('43-send-later')
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Envoi programmé le")')
+		// waiting in the Outbox, not in Sent Items
+		await page.click('.wm-folder:has-text("Boîte d\'envoi")')
+		await page.waitForSelector('.wm-message:has-text("Rapport trimestriel")')
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.waitForSelector('.wm-message')
+		assert(!(await page.$('.wm-message:has-text("Rapport trimestriel")')))
+
+		// print a message: its own page with the headers
+		await page.click('.wm-message:has-text("Test depuis Nextcloud")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Test depuis Nextcloud")')
+		const [popup] = await Promise.all([page.context().waitForEvent('page'), page.click('.wm-print-btn')])
+		await popup.waitForLoadState()
+		assert.strictEqual(await popup.title(), 'Test depuis Nextcloud')
+		const printed = await popup.textContent('body')
+		assert(printed.includes('De') && printed.includes('client@exemple.fr') && printed.includes('note.txt'), printed.slice(0, 200))
+		await popup.close()
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('account settings: signature', async () => {
 		await page.click('text=Comptes et signature')
 		await page.fill('.wm-account-card textarea', 'Utilisateur\nSociété A')
@@ -538,6 +600,131 @@ async function main() {
 		await page.click('.wm-oof-banner a:has-text("Désactiver")')
 		await page.waitForSelector('.wm-toast:has-text("Réponse automatique désactivée")')
 		await page.waitForSelector('.wm-oof-banner', { state: 'detached' })
+	})
+
+	await step('inbox rules: create, order, switch off, run on arrival, from a message', async () => {
+		await page.click('text=Comptes et signature')
+		await page.click('.wm-account-card:has-text("user@societe-a.fr") .wm-rules-btn')
+		// a rule made in Outlook: shown, can be switched off, not edited here
+		const outlook = '.wm-rule:has-text("Grosses pièces jointes")'
+		await page.waitForSelector(outlook + ' .wm-rule-tag:has-text("créée dans Outlook")')
+		assert(!(await page.$(outlook + ' .wm-rule-edit')), 'no edit button')
+		// a new rule
+		await page.click('.wm-rule-new')
+		await page.fill('input[name=ruleName]', 'Relevés bancaires')
+		await page.fill('input[name=ruleSubject]', 'relevé, extrait de compte')
+		await page.selectOption('select[name=ruleMove]', { label: 'Factures' })
+		await page.check('input[name=ruleMarkRead]')
+		await page.check('input[name=ruleStop]')
+		await page.click('.wm-rule-form button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Règle créée")')
+		const mine = '.wm-rule:has-text("Relevés bancaires")'
+		const summary = await page.textContent(mine + ' .wm-rule-summary')
+		assert(summary.includes('Si l\'objet contient « relevé » ou « extrait de compte » → déplacer vers Factures, marquer comme lu, puis ne pas appliquer les règles suivantes'), summary)
+		// created last, moved up
+		let names = await page.$$eval('.wm-rule-name', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(names, ['Grosses pièces jointes', 'Relevés bancaires'])
+		await page.click(mine + ' .wm-rule-up')
+		await page.waitForFunction(() => document.querySelector('.wm-rule-name').textContent === 'Relevés bancaires')
+		// the Outlook rule switched off, sent back to Exchange untouched otherwise
+		await page.uncheck(outlook + ' .wm-rule-enabled')
+		await page.waitForSelector('.wm-toast:has-text("Règle désactivée")')
+		await page.waitForSelector('.wm-rule.off:has-text("Grosses pièces jointes") .wm-rule-tag')
+		await shot('45-inbox-rules')
+		// edited
+		await page.click(mine + ' .wm-rule-edit')
+		assert.strictEqual(await page.inputValue('input[name=ruleSubject]'), 'relevé, extrait de compte')
+		assert.strictEqual(await page.inputValue('select[name=ruleMove]') !== '', true)
+		await page.fill('input[name=ruleName]', 'Relevés de la banque')
+		await page.click('.wm-rule-form button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Règle enregistrée")')
+		await page.waitForSelector('.wm-rule-name:text-is("Relevés de la banque")')
+		// a message that matches arrives: Exchange files it, read, in Factures
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'user@societe-a.fr')
+		await page.fill('input[name=subject]', 'Votre relevé de novembre')
+		await page.fill('.wm-editor', 'Bonjour')
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		await page.click('.wm-folder:has-text("Factures")')
+		await page.waitForSelector('.wm-message:not(.unread):has-text("Votre relevé de novembre")')
+		// a rule from a message: its sender is filled in
+		await page.click('.wm-message:has-text("Votre relevé de novembre")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Votre relevé de novembre")')
+		await page.click('.wm-rule-from-msg')
+		await page.waitForSelector('.wm-rule-form h3:has-text("Nouvelle règle")')
+		assert.strictEqual(await page.inputValue('input[name=ruleFrom]'), 'user@societe-a.fr')
+		// it must do something
+		await page.click('.wm-rule-form button[type=submit]')
+		await page.waitForSelector('.wm-rule-form .wm-form-error:has-text("Choisissez ce que la règle doit faire")')
+		await page.click('.wm-rule-form button:has-text("Annuler")')
+		// deleted
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-rule:has-text("Relevés de la banque") .wm-rule-delete')
+		await page.waitForSelector('.wm-toast:has-text("Règle supprimée")')
+		names = await page.$$eval('.wm-rule-name', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(names, ['Grosses pièces jointes'])
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector('.wm-message')
+	})
+
+	await step('Nextcloud notifications (bell) for new messages, webmail closed', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\NewMailJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		assert(jobId, 'background job registered')
+		const runJob = () => occ('background-job:execute ' + jobId + ' --force-execute')
+		const bell = () => page.evaluate(async () => {
+			const r = await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })
+			return (await r.json()).ocs.data.filter((n) => n.app === 'webmail')
+		})
+		const sendToSelf = async (subject) => {
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'user@societe-a.fr')
+			await page.fill('input[name=subject]', subject)
+			await page.fill('.wm-editor', 'Bonjour, point rapide sur le budget.')
+			await page.click('.wm-compose button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		}
+		// on by default, for each account
+		await page.click('text=Comptes et signature')
+		const box = '.wm-account-card:has-text("user@societe-a.fr") input[name=bell]'
+		assert(await page.isChecked(box), 'on by default')
+		// the first check only notes what is there: old messages are not announced
+		runJob()
+		assert.deepStrictEqual(await bell(), [])
+		await sendToSelf('Budget du chantier')
+		runJob()
+		let mine = (await bell()).filter((n) => n.message.startsWith('« Budget du chantier »'))
+		assert.strictEqual(mine.length, 1, JSON.stringify(await bell()))
+		assert.strictEqual(mine[0].subject, 'Nouveau message d\'Utilisateur')
+		assert.strictEqual(mine[0].message, '« Budget du chantier » — Bonjour, point rapide sur le budget. · user@societe-a.fr')
+		// not announced twice
+		runJob()
+		assert.strictEqual((await bell()).filter((n) => n.message.startsWith('« Budget du chantier »')).length, 1)
+		// in Nextcloud's bell
+		await page.reload()
+		await page.click('.notifications-button')
+		await page.waitForSelector('.notification:has-text("Budget du chantier")')
+		await shot('46-bell-notification')
+		// its link opens the message, which leaves the bell
+		await page.goto(mine[0].link)
+		await page.waitForSelector('.wm-message-header h2:has-text("Budget du chantier")')
+		for (let i = 0; i < 20 && (await bell()).length; i++) await page.waitForTimeout(250)
+		assert.deepStrictEqual(await bell(), [])
+		// switched off for this account
+		await page.click('text=Comptes et signature')
+		await page.uncheck(box)
+		await page.waitForSelector('.wm-toast:has-text("ne seront plus signalés")')
+		await sendToSelf('Sans notification')
+		runJob()
+		assert.deepStrictEqual(await bell(), [])
+		await page.click('text=Comptes et signature')
+		await page.check(box)
+		await page.waitForSelector('.wm-toast:has-text("seront signalés dans Nextcloud")')
+		// read, so that the next steps find the inbox as before
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.click('.wm-message:has-text("Sans notification")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Sans notification")')
 	})
 
 	await step('rich text editor and drafts', async () => {
@@ -1111,6 +1298,25 @@ async function main() {
 		await page.waitForSelector('.wm-week.wm-day-view .wm-week-col[data-date="' + ymd(new Date()) + '"]')
 		// back to the view used before
 		await page.click('.wm-segmented button:has-text("' + before.trim() + '")')
+	})
+
+	await step('calendar: searching events', async () => {
+		await page.fill('.wm-cal-search', 'EQUIPE')
+		await page.press('.wm-cal-search', 'Enter')
+		await page.waitForSelector('.wm-cal-results .wm-search-info:has-text("Événements contenant « EQUIPE »")')
+		await page.waitForSelector('.wm-cal-results .wm-agenda-item')
+		// accents and capitals do not matter
+		const subjects = await page.$$eval('.wm-cal-results .wm-agenda-subject', (els) => els.map((e) => e.firstChild.textContent))
+		assert(subjects.length >= 1 && subjects.every((t) => /équipe/i.test(t)), subjects.join('|'))
+		await shot('44-event-search')
+		await page.click('.wm-cal-results .wm-agenda-item >> nth=0')
+		await page.waitForSelector('.wm-modal .wm-event-when')
+		await page.click('.wm-modal-close')
+		await page.fill('.wm-cal-search', 'zzz introuvable')
+		await page.press('.wm-cal-search', 'Enter')
+		await page.waitForSelector('.wm-cal-results .wm-empty:has-text("Aucun événement trouvé")')
+		await page.click('.wm-cal-results a:has-text("revenir à l\'agenda")')
+		await page.waitForSelector('.wm-cal-results', { state: 'detached' })
 	})
 
 	await step('calendar: share my calendar without delegation', async () => {

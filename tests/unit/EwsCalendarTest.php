@@ -462,4 +462,29 @@ class EwsCalendarTest extends EwsTestCase {
 		$this->assertSame('UTC', TimeZones::toWindows('Mars/Olympus'));
 		$this->assertSame('UTC', TimeZones::toWindows(null));
 	}
+
+	public function testEventSearchIgnoresAccentsAndCapitals(): void {
+		$ev = ['subject' => 'Réunion Équipe', 'location' => 'Salle Riviera', 'organizer' => ['name' => 'Marie Martin', 'email' => 'marie@x.fr']];
+		$this->assertTrue(EwsCalendar::matches($ev, 'reunion'));
+		$this->assertTrue(EwsCalendar::matches($ev, 'EQUIPE riviera'), 'all the words, anywhere');
+		$this->assertTrue(EwsCalendar::matches($ev, 'marie'), 'the organiser too');
+		$this->assertFalse(EwsCalendar::matches($ev, 'réunion budget'));
+		$this->assertFalse(EwsCalendar::matches($ev, '   '));
+	}
+
+	public function testSearchEventsOverAYear(): void {
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="2" IncludesLastItemInRange="true"><t:Items>'
+			. '<t:CalendarItem><t:ItemId Id="E2"/><t:Subject>Revue budget</t:Subject><t:Start>2026-12-01T09:00:00Z</t:Start><t:End>2026-12-01T10:00:00Z</t:End></t:CalendarItem>'
+			. '<t:CalendarItem><t:ItemId Id="E1"/><t:Subject>Budget prévisionnel</t:Subject><t:Start>2026-06-01T09:00:00Z</t:Start><t:End>2026-06-01T10:00:00Z</t:End></t:CalendarItem>'
+			. '<t:CalendarItem><t:ItemId Id="E3"/><t:Subject>Sport</t:Subject><t:Start>2026-11-20T09:00:00Z</t:Start><t:End>2026-11-20T10:00:00Z</t:End></t:CalendarItem>'
+			. '</t:Items></m:RootFolder>'));
+		$r = $this->calendar()->searchEvents('budget', 'calendar', new \DateTimeImmutable('2026-11-12T10:00:00Z'));
+		$this->assertSame(['E1', 'E2'], array_column($r, 'id'), 'matching ones, soonest first');
+		$this->assertStringContainsString('StartDate="2026-05-13T10:00:00Z" EndDate="2027-05-14T10:00:00Z"', $this->lastRequest());
+	}
+
+	public function testSearchNeedsTwoLetters(): void {
+		$this->expectException(MailException::class);
+		$this->calendar()->searchEvents('a');
+	}
 }

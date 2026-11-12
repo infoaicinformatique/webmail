@@ -14,14 +14,17 @@
    occ app:enable webmail
    occ config:app:set webmail verify_tls --value=no
    occ config:app:set webmail servers --value='[{"domain":"societe-a.fr","url":"ex3.fake.test:8443"},{"domain":"societe-b.fr","url":"ex5.fake.test:8443"}]'
+   occ background:cron
    ```
 
    (lancer le conteneur avec `--add-host=ex3.fake.test:host-gateway --add-host=ex5.fake.test:host-gateway`)
 
 3. `NC_URL=http://localhost:8080 NC_PASS=... node tests/e2e/run-e2e.js`
+   (`OCC` : la commande occ de ce Nextcloud, par défaut `docker exec -u www-data nc php occ` ; le scénario lance lui-même
+   la tâche de fond des notifications, d'où le mode `cron` ci-dessus pour qu'elle ne tourne pas à d'autres moments)
 4. `php tests/e2e/validate_logged_requests.php /tmp/ews-log` : vérifie chaque requête envoyée avec le schéma EWS officiel.
 
 Entre deux exécutions, remettez l'état à zéro : relancez `fake_ews.py` (ses données sont en mémoire),
-videz `oc_webmail_accounts`, et videz aussi `oc_ratelimit_entries`. Sans cela, la limite de 10 ajouts de compte
+videz `oc_webmail_accounts`, les notifications de l'app (`oc_notifications` où `app = 'webmail'`), et videz aussi `oc_ratelimit_entries`. Sans cela, la limite de 10 ajouts de compte
 par 5 minutes bloque le scénario après quelques passages.
 Lancez Playwright avec le fuseau `Europe/Paris` (déjà configuré dans `run-e2e.js`).

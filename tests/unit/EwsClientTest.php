@@ -20,6 +20,7 @@ class EwsClientTest extends EwsTestCase {
 			. '<m:GetFolderResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Folders><t:Folder><t:FolderId Id="SENT-ID" ChangeKey="a"/></t:Folder></m:Folders></m:GetFolderResponseMessage>'
 			. '<m:GetFolderResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Folders><t:Folder><t:FolderId Id="DEL-ID" ChangeKey="a"/></t:Folder></m:Folders></m:GetFolderResponseMessage>'
 			. '<m:GetFolderResponseMessage ResponseClass="Error"><m:MessageText>not found</m:MessageText><m:ResponseCode>ErrorFolderNotFound</m:ResponseCode></m:GetFolderResponseMessage>'
+			. '<m:GetFolderResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Folders><t:Folder><t:FolderId Id="OUTBOX-ID" ChangeKey="a"/></t:Folder></m:Folders></m:GetFolderResponseMessage>'
 			. '<m:GetFolderResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Folders><t:Folder><t:FolderId Id="ROOT-ID" ChangeKey="a"/></t:Folder></m:Folders></m:GetFolderResponseMessage>'
 			. '</m:ResponseMessages></m:GetFolderResponse>');
 		$this->queue(self::ok('FindFolder', '<m:RootFolder TotalItemsInView="4" IncludesLastItemInRange="true"><t:Folders>'
@@ -228,6 +229,34 @@ class EwsClientTest extends EwsTestCase {
 		$this->assertCount(1, $this->requests, 'nothing sent besides the check');
 		$this->expectException(MailException::class);
 		$this->client()->renameFolder('inbox', 'x');
+	}
+
+	public function testMarkAsJunkAndNotJunk(): void {
+		$this->queue(self::ok('MarkAsJunk', '<m:MovedItemId Id="J1"/>'));
+		$this->client()->markAsJunk(['M1', 'M2'], true);
+		$this->assertStringContainsString('<m:MarkAsJunk IsJunk="true" MoveItem="true"><m:ItemIds><t:ItemId Id="M1"/><t:ItemId Id="M2"/></m:ItemIds></m:MarkAsJunk>', $this->lastRequest());
+		$this->queue(self::ok('MarkAsJunk', '<m:MovedItemId Id="I1"/>'));
+		$this->client()->markAsJunk(['J1'], false);
+		$this->assertStringContainsString('<m:MarkAsJunk IsJunk="false" MoveItem="true">', $this->lastRequest());
+	}
+
+	public function testSendWithOptionsGoesThroughADraft(): void {
+		$this->queue(self::ok('CreateItem', '<m:Items><t:Message><t:ItemId Id="D1" ChangeKey="c1"/></t:Message></m:Items>'));
+		$this->queue(self::ok('UpdateItem', '<m:Items><t:Message><t:ItemId Id="D1" ChangeKey="c2"/></t:Message></m:Items>'));
+		$this->queue(self::ok('GetItem', '<m:Items><t:Message><t:ItemId Id="D1" ChangeKey="c2"/></t:Message></m:Items>'));
+		$this->queue(self::ok('SendItem'));
+		$at = (new \DateTimeImmutable('+2 hours'))->setTimezone(new \DateTimeZone('UTC'));
+		$this->client()->sendMessage('new', 'Plus tard', '<p>x</p>', ['a@x.fr'], [], [], [], null, 'Normal',
+			['readReceipt' => true, 'sendAt' => $at->format(DATE_ATOM)]);
+		$this->assertStringContainsString('MessageDisposition="SaveOnly"', $this->requests[0]);
+		$this->assertStringContainsString('<t:ExtendedFieldURI PropertyTag="0x3FEF" PropertyType="SystemTime"/><t:Value>' . $at->format('Y-m-d\TH:i:s\Z') . '</t:Value>', $this->requests[1]);
+		$this->assertStringContainsString('<t:IsReadReceiptRequested>true</t:IsReadReceiptRequested>', $this->requests[1]);
+		$this->assertStringContainsString('<m:SendItem SaveItemToFolder="true"><m:ItemIds><t:ItemId Id="D1" ChangeKey="c2"/>', $this->requests[3]);
+	}
+
+	public function testSendLaterMustBeInTheFuture(): void {
+		$this->expectException(MailException::class);
+		$this->client()->setSendOptions('D1', ['sendAt' => '2020-01-01T10:00:00Z']);
 	}
 
 	public function testFindItemsWithSearchAndPaging(): void {

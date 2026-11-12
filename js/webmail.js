@@ -5,8 +5,8 @@
 	const BASE = '/apps/webmail/api'
 	const PAGE_SIZE = 50
 	const REFRESH_MS = 120000
-	const ROLE_ORDER = ['inbox', 'drafts', 'sentitems', 'junkemail', 'deleteditems']
-	const ROLE_ICON = { inbox: '📥', drafts: '📝', sentitems: '📤', junkemail: '⚠️', deleteditems: '🗑️' }
+	const ROLE_ORDER = ['inbox', 'drafts', 'sentitems', 'junkemail', 'deleteditems', 'outbox']
+	const ROLE_ICON = { inbox: '📥', drafts: '📝', sentitems: '📤', junkemail: '⚠️', deleteditems: '🗑️', outbox: '📮' }
 
 	const state = {
 		accounts: [],
@@ -765,6 +765,22 @@
 		sync()
 	}
 
+	function openRules(account, prefill) {
+		if (!window.WebmailRules) { toast('Module indisponible', true); return }
+		window.WebmailRules.open(core, account, prefill)
+	}
+
+	/** A new rule for the messages of this sender, to be completed. */
+	function ruleFromMessage(m) {
+		const account = state.accounts.find((a) => a.id === state.accountId)
+		const from = m.from && m.from.email && !m.from.email.startsWith('/') ? m.from.email : ''
+		openRules(account, {
+			name: 'Messages de ' + ((m.from && (m.from.name || m.from.email)) || 'cet expéditeur'),
+			conditions: from ? { from: [from] } : { subject: [m.subject || ''] },
+			actions: {},
+		})
+	}
+
 	function selectFolder(id) {
 		saveListCache()
 		state.folderId = id
@@ -1065,6 +1081,7 @@
 			move,
 			h('button', { type: 'button', class: 'wm-small wm-danger', onclick: () => deleteMessages(ids(), role === 'deleteditems') },
 				role === 'deleteditems' ? 'Supprimer définitivement' : '🗑 Supprimer'),
+			junkButton(null, role, ids),
 			h('button', { type: 'button', class: 'wm-small wm-icon-btn', 'aria-label': 'Annuler la sélection', title: 'Annuler la sélection (Échap)', onclick: clearChecked }, '✕')))
 	}
 
@@ -1125,7 +1142,7 @@
 	// managing folders: create, rename, move, delete
 	// ------------------------------------------------------------------
 
-	const FIXED_ROLES = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail']
+	const FIXED_ROLES = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'outbox']
 
 	function openFolderMenu(anchor, f) {
 		document.querySelectorAll('.wm-folder-menu').forEach((m) => m.remove())
@@ -1433,6 +1450,9 @@
 			h('button', { class: m.flagged ? 'wm-flag-btn on' : 'wm-flag-btn', onclick: () => toggleFlag(m) }, m.flagged ? '⚑ Suivi ✓' : '⚑ Suivi'),
 			moveSelect,
 			h('button', { class: 'wm-danger', onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? 'Supprimer définitivement' : '🗑 Supprimer'),
+			junkButton([m.id], role),
+			h('button', { class: 'wm-print-btn', title: 'Imprimer', 'aria-label': 'Imprimer', onclick: () => printMessage(m) }, '🖨'),
+			h('button', { class: 'wm-rule-from-msg', title: 'Créer une règle pour les messages de cet expéditeur', onclick: () => ruleFromMessage(m) }, '📋 Règle…'),
 		)
 		detailEl.appendChild(toolbar)
 
@@ -1510,6 +1530,25 @@
 			setTimeout(resize, 500)
 		})
 		detailEl.appendChild(h('div', { class: 'wm-body' }, frame))
+	}
+
+	/** Print a message: its headers and its (already cleaned) content, in a page of its own. */
+	function printMessage(m) {
+		const w = window.open('', '_blank')
+		if (!w) { toast('Le navigateur a bloqué la fenêtre d\'impression', true); return }
+		const line = (label, value) => value ? '<tr><th>' + escapeHtml(label) + '</th><td>' + escapeHtml(value) + '</td></tr>' : ''
+		const people = (list) => (list || []).map(personLabel).join(', ')
+		w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + escapeHtml(m.subject || 'Message') + '</title>'
+			+ '<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;margin:24px;color:#000}h1{font-size:16pt;margin:0 0 8px}'
+			+ 'table{border-collapse:collapse;margin-bottom:12px}th{text-align:left;padding:2px 12px 2px 0;color:#555;font-weight:normal;vertical-align:top}'
+			+ 'hr{border:0;border-top:1px solid #999;margin:12px 0}img{max-width:100%}</style></head><body>'
+			+ '<h1>' + escapeHtml(m.subject || '(sans objet)') + '</h1><table>'
+			+ line('De', personLabel(m.from)) + line('À', people(m.to)) + line('Cc', people(m.cc)) + line('Date', formatDate(m.date, true))
+			+ line('Pièces jointes', (m.attachments || []).map((a) => a.name).join(', '))
+			+ '</table><hr>' + (m.body || '') + '</body></html>')
+		w.document.close()
+		w.focus()
+		setTimeout(() => w.print(), 300)
 	}
 
 	function formatRange(start, end, allDay) {
@@ -1611,6 +1650,38 @@
 			renderList(false)
 			saveListCache()
 			if (before.selectedId && ids.includes(before.selectedId)) openMessage(before.selectedId)
+		}
+	}
+
+	/**
+	 * « Courrier indésirable » (blocks the sender), or in that folder « Pas
+	 * indésirable » (trusts the sender, back to the inbox), like Outlook.
+	 */
+	function junkButton(ids, role, getIds) {
+		if (role === 'sentitems' || role === 'drafts' || role === 'deleteditems') return null
+		const notJunk = role === 'junkemail'
+		return h('button', {
+			type: 'button',
+			class: 'wm-junk-btn' + (getIds ? ' wm-small' : ''),
+			title: notJunk ? 'Remettre dans la boîte de réception et faire confiance à l\'expéditeur' : 'Déplacer dans « Courrier indésirable » et bloquer l\'expéditeur',
+			onclick: () => markJunk(getIds ? getIds() : ids, !notJunk),
+		}, notJunk ? '✔ Pas indésirable' : '⛔ Indésirable')
+	}
+
+	async function markJunk(ids, junk) {
+		ids.forEach((id) => state.checked.delete(id))
+		const undo = removeFromList(ids)
+		try {
+			await api('/accounts/' + state.accountId + '/junk', { method: 'POST', body: { itemIds: ids, junk } })
+			const n = ids.length > 1 ? ids.length + ' messages' : 'Message'
+			toast(junk
+				? n + ' dans « Courrier indésirable » ; ' + (ids.length > 1 ? 'leurs expéditeurs sont bloqués' : 'l\'expéditeur est bloqué')
+				: n + ' remis dans la boîte de réception ; ' + (ids.length > 1 ? 'leurs expéditeurs sont' : 'l\'expéditeur est') + ' considéré' + (ids.length > 1 ? 's' : '') + ' comme fiable' + (ids.length > 1 ? 's' : ''))
+			state.folders.filter((f) => f.role === (junk ? 'junkemail' : 'inbox')).forEach((f) => listCache.delete(state.accountId + '|' + f.id))
+			loadFolders()
+		} catch (e) {
+			undo()
+			toast(e.message, true)
 		}
 	}
 
@@ -2016,6 +2087,23 @@
 			leave()
 		}
 
+		// send options: read receipt, later delivery
+		const receipt = h('input', { type: 'checkbox', name: 'readReceipt' })
+		const later = h('input', { type: 'checkbox', name: 'sendLater' })
+		const laterAt = h('input', { type: 'datetime-local', name: 'sendAt', hidden: true })
+		later.addEventListener('change', () => {
+			laterAt.hidden = !later.checked
+			if (later.checked && !laterAt.value) {
+				const d = new Date(Date.now() + 86400000)
+				d.setHours(8, 0, 0, 0)
+				const p = (n) => String(n).padStart(2, '0')
+				laterAt.value = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T08:00'
+			}
+			sendBtn.textContent = later.checked ? 'Programmer l\'envoi' : 'Envoyer'
+		})
+		const sendOptions = h('div', { class: 'wm-send-options' },
+			h('label', { class: 'wm-radio' }, receipt, ' Demander un accusé de lecture'),
+			h('label', { class: 'wm-radio' }, later, ' Envoyer plus tard'), laterAt)
 		const sendBtn = h('button', { type: 'submit', class: 'primary', title: 'Envoyer (Ctrl+Entrée)' }, 'Envoyer')
 		const form = h('form', {
 			class: 'wm-compose',
@@ -2026,14 +2114,22 @@
 				await saving
 				const fd = new FormData()
 				Object.entries(fields()).forEach(([k, v]) => fd.append(k, v))
+				if (receipt.checked) fd.append('readReceipt', '1')
+				if (later.checked) {
+					const at = new Date(laterAt.value)
+					if (!laterAt.value || isNaN(at) || at <= new Date()) { toast('Choisissez une date et une heure d\'envoi à venir', true); return }
+					fd.append('sendAt', at.toISOString())
+				}
 				Array.from(files.files).forEach((f) => fd.append('files[]', f, f.name))
 				ncFiles.forEach((p) => fd.append('filePaths[]', p))
 				sendBtn.disabled = true
 				sendBtn.textContent = 'Envoi…'
 				closed = true
 				try {
-					await api('/accounts/' + state.accountId + '/send', { method: 'POST', body: fd })
-					toast('Message envoyé')
+					const sent = await api('/accounts/' + state.accountId + '/send', { method: 'POST', body: fd })
+					toast(sent && sent.sendAt
+						? 'Envoi programmé le ' + new Date(sent.sendAt).toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) + ' (dans « Boîte d\'envoi » d\'ici là)'
+						: 'Message envoyé')
 					if (isDraft) { state.selectedId = null; removeFromList([draftId]) }
 					if (state.current && !isDraft) renderMessage(); else renderEmptyDetail()
 					if (folderRole() === 'sentitems') setTimeout(() => loadMessages(true), 1500)
@@ -2066,6 +2162,7 @@
 			? 'Le message d\'origine et ses pièces jointes seront ajoutés automatiquement sous votre texte.'
 			: 'Le message d\'origine sera cité automatiquement sous votre réponse.') : null,
 		attachList,
+		sendOptions,
 		h('div', { class: 'wm-compose-actions' },
 			sendBtn,
 			h('label', { class: 'wm-file-label button' }, '📎 Joindre', files),
@@ -2120,6 +2217,21 @@
 					renderNav()
 				} catch (e) { toast(e.message, true) } finally { save.disabled = false }
 			})
+			// saved at once: Nextcloud's notifications (the bell, the phone app) for each new message
+			const bell = h('input', {
+				type: 'checkbox',
+				name: 'bell',
+				checked: a.bell !== false,
+				onchange: async () => {
+					try {
+						Object.assign(a, await api('/accounts/' + a.id, { method: 'PUT', body: { bell: bell.checked } }))
+						toast(bell.checked ? 'Les nouveaux messages seront signalés dans Nextcloud' : 'Les nouveaux messages ne seront plus signalés dans Nextcloud')
+					} catch (e) {
+						bell.checked = !bell.checked
+						toast(e.message, true)
+					}
+				},
+			})
 			const del = h('button', { class: 'wm-danger' }, 'Retirer ce compte')
 			del.addEventListener('click', async () => {
 				if (!window.confirm('Retirer le compte ' + a.email + ' du webmail ? (aucun e-mail n\'est supprimé)')) return
@@ -2139,8 +2251,10 @@
 				h('label', { class: 'wm-field' }, h('span', {}, 'Nom'), name),
 				h('label', { class: 'wm-field' }, h('span', {}, 'Mot de passe'), pwd),
 				h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Signature'), sig),
+				h('label', { class: 'wm-radio wm-bell' }, bell, ' 🔔 Signaler chaque nouveau message dans les notifications Nextcloud, même webmail fermé (et sur le téléphone avec l\'application Nextcloud)'),
 				h('div', { class: 'wm-compose-actions' }, save,
 					h('button', { type: 'button', class: 'wm-oof-btn', onclick: () => openOof(a) }, '🌴 Réponse automatique'),
+					h('button', { type: 'button', class: 'wm-rules-btn', onclick: () => openRules(a) }, '📋 Règles'),
 					h('button', {
 						type: 'button',
 						class: 'wm-delegates-btn',

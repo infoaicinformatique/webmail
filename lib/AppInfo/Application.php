@@ -7,6 +7,7 @@ namespace OCA\Webmail\AppInfo;
 use OCA\Webmail\Dashboard\AgendaWidget;
 use OCA\Webmail\Dashboard\UnreadWidget;
 use OCA\Webmail\Listener\UserDeletedListener;
+use OCA\Webmail\Notification\Notifier;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -24,6 +25,7 @@ class Application extends App implements IBootstrap {
 		$context->registerEventListener(UserDeletedEvent::class, UserDeletedListener::class);
 		$context->registerDashboardWidget(UnreadWidget::class);
 		$context->registerDashboardWidget(AgendaWidget::class);
+		$context->registerNotifierService(Notifier::class);
 	}
 
 	public function boot(IBootContext $context): void {

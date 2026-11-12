@@ -159,6 +159,25 @@ class CalendarController extends Controller {
 		});
 	}
 
+	/**
+	 * Search the events of a calendar (six months back and ahead).
+	 */
+	#[NoAdminRequired]
+	public function search(int $id, string $q, string $tz = 'UTC', string $calendar = 'calendar'): Response {
+		return $this->handle(function () use ($id, $q, $tz, $calendar) {
+			if (str_starts_with($calendar, 'shared:')) {
+				$entry = $this->shared->find(SharedFolderService::CALENDARS, (string)$this->userId, $id, substr($calendar, 7));
+				if ($entry === null) {
+					throw new MailException('Agenda partagé inconnu');
+				}
+				if ($entry['mode'] === 'freebusy') {
+					return ['events' => []]; // only free / busy times: nothing to search
+				}
+			}
+			return ['events' => $this->calendar($id, $tz)->searchEvents($q, $calendar)];
+		});
+	}
+
 	#[NoAdminRequired]
 	public function event(int $id, string $eventId, string $tz = 'UTC'): Response {
 		return $this->handle(fn () => $this->calendar($id, $tz)->getEvent($eventId));

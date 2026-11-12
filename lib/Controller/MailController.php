@@ -9,6 +9,7 @@ use OCA\Webmail\Ews\EwsClient;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\HtmlSanitizer;
+use OCA\Webmail\Service\MailNotificationService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
@@ -32,6 +33,7 @@ class MailController extends Controller {
 		IRequest $request,
 		private AccountService $accounts,
 		private HtmlSanitizer $sanitizer,
+		private MailNotificationService $bell,
 		private IRootFolder $rootFolder,
 		private IURLGenerator $urlGenerator,
 		private LoggerInterface $logger,
@@ -42,6 +44,19 @@ class MailController extends Controller {
 
 	protected function logger(): LoggerInterface {
 		return $this->logger;
+	}
+
+	/**
+	 * Their notification in Nextcloud has done its job (opened, read, moved,
+	 * deleted). Never a reason to fail the request.
+	 * @param string[] $itemIds
+	 */
+	private function dismiss(array $itemIds): void {
+		try {
+			$this->bell->dismiss((string)$this->userId, $itemIds);
+		} catch (\Throwable $e) {
+			$this->logger->debug('Webmail: notification not removed', ['app' => Application::APP_ID, 'exception' => $e]);
+		}
 	}
 
 	private function client(int $id): EwsClient {
@@ -123,6 +138,7 @@ class MailController extends Controller {
 		return $this->handle(function () use ($id, $itemId, $remote, $markRead) {
 			$client = $this->client($id);
 			$msg = $client->getItem($itemId);
+			$this->dismiss([$itemId]);
 
 			$cidMap = [];
 			foreach ($msg['attachments'] as $att) {
@@ -218,6 +234,9 @@ class MailController extends Controller {
 				'flagged' => $client->setFlagged($itemIds, $value),
 				default => throw new MailException('Indicateur inconnu'),
 			};
+			if ($flag === 'read' && $value) {
+				$this->dismiss($itemIds);
+			}
 			return ['status' => 'ok'];
 		});
 	}
@@ -229,6 +248,7 @@ class MailController extends Controller {
 	public function move(int $id, array $itemIds, string $target): Response {
 		return $this->handle(function () use ($id, $itemIds, $target) {
 			$this->client($id)->moveItems($itemIds, $target);
+			$this->dismiss($itemIds);
 			return ['status' => 'ok'];
 		});
 	}
@@ -236,10 +256,23 @@ class MailController extends Controller {
 	/**
 	 * @param string[] $itemIds
 	 */
+	/**
+	 * @param bool $junk true: junk (sender blocked), false: not junk (sender trusted)
+	 */
+	#[NoAdminRequired]
+	public function junk(int $id, array $itemIds, bool $junk): Response {
+		return $this->handle(function () use ($id, $itemIds, $junk) {
+			$this->client($id)->markAsJunk($itemIds, $junk);
+			$this->dismiss($itemIds);
+			return ['status' => 'ok'];
+		});
+	}
+
 	#[NoAdminRequired]
 	public function delete(int $id, array $itemIds, bool $permanent = false): Response {
 		return $this->handle(function () use ($id, $itemIds, $permanent) {
 			$this->client($id)->deleteItems($itemIds, $permanent);
+			$this->dismiss($itemIds);
 			return ['status' => 'ok'];
 		});
 	}
@@ -326,17 +359,23 @@ class MailController extends Controller {
 			$attachments = $this->collectAttachments();
 			$draftId = (string)$this->request->getParam('draftId', '');
 
+			$receipt = $this->request->getParam('readReceipt', '');
+			$options = [
+				'readReceipt' => $receipt === true || $receipt === '1' || $receipt === 'true',
+				'sendAt' => (string)$this->request->getParam('sendAt', ''),
+			];
 			if ($m['mode'] === 'draft') {
 				// a draft opened from « Brouillons »: sent as it is in Exchange, with the changes made here
 				if ($m['to'] === [] && $m['cc'] === [] && $m['bcc'] === []) {
 					throw new MailException('Indiquez au moins un destinataire');
 				}
 				$client->updateDraft($draftId, $m['subject'], $m['html'], $m['to'], $m['cc'], $m['bcc'], $m['importance']);
+				$client->setSendOptions($draftId, $options);
 				$client->sendSavedDraft($draftId, $attachments);
 				return ['status' => 'ok'];
 			}
 			$client->sendMessage($m['mode'], $m['subject'], $m['html'], $m['to'], $m['cc'], $m['bcc'], $attachments,
-				$m['referenceId'], $m['importance']);
+				$m['referenceId'], $m['importance'], $options);
 			if ($draftId !== '') {
 				// the draft saved while writing is no longer needed
 				try {
@@ -345,7 +384,7 @@ class MailController extends Controller {
 					$this->logger->info('Webmail: draft not deleted after sending: ' . $e->getMessage());
 				}
 			}
-			return ['status' => 'ok'];
+			return ['status' => 'ok', 'sendAt' => $options['sendAt'] !== '' ? $options['sendAt'] : null];
 		});
 	}
 

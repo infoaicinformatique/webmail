@@ -29,8 +29,10 @@ et sur les téléphones, et inversement.
 | Recherche | Recherche Exchange (AQS) dans le dossier courant **ou dans tous les dossiers** (le dossier de chaque résultat est indiqué, 200 résultats au plus). Bouton ⏷ : filtres **Non lus**, **Pièces jointes**, **Suivis** et **période** (7 jours, 30 jours, 12 mois), seuls ou avec des mots |
 | Lecture | Le HTML est nettoyé côté serveur et affiché dans une iframe isolée, sans aucun script. Les images intégrées (`cid:`) s'affichent. Les images distantes sont bloquées tant que l'utilisateur ne clique pas sur « Afficher les images » |
 | Actions | Marquer comme lu ou non lu, suivi, déplacer, supprimer (vers « Éléments supprimés », puis suppression définitive) |
+| Courrier indésirable | « ⛔ Indésirable » déplace le message dans « Courrier indésirable » et **bloque l'expéditeur** (ses prochains messages y iront directement) ; dans ce dossier, « ✔ Pas indésirable » le remet dans la boîte de réception et **fait confiance à l'expéditeur**. Comme dans Outlook, les listes d'expéditeurs bloqués et fiables sont celles d'Exchange. Aussi pour plusieurs messages à la fois |
 | Plusieurs messages | Case à cocher devant chaque message (au survol), **Ctrl+clic** pour en ajouter, **Maj+clic** pour une plage, `x` au clavier ; une barre propose alors Tout sélectionner, Lu, Non lu, Suivi, Déplacer vers… et Supprimer, pour tous d'un coup. Échap annule la sélection. **Glisser-déposer** un message (ou la sélection) sur un dossier le déplace |
 | Envoi | Nouveau message, Répondre, Répondre à tous, Transférer (Exchange cite le message d'origine et garde ses pièces jointes), Cc/Cci, importance, signature ; `Ctrl+Entrée` envoie |
+| Options d'envoi | « Demander un accusé de lecture », et « **Envoyer plus tard** » à la date et l'heure choisies (demain 8 h proposé) : Exchange garde le message dans « Boîte d'envoi » jusque-là, même si Nextcloud est fermé. « 🖨 » imprime un message (en-têtes et contenu) |
 | Éditeur | Texte **mis en forme** : gras, italique, souligné, listes à puces et numérotées, liens, citations ; les adresses web tapées deviennent des liens. Le contenu est nettoyé sur le serveur avant l'envoi (aucun script ne peut passer) |
 | Brouillons | Le message en cours est **enregistré automatiquement** dans « Brouillons » quelques secondes après chaque modification (« Brouillon enregistré à 15:42 ») et en fermant avec « Annuler ». Dans « Brouillons », un clic **rouvre le brouillon** pour le terminer et l'envoyer (y compris une réponse ou un transfert, avec sa citation et ses pièces jointes). « Supprimer le brouillon » le jette. Les pièces jointes ajoutées depuis l'ordinateur ou Fichiers ne sont envoyées à Exchange qu'au moment de l'envoi |
 | Pièces jointes | Téléchargement, **enregistrement dans Fichiers** (une par une ou **toutes d'un coup**), ajout depuis l'ordinateur ou **depuis Fichiers** (25 Mo au total) |
@@ -38,8 +40,10 @@ et sur les téléphones, et inversement.
 | Destinataires | Complétion automatique des adresses à partir des contacts Exchange **et de l'annuaire de l'entreprise** |
 | Invitations | Une invitation reçue par e-mail affiche la date et le lieu, avec les boutons **Accepter / Provisoire / Refuser** |
 | Réponse automatique | « 🌴 Réponse automatique » (dans « Comptes et signature ») : comme dans Outlook, activée tout de suite ou **pendant une période**, avec un message pour vos collègues et, au choix, aucune réponse, une réponse à vos contacts extérieurs ou à tout le monde à l'extérieur (même message ou un autre). Tant qu'elle est active, un rappel avec « Modifier » et « Désactiver » s'affiche au-dessus des dossiers |
+| Règles | « 📋 Règles » (dans « Comptes et signature ») ou « 📋 Règle… » sur un message (son expéditeur est déjà rempli) : les règles qu'Exchange applique à chaque message reçu, **même webmail fermé**. Conditions : expéditeur, mots dans l'expéditeur, l'objet ou le texte, destinataire, pièce jointe, envoyé à moi seul, importance. Actions : déplacer, copier, mettre à la corbeille, marquer comme lu, importance, catégorie, transférer, ne pas appliquer les règles suivantes. Activer / désactiver, changer l'ordre, supprimer. Les règles faites dans Outlook avec d'autres réglages sont affichées (« créée dans Outlook ») et peuvent être activées, désactivées, déplacées ou supprimées sans être abîmées. Comme dans Outlook sur le web, la première modification remplace la copie des règles gardée par Outlook pour Windows : ses règles « côté client uniquement » (qui ne fonctionnent qu'Outlook ouvert) sont alors à refaire |
 | Délégation | Si vous êtes **délégué** d'un collègue dans Outlook, Exchange vous transmet une copie de ses invitations : le bandeau indique « Invitation reçue pour Marie Martin (vous êtes son délégué) » et la réponse est envoyée **en son nom** (après confirmation) |
 | Nouveaux messages | Le nombre de non-lus de la boîte de réception s'affiche dans le **titre de l'onglet** (« (3) Webmail »). Avec « 🔔 Activer les notifications » (en bas à gauche), chaque nouveau message de chaque compte déclenche une **notification du navigateur** quand la fenêtre n'est pas au premier plan (un clic ouvre le message), ou un message dans la page sinon. Vérification chaque minute, tant que Nextcloud est ouvert dans un onglet |
+| Notifications Nextcloud | Même **webmail fermé**, chaque nouveau message de la boîte de réception apparaît dans les **notifications Nextcloud** (la cloche, et le téléphone avec l'application Nextcloud) : « Nouveau message de … », l'objet et le début du texte. Un clic ouvre le message ; ouvert, lu, déplacé ou supprimé dans le webmail, il quitte la cloche. Au plus 5 par compte à chaque vérification, rien pour les messages déjà là au premier passage. Case « 🔔 Signaler chaque nouveau message… » dans « Comptes et signature » (cochée par défaut). Vérification toutes les 5 minutes par les tâches de fond de Nextcloud : réglez-les sur **Cron** (Paramètres d'administration → Paramètres de base) |
 | Mobile | Affichage adapté aux téléphones ; le bouton **Retour** du téléphone ferme le message (ou le menu) au lieu de quitter le webmail |
 
 ![Raccourcis clavier](docs/capture-raccourcis.png)
@@ -47,6 +51,10 @@ et sur les téléphones, et inversement.
 ![Éditeur et brouillons](docs/capture-editeur.png)
 
 ![Réponse automatique](docs/capture-absence.png)
+
+![Règles](docs/capture-regles.png)
+
+![Notifications Nextcloud](docs/capture-cloche.png)
 
 ![Plusieurs messages](docs/capture-selection.png)
 
@@ -66,9 +74,12 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Vue jour](docs/capture-jour.png)
 
+![Recherche d'événements](docs/capture-recherche-agenda.png)
+
 | | |
 |---|---|
 | Vues | **Jour**, **semaine**, **mois** et **liste** des 30 prochains jours. Mini-calendrier à gauche : un point sous les jours qui ont des rendez-vous (dans la période affichée), ses propres flèches pour parcourir les mois sans changer l'affichage principal, un clic va au jour, un double-clic l'affiche seul (vue jour). Les événements périodiques sont dépliés |
+| Recherche | Champ « Rechercher un événement » : dans l'objet, le lieu et l'organisateur, sans tenir compte des accents ni des majuscules, de six mois avant à six mois après aujourd'hui, dans tous les agendas affichés (les événements périodiques apparaissent à chaque date). Un clic ouvre l'événement |
 | Semaine | Grille horaire sur 7 jours. Une ligne « Journée » regroupe les événements sur la journée entière. Les événements qui se chevauchent sont placés côte à côte, et un trait rouge marque l'heure actuelle. Un clic sur un créneau libre crée un événement à cette heure. Un clic sur un jour du mini-calendrier affiche sa semaine |
 | Détail | Horaire, lieu, organisateur, participants et leur réponse, description |
 | Création / modification | Titre, journée entière, début et fin, lieu, participants et facultatifs (avec complétion), rappel, disponibilité |
@@ -154,7 +165,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.23.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.28.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -176,7 +187,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.23 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.28 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -262,15 +273,12 @@ templates/          page principale et page d'administration
 **Courrier**
 - Images collées dans l'éditeur, signature mise en forme, pièces jointes enregistrées avec le brouillon
 - Affichage par conversation (fil de discussion)
-- Règles de la boîte de réception
-- Catégories Outlook (couleurs), « Ce n'est pas du courrier indésirable », bloquer un expéditeur
+- Catégories Outlook (couleurs)
 - Lien de partage Nextcloud à la place d'une pièce jointe trop lourde
 - Boîtes partagées (contact@…) et boîtes des collègues dont on est délégué
-- Envoi différé, accusé de lecture, impression
 
 **Agenda**
 - Règles « le 2e mardi du mois » (aujourd'hui conservées, mais pas modifiables ici)
-- Recherche d'événements
 - Assistant de planification (disponibilités des participants, salles de réunion)
 - Rappels avant les réunions (notifications Nextcloud), lien de visio Nextcloud Talk
 - Agendas des dossiers publics
@@ -280,7 +288,7 @@ templates/          page principale et page d'administration
 
 **Nextcloud et serveur**
 - Recherche unifiée Nextcloud
-- Notifications Nextcloud (cloche) même quand aucun onglet n'est ouvert, et notifications Exchange en direct à la place de la vérification chaque minute
+- Notifications Exchange en direct (abonnement « streaming ») à la place de la vérification régulière
 - Tâches Exchange
 - Découverte automatique (Autodiscover) à la place de la table domaine/serveur
 - Traduction (anglais)
