@@ -133,7 +133,7 @@ Deux widgets pour le tableau de bord de Nextcloud (bouton « Personnaliser » en
 | | |
 |---|---|
 | Courrier non lu | Les derniers messages non lus des boîtes de réception de tous vos comptes Exchange (expéditeur, objet ; le compte s'il y en a plusieurs). Un clic ouvre le message dans le webmail |
-| Prochains rendez-vous (Exchange) | Les rendez-vous des 7 prochains jours de vos agendas Exchange, avec l'heure (« Aujourd'hui 14:00 », « Demain, toute la journée ») et le lieu. Un clic ouvre l'agenda |
+| Agenda Exchange | Les prochains rendez-vous des 7 prochains jours de vos agendas Exchange, avec l'heure (« Aujourd'hui 14:00 », « Demain, toute la journée ») et le lieu. Un clic ouvre l'agenda |
 
 Les deux sont actualisés toutes les quelques minutes ; Exchange n'est interrogé qu'une fois par minute au plus. Un administrateur peut les proposer à tout le monde par défaut : `occ config:app:set dashboard layout --value="webmail-unread,webmail-agenda,…"`.
 

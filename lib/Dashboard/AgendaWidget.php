@@ -30,7 +30,7 @@ class AgendaWidget implements IAPIWidgetV2, IIconWidget, IButtonWidget, IReloada
 	}
 
 	public function getTitle(): string {
-		return 'Prochains rendez-vous (Exchange)';
+		return 'Agenda Exchange';
 	}
 
 	public function getOrder(): int {
