@@ -9,6 +9,7 @@ use OCA\Webmail\Db\Account;
 use OCA\Webmail\Db\AccountMapper;
 use OCA\Webmail\Ews\EwsCalendar;
 use OCA\Webmail\Exception\MailException;
+use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\IUserManager;
 use OCP\Notification\IManager;
@@ -30,7 +31,37 @@ class MeetingReminderService {
 		private IManager $notifications,
 		private IUserManager $users,
 		private LoggerInterface $logger,
+		private ICacheFactory $cacheFactory,
 	) {
+	}
+
+	/**
+	 * The job runs every minute; the coming events are asked to Exchange
+	 * every 5 minutes only (and again as soon as the calendar is changed in
+	 * the webmail): the due reminders are then found without a request.
+	 */
+	public const EVENTS_TTL = 300;
+
+	/** The calendar was changed in the webmail: its events are asked again at the next check. */
+	public function changed(int $accountId): void {
+		$this->cacheFactory->createDistributed('webmail-reminders')->remove('ev_' . $accountId);
+	}
+
+	/** @return array<int, array<string, mixed>> */
+	private function events(Account $account, \DateTimeImmutable $now): array {
+		$cache = $this->cacheFactory->createDistributed('webmail-reminders');
+		$key = 'ev_' . $account->getId();
+		$hit = $cache->get($key);
+		// still covering the next hours (the window reaches a little further than the horizon)
+		if (is_array($hit) && ($hit['until'] ?? 0) >= $now->getTimestamp() + self::HORIZON_HOURS * 3600 - self::EVENTS_TTL
+			&& ($hit['from'] ?? PHP_INT_MAX) <= $now->getTimestamp() - 300) {
+			return $hit['events'];
+		}
+		$from = $now->modify('-10 minutes');
+		$until = $now->modify('+' . self::HORIZON_HOURS . ' hours')->modify('+' . self::EVENTS_TTL . ' seconds');
+		$events = (new EwsCalendar($this->accounts->getClient($account, AccountService::BACKGROUND_TIMEOUT)))->withReminders($from, $until);
+		$cache->set($key, ['from' => $from->getTimestamp(), 'until' => $until->getTimestamp(), 'events' => $events], self::EVENTS_TTL);
+		return $events;
 	}
 
 	public function isEnabled(string $userId, int $accountId): bool {
@@ -78,8 +109,7 @@ class MeetingReminderService {
 			unset($seen[$objectId]);
 		}
 
-		$events = (new EwsCalendar($this->accounts->getClient($account)))
-			->withReminders($now->modify('-5 minutes'), $now->modify('+' . self::HORIZON_HOURS . ' hours'));
+		$events = $this->events($account, $now);
 		$sent = 0;
 		foreach (self::due($events, $now) as $ev) {
 			$objectId = self::objectId((string)$ev['id'], (string)$ev['start']);

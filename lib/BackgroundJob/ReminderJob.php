@@ -21,6 +21,8 @@ class ReminderJob extends TimedJob {
 		parent::__construct($time);
 		$this->setInterval(60);
 		$this->setTimeSensitivity(IJob::TIME_SENSITIVE);
+		// a run still going (slow server) is not started again beside it
+		$this->setAllowParallelRuns(false);
 	}
 
 	protected function run($argument): void {

@@ -40,6 +40,11 @@ class EwsClient {
 	/** Windows time zone id sent in the TimeZoneContext header (e.g. "Romance Standard Time"). */
 	private ?string $timeZoneId = null;
 
+	/** Network settings of Nextcloud (see setNetwork) as curl options. */
+	private array $network = [];
+
+	private string $userAgent = 'Nextcloud-Webmail';
+
 	public function __construct(
 		private string $url,
 		private string $username,
@@ -49,6 +54,43 @@ class EwsClient {
 		?callable $transport = null,
 	) {
 		$this->transport = $transport;
+	}
+
+	/**
+	 * Use the network settings of Nextcloud, as its own HTTP client does:
+	 * the proxy of config.php ('proxy', 'proxyuserpwd', 'proxyexclude') and
+	 * the certificate bundle (with the certificates imported by the
+	 * administrator, « occ security:certificates:import »).
+	 *
+	 * @param string[] $noProxy hosts that are reached without the proxy
+	 */
+	public function setNetwork(?string $proxy, ?string $proxyAuth = null, array $noProxy = [], ?string $caBundle = null, ?string $userAgent = null): void {
+		$this->network = self::networkOptions($proxy, $proxyAuth, $noProxy, $caBundle);
+		if ($userAgent !== null && $userAgent !== '') {
+			$this->userAgent = $userAgent;
+		}
+	}
+
+	/**
+	 * @param string[] $noProxy
+	 * @return array<int, mixed> curl options
+	 */
+	public static function networkOptions(?string $proxy, ?string $proxyAuth, array $noProxy, ?string $caBundle): array {
+		$opts = [];
+		if ($proxy !== null && trim($proxy) !== '') {
+			$opts[CURLOPT_PROXY] = trim($proxy);
+			if ($proxyAuth !== null && $proxyAuth !== '') {
+				$opts[CURLOPT_PROXYUSERPWD] = $proxyAuth;
+			}
+			$hosts = array_values(array_filter(array_map('trim', $noProxy), fn ($h) => $h !== ''));
+			if ($hosts !== []) {
+				$opts[CURLOPT_NOPROXY] = implode(',', $hosts);
+			}
+		}
+		if ($caBundle !== null && $caBundle !== '' && is_readable($caBundle)) {
+			$opts[CURLOPT_CAINFO] = $caBundle;
+		}
+		return $opts;
 	}
 
 	/**
@@ -1160,7 +1202,7 @@ class EwsClient {
 	private function httpPost(string $body, array $headers = [], ?string $url = null): array {
 		$this->curl ??= curl_init();
 		$ch = $this->curl;
-		curl_setopt_array($ch, [
+		curl_setopt_array($ch, $this->network + [
 			CURLOPT_URL => $url ?? $this->url,
 			CURLOPT_POST => true,
 			CURLOPT_POSTFIELDS => $body,
@@ -1177,7 +1219,7 @@ class EwsClient {
 			CURLOPT_SSL_VERIFYHOST => $this->verifyPeer ? 2 : 0,
 			CURLOPT_PROTOCOLS => CURLPROTO_HTTPS | CURLPROTO_HTTP,
 			CURLOPT_FOLLOWLOCATION => false,
-			CURLOPT_USERAGENT => 'Nextcloud-Webmail/1.0',
+			CURLOPT_USERAGENT => $this->userAgent,
 		]);
 		$response = curl_exec($ch);
 		$status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);

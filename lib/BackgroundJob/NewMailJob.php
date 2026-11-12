@@ -21,6 +21,8 @@ class NewMailJob extends TimedJob {
 		parent::__construct($time);
 		$this->setInterval(300);
 		$this->setTimeSensitivity(IJob::TIME_SENSITIVE);
+		// a run still going (slow server) is not started again beside it
+		$this->setAllowParallelRuns(false);
 	}
 
 	protected function run($argument): void {
