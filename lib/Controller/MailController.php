@@ -133,6 +133,14 @@ class MailController extends Controller {
 		return $this->handle(fn () => $this->client($id)->newMessages($since !== '' ? $since : null));
 	}
 
+	/**
+	 * The messages of a conversation, in every folder, oldest first.
+	 */
+	#[NoAdminRequired]
+	public function conversation(int $id, string $conversationId): Response {
+		return $this->handle(fn () => ['items' => $this->client($id)->conversation($conversationId)]);
+	}
+
 	#[NoAdminRequired]
 	public function message(int $id, string $itemId, bool $remote = false, bool $markRead = true): Response {
 		return $this->handle(function () use ($id, $itemId, $remote, $markRead) {

@@ -785,3 +785,21 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-compose-attachments li.wm-heavy { color: var(--color-warning-text, #8a5300); font-weight: bold; }
 .wm-compose-attachments .wm-to-link { margin-left: 6px; }
 .wm-heavy-warning { list-style: none; margin-top: 6px; font-size: .92em; }
+
+/* conversation of the message read */
+.wm-thread { margin: 0 0 10px; }
+.wm-thread-toggle { margin: 0 0 6px; min-height: 30px; padding: 2px 12px; font-weight: normal; }
+.wm-thread-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); overflow: hidden; }
+.wm-thread-item + .wm-thread-item { border-top: 1px solid var(--color-border); }
+.wm-thread-head { display: grid; grid-template-columns: auto auto 1fr auto; grid-template-areas: "from folder . date" "preview preview preview preview"; gap: 0 8px; width: 100%; margin: 0; padding: 8px 12px; text-align: left; background: none !important; border: 0; border-radius: 0; min-height: 0; font-weight: normal; cursor: pointer; }
+.wm-thread .wm-thread-head { font-weight: normal !important; width: 100% !important; max-width: none; background: transparent !important; color: var(--color-main-text) !important; opacity: 1 !important; filter: none !important; box-shadow: none; }
+.wm-thread .wm-thread-head:hover:not(:disabled) { background: var(--color-background-hover) !important; }
+.wm-thread .wm-thread-head:disabled { cursor: default; }
+.wm-thread-item.current { background: var(--color-primary-element-light, #e6f0fa); }
+.wm-thread-item.unread .wm-thread-from { font-weight: bold; }
+.wm-thread-from { grid-area: from; font-weight: 600; }
+.wm-thread-folder { grid-area: folder; font-size: 11px; padding: 0 7px; border-radius: 999px; background: var(--color-background-dark); color: var(--color-text-maxcontrast); align-self: center; white-space: nowrap; }
+.wm-thread-date { grid-area: date; color: var(--color-text-maxcontrast); font-size: .9em; white-space: nowrap; }
+.wm-thread-preview { grid-area: preview; color: var(--color-text-maxcontrast); font-size: .9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wm-thread-body { padding: 0 12px 10px; }
+.wm-thread-actions { display: flex; gap: 6px; margin: 4px 0 8px; }

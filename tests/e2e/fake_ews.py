@@ -217,8 +217,17 @@ def categories_xml(m):
     return '<t:Categories>%s</t:Categories>' % ''.join('<t:String>%s</t:String>' % esc(c) for c in cats) if cats else ''
 
 
+def conversation_id(m):
+    """Exchange groups a message with its replies and forwards: here, the same subject without RE / TR."""
+    import hashlib
+    import re
+    topic = re.sub(r'^\s*((re|tr|fw|fwd)\s*:\s*)+', '', m['subject'], flags=re.I).strip().lower()
+    return 'CONV-' + hashlib.md5(topic.encode('utf-8')).hexdigest()[:12]
+
+
 def item_full_xml(m):
     xml = _item_full_xml(m).replace('<t:Importance>', categories_xml(m) + '<t:Importance>', 1)
+    xml = xml.replace('<t:InternetMessageId>', '<t:ConversationId Id="%s"/><t:InternetMessageId>' % conversation_id(m), 1)
     kind = m.get('kind', 'Message')
     head, _, tail = xml.replace('<t:Message>', '<t:%s>' % kind, 1).rpartition('</t:Message>')
     return head + '</t:%s>' % kind + tail
@@ -358,6 +367,14 @@ def handle_user_configuration(op, el, user):
 
 
 def handle(op, el, user):
+    if op == 'GetConversationItems':
+        cid = el.find('m:Conversations/t:Conversation/t:ConversationId', NS).get('Id')
+        skip = el.find('m:FoldersToIgnore', NS)
+        ignore = {folder_id(f) for f in (list(skip) if skip is not None else [])}
+        msgs = sorted((m for m in MESSAGES.values() if conversation_id(m) == cid and m['folder'] not in ignore), key=lambda m: m['date'])
+        nodes = ''.join('<t:ConversationNode><t:InternetMessageId>&lt;%s@fake&gt;</t:InternetMessageId><t:Items>%s</t:Items></t:ConversationNode>'
+                        % (m['id'], item_summary_xml(m, True)) for m in msgs)
+        return wrap(op, [ok(op, '<m:Conversation><t:ConversationId Id="%s"/><t:ConversationNodes>%s</t:ConversationNodes></m:Conversation>' % (cid, nodes))])
     r = handle_user_configuration(op, el, user)
     if r is not None:
         return r

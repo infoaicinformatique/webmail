@@ -1629,6 +1629,11 @@
 			h('div', { class: 'wm-header-line wm-muted' }, formatDate(m.date, true)),
 		))
 
+		// the other messages of the conversation (the replies sent included)
+		const thread = h('section', { class: 'wm-thread', hidden: true, 'aria-label': 'Conversation' })
+		detailEl.appendChild(thread)
+		if (m.conversationId) loadThread(m, thread)
+
 		if (m.meeting) {
 			detailEl.appendChild(meetingBanner(m))
 		}
@@ -1662,6 +1667,97 @@
 			}
 		}
 
+		detailEl.appendChild(bodyFrame(m.body))
+	}
+
+	const threadCache = new Map()
+
+	/**
+	 * The conversation of a message: every message of it, oldest first, the
+	 * one read marked; another one opens in place (its text below it).
+	 */
+	async function loadThread(m, box) {
+		let items = threadCache.get(m.conversationId)
+		if (!items) {
+			try {
+				items = (await api('/accounts/' + state.accountId + '/conversation', { query: { conversationId: m.conversationId } })).items
+			} catch (e) { return } // no conversation: the message alone, as before
+			threadCache.set(m.conversationId, items)
+			setTimeout(() => threadCache.delete(m.conversationId), 60000)
+		}
+		if (!box.isConnected || !state.current || state.current.id !== m.id || items.length < 2) return
+		const others = items.filter((x) => x.id !== m.id).length
+		const list = h('ol', { class: 'wm-thread-list' })
+		const toggle = h('button', {
+			type: 'button',
+			class: 'wm-thread-toggle',
+			'aria-expanded': 'false',
+			onclick: () => {
+				const open = list.hidden
+				list.hidden = !open
+				toggle.setAttribute('aria-expanded', String(open))
+				toggle.textContent = (open ? '▾ ' : '▸ ') + 'Conversation : ' + items.length + ' messages'
+				try { localStorage.setItem('webmail.threadOpen', open ? '1' : '0') } catch (e) { /* ignore */ }
+			},
+		}, '▸ Conversation : ' + items.length + ' messages')
+		items.forEach((x) => {
+			const own = state.folders.find((f) => f.id === x.folderId)
+			const isThis = x.id === m.id
+			const body = h('div', { class: 'wm-thread-body', hidden: true })
+			const row = h('li', { class: 'wm-thread-item' + (isThis ? ' current' : '') + (x.isRead ? '' : ' unread'), dataset: { id: x.id } },
+				h('button', {
+					type: 'button',
+					class: 'wm-thread-head',
+					disabled: isThis,
+					'aria-expanded': 'false',
+					onclick: async (e) => {
+						const btn = e.currentTarget
+						if (!body.hidden) { body.hidden = true; btn.setAttribute('aria-expanded', 'false'); return }
+						body.hidden = false
+						btn.setAttribute('aria-expanded', 'true')
+						if (body.dataset.loaded) return
+						body.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading-small' })))
+						try {
+							const full = await api('/accounts/' + state.accountId + '/message', { query: { itemId: x.id } })
+							x.isRead = true
+							row.classList.remove('unread')
+							markReadLocally(x.id)
+							clear(body)
+							body.dataset.loaded = '1'
+							body.append(
+								h('div', { class: 'wm-thread-actions' },
+									h('button', { type: 'button', class: 'wm-small', onclick: () => openMessage(x.id) }, 'Ouvrir ce message'),
+									h('button', { type: 'button', class: 'wm-small', onclick: () => openCompose('reply', full) }, '↩ Répondre')),
+								bodyFrame(full.body))
+						} catch (err) {
+							clear(body)
+							body.appendChild(h('div', { class: 'wm-form-error' }, err.message))
+						}
+					},
+				},
+				h('span', { class: 'wm-thread-from' }, personShort(x.from) || x.displayTo || '(expéditeur inconnu)'),
+				(() => {
+					const tags = [own && own.id !== m.folderId ? own.name : null, isThis ? 'ce message' : null].filter(Boolean)
+					return tags.length ? h('span', { class: 'wm-thread-folder' }, tags.join(' · ')) : h('span')
+				})(),
+				h('span', { class: 'wm-thread-date' }, formatDate(x.date)),
+				h('span', { class: 'wm-thread-preview' }, x.preview || '')),
+				body)
+			list.appendChild(row)
+		})
+		let open = false
+		try { open = localStorage.getItem('webmail.threadOpen') === '1' } catch (e) { /* ignore */ }
+		list.hidden = !open
+		toggle.setAttribute('aria-expanded', String(open))
+		toggle.textContent = (open ? '▾ ' : '▸ ') + 'Conversation : ' + items.length + ' messages'
+		toggle.title = others + ' autre' + (others > 1 ? 's' : '') + ' message' + (others > 1 ? 's' : '') + ' de cette conversation, réponses envoyées comprises'
+		clear(box)
+		box.append(toggle, list)
+		box.hidden = false
+	}
+
+	/** The (already cleaned) HTML of a message in a sandboxed frame, as tall as its content. */
+	function bodyFrame(html) {
 		const frame = h('iframe', {
 			class: 'wm-body-frame',
 			title: 'Contenu du message',
@@ -1673,7 +1769,7 @@
 		frame.srcdoc = '<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank">'
 			+ '<style>html,body{margin:0;padding:0;background:#fff;color:#222;font-family:-apple-system,"Segoe UI",Roboto,Calibri,Arial,sans-serif;font-size:14px;line-height:1.45;overflow-wrap:anywhere}'
 			+ 'body{padding:4px 2px}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}blockquote{margin:0 0 0 8px;padding-left:8px;border-left:2px solid #ccc}</style>'
-			+ '</head><body>' + m.body + '</body></html>'
+			+ '</head><body>' + html + '</body></html>'
 		const resize = () => {
 			try {
 				const doc = frame.contentDocument
@@ -1689,7 +1785,7 @@
 			} catch (e) { /* ignore */ }
 			setTimeout(resize, 500)
 		})
-		detailEl.appendChild(h('div', { class: 'wm-body' }, frame))
+		return h('div', { class: 'wm-body' }, frame)
 	}
 
 	/** Print a message: its headers and its (already cleaned) content, in a page of its own. */
@@ -2378,6 +2474,7 @@
 				closed = true
 				try {
 					const sent = await api('/accounts/' + state.accountId + '/send', { method: 'POST', body: fd })
+					threadCache.clear() // the reply now belongs to its conversation
 					toast(sent && sent.sendAt
 						? 'Envoi programmé le ' + new Date(sent.sendAt).toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) + ' (dans « Boîte d\'envoi » d\'ici là)'
 						: 'Message envoyé')

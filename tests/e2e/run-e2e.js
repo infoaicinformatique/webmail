@@ -407,6 +407,31 @@ async function main() {
 		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
 	})
 
+	await step('conversation: the replies sent shown with the message', async () => {
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.click('.wm-message:has-text("Réunion de lundi")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Réunion de lundi")')
+		await page.waitForSelector('.wm-thread-toggle:has-text("Conversation : 2 messages")')
+		if (await page.isHidden('.wm-thread-list')) await page.click('.wm-thread-toggle')
+		const rows = await page.$$eval('.wm-thread-item', (els) => els.map((e) => e.textContent))
+		assert.strictEqual(rows.length, 2, rows.join(' | '))
+		assert(rows[0].includes('Marie Martin') && rows[0].includes('ce message'), rows[0])
+		assert(rows[1].includes('Éléments envoyés') && rows[1].includes('Oui, 14h me va.'), rows[1])
+		// the reply opens in place
+		await page.click('.wm-thread-item:has-text("Éléments envoyés") .wm-thread-head')
+		await page.waitForSelector('.wm-thread-item:has-text("Éléments envoyés") .wm-thread-body .wm-body-frame')
+		const frame = await (await page.$('.wm-thread-item:has-text("Éléments envoyés") .wm-body-frame')).contentFrame()
+		await frame.waitForSelector('text=Oui, 14h me va.')
+		await shot('53-conversation')
+		// a message alone has no conversation part
+		await page.click('.wm-message:has-text("Newsletter n°1")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°1")')
+		await page.waitForTimeout(800)
+		assert(await page.isHidden('.wm-thread'))
+		await page.click('.wm-message:has-text("Réunion de lundi")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Réunion de lundi")')
+	})
+
 	await step('forward', async () => {
 		await page.click('.wm-toolbar button:has-text("Transférer")')
 		await page.click('.wm-compose button[type=submit]')
