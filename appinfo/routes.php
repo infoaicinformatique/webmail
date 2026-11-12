@@ -43,6 +43,12 @@ return [
 		['name' => 'contact#delete', 'url' => '/api/accounts/{id}/contacts/delete', 'verb' => 'POST'],
 		['name' => 'contact#resolve', 'url' => '/api/accounts/{id}/contacts/resolve', 'verb' => 'GET'],
 
+		['name' => 'delegate#index', 'url' => '/api/accounts/{id}/delegates', 'verb' => 'GET'],
+		['name' => 'delegate#create', 'url' => '/api/accounts/{id}/delegates', 'verb' => 'POST'],
+		['name' => 'delegate#update', 'url' => '/api/accounts/{id}/delegates/update', 'verb' => 'POST'],
+		['name' => 'delegate#delete', 'url' => '/api/accounts/{id}/delegates/delete', 'verb' => 'POST'],
+		['name' => 'delegate#meetingRequests', 'url' => '/api/accounts/{id}/delegates/meeting-requests', 'verb' => 'POST'],
+
 		['name' => 'admin#get', 'url' => '/api/admin/servers', 'verb' => 'GET'],
 		['name' => 'admin#save', 'url' => '/api/admin/servers', 'verb' => 'PUT'],
 	],

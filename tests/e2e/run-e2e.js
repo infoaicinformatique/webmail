@@ -849,6 +849,65 @@ async function main() {
 		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
 	})
 
+	// ------------------------------------------------------------------ delegates
+	await step('delegates: add, update and remove delegates of the mailbox', async () => {
+		await page.click('.wm-nav-footer a:has-text("Comptes et signature")')
+		await page.click('.wm-account-card:has(legend:has-text("user@societe-a.fr")) .wm-delegates-btn')
+		await page.waitForSelector('.wm-delegates h3:has-text("Aucun délégué pour l\'instant")')
+		assert(await page.isDisabled('select[name=deliverMeetingRequests]'), 'delivery option needs a delegate receiving copies')
+
+		const add = async (email) => {
+			await page.fill('.wm-delegate-new input[name=delegateEmail]', email)
+			await page.click('.wm-delegate-new button[type=submit]')
+		}
+		await add('inconnu@societe-a.fr')
+		await page.waitForSelector('.wm-toast-error:has-text("Aucune boîte Exchange ne correspond")')
+
+		// default: calendar editor + copies of invitations
+		await add('marie.martin@societe-a.fr')
+		await page.waitForSelector('.wm-toast:has-text("Délégué ajouté")')
+		const marie = '.wm-delegate[data-email="marie.martin@societe-a.fr"]'
+		await page.waitForSelector(marie)
+		assert.strictEqual(await page.inputValue(marie + ' select[name=calendar]'), 'Editor')
+		assert(await page.isChecked(marie + ' input[name=receiveCopies]'))
+		assert(!(await page.isDisabled('select[name=deliverMeetingRequests]')))
+
+		// read-only delegate: lowering the calendar level unticks the invitations
+		await page.selectOption('.wm-delegate-new select[name=calendar]', 'Reviewer')
+		assert(!(await page.isChecked('.wm-delegate-new input[name=receiveCopies]')))
+		await page.selectOption('.wm-delegate-new select[name=inbox]', 'Reviewer')
+		await add('paul.durand@societe-a.fr')
+		await page.waitForSelector('.wm-toast:has-text("Délégué ajouté")')
+		const paul = '.wm-delegate[data-email="paul.durand@societe-a.fr"]'
+		await page.waitForSelector(paul)
+		assert.strictEqual(await page.inputValue(paul + ' select[name=calendar]'), 'Reviewer')
+		assert.strictEqual(await page.inputValue(paul + ' select[name=inbox]'), 'Reviewer')
+		const names = await page.$$eval('.wm-delegate:not(.wm-delegate-new) .wm-delegate-name strong', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(names, ['Marie Martin', 'Paul Durand'])
+
+		// update
+		await page.selectOption(paul + ' select[name=contacts]', 'Editor')
+		await page.click(paul + ' button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Délégué mis à jour")')
+		await page.waitForFunction((sel) => document.querySelector(sel + ' select[name=contacts]').value === 'Editor', paul)
+
+		// invitations go to the delegates only
+		await page.selectOption('select[name=deliverMeetingRequests]', 'DelegatesOnly')
+		await page.waitForSelector('.wm-toast:has-text("Réglage des invitations enregistré")')
+		await shot('27-delegates')
+
+		// remove
+		page.once('dialog', (d) => d.accept())
+		await page.click(paul + ' button:has-text("Retirer")')
+		await page.waitForSelector('.wm-toast:has-text("Délégué retiré")')
+		await page.waitForFunction((sel) => !document.querySelector(sel), paul)
+		assert.strictEqual(await page.inputValue('select[name=deliverMeetingRequests]'), 'DelegatesOnly')
+
+		// back to the accounts
+		await page.click('.wm-delegates .wm-back')
+		await page.waitForSelector('.wm-settings h2:has-text("Comptes Exchange")')
+	})
+
 	await step('module choice is remembered', async () => {
 		await page.click('.wm-tab[data-module="calendar"]')
 		await page.reload()

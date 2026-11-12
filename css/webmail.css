@@ -585,3 +585,9 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-book-icon { width: 18px; text-align: center; }
 .wm-directory { margin-top: 10px !important; border-top: 1px solid var(--color-border); padding-top: 6px !important; }
 .wm-meeting.delegate { border-color: var(--color-warning, #eca700); }
+
+/* ---------- delegates ---------- */
+.wm-delegates h3 { margin: 16px 0 4px; }
+.wm-delegate-name { font-size: 15px; }
+.wm-delegate-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; }
+@media (max-width: 800px) { .wm-delegate-grid { grid-template-columns: 1fr; } }
