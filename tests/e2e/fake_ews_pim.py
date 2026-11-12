@@ -180,7 +180,80 @@ COLLEAGUE_BOOKS = {
 ROOT_VISIBLE = {'marie.martin@societe-a.fr'}
 
 
+# public folders: id -> (parent id, name, folder class, access 'edit' | 'read')
+PF_MAILBOX = 'pf-mailbox@societe-a.fr'
+PUBLIC_FOLDERS = {
+    'PF-SOC': ('publicfoldersroot', 'Société A', 'IPF.Note', 'read'),
+    'PF-ANN': ('publicfoldersroot', 'Annonces', 'IPF.Note', 'read'),
+    'PF-CLIENTS': ('PF-SOC', 'Clients communs', 'IPF.Contact', 'edit'),
+    'PF-FOURN': ('PF-SOC', 'Fournisseurs agréés', 'IPF.Contact', 'read'),
+    'PF-AGENDA': ('PF-SOC', 'Agenda commun', 'IPF.Appointment', 'edit'),
+}
+# HTTP headers of the request being handled (set by fake_ews.py)
+REQUEST_HEADERS = {}
+
+
+def touches_public(el):
+    """Does the request address the public folders (folders or items in them)?"""
+    for node in el.iter():
+        i = node.get('Id')
+        if i and (i == 'publicfoldersroot' or i in PUBLIC_FOLDERS or (i in CONTACTS and CONTACTS[i]['folder'] in PUBLIC_FOLDERS)):
+            return True
+    return False
+
+
+def routed_to_public():
+    h = {k.lower(): v for k, v in REQUEST_HEADERS.items()}
+    return h.get('x-anchormailbox') == PF_MAILBOX and h.get('x-publicfoldermailbox') == PF_MAILBOX
+
+
+def public_folder_xml(fid):
+    parent, name, cls, access = PUBLIC_FOLDERS[fid]
+    tag = {'IPF.Contact': 'ContactsFolder', 'IPF.Appointment': 'CalendarFolder'}.get(cls, 'Folder')
+    children = sum(1 for f in PUBLIC_FOLDERS.values() if f[0] == fid)
+    return ('<t:%s><t:FolderId Id="%s" ChangeKey="AQ"/><t:DisplayName>%s</t:DisplayName><t:FolderClass>%s</t:FolderClass>'
+            '<t:ChildFolderCount>%d</t:ChildFolderCount>%s</t:%s>' % (tag, fid, esc(name), cls, children, rights_xml(access == 'edit'), tag))
+
+
+def handle_public(op, el):
+    """Requests about the public folders (already checked to be routed to the public folder mailbox)."""
+    if op == 'FindFolder':
+        parent = el.find('m:ParentFolderIds', NS)[0].get('Id')
+        if parent != 'publicfoldersroot' and parent not in PUBLIC_FOLDERS:
+            return wrap(op, [err(op, 'ErrorFolderNotFound', 'not found')])
+        if el.get('Traversal') != 'Shallow':
+            return wrap(op, [err(op, 'ErrorInvalidOperation', 'Deep traversal is not allowed for public folders')])
+        kids = [fid for fid, f in PUBLIC_FOLDERS.items() if f[0] == parent]
+        return wrap(op, [ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Folders>%s</t:Folders></m:RootFolder>'
+                            % (len(kids), ''.join(public_folder_xml(k) for k in kids)))])
+    if op == 'GetFolder':
+        out = []
+        for r in el.find('m:FolderIds', NS):
+            fid = r.get('Id')
+            out.append(ok(op, '<m:Folders>%s</m:Folders>' % public_folder_xml(fid)) if fid in PUBLIC_FOLDERS
+                       else err(op, 'ErrorFolderNotFound', 'not found'))
+        return wrap(op, out)
+    if op == 'FindItem':
+        folder = el.find('m:ParentFolderIds', NS)[0].get('Id')
+        if el.find('m:QueryString', NS) is not None:
+            return wrap(op, [err(op, 'ErrorInvalidOperation', 'QueryString is not supported for public folders')])
+        q = ''
+        constant = el.find('m:Restriction//t:Constant', NS)
+        if constant is not None:
+            q = constant.get('Value', '').lower()
+        cs = sorted((c for c in CONTACTS.values() if c['folder'] == folder), key=lambda c: c['displayName'].lower())
+        if q:
+            cs = [c for c in cs if q in c['displayName'].lower() or q in c.get('company', '').lower() or any(q in e.lower() for e in c.get('emails', []))]
+        return wrap(op, [ok(op, '<m:RootFolder IndexedPagingOffset="%d" TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Items>%s</t:Items></m:RootFolder>'
+                            % (len(cs), len(cs), ''.join(contact_xml(c, False) for c in cs)))])
+    if op == 'DeleteItem' and el.get('DeleteType') == 'MoveToDeletedItems':
+        return wrap(op, [err(op, 'ErrorCannotDeleteObject', 'Items of public folders cannot be moved to Deleted Items')])
+    return None  # GetItem, CreateItem, UpdateItem, DeleteItem: the normal handlers
+
+
 def can_write(folder):
+    if folder in PUBLIC_FOLDERS:
+        return PUBLIC_FOLDERS[folder][3] == 'edit'
     if folder in COLLEAGUE_BOOKS:
         return COLLEAGUE_BOOKS[folder][3] == 'edit'
     return not folder.startswith('shared:') or SHARED_ACCESS.get(folder[7:]) == 'edit'
@@ -368,6 +441,9 @@ def seed():
     contact('Hugo', 'Blanc', 'Client Riviera', 'hugo@client-riviera.example', mobile='06 77 77 77 77', folder='shared:marie.martin@societe-a.fr')
     contact('Laura', 'Costa', 'Hôtel Bellevue', 'laura@hotel-bellevue.example', job='Directrice', folder='F-MARIE-VIP')
     contact('', '', 'Agence Horizon', 'contact@agence-horizon.example', folder='F-MARIE-PART')
+    contact('', '', 'Imprimerie Azur', 'devis@imprimerie-azur.example', business='04 93 66 66 66', folder='PF-CLIENTS')
+    contact('Nadia', 'Roux', 'Cabinet Roux', 'nadia@cabinet-roux.example', job='Expert-comptable', folder='PF-CLIENTS')
+    contact('', '', 'Location Matériel Sud', 'agence@location-sud.example', folder='PF-FOURN')
     contact('Sophie', 'Girard', 'Transports Girard', 'sophie@transports-girard.example', job='Gérante', folder='shared:martine.leroy@societe-b.fr')
     contact('Karim', 'Benali', 'Entrepôt Sud', 'karim@entrepot-sud.example', folder='shared:martine.leroy@societe-b.fr')
 
@@ -511,6 +587,15 @@ def delete_contact_field(c, path):
 # ----------------------------------------------------------------------------
 def handle(op, el, user, tz, messages, move_message):
     """messages / move_message give access to the mail store of fake_ews.py (meeting requests)."""
+    # Exchange 2013+: public folder requests must be routed to the public folder mailbox, and only them
+    public = touches_public(el)
+    if public != routed_to_public():
+        return wrap(op, [err(op, 'ErrorFolderNotFound' if public else 'ErrorAccessDenied',
+                             'request %s routed to the public folder mailbox' % ('not' if public else 'wrongly'))])
+    if public:
+        r = handle_public(op, el)
+        if r is not None:
+            return r
 
     if op == 'GetFolder' and any(f.get('FieldURI') == 'folder:PermissionSet' for f in el.findall('m:FolderShape/t:AdditionalProperties/t:FieldURI', NS)):
         out = []
@@ -618,7 +703,7 @@ def handle(op, el, user, tz, messages, move_message):
             evs = sorted((e for e in EVENTS.values() if e['folder'] == folder and e['start'] < end and e['end'] > start), key=lambda e: e['start'])
             return wrap(op, [ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Items>%s</t:Items></m:RootFolder>'
                                 % (len(evs), ''.join(event_xml(e, False) for e in evs)))])
-        if pid in ('contacts', 'F-CONTACTS', 'F-CONTACTS2') or pid in COLLEAGUE_BOOKS:
+        if pid in ('contacts', 'F-CONTACTS', 'F-CONTACTS2') or pid in COLLEAGUE_BOOKS or pid in PUBLIC_FOLDERS:
             folder, code = contacts_folder(parent)
             if code:
                 return wrap(op, [err(op, code, code)])

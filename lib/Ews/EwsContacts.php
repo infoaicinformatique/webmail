@@ -36,11 +36,19 @@ class EwsContacts {
 	 *  - "contacts"        the default contacts folder of the mailbox
 	 *  - "shared:<email>"  the default contacts folder of another mailbox
 	 *  - "shared:<email>:<folder id>"  another contact folder of that mailbox
+	 *  - "public:<folder id>"  a contact folder of the public folders
 	 *  - anything else     a FolderId of the mailbox (another contact folder)
 	 */
 	public function folderXml(string $book): string {
 		if ($book === '' || $book === 'contacts') {
 			return '<t:DistinguishedFolderId Id="contacts"/>';
+		}
+		if (self::isPublic($book)) {
+			$id = substr($book, 7);
+			if ($id === '') {
+				throw new MailException('Carnet public invalide');
+			}
+			return '<t:FolderId Id="' . $this->client->esc($id) . '"/>';
 		}
 		if (str_starts_with($book, 'shared:')) {
 			[$email, $folder] = self::parseSharedKey($book);
@@ -169,6 +177,79 @@ class EwsContacts {
 		return 'shared:' . strtolower($email) . ($folder !== '' ? ':' . $folder : '');
 	}
 
+	public static function isPublic(string $book): bool {
+		return str_starts_with($book, 'public:');
+	}
+
+	/**
+	 * Public folders below $parent (null = the top of the public folders),
+	 * to browse them like Outlook does. Only folders that hold contacts or
+	 * other folders are returned. The client must be routed to the public
+	 * folder mailbox (EwsClient::usePublicFolderMailbox).
+	 * @return array<int, array{id: string, name: string, isContacts: bool, hasChildren: bool, canEdit: bool}>
+	 * @throws MailException when the public folders cannot be read
+	 */
+	public function listPublicFolders(?string $parent = null): array {
+		$parentXml = $parent === null || $parent === ''
+			? '<t:DistinguishedFolderId Id="publicfoldersroot"/>'
+			: '<t:FolderId Id="' . $this->client->esc($parent) . '"/>';
+		$xp = $this->client->request(
+			'<m:FindFolder Traversal="Shallow"><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:FieldURI FieldURI="folder:DisplayName"/><t:FieldURI FieldURI="folder:FolderClass"/>'
+			. '<t:FieldURI FieldURI="folder:ChildFolderCount"/><t:FieldURI FieldURI="folder:EffectiveRights"/>'
+			. '</t:AdditionalProperties></m:FolderShape>'
+			. '<m:ParentFolderIds>' . $parentXml . '</m:ParentFolderIds></m:FindFolder>',
+			false
+		);
+		$msg = $xp->query('//m:ResponseMessages/*')->item(0);
+		if (!$msg instanceof \DOMElement || $msg->getAttribute('ResponseClass') === 'Error') {
+			$code = $msg !== null ? $this->client->text($xp, 'm:ResponseCode', $msg) : null;
+			throw new MailException($parent === null || $parent === ''
+				? 'Aucun dossier public n\'est accessible sur ce serveur Exchange'
+				: EwsClient::translateError($code, $msg !== null ? $this->client->text($xp, 'm:MessageText', $msg) : null));
+		}
+		$out = [];
+		foreach ($xp->query('.//t:Folders/*', $msg) as $node) {
+			$readable = $this->client->text($xp, 't:EffectiveRights/t:Read', $node) !== 'false';
+			$isContacts = $readable && $this->client->text($xp, 't:FolderClass', $node) === 'IPF.Contact';
+			$hasChildren = (int)$this->client->text($xp, 't:ChildFolderCount', $node) > 0;
+			if (!$isContacts && !$hasChildren) {
+				continue; // nothing to add or to open
+			}
+			$out[] = [
+				'id' => (string)$this->client->attr($xp, 't:FolderId', 'Id', $node),
+				'name' => (string)$this->client->text($xp, 't:DisplayName', $node),
+				'isContacts' => $isContacts,
+				'hasChildren' => $hasChildren,
+				'canEdit' => $this->client->text($xp, 't:EffectiveRights/t:CreateContents', $node) === 'true',
+			];
+		}
+		usort($out, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+		return $out;
+	}
+
+	/**
+	 * One public contact folder, checked before it is added.
+	 * @return array{name: string, canEdit: bool}
+	 */
+	public function getPublicBook(string $folderId): array {
+		$xp = $this->client->request(
+			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:FieldURI FieldURI="folder:DisplayName"/><t:FieldURI FieldURI="folder:FolderClass"/><t:FieldURI FieldURI="folder:EffectiveRights"/>'
+			. '</t:AdditionalProperties></m:FolderShape>'
+			. '<m:FolderIds>' . $this->folderXml('public:' . $folderId) . '</m:FolderIds></m:GetFolder>'
+		);
+		$node = $xp->query('//m:Folders/*')->item(0);
+		if ($node === null || $this->client->text($xp, 't:FolderClass', $node) !== 'IPF.Contact'
+			|| $this->client->text($xp, 't:EffectiveRights/t:Read', $node) === 'false') {
+			throw new MailException('Ce dossier public n\'est pas un carnet d\'adresses lisible');
+		}
+		return [
+			'name' => (string)$this->client->text($xp, 't:DisplayName', $node),
+			'canEdit' => $this->client->text($xp, 't:EffectiveRights/t:CreateContents', $node) === 'true',
+		];
+	}
+
 	/**
 	 * Who one of my address books is shared with (folder permissions, without delegation).
 	 * @return array<int, array{user: string, name: string, level: string}>
@@ -187,7 +268,7 @@ class EwsContacts {
 	}
 
 	private static function assertOwn(string $book): void {
-		if (str_starts_with($book, 'shared:') || $book === 'directory') {
+		if (str_starts_with($book, 'shared:') || self::isPublic($book) || $book === 'directory') {
 			throw new MailException('Seul le propriétaire d\'un carnet peut le partager');
 		}
 	}
@@ -243,12 +324,27 @@ class EwsContacts {
 			. '<t:IndexedFieldURI FieldURI="contacts:EmailAddress" FieldIndex="EmailAddress1"/>'
 			. '<t:IndexedFieldURI FieldURI="contacts:PhoneNumber" FieldIndex="MobilePhone"/>'
 			. '<t:IndexedFieldURI FieldURI="contacts:PhoneNumber" FieldIndex="BusinessPhone"/>';
-		$queryXml = ($query !== null && trim($query) !== '') ? '<m:QueryString>' . $this->client->esc(trim($query)) . '</m:QueryString>' : '';
+		$query = $query !== null ? trim($query) : '';
+		$queryXml = '';
+		$restriction = '';
+		if ($query !== '' && self::isPublic($book)) {
+			// public folders have no search index (no QueryString): filter on the main fields
+			$contains = fn (string $field) => '<t:Contains ContainmentMode="Substring" ContainmentComparison="IgnoreCase">' . $field
+				. '<t:Constant Value="' . $this->client->esc($query) . '"/></t:Contains>';
+			$restriction = '<m:Restriction><t:Or>'
+				. $contains('<t:FieldURI FieldURI="contacts:DisplayName"/>')
+				. $contains('<t:FieldURI FieldURI="contacts:CompanyName"/>')
+				. $contains('<t:IndexedFieldURI FieldURI="contacts:EmailAddress" FieldIndex="EmailAddress1"/>')
+				. '</t:Or></m:Restriction>';
+		} elseif ($query !== '') {
+			$queryXml = '<m:QueryString>' . $this->client->esc($query) . '</m:QueryString>';
+		}
 
 		$xp = $this->client->request(
 			'<m:FindItem Traversal="Shallow">'
 			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $props . '</t:AdditionalProperties></m:ItemShape>'
 			. '<m:IndexedPageItemView MaxEntriesReturned="' . max(1, $limit) . '" Offset="' . max(0, $offset) . '" BasePoint="Beginning"/>'
+			. $restriction
 			. '<m:SortOrder><t:FieldOrder Order="Ascending"><t:FieldURI FieldURI="contacts:DisplayName"/></t:FieldOrder></m:SortOrder>'
 			. '<m:ParentFolderIds>' . $this->folderXml($book) . '</m:ParentFolderIds>'
 			. $queryXml
@@ -421,8 +517,11 @@ class EwsContacts {
 		);
 	}
 
-	public function deleteContact(string $id): void {
-		$this->client->deleteItems([$id]);
+	/**
+	 * @param bool $public items of the public folders cannot go to my Deleted Items
+	 */
+	public function deleteContact(string $id, bool $public = false): void {
+		$this->client->deleteItems([$id], $public);
 	}
 
 	/**

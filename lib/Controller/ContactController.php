@@ -32,8 +32,14 @@ class ContactController extends Controller {
 		return $this->logger;
 	}
 
-	private function contacts(int $id): EwsContacts {
-		return new EwsContacts($this->accounts->getClient($this->accounts->find((string)$this->userId, $id)));
+	/**
+	 * @param string $book the address book concerned: the public folders need their own routing
+	 */
+	private function contacts(int $id, string $book = ''): EwsContacts {
+		$account = $this->accounts->find((string)$this->userId, $id);
+		return new EwsContacts(EwsContacts::isPublic($book)
+			? $this->accounts->getPublicFolderClient($account)
+			: $this->accounts->getClient($account));
 	}
 
 	/**
@@ -45,8 +51,16 @@ class ContactController extends Controller {
 		return $this->handle(function () use ($id) {
 			$own = $this->contacts($id)->listOwnBooks();
 			$shared = array_map(fn ($c) => self::sharedBook($c), $this->shared->list(SharedFolderService::CONTACTS, (string)$this->userId, $id));
+			$public = array_map(fn ($c) => [
+				'key' => 'public:' . $c['folder'],
+				'name' => $c['name'],
+				'path' => $c['folderName'],
+				'folder' => $c['folder'],
+				'kind' => 'public',
+				'canEdit' => $c['canEdit'],
+			], $this->shared->list(SharedFolderService::PUBLIC_CONTACTS, (string)$this->userId, $id));
 			$directory = [['key' => 'directory', 'name' => 'Annuaire de l\'entreprise', 'kind' => 'directory', 'canEdit' => false]];
-			return ['books' => array_merge($own, $shared, $directory)];
+			return ['books' => array_merge($own, $shared, $public, $directory)];
 		});
 	}
 
@@ -156,7 +170,48 @@ class ContactController extends Controller {
 	}
 
 	/**
-	 * @param string $book "contacts", a folder id, "shared:<email>" or "directory" (search only)
+	 * Browse the public folders, one level at a time.
+	 * @param string $parent folder id, "" for the top of the public folders
+	 */
+	#[NoAdminRequired]
+	public function publicFolders(int $id, string $parent = ''): Response {
+		return $this->handle(function () use ($id, $parent) {
+			$added = array_column($this->shared->list(SharedFolderService::PUBLIC_CONTACTS, (string)$this->userId, $id), 'folder');
+			$folders = $this->contacts($id, 'public:')->listPublicFolders($parent !== '' ? $parent : null);
+			foreach ($folders as &$f) {
+				$f['added'] = in_array($f['id'], $added, true);
+			}
+			return ['folders' => $folders];
+		});
+	}
+
+	/**
+	 * Add an address book of the public folders.
+	 * @param string $path where it is, for display ("Société › Commercial")
+	 */
+	#[NoAdminRequired]
+	public function addPublic(int $id, string $folder, string $path = ''): Response {
+		return $this->handle(function () use ($id, $folder, $path) {
+			$book = $this->contacts($id, 'public:')->getPublicBook($folder);
+			$this->shared->save(SharedFolderService::PUBLIC_CONTACTS, (string)$this->userId, $id, [
+				'email' => '', 'name' => $book['name'], 'mode' => 'full', 'canEdit' => $book['canEdit'],
+				'folder' => $folder, 'folderName' => mb_substr(trim($path), 0, 300),
+			]);
+			return ['key' => 'public:' . $folder, 'name' => $book['name'], 'canEdit' => $book['canEdit']];
+		});
+	}
+
+	#[NoAdminRequired]
+	public function removePublic(int $id, string $folder): Response {
+		return $this->handle(function () use ($id, $folder) {
+			$this->accounts->find((string)$this->userId, $id); // ownership check
+			$this->shared->remove(SharedFolderService::PUBLIC_CONTACTS, (string)$this->userId, $id, '', $folder);
+			return ['status' => 'ok'];
+		});
+	}
+
+	/**
+	 * @param string $book "contacts", a folder id, "shared:<email>[:<folder>]", "public:<folder>" or "directory" (search only)
 	 */
 	#[NoAdminRequired]
 	public function index(int $id, int $offset = 0, int $limit = 100, string $q = '', string $book = 'contacts'): Response {
@@ -169,16 +224,19 @@ class ContactController extends Controller {
 			if ($this->sharedEntry($id, $book) === false) {
 				throw new MailException('Carnet partagé inconnu');
 			}
-			return $this->contacts($id)->listContacts(max(0, $offset), $limit, $q !== '' ? $q : null, $book);
+			return $this->contacts($id, $book)->listContacts(max(0, $offset), $limit, $q !== '' ? $q : null, $book);
 		});
 	}
 
 	/**
-	 * The saved entry of a colleague's book: null when $book is not a shared
-	 * book, false when it is one that was not added.
+	 * The saved entry of a colleague's book or of a public one: null when
+	 * $book is neither, false when it is one that was not added.
 	 * @return array{canEdit: bool}|false|null
 	 */
 	private function sharedEntry(int $id, string $book): array|false|null {
+		if (EwsContacts::isPublic($book)) {
+			return $this->shared->find(SharedFolderService::PUBLIC_CONTACTS, (string)$this->userId, $id, '', substr($book, 7)) ?? false;
+		}
 		$parsed = EwsContacts::parseSharedKey($book);
 		if ($parsed === null) {
 			return null;
@@ -186,9 +244,21 @@ class ContactController extends Controller {
 		return $this->shared->find(SharedFolderService::CONTACTS, (string)$this->userId, $id, $parsed[0], $parsed[1]) ?? false;
 	}
 
+	private function assertKnownBook(int $id, string $book): void {
+		if ($this->sharedEntry($id, $book) === false) {
+			throw new MailException('Carnet inconnu');
+		}
+	}
+
+	/**
+	 * @param string $book the book the contact is in (needed for the public folders)
+	 */
 	#[NoAdminRequired]
-	public function show(int $id, string $contactId): Response {
-		return $this->handle(fn () => $this->contacts($id)->getContact($contactId));
+	public function show(int $id, string $contactId, string $book = ''): Response {
+		return $this->handle(function () use ($id, $contactId, $book) {
+			$this->assertKnownBook($id, $book);
+			return $this->contacts($id, $book)->getContact($contactId);
+		});
 	}
 
 	/**
@@ -206,7 +276,7 @@ class ContactController extends Controller {
 					throw new MailException('Vous ne pouvez pas ajouter de contact dans ce carnet');
 				}
 			}
-			return ['id' => $this->contacts($id)->createContact($contact, $book)];
+			return ['id' => $this->contacts($id, $book)->createContact($contact, $book)];
 		});
 	}
 
@@ -214,17 +284,19 @@ class ContactController extends Controller {
 	 * @param array<string, mixed> $contact
 	 */
 	#[NoAdminRequired]
-	public function update(int $id, string $contactId, array $contact): Response {
-		return $this->handle(function () use ($id, $contactId, $contact) {
-			$this->contacts($id)->updateContact($contactId, $contact);
+	public function update(int $id, string $contactId, array $contact, string $book = ''): Response {
+		return $this->handle(function () use ($id, $contactId, $contact, $book) {
+			$this->assertKnownBook($id, $book);
+			$this->contacts($id, $book)->updateContact($contactId, $contact);
 			return ['status' => 'ok'];
 		});
 	}
 
 	#[NoAdminRequired]
-	public function delete(int $id, string $contactId): Response {
-		return $this->handle(function () use ($id, $contactId) {
-			$this->contacts($id)->deleteContact($contactId);
+	public function delete(int $id, string $contactId, string $book = ''): Response {
+		return $this->handle(function () use ($id, $contactId, $book) {
+			$this->assertKnownBook($id, $book);
+			$this->contacts($id, $book)->deleteContact($contactId, EwsContacts::isPublic($book));
 			return ['status' => 'ok'];
 		});
 	}

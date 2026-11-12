@@ -73,12 +73,15 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Ajouter les carnets d'un collègue](docs/capture-carnets-collegue.png)
 
+![Dossiers publics](docs/capture-dossiers-publics.png)
+
 | | |
 |---|---|
 | Carnets | **Vos carnets d'adresses** Exchange (« Contacts » et les autres, par ex. « Fournisseurs »), les **contacts partagés** par vos collègues, et l'**annuaire de l'entreprise** |
 | Liste | Contacts du carnet choisi, triés et groupés par initiale, avec recherche |
 | Contacts partagés | « Ajouter les contacts d'un collègue » : saisissez son adresse. Nextcloud cherche les carnets qu'il vous partage : son dossier « Contacts » et **ses autres carnets** (par ex. « Clients VIP »). S'il en partage plusieurs, cochez ceux à ajouter ; vous pouvez revenir plus tard en ajouter d'autres. L'accès, **lecture** ou **modification**, est détecté pour chaque carnet. Le collègue partage un carnet dans Outlook (clic droit → Propriétés → Autorisations) ; un carnet autre que « Contacts » n'est trouvé que s'il est rangé dans son « Contacts » partagé, ou si sa boîte vous donne le droit « Dossier visible ». En lecture seule, un bouton « Ajouter à mes contacts » copie la fiche dans votre carnet. Retirer un carnet de la liste ne supprime rien dans Exchange |
 | Partager mes contacts | Bouton 🔗 à côté de chacun de vos carnets : choisissez ce que **toute l'organisation** et **chaque personne** peuvent faire (aucun accès, lecture, lecture et ajout de contacts, modification), **sans en faire un délégué**. C'est le réglage « Autorisations » du dossier dans Outlook ; les niveaux personnalisés créés dans Outlook sont affichés et conservés tels quels. Vos collègues ajoutent ensuite votre carnet avec « Ajouter les contacts d'un collègue » ; pour un carnet autre que « Contacts », rangez-le dans « Contacts » ou donnez-leur aussi le droit « Dossier visible » sur votre boîte |
+| Dossiers publics | « Ajouter un carnet des dossiers publics » : parcourez les dossiers publics Exchange comme dans Outlook et ajoutez les carnets d'adresses qui s'y trouvent. L'accès, **lecture** ou **modification**, est celui défini par l'administrateur Exchange ; une suppression y est définitive et vaut pour tout le monde. La recherche porte sur le nom, la société et l'e-mail (Exchange n'indexe pas les dossiers publics). Le webmail trouve la boîte des dossiers publics par Autodiscover (Exchange 2013 et suivants) ; si votre offre Exchange n'a pas de dossiers publics, la fenêtre l'indique |
 | Annuaire de l'entreprise | Toutes les personnes et listes de diffusion de l'organisation Exchange, avec service, fonction, téléphone et site. Exchange ne permet que la **recherche**, à partir de 2 lettres et dans la limite de 100 résultats. Lecture seule, avec « Écrire » et « Ajouter à mes contacts » |
 | Fiche | Société, fonction, jusqu'à 3 e-mails, mobile, téléphone du bureau et du domicile, adresse (lien vers la carte), notes |
 | Actions | Créer (dans le carnet choisi), modifier, supprimer, **écrire** (ouvre un nouveau message), appeler (lien `tel:`) |
@@ -113,7 +116,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.11.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.12.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -135,7 +138,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.11 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.12 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -218,7 +221,6 @@ templates/          page principale et page d'administration
 
 ## Évolutions possibles
 
-- Contacts des dossiers publics Exchange
 - Règles « le 2e mardi du mois » (aujourd'hui conservées, mais pas modifiables ici)
 - Brouillons modifiables et éditeur HTML
 - Découverte automatique (Autodiscover) à la place de la table domaine/serveur

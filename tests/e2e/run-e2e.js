@@ -928,6 +928,73 @@ async function main() {
 		assert(await page.$('.wm-book-row:has-text("Clients VIP")'))
 	})
 
+	await step('contacts: address books of the public folders', async () => {
+		const openBrowser = async () => {
+			await page.click('.wm-public-add')
+			await page.waitForSelector('.wm-modal .wm-pf-folder')
+		}
+		const names = () => page.$$eval('.wm-modal .wm-pf-folder', (els) => els.map((e) => e.dataset.name))
+		await openBrowser()
+		// only folders holding address books or other folders
+		assert.deepStrictEqual(await names(), ['Société A'])
+		await page.click('.wm-modal .wm-pf-folder[data-name="Société A"] .wm-pf-open')
+		await page.waitForSelector('.wm-modal .wm-pf-path:has-text("Dossiers publics › Société A")')
+		await page.waitForSelector('.wm-modal .wm-pf-folder[data-name="Clients communs"]')
+		assert.deepStrictEqual(await names(), ['Clients communs', 'Fournisseurs agréés'], 'the shared calendar is not offered')
+		await shot('31-public-folders')
+		await page.click('.wm-modal .wm-pf-folder[data-name="Clients communs"] .wm-pf-add')
+		await page.waitForSelector('.wm-toast:has-text("« Clients communs » ajouté (modification)")')
+		await page.waitForSelector('.wm-book-row.active[data-key="public:PF-CLIENTS"]')
+		await page.waitForSelector('.wm-contact:has-text("Imprimerie Azur")')
+		assert.strictEqual(await page.$$eval('.wm-contact', (els) => els.length), 2)
+
+		// search without the search index (public folders have none)
+		await page.fill('.wm-list .wm-search', 'azur')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-contact').length === 1)
+		assert((await page.textContent('.wm-contact')).includes('Imprimerie Azur'))
+		await page.fill('.wm-list .wm-search', '')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForSelector('.wm-contact:has-text("Nadia Roux")')
+
+		// edit access: modify, create, delete
+		await page.click('.wm-contact:has-text("Nadia Roux")')
+		await page.click('.wm-toolbar button:has-text("Modifier")')
+		await page.fill('input[name=jobTitle]', 'Associée')
+		await page.click('.wm-contact-form button[type=submit]')
+		await page.waitForSelector('.wm-contact-card:has-text("Associée")')
+		await page.click('.wm-compose-btn:has-text("Nouveau contact")')
+		assert.strictEqual(await page.inputValue('select[name=book]'), 'public:PF-CLIENTS')
+		await page.fill('input[name=company]', 'Menuiserie du Var')
+		await page.click('.wm-contact-form button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Contact créé")')
+		await page.waitForSelector('.wm-contact:has-text("Menuiserie du Var")')
+		page.once('dialog', (d) => { assert(d.message().includes('supprimé pour tout le monde'), d.message()); d.accept() })
+		await page.click('.wm-toolbar button:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Contact supprimé")')
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-contact')].some((e) => e.textContent.includes('Menuiserie du Var')))
+
+		// a read-only one
+		await openBrowser()
+		await page.click('.wm-modal .wm-pf-folder[data-name="Société A"] .wm-pf-open')
+		await page.waitForSelector('.wm-modal .wm-pf-folder[data-name="Clients communs"]:has-text("déjà ajouté")')
+		await page.click('.wm-modal .wm-pf-folder[data-name="Fournisseurs agréés"] .wm-pf-add')
+		await page.waitForSelector('.wm-toast:has-text("« Fournisseurs agréés » ajouté (lecture)")')
+		await page.click('.wm-contact:has-text("Location Matériel Sud")')
+		await page.waitForSelector('.wm-toolbar:has-text("« Fournisseurs agréés » (dossiers publics) (lecture seule)")')
+		assert(!(await page.$('.wm-toolbar button:has-text("Modifier")')))
+		await page.click('.wm-toolbar button:has-text("Ajouter à mes contacts")')
+		await page.waitForSelector('.wm-toast:has-text("Location Matériel Sud ajouté à vos contacts")')
+		const badges = await page.$$eval('.wm-book-row[data-key^="public:"] .wm-cal-mode', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(badges, ['modification', 'lecture'])
+
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-book-row[data-key="public:PF-FOURN"] .wm-cal-remove')
+		await page.waitForSelector('.wm-toast:has-text("Carnet retiré")')
+		await page.waitForFunction(() => !document.querySelector('.wm-book-row[data-key="public:PF-FOURN"]'))
+		assert(await page.$('.wm-book-row[data-key="public:PF-CLIENTS"]'))
+	})
+
 	await step('contacts: company directory', async () => {
 		await page.click(book('Annuaire'))
 		await page.waitForSelector('.wm-empty:has-text("Tapez au moins 2 lettres")')

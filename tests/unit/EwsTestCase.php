@@ -18,12 +18,21 @@ abstract class EwsTestCase extends TestCase {
 	protected array $requests = [];
 	/** @var array<int, array{0: int, 1: string}> queued responses */
 	protected array $responses = [];
+	/** @var array<int, string[]> HTTP headers of each request */
+	protected array $headers = [];
+	/** @var string[] Autodiscover requests (not EWS, not validated against the EWS schema) */
+	protected array $autodiscover = [];
 
 	protected function client(): EwsClient {
 		return new EwsClient('https://ex3.mail.ovh.net/EWS/Exchange.asmx', 'user@example.fr', 'secret', 30, true,
-			function (string $url, string $body): array {
+			function (string $url, string $body, array $headers = []): array {
+				if ($url === 'https://ex3.mail.ovh.net/autodiscover/autodiscover.svc') {
+					$this->autodiscover[] = $body;
+					return array_shift($this->responses) ?? [404, ''];
+				}
 				$this->assertSame('https://ex3.mail.ovh.net/EWS/Exchange.asmx', $url);
 				$this->requests[] = $body;
+				$this->headers[] = $headers;
 				$this->assertValidRequest($body);
 				return array_shift($this->responses) ?? [200, self::envelope('')];
 			});

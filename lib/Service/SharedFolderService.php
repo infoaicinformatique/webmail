@@ -17,6 +17,8 @@ use OCP\IConfig;
 class SharedFolderService {
 	public const CALENDARS = 'calendars';
 	public const CONTACTS = 'contacts';
+	/** contact folders of the public folders: identified by folder id only (no owner address) */
+	public const PUBLIC_CONTACTS = 'public_contacts';
 
 	private const MAX = 30;
 
@@ -26,7 +28,7 @@ class SharedFolderService {
 	}
 
 	private static function key(string $type, int $accountId): string {
-		if ($type !== self::CALENDARS && $type !== self::CONTACTS) {
+		if ($type !== self::CALENDARS && $type !== self::CONTACTS && $type !== self::PUBLIC_CONTACTS) {
 			throw new \InvalidArgumentException('Unknown shared folder type ' . $type);
 		}
 		return 'shared_' . $type . '_' . $accountId;
@@ -44,10 +46,13 @@ class SharedFolderService {
 		}
 		$out = [];
 		foreach ($data as $c) {
-			if (is_array($c) && !empty($c['email']) && filter_var($c['email'], FILTER_VALIDATE_EMAIL)) {
+			$valid = $type === self::PUBLIC_CONTACTS
+				? is_array($c) && !empty($c['folder']) && is_string($c['folder'])
+				: is_array($c) && !empty($c['email']) && filter_var($c['email'], FILTER_VALIDATE_EMAIL);
+			if ($valid) {
 				$out[] = [
-					'email' => strtolower((string)$c['email']),
-					'name' => (string)($c['name'] ?? $c['email']),
+					'email' => strtolower((string)($c['email'] ?? '')),
+					'name' => (string)($c['name'] ?? $c['email'] ?? ''),
 					'mode' => ($c['mode'] ?? '') === 'freebusy' ? 'freebusy' : 'full',
 					'canEdit' => !empty($c['canEdit']),
 					'folder' => (string)($c['folder'] ?? ''),
@@ -100,7 +105,7 @@ class SharedFolderService {
 
 	/** Forget every shared folder of an account (when the account is removed). */
 	public function removeAll(string $userId, int $accountId): void {
-		foreach ([self::CALENDARS, self::CONTACTS] as $type) {
+		foreach ([self::CALENDARS, self::CONTACTS, self::PUBLIC_CONTACTS] as $type) {
 			$this->config->deleteUserValue($userId, Application::APP_ID, self::key($type, $accountId));
 		}
 	}

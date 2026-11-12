@@ -104,6 +104,7 @@
 
 	/** "Contacts de Marie Martin", "« Clients VIP » de Marie Martin", or the book's own name */
 	function bookTitle(b) {
+		if (b.kind === 'public') return '« ' + b.name + ' » (dossiers publics)'
 		if (b.kind !== 'shared') return b.name
 		return (b.folderName ? '« ' + b.folderName + ' »' : 'Contacts') + ' de ' + b.name
 	}
@@ -114,12 +115,12 @@
 			h('a', {
 				href: '#',
 				class: 'wm-book-link',
-				title: b.email || b.name,
+				title: b.kind === 'public' ? 'Dossiers publics › ' + (b.path || b.name) : (b.email || b.name),
 				onclick: (e) => { e.preventDefault(); selectBook(b.key) },
 			},
-			h('span', { class: 'wm-book-icon', 'aria-hidden': 'true' }, b.kind === 'directory' ? '🏢' : (b.kind === 'shared' ? '👥' : '📇')),
+			h('span', { class: 'wm-book-icon', 'aria-hidden': 'true' }, { directory: '🏢', shared: '👥', public: '🗂️' }[b.kind] || '📇'),
 			h('span', { class: 'wm-cal-name' }, b.kind === 'shared' && b.folderName ? b.folderName + ' (' + b.name + ')' : b.name)),
-			b.kind === 'shared' ? h('span', { class: 'wm-cal-mode' + (b.canEdit ? ' wm-cal-mode-edit' : '') }, b.canEdit ? 'modification' : 'lecture') : null,
+			b.kind === 'shared' || b.kind === 'public' ? h('span', { class: 'wm-cal-mode' + (b.canEdit ? ' wm-cal-mode-edit' : '') }, b.canEdit ? 'modification' : 'lecture') : null,
 			b.kind === 'own' ? h('button', {
 				type: 'button',
 				class: 'wm-cal-share',
@@ -133,9 +134,17 @@
 				title: 'Retirer ce carnet',
 				'aria-label': 'Retirer ' + bookTitle(b),
 				onclick: () => removeShared(b),
+			}, '✕') : null,
+			b.kind === 'public' ? h('button', {
+				type: 'button',
+				class: 'wm-cal-remove',
+				title: 'Retirer ce carnet',
+				'aria-label': 'Retirer ' + b.name,
+				onclick: () => removePublic(b),
 			}, '✕') : null)
 		const own = ct.books.filter((b) => b.kind === 'own')
 		const shared = ct.books.filter((b) => b.kind === 'shared')
+		const publicBooks = ct.books.filter((b) => b.kind === 'public')
 		const directory = ct.books.filter((b) => b.kind === 'directory')
 		return h('div', { class: 'wm-cal-list' },
 			h('div', { class: 'wm-cal-section' }, 'Mes carnets'),
@@ -143,6 +152,9 @@
 			h('div', { class: 'wm-cal-section' }, 'Contacts partagés'),
 			shared.length ? h('ul', {}, shared.map(row)) : null,
 			h('button', { type: 'button', class: 'wm-cal-add', onclick: openAddShared }, '＋ Ajouter les contacts d\'un collègue'),
+			h('div', { class: 'wm-cal-section' }, 'Dossiers publics'),
+			publicBooks.length ? h('ul', {}, publicBooks.map(row)) : null,
+			h('button', { type: 'button', class: 'wm-cal-add wm-public-add', onclick: openAddPublic }, '＋ Ajouter un carnet des dossiers publics'),
 			directory.length ? h('ul', { class: 'wm-directory' }, directory.map(row)) : null)
 	}
 
@@ -246,6 +258,103 @@
 		email.focus()
 	}
 
+	/**
+	 * Browse the public folders level by level (like Outlook's folder list)
+	 * and add the address books found there.
+	 */
+	function openAddPublic() {
+		const h = core.h
+		const base = '/accounts/' + core.accountId + '/contacts/public'
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const crumbs = h('nav', { class: 'wm-pf-path', 'aria-label': 'Emplacement' })
+		const list = h('ul', { class: 'wm-pf-list' })
+		const err = h('div', { class: 'wm-form-error', role: 'alert' })
+		const path = [{ id: '', name: 'Dossiers publics' }]
+		let seq = 0
+
+		const open = async () => {
+			const mine = ++seq
+			err.textContent = ''
+			core.clear(crumbs)
+			path.forEach((p, i) => {
+				if (i) crumbs.appendChild(document.createTextNode(' › '))
+				crumbs.appendChild(i === path.length - 1
+					? h('strong', {}, p.name)
+					: h('a', { href: '#', onclick: (e) => { e.preventDefault(); path.length = i + 1; open() } }, p.name))
+			})
+			core.clear(list)
+			list.appendChild(h('li', { class: 'wm-center' }, h('span', { class: 'icon-loading-small' })))
+			let folders
+			try {
+				folders = (await core.api(base, { query: { parent: path[path.length - 1].id } })).folders
+			} catch (e) {
+				if (mine !== seq) return
+				core.clear(list)
+				err.textContent = e.message
+				return
+			}
+			if (mine !== seq) return
+			core.clear(list)
+			if (!folders.length) list.appendChild(h('li', { class: 'wm-muted' }, 'Aucun carnet d\'adresses ici.'))
+			folders.forEach((f) => {
+				const where = path.slice(1).map((p) => p.name).concat(f.name).join(' › ')
+				list.appendChild(h('li', { class: 'wm-pf-folder', dataset: { name: f.name } },
+					f.hasChildren
+						? h('a', { href: '#', class: 'wm-pf-open', onclick: (e) => { e.preventDefault(); path.push({ id: f.id, name: f.name }); open() } },
+							h('span', { 'aria-hidden': 'true' }, f.isContacts ? '📇 ' : '📁 '), f.name, h('span', { class: 'wm-muted' }, ' ›'))
+						: h('span', {}, h('span', { 'aria-hidden': 'true' }, '📇 '), f.name),
+					f.isContacts ? h('span', { class: 'wm-cal-mode' + (f.canEdit ? ' wm-cal-mode-edit' : '') }, f.canEdit ? 'modification' : 'lecture') : null,
+					f.isContacts
+						? (f.added
+							? h('span', { class: 'wm-muted' }, 'déjà ajouté')
+							: h('button', {
+								type: 'button',
+								class: 'wm-pf-add',
+								onclick: async (e) => {
+									e.target.disabled = true
+									try {
+										const b = await core.api(base, { method: 'POST', body: { folder: f.id, path: where } })
+										close()
+										core.toast('« ' + b.name + ' » ajouté (' + (b.canEdit ? 'modification' : 'lecture') + ')')
+										await loadBooks(true)
+										selectBook(b.key)
+									} catch (ex) {
+										err.textContent = ex.message
+										e.target.disabled = false
+									}
+								},
+							}, 'Ajouter'))
+						: null))
+			})
+		}
+
+		overlay.appendChild(h('div', { class: 'wm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Ajouter un carnet des dossiers publics' },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, 'Ajouter un carnet des dossiers publics'),
+				h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
+			h('div', { class: 'wm-event-form' },
+				h('p', { class: 'wm-muted' }, 'Les dossiers publics sont partagés par toute l\'organisation. Ouvrez les dossiers pour trouver les carnets d\'adresses ; '
+					+ 'le niveau d\'accès, lecture ou modification, est celui défini par l\'administrateur Exchange.'),
+				crumbs, list, err,
+				h('div', { class: 'wm-compose-actions' }, h('button', { type: 'button', onclick: close }, 'Fermer')))))
+		document.body.appendChild(overlay)
+		open()
+	}
+
+	async function removePublic(b) {
+		if (!window.confirm('Retirer « ' + b.name + ' » de la liste ? (rien n\'est supprimé dans Exchange)')) return
+		try {
+			await core.api('/accounts/' + core.accountId + '/contacts/public/delete', { method: 'POST', body: { folder: b.folder } })
+			core.toast('Carnet retiré')
+			if (ct.book === b.key) ct.book = 'contacts'
+			await loadBooks(true)
+			selectBook(ct.book)
+		} catch (e) { core.toast(e.message, true) }
+	}
+
 	async function removeShared(b) {
 		if (!window.confirm('Retirer ' + bookTitle(b) + ' de la liste ? (rien n\'est supprimé dans Exchange)')) return
 		try {
@@ -343,7 +452,7 @@
 		try {
 			c = String(id).startsWith('directory:')
 				? ct.items.find((x) => x.id === id)
-				: await core.api('/accounts/' + core.accountId + '/contact', { query: { contactId: id } })
+				: await core.api('/accounts/' + core.accountId + '/contact', { query: { contactId: id, book: book.key } })
 			if (!c) throw new Error('Contact introuvable')
 		} catch (e) {
 			core.clear(el)
@@ -396,9 +505,11 @@
 	}
 
 	async function remove(c) {
-		if (!window.confirm('Supprimer le contact « ' + (c.displayName || '') + ' » ?')) return
+		const isPublic = currentBook().kind === 'public'
+		if (!window.confirm('Supprimer ' + (isPublic ? 'définitivement ' : '') + 'le contact « ' + (c.displayName || '') + ' »'
+			+ (isPublic ? ' du dossier public ? Il sera supprimé pour tout le monde.' : ' ?'))) return
 		try {
-			await core.api('/accounts/' + core.accountId + '/contacts/delete', { method: 'POST', body: { contactId: c.id } })
+			await core.api('/accounts/' + core.accountId + '/contacts/delete', { method: 'POST', body: { contactId: c.id, book: ct.book } })
 			core.toast('Contact supprimé')
 			ct.items = ct.items.filter((x) => x.id !== c.id)
 			ct.selectedId = null
@@ -464,7 +575,7 @@
 							core.renderNav()
 						}
 					} else {
-						await core.api('/accounts/' + core.accountId + '/contacts/update', { method: 'POST', body: { contactId: c.id, contact: data } })
+						await core.api('/accounts/' + core.accountId + '/contacts/update', { method: 'POST', body: { contactId: c.id, contact: data, book: ct.book } })
 					}
 					core.toast(isNew ? 'Contact créé' : 'Contact enregistré')
 					await load(true)

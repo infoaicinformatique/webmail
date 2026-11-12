@@ -410,6 +410,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def autodiscover(self, raw):
+        """SOAP Autodiscover, GetUserSettings: only PublicFolderInformation."""
+        ad = 'http://schemas.microsoft.com/exchange/2010/Autodiscover'
+        root = ET.fromstring(raw)
+        mailbox = root.findtext('.//{%s}Mailbox' % ad, default='')
+        setting = root.findtext('.//{%s}Setting' % ad, default='')
+        if setting != 'PublicFolderInformation' or self.headers.get('SOAPAction', '').strip('"') != ad + '/Autodiscover/GetUserSettings':
+            self.send(400, '')
+            return
+        body = ('<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>'
+                '<GetUserSettingsResponseMessage xmlns="%s"><Response><ErrorCode>NoError</ErrorCode><UserResponses><UserResponse>'
+                '<ErrorCode>NoError</ErrorCode><UserSettings><UserSetting xmlns:i="http://www.w3.org/2001/XMLSchema-instance" i:type="StringSetting">'
+                '<Name>PublicFolderInformation</Name><Value>%s</Value></UserSetting></UserSettings></UserResponse></UserResponses>'
+                '</Response></GetUserSettingsResponseMessage></s:Body></s:Envelope>' % (ad, pim.PF_MAILBOX if mailbox else ''))
+        self.send(200, body)
+
     def do_POST(self):
         length = int(self.headers.get('Content-Length', 0))
         raw = self.rfile.read(length)
@@ -422,6 +438,9 @@ class Handler(BaseHTTPRequestHandler):
         if user is None:
             self.send(401, '', {'WWW-Authenticate': 'Basic realm="ex.fake"'})
             return
+        if self.path.lower().startswith('/autodiscover/autodiscover.svc'):
+            self.autodiscover(raw)
+            return
         if LOG_DIR:
             with open(os.path.join(LOG_DIR, '%04d.xml' % next(REQ_COUNTER)), 'wb') as f:
                 f.write(raw)
@@ -433,6 +452,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 global CURRENT_TZ
                 CURRENT_TZ = tzdef.get('Id') if tzdef is not None else 'UTC'
+                pim.REQUEST_HEADERS = dict(self.headers.items())
                 resp = handle(op, body, user)
             if resp is None:
                 self.send(500, envelope('<s:Fault><faultcode>s:Client</faultcode><faultstring>Unsupported operation %s</faultstring></s:Fault>' % esc(op)))
