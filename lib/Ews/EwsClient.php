@@ -25,6 +25,9 @@ class EwsClient {
 	/** @var null|callable(string $url, string $body): array{0: int, 1: string} */
 	private $transport;
 
+	/** Windows time zone id sent in the TimeZoneContext header (e.g. "Romance Standard Time"). */
+	private ?string $timeZoneId = null;
+
 	public function __construct(
 		private string $url,
 		private string $username,
@@ -34,6 +37,17 @@ class EwsClient {
 		?callable $transport = null,
 	) {
 		$this->transport = $transport;
+	}
+
+	/**
+	 * Interpret times without offset (and all-day events) in this time zone.
+	 */
+	public function setTimeZone(?string $windowsId): void {
+		$this->timeZoneId = $windowsId !== null && $windowsId !== '' ? $windowsId : null;
+	}
+
+	public function getTimeZone(): ?string {
+		return $this->timeZoneId;
 	}
 
 	// ------------------------------------------------------------------
@@ -225,6 +239,39 @@ class EwsClient {
 			'messageId' => $this->text($xp, 't:InternetMessageId', $node),
 			'attachments' => $attachments,
 			'isMeeting' => $node->localName !== 'Message',
+			'itemType' => $node->localName,
+			'meeting' => in_array($node->localName, ['MeetingRequest', 'MeetingCancellation'], true) ? $this->meetingInfo($itemId) : null,
+		];
+	}
+
+	/**
+	 * Date, place and current answer of a meeting invitation received by e-mail.
+	 * @return ?array<string, mixed>
+	 */
+	private function meetingInfo(string $itemId): ?array {
+		$fields = '';
+		foreach (['calendar:Start', 'calendar:End', 'calendar:IsAllDayEvent', 'calendar:Location', 'calendar:MyResponseType', 'calendar:IsCancelled'] as $p) {
+			$fields .= '<t:FieldURI FieldURI="' . $p . '"/>';
+		}
+		try {
+			$xp = $this->request(
+				'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $fields . '</t:AdditionalProperties></m:ItemShape>'
+				. '<m:ItemIds><t:ItemId Id="' . $this->esc($itemId) . '"/></m:ItemIds></m:GetItem>'
+			);
+		} catch (MailException) {
+			return null;
+		}
+		$node = $xp->query('//m:Items/*')->item(0);
+		if ($node === null) {
+			return null;
+		}
+		return [
+			'start' => $this->text($xp, 't:Start', $node),
+			'end' => $this->text($xp, 't:End', $node),
+			'allDay' => $this->text($xp, 't:IsAllDayEvent', $node) === 'true',
+			'location' => (string)$this->text($xp, 't:Location', $node),
+			'response' => $this->text($xp, 't:MyResponseType', $node) ?? 'Unknown',
+			'cancelled' => $node->localName === 'MeetingCancellation' || $this->text($xp, 't:IsCancelled', $node) === 'true',
 		];
 	}
 
@@ -432,7 +479,7 @@ class EwsClient {
 	/**
 	 * @return array{id: string, changeKey: string}
 	 */
-	private function itemRef(string $itemId): array {
+	public function itemRef(string $itemId): array {
 		$xp = $this->request(
 			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape></m:ItemShape>'
 			. '<m:ItemIds><t:ItemId Id="' . $this->esc($itemId) . '"/></m:ItemIds></m:GetItem>'
@@ -455,7 +502,7 @@ class EwsClient {
 	}
 
 	/** @param string[] $addresses */
-	private function recipientsXml(string $element, array $addresses): string {
+	public function recipientsXml(string $element, array $addresses): string {
 		$xml = '';
 		foreach ($addresses as $addr) {
 			$addr = trim($addr);
@@ -479,7 +526,7 @@ class EwsClient {
 	}
 
 	/** @param string[] $ids */
-	private function itemIdsXml(array $ids): string {
+	public function itemIdsXml(array $ids): string {
 		$xml = '';
 		foreach ($ids as $id) {
 			$xml .= '<t:ItemId Id="' . $this->esc((string)$id) . '"/>';
@@ -487,7 +534,7 @@ class EwsClient {
 		return $xml;
 	}
 
-	private function esc(string $s): string {
+	public function esc(string $s): string {
 		// strip characters that are not allowed in XML 1.0
 		$s = (string)preg_replace('/[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}\x{10000}-\x{10FFFF}]/u', '', $s);
 		return htmlspecialchars($s, ENT_XML1 | ENT_QUOTES, 'UTF-8');
@@ -501,7 +548,9 @@ class EwsClient {
 	public function request(string $bodyXml, bool $strict = true): \DOMXPath {
 		$envelope = '<?xml version="1.0" encoding="utf-8"?>'
 			. '<soap:Envelope xmlns:soap="' . self::NS_SOAP . '" xmlns:m="' . self::NS_M . '" xmlns:t="' . self::NS_T . '">'
-			. '<soap:Header><t:RequestServerVersion Version="Exchange2013_SP1"/></soap:Header>'
+			. '<soap:Header><t:RequestServerVersion Version="Exchange2013_SP1"/>'
+			. ($this->timeZoneId !== null ? '<t:TimeZoneContext><t:TimeZoneDefinition Id="' . $this->esc($this->timeZoneId) . '"/></t:TimeZoneContext>' : '')
+			. '</soap:Header>'
 			. '<soap:Body>' . $bodyXml . '</soap:Body></soap:Envelope>';
 
 		[$status, $response] = $this->transport !== null
@@ -551,6 +600,11 @@ class EwsClient {
 			'ErrorQuotaExceeded' => 'Boîte aux lettres pleine',
 			'ErrorMessageSizeExceeded' => 'Message trop volumineux',
 			'ErrorInvalidRecipients', 'ErrorInvalidSmtpAddress' => 'Adresse de destinataire invalide',
+			'ErrorCalendarEndDateIsEarlierThanStartDate' => 'La fin de l\'événement est avant son début',
+			'ErrorCalendarDurationIsTooLong' => 'Événement trop long',
+			'ErrorCalendarIsOrganizerForAccept', 'ErrorCalendarIsOrganizerForDecline', 'ErrorCalendarIsOrganizerForTentative' => 'Vous êtes l\'organisateur de cette réunion',
+			'ErrorIrresolvableConflict' => 'L\'élément a été modifié entre-temps, rechargez la page',
+			'ErrorTimeZone' => 'Fuseau horaire non reconnu par Exchange',
 			default => 'Erreur Exchange' . ($code ? ' (' . $code . ')' : '') . ($text ? ' : ' . $text : ''),
 		};
 	}
@@ -586,12 +640,12 @@ class EwsClient {
 		return [$status, (string)$response];
 	}
 
-	private function text(\DOMXPath $xp, string $query, ?\DOMNode $ctx = null): ?string {
+	public function text(\DOMXPath $xp, string $query, ?\DOMNode $ctx = null): ?string {
 		$n = $xp->query($query, $ctx)->item(0);
 		return $n?->textContent;
 	}
 
-	private function attr(\DOMXPath $xp, string $query, string $attr, ?\DOMNode $ctx = null): ?string {
+	public function attr(\DOMXPath $xp, string $query, string $attr, ?\DOMNode $ctx = null): ?string {
 		$n = $xp->query($query, $ctx)->item(0);
 		return $n instanceof \DOMElement && $n->hasAttribute($attr) ? $n->getAttribute($attr) : null;
 	}
@@ -599,7 +653,7 @@ class EwsClient {
 	/**
 	 * @return ?array{name: string, email: string}
 	 */
-	private function mailbox(\DOMXPath $xp, string $query, \DOMNode $ctx): ?array {
+	public function mailbox(\DOMXPath $xp, string $query, \DOMNode $ctx): ?array {
 		$n = $xp->query($query, $ctx)->item(0);
 		if ($n === null) {
 			return null;
@@ -613,7 +667,7 @@ class EwsClient {
 	/**
 	 * @return array<int, array{name: string, email: string}>
 	 */
-	private function mailboxes(\DOMXPath $xp, string $query, \DOMNode $ctx): array {
+	public function mailboxes(\DOMXPath $xp, string $query, \DOMNode $ctx): array {
 		$out = [];
 		foreach ($xp->query($query, $ctx) as $n) {
 			$out[] = ['name' => (string)$this->text($xp, 't:Name', $n), 'email' => (string)$this->text($xp, 't:EmailAddress', $n)];

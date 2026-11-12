@@ -6,73 +6,13 @@ namespace OCA\Webmail\Tests\unit;
 
 use OCA\Webmail\Ews\EwsClient;
 use OCA\Webmail\Exception\MailException;
-use PHPUnit\Framework\TestCase;
 
 /**
  * Every request produced by the client is validated against Microsoft's
  * Exchange2013_SP1 EWS schema (tests/fixtures/xsd), which is the version
  * announced in RequestServerVersion. Responses are canned from the EWS docs.
  */
-class EwsClientTest extends TestCase {
-	/** @var string[] SOAP bodies sent */
-	private array $requests = [];
-	/** @var array<int, array{0: int, 1: string}> queued responses */
-	private array $responses = [];
-
-	private function client(): EwsClient {
-		return new EwsClient('https://ex3.mail.ovh.net/EWS/Exchange.asmx', 'user@example.fr', 'secret', 30, true,
-			function (string $url, string $body): array {
-				$this->assertSame('https://ex3.mail.ovh.net/EWS/Exchange.asmx', $url);
-				$this->requests[] = $body;
-				$this->assertValidRequest($body);
-				return array_shift($this->responses) ?? [200, self::envelope('')];
-			});
-	}
-
-	private function queue(string $bodyXml, int $status = 200): void {
-		$this->responses[] = [$status, self::envelope($bodyXml)];
-	}
-
-	private static function envelope(string $body): string {
-		return '<?xml version="1.0" encoding="utf-8"?>'
-			. '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">'
-			. '<s:Header><h:ServerVersionInfo MajorVersion="15" MinorVersion="1" MajorBuildNumber="2507" MinorBuildNumber="6" xmlns:h="http://schemas.microsoft.com/exchange/services/2006/types"/></s:Header>'
-			. '<s:Body xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">'
-			. $body . '</s:Body></s:Envelope>';
-	}
-
-	private static function ok(string $operation, string $inner = ''): string {
-		return '<m:' . $operation . 'Response xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types">'
-			. '<m:ResponseMessages><m:' . $operation . 'ResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode>'
-			. $inner . '</m:' . $operation . 'ResponseMessage></m:ResponseMessages></m:' . $operation . 'Response>';
-	}
-
-	private function assertValidRequest(string $envelope): void {
-		$doc = new \DOMDocument();
-		$this->assertTrue($doc->loadXML($envelope), 'request is well-formed XML');
-		$xp = new \DOMXPath($doc);
-		$xp->registerNamespace('soap', EwsClient::NS_SOAP);
-		$xp->registerNamespace('t', EwsClient::NS_T);
-		$this->assertSame('Exchange2013_SP1', $xp->query('//soap:Header/t:RequestServerVersion/@Version')->item(0)?->nodeValue);
-
-		$bodyEl = $xp->query('//soap:Body/*')->item(0);
-		$this->assertNotNull($bodyEl);
-		$single = new \DOMDocument();
-		$single->appendChild($single->importNode($bodyEl, true));
-		$single->loadXML($single->saveXML()); // re-parse so namespaces are declared on the root
-
-		$prev = libxml_use_internal_errors(true);
-		$valid = $single->schemaValidate(__DIR__ . '/../fixtures/xsd/messages.xsd');
-		$errors = array_map(fn ($e) => trim($e->message), libxml_get_errors());
-		libxml_clear_errors();
-		libxml_use_internal_errors($prev);
-		$this->assertTrue($valid, "EWS request does not match the schema:\n" . implode("\n", $errors) . "\n" . $single->saveXML());
-	}
-
-	private function lastRequest(): string {
-		return (string)end($this->requests);
-	}
-
+class EwsClientTest extends EwsTestCase {
 	public function testListFolders(): void {
 		$this->queue('<m:GetFolderResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>'
 			. '<m:GetFolderResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Folders><t:Folder><t:FolderId Id="INBOX-ID" ChangeKey="a"/></t:Folder></m:Folders></m:GetFolderResponseMessage>'

@@ -3,13 +3,15 @@
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
 	<id>webmail</id>
 	<name>Webmail</name>
-	<summary>Webmail Exchange (EWS) pour OVH Hosted Exchange, un serveur par domaine</summary>
+	<summary>Courrier, agenda et contacts Exchange (EWS) pour OVH Hosted Exchange, un serveur par domaine</summary>
 	<description><![CDATA[Webmail intégré à Nextcloud pour les boîtes OVH Hosted Exchange, via Exchange Web Services (EWS).
 
 * L'administrateur associe chaque domaine e-mail à son serveur OVH (ex. https://ex3.mail.ovh.net/EWS/Exchange.asmx).
 * L'utilisateur saisit seulement son adresse et son mot de passe : le bon serveur est choisi automatiquement.
-* Lecture, recherche, dossiers, envoi, réponse, transfert, pièces jointes (depuis/vers Fichiers).]]></description>
-	<version>1.0.0</version>
+* Courrier : lecture, recherche, dossiers, envoi, réponse, transfert, pièces jointes (depuis/vers Fichiers).
+* Agenda Exchange : vue mois et liste, création, modification, invitations, réponses aux réunions.
+* Contacts Exchange : consultation, recherche, création, modification ; complétion des adresses (contacts + annuaire).]]></description>
+	<version>1.1.0</version>
 	<licence>agpl</licence>
 	<author>AIC Informatique</author>
 	<namespace>Webmail</namespace>

@@ -21,6 +21,20 @@ return [
 		['name' => 'mail#delete', 'url' => '/api/accounts/{id}/delete', 'verb' => 'POST'],
 		['name' => 'mail#send', 'url' => '/api/accounts/{id}/send', 'verb' => 'POST'],
 
+		['name' => 'calendar#events', 'url' => '/api/accounts/{id}/calendar/events', 'verb' => 'GET'],
+		['name' => 'calendar#event', 'url' => '/api/accounts/{id}/calendar/event', 'verb' => 'GET'],
+		['name' => 'calendar#create', 'url' => '/api/accounts/{id}/calendar/events', 'verb' => 'POST'],
+		['name' => 'calendar#update', 'url' => '/api/accounts/{id}/calendar/update', 'verb' => 'POST'],
+		['name' => 'calendar#delete', 'url' => '/api/accounts/{id}/calendar/delete', 'verb' => 'POST'],
+		['name' => 'calendar#respond', 'url' => '/api/accounts/{id}/calendar/respond', 'verb' => 'POST'],
+
+		['name' => 'contact#index', 'url' => '/api/accounts/{id}/contacts', 'verb' => 'GET'],
+		['name' => 'contact#show', 'url' => '/api/accounts/{id}/contact', 'verb' => 'GET'],
+		['name' => 'contact#create', 'url' => '/api/accounts/{id}/contacts', 'verb' => 'POST'],
+		['name' => 'contact#update', 'url' => '/api/accounts/{id}/contacts/update', 'verb' => 'POST'],
+		['name' => 'contact#delete', 'url' => '/api/accounts/{id}/contacts/delete', 'verb' => 'POST'],
+		['name' => 'contact#resolve', 'url' => '/api/accounts/{id}/contacts/resolve', 'verb' => 'GET'],
+
 		['name' => 'admin#get', 'url' => '/api/admin/servers', 'verb' => 'GET'],
 		['name' => 'admin#save', 'url' => '/api/admin/servers', 'verb' => 'PUT'],
 	],
