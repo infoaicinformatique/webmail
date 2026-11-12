@@ -616,3 +616,13 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-pf-folder { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--color-border); min-height: 40px; }
 .wm-pf-folder > :first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wm-pf-folder button { margin: 0; }
+
+/* keyboard shortcuts */
+.wm-nav-footer { display: flex; flex-direction: column; gap: 2px; }
+@media (max-width: 800px) { .wm-desktop-only { display: none !important; } }
+.wm-shortcuts table { border-collapse: collapse; width: 100%; }
+.wm-shortcuts td { padding: 5px 8px; border-bottom: 1px solid var(--color-border); }
+.wm-shortcuts td:first-child { white-space: nowrap; width: 1%; }
+.wm-shortcuts kbd { font-family: inherit; font-size: 0.9em; padding: 1px 6px; border: 1px solid var(--color-border-dark, #bbb); border-bottom-width: 2px; border-radius: 4px; background: var(--color-background-hover); }
+/* the next page of messages is loaded when this comes into view */
+.wm-list-more { padding: 12px 0; }

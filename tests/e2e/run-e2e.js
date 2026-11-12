@@ -142,7 +142,92 @@ async function main() {
 		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 1)
 		assert.strictEqual(await page.textContent('.wm-message-subject'), 'Réunion de lundi')
 		await page.click('.wm-search-info a')
-		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 50)
+		// back to the folder as it was, with the page loaded before
+		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 62)
+	})
+
+	await step('fluid navigation: prefetch, keyboard, folder cache, instant delete, Back button', async () => {
+		const fetched = []
+		const onRequest = (r) => { if (r.url().includes('/message?')) fetched.push(new URL(r.url()).searchParams) }
+		page.on('request', onRequest)
+		// start with empty caches
+		await page.reload()
+		await page.waitForSelector('.wm-message')
+		const ids = await page.$$eval('.wm-message', (els) => els.slice(0, 3).map((e) => e.dataset.id))
+		await page.click('.wm-message >> nth=0')
+		await page.waitForSelector('.wm-body-frame')
+		// the next message is loaded in advance, without being marked as read
+		for (let i = 0; i < 50 && !fetched.some((q) => q.get('itemId') === ids[1]); i++) await page.waitForTimeout(100)
+		const pre = fetched.find((q) => q.get('itemId') === ids[1])
+		assert(pre && pre.get('markRead') === '0', 'next message prefetched without marking it read')
+		assert(await page.$(`.wm-message.unread[data-id="${ids[1]}"]`), 'still unread until opened')
+
+		// j / k: next and previous message, the prefetched one opens without asking the server again
+		const before = fetched.length
+		await page.keyboard.press('j')
+		await page.waitForSelector(`.wm-message.selected[data-id="${ids[1]}"]`)
+		await page.waitForSelector('.wm-message-header h2:has-text("Réunion de lundi")')
+		await page.waitForSelector(`.wm-message:not(.unread)[data-id="${ids[1]}"]`)
+		assert.strictEqual(fetched.slice(before).filter((q) => q.get('itemId') === ids[1]).length, 0, 'opened from the prefetch')
+		await page.keyboard.press('ArrowDown')
+		await page.waitForSelector(`.wm-message.selected[data-id="${ids[2]}"]`)
+		await page.keyboard.press('k')
+		await page.waitForSelector(`.wm-message.selected[data-id="${ids[1]}"]`)
+		// s: follow-up flag, at once
+		await page.keyboard.press('s')
+		await page.waitForSelector(`.wm-message.selected .wm-flag.on`)
+		await page.keyboard.press('s')
+		await page.waitForSelector(`.wm-message.selected .wm-flag:not(.on)`)
+		// ?: the list of shortcuts
+		await page.keyboard.press('?')
+		await page.waitForSelector('.wm-shortcuts td:has-text("Message suivant")')
+		await shot('32-shortcuts')
+		await page.keyboard.press('Escape')
+		await page.waitForSelector('.wm-shortcuts', { state: 'detached' })
+		// r: reply, shortcuts are off while writing
+		await page.keyboard.press('r')
+		await page.waitForSelector('.wm-info:has-text("Réponse à : Marie Martin")')
+		await page.keyboard.press('j')
+		assert(await page.$('.wm-compose'), 'typing in the reply does not navigate')
+		await page.click('.wm-compose button:has-text("Annuler")')
+		page.off('request', onRequest)
+
+		// a folder already seen is shown at once, scrolled where it was left
+		await page.$eval('.wm-list', (el) => { el.scrollTop = 600 })
+		await page.click('.wm-folder:has-text("Clients")')
+		await page.waitForSelector('.wm-message:has-text("Commande 4521")')
+		const instant = await page.evaluate(() => {
+			document.querySelector('.wm-folder[data-folder-id]').click()
+			return { count: document.querySelectorAll('.wm-message').length, spinner: !!document.querySelector('.wm-list .icon-loading'), top: document.querySelector('.wm-list').scrollTop }
+		})
+		assert.deepStrictEqual(instant, { count: 50, spinner: false, top: 600 }, JSON.stringify(instant))
+
+		// delete: gone at once, the next message opens
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°3"))')
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°3")')
+		await page.keyboard.press('Delete')
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°4")')
+		const subjects = await page.$$eval('.wm-message-subject', (els) => els.map((e) => e.textContent))
+		assert(!subjects.includes('Newsletter n°3') && subjects.includes('Newsletter n°4'), subjects.slice(0, 8).join('|'))
+		await page.waitForSelector('.wm-toast:has-text("éléments supprimés")')
+
+		// phone: Back closes the message instead of leaving the app
+		await page.setViewportSize({ width: 390, height: 844 })
+		await page.keyboard.press('Escape')
+		await page.waitForSelector('#webmail-app[data-view="list"]')
+		const url = page.url()
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°5"))')
+		await page.waitForSelector('#webmail-app[data-view="detail"]')
+		await page.goBack()
+		await page.waitForSelector('#webmail-app[data-view="list"]')
+		assert.strictEqual(page.url(), url)
+		// the ← button also goes back to the list, without leaving a history entry behind
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°6"))')
+		await page.waitForSelector('#webmail-app[data-view="detail"]')
+		await page.click('.wm-detail .wm-back')
+		await page.waitForSelector('#webmail-app[data-view="list"]')
+		assert.strictEqual(await page.evaluate(() => history.state && history.state.webmail), null)
+		await page.setViewportSize({ width: 1440, height: 900 })
 	})
 
 	await step('compose new message with attachment', async () => {
@@ -206,7 +291,9 @@ async function main() {
 		page.once('dialog', (d) => d.accept())
 		await page.click('.wm-toolbar button:has-text("Supprimer définitivement")')
 		await page.waitForSelector('.wm-toast:has-text("supprimé définitivement")')
-		await page.waitForSelector('.wm-empty:has-text("Aucun message")')
+		// the next one in the trash (deleted earlier) opens
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°3")')
+		assert(!(await page.$('.wm-message:has-text("Réunion de lundi")')))
 	})
 
 	await step('account settings: signature', async () => {
@@ -630,6 +717,7 @@ async function main() {
 		await page.waitForSelector('.wm-toast:has-text("Agenda de Martine Leroy ajouté (lecture)")')
 		await add('paul.durand@societe-a.fr')
 		await page.waitForSelector('.wm-toast:has-text("Agenda de Paul Durand ajouté (disponibilités seulement)")')
+		await page.waitForSelector('.wm-cal-row:has-text("Paul Durand")')
 		const rows = await page.$$eval('.wm-cal-row', (els) => els.map((e) => e.textContent.replace('✕', '').replace('🔗', '').trim()))
 		assert.deepStrictEqual(rows, ['Calendrier', 'Congés équipe', 'Marie Martinmodification', 'Martine Leroylecture', 'Paul Duranddisponibilités'])
 		await page.click('.wm-segmented button:has-text("Semaine")')

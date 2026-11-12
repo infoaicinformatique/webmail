@@ -23,6 +23,19 @@
 	}
 	let core = null
 
+	/**
+	 * Events already loaded, per period and visible calendars: a period seen
+	 * before shows at once (then refreshed), the next and previous ones are
+	 * loaded in advance. Any change made from here empties it.
+	 */
+	const eventCache = new Map()
+	const EVENT_CACHE_MAX = 24
+
+	function api(path, opts) {
+		if (opts && opts.method && opts.method !== 'GET') eventCache.clear()
+		return core.api(path, opts)
+	}
+
 	// ------------------------------------------------------------------
 	// date helpers (local time)
 	// ------------------------------------------------------------------
@@ -43,17 +56,17 @@
 		return startOfDay(addDays(d, -day))
 	}
 
-	function visibleRange() {
+	function visibleRange(cursor = cal.cursor) {
 		if (cal.view === 'list') {
-			const from = startOfDay(cal.cursor)
+			const from = startOfDay(cursor)
 			return [from, addDays(from, 31)]
 		}
 		if (cal.view === 'week') {
-			const first = startOfWeek(cal.cursor)
+			const first = startOfWeek(cursor)
 			return [first, addDays(first, 7)]
 		}
-		const first = startOfWeek(startOfMonth(cal.cursor))
-		const lastOfMonth = new Date(cal.cursor.getFullYear(), cal.cursor.getMonth() + 1, 0)
+		const first = startOfWeek(startOfMonth(cursor))
+		const lastOfMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)
 		const end = addDays(startOfWeek(lastOfMonth), 7)
 		return [first, end]
 	}
@@ -93,7 +106,7 @@
 		const accountId = core.accountId
 		let list = [{ key: 'calendar', name: 'Calendrier', kind: 'own', canEdit: true, mode: 'full' }]
 		try {
-			list = (await core.api('/accounts/' + accountId + '/calendar/calendars')).calendars
+			list = (await api('/accounts/' + accountId + '/calendar/calendars')).calendars
 		} catch (e) {
 			core.toast(e.message, true)
 		}
@@ -113,6 +126,58 @@
 		return cal.calendars.find((c) => c.key === ev.calendar) || cal.calendars[0]
 	}
 
+	function rangeKey(start, end) {
+		const visible = cal.calendars.filter((c) => !cal.hidden.has(c.key)).map((c) => c.key).join(',')
+		return [core.accountId, cal.view, start.toISOString(), end.toISOString(), visible].join('|')
+	}
+
+	/** Events of all visible calendars between start and end; errors per calendar */
+	async function fetchRange(start, end) {
+		const visible = cal.calendars.filter((c) => !cal.hidden.has(c.key))
+		const results = await Promise.all(visible.map((c) => api('/accounts/' + core.accountId + '/calendar/events', {
+			query: { start: start.toISOString(), end: end.toISOString(), tz: core.TZ, calendar: c.key },
+		}).then((data) => ({ c, events: data.events }), (e) => ({ c, error: e }))))
+		const events = []
+		const errors = []
+		results.forEach(({ c, events: evs, error }) => {
+			if (error) {
+				errors.push(c.name + ' : ' + error.message)
+				return
+			}
+			evs.forEach((ev) => {
+				ev.calendar = c.key
+				ev.color = c.color
+				ev.readOnly = !c.canEdit
+				ev.shared = c.kind === 'shared'
+				events.push(ev)
+			})
+		})
+		return { events, errors }
+	}
+
+	function remember(key, events) {
+		eventCache.delete(key)
+		eventCache.set(key, events)
+		while (eventCache.size > EVENT_CACHE_MAX) eventCache.delete(eventCache.keys().next().value)
+	}
+
+	/** Load the previous and next periods in the background. */
+	function prefetchAround() {
+		if (cal.view === 'list') return
+		const cursors = cal.view === 'week'
+			? [addDays(cal.cursor, 7), addDays(cal.cursor, -7)]
+			: [new Date(cal.cursor.getFullYear(), cal.cursor.getMonth() + 1, 1), new Date(cal.cursor.getFullYear(), cal.cursor.getMonth() - 1, 1)]
+		const seq = cal.seq
+		cursors.reduce((p, cursor) => p.then(async () => {
+			if (seq !== cal.seq) return
+			const [start, end] = visibleRange(cursor)
+			const key = rangeKey(start, end)
+			if (eventCache.has(key)) return
+			const { events, errors } = await fetchRange(start, end)
+			if (!errors.length) remember(key, events)
+		}).catch(() => null), Promise.resolve())
+	}
+
 	async function load() {
 		const [start, end] = visibleRange()
 		const mine = ++cal.seq
@@ -121,26 +186,17 @@
 		try {
 			await loadCalendars(false)
 			if (mine !== cal.seq) return
-			const visible = cal.calendars.filter((c) => !cal.hidden.has(c.key))
-			const results = await Promise.all(visible.map((c) => core.api('/accounts/' + core.accountId + '/calendar/events', {
-				query: { start: start.toISOString(), end: end.toISOString(), tz: core.TZ, calendar: c.key },
-			}).then((data) => ({ c, events: data.events }), (e) => ({ c, error: e }))))
+			const key = rangeKey(start, end)
+			if (eventCache.has(key)) {
+				// seen before: show it now, refresh below
+				cal.events = eventCache.get(key)
+				render()
+			}
+			const { events, errors } = await fetchRange(start, end)
 			if (mine !== cal.seq) return
-			const events = []
-			results.forEach(({ c, events: evs, error }) => {
-				if (error) {
-					core.toast(c.name + ' : ' + error.message, true)
-					return
-				}
-				evs.forEach((ev) => {
-					ev.calendar = c.key
-					ev.color = c.color
-					ev.readOnly = !c.canEdit
-					ev.shared = c.kind === 'shared'
-					events.push(ev)
-				})
-			})
+			errors.forEach((msg) => core.toast(msg, true))
 			cal.events = events
+			if (!errors.length) remember(key, events)
 		} catch (e) {
 			core.toast(e.message, true)
 			cal.events = []
@@ -148,6 +204,7 @@
 			if (mine === cal.seq) {
 				cal.loading = false
 				render()
+				prefetchAround()
 			}
 		}
 	}
@@ -233,8 +290,8 @@
 				['Editor', 'Modification'],
 			],
 			newLevel: 'Reviewer',
-			load: async () => (await core.api(base, { query: { calendar: c.key } })).permissions,
-			save: (permissions) => core.api(base, { method: 'POST', body: { calendar: c.key, permissions } }),
+			load: async () => (await api(base, { query: { calendar: c.key } })).permissions,
+			save: (permissions) => api(base, { method: 'POST', body: { calendar: c.key, permissions } }),
 			savedMessage: 'Partage de « ' + c.name + ' » enregistré',
 		})
 	}
@@ -252,7 +309,7 @@
 				btn.disabled = true
 				btn.textContent = 'Vérification de l\'accès…'
 				try {
-					const c = await core.api('/accounts/' + core.accountId + '/calendar/shared', { method: 'POST', body: { email: email.value } })
+					const c = await api('/accounts/' + core.accountId + '/calendar/shared', { method: 'POST', body: { email: email.value } })
 					cal.hidden.delete(c.key)
 					close()
 					core.toast(c.mode === 'freebusy'
@@ -278,7 +335,7 @@
 	async function removeShared(c) {
 		if (!window.confirm('Retirer l\'agenda de ' + c.name + ' de la liste ? (rien n\'est supprimé dans Exchange)')) return
 		try {
-			await core.api('/accounts/' + core.accountId + '/calendar/shared/delete', { method: 'POST', body: { email: c.email } })
+			await api('/accounts/' + core.accountId + '/calendar/shared/delete', { method: 'POST', body: { email: c.email } })
 			core.toast('Agenda retiré')
 			await loadCalendars(true)
 			load()
@@ -700,7 +757,7 @@
 		render()
 		const local = (d) => ymd(d) + 'T' + hm(d)
 		try {
-			await core.api('/accounts/' + core.accountId + '/calendar/move', {
+			await api('/accounts/' + core.accountId + '/calendar/move', {
 				method: 'POST',
 				body: {
 					eventId: ev.id,
@@ -889,7 +946,7 @@
 		const close = modal(summary.subject || '(sans titre)', body)
 		let ev
 		try {
-			ev = await core.api('/accounts/' + core.accountId + '/calendar/event', { query: { eventId: summary.id, tz: core.TZ } })
+			ev = await api('/accounts/' + core.accountId + '/calendar/event', { query: { eventId: summary.id, tz: core.TZ } })
 		} catch (e) {
 			core.clear(body)
 			body.appendChild(h('div', { class: 'wm-form-error' }, e.message))
@@ -921,7 +978,7 @@
 			const answer = async (response, label) => {
 				if (principal && !window.confirm('Répondre « ' + label + ' » au nom de ' + principal + ' ? L\'organisateur recevra la réponse de votre part, au nom de ' + principal + '.')) return
 				try {
-					await core.api('/accounts/' + core.accountId + '/calendar/respond', {
+					await api('/accounts/' + core.accountId + '/calendar/respond', {
 						method: 'POST',
 						body: { eventId: ev.id, response, calendar: summary.calendar || 'calendar' },
 					})
@@ -948,7 +1005,7 @@
 			const ruleLine = body.querySelector('.wm-event-rule')
 			const editSeries = h('button', { disabled: true, onclick: () => { close(); openForm(editSeries.series, null, false, { series: true }) } }, '🔁 Modifier la série')
 			if (canEdit) actions.appendChild(editSeries)
-			core.api('/accounts/' + core.accountId + '/calendar/series', { query: { eventId: ev.id, tz: core.TZ } }).then((series) => {
+			api('/accounts/' + core.accountId + '/calendar/series', { query: { eventId: ev.id, tz: core.TZ } }).then((series) => {
 				editSeries.series = series
 				editSeries.disabled = false
 				if (ruleLine) ruleLine.textContent = '🔁 ' + describeRule(series.recurrence, new Date(series.start))
@@ -964,7 +1021,7 @@
 			const notify = ev.isMeeting && ev.isOrganizer ? ' Les participants recevront une annulation.' : ''
 			if (!window.confirm('Supprimer ' + what + ' ?' + notify)) return
 			try {
-				await core.api('/accounts/' + core.accountId + '/calendar/delete', { method: 'POST', body: { eventId: ev.id, series } })
+				await api('/accounts/' + core.accountId + '/calendar/delete', { method: 'POST', body: { eventId: ev.id, series } })
 				core.toast('Événement supprimé')
 				close()
 				load()
@@ -1086,10 +1143,10 @@
 					if (isNew) {
 						const target = calendarSelect ? calendarSelect.value : 'calendar'
 					try { localStorage.setItem('webmail.lastcal.' + core.accountId, target) } catch (e) { /* ignore */ }
-					await core.api('/accounts/' + core.accountId + '/calendar/events', { method: 'POST', body: { event: data, tz: core.TZ, calendar: target } })
+					await api('/accounts/' + core.accountId + '/calendar/events', { method: 'POST', body: { event: data, tz: core.TZ, calendar: target } })
 					cal.hidden.delete(target)
 					} else {
-						await core.api('/accounts/' + core.accountId + '/calendar/update', { method: 'POST', body: { eventId: ev.id, event: data, tz: core.TZ, series: isSeries } })
+						await api('/accounts/' + core.accountId + '/calendar/update', { method: 'POST', body: { eventId: ev.id, event: data, tz: core.TZ, series: isSeries } })
 					}
 					const invited = (attendees.value + optional.value).trim() !== ''
 					core.toast(isNew ? (invited ? 'Événement créé, invitations envoyées' : 'Événement créé')

@@ -28,6 +28,15 @@ class EwsClient {
 	/** Public folder mailbox the requests are routed to (Exchange 2013+), null for the user's mailbox. */
 	private ?string $publicFolderMailbox = null;
 
+	/** One HTTP connection for all the requests of this client (TLS and NTLM handshakes once). */
+	private ?\CurlHandle $curl = null;
+
+	/**
+	 * Authentication: Basic is sent with the first request (no extra round
+	 * trip to discover the method); NTLM is used if the server refuses it.
+	 */
+	private int $auth = CURLAUTH_BASIC;
+
 	/** Windows time zone id sent in the TimeZoneContext header (e.g. "Romance Standard Time"). */
 	private ?string $timeZoneId = null;
 
@@ -683,15 +692,19 @@ class EwsClient {
 	 * @return array{0: int, 1: string}
 	 */
 	private function httpPost(string $body, array $headers = [], ?string $url = null): array {
-		$ch = curl_init($url ?? $this->url);
+		$this->curl ??= curl_init();
+		$ch = $this->curl;
 		curl_setopt_array($ch, [
+			CURLOPT_URL => $url ?? $this->url,
 			CURLOPT_POST => true,
 			CURLOPT_POSTFIELDS => $body,
 			CURLOPT_RETURNTRANSFER => true,
 			CURLOPT_HTTPHEADER => array_merge(['Content-Type: text/xml; charset=utf-8', 'Accept: text/xml'], $headers),
-			// OVH Hosted Exchange accepts Basic and NTLM; let curl negotiate.
-			CURLOPT_HTTPAUTH => CURLAUTH_BASIC | CURLAUTH_NTLM,
+			// OVH Hosted Exchange accepts Basic and NTLM
+			CURLOPT_HTTPAUTH => $this->auth,
 			CURLOPT_USERPWD => $this->username . ':' . $this->password,
+			// EWS answers are verbose XML: let the server compress them
+			CURLOPT_ENCODING => '',
 			CURLOPT_TIMEOUT => $this->timeout,
 			CURLOPT_CONNECTTIMEOUT => 15,
 			CURLOPT_SSL_VERIFYPEER => $this->verifyPeer,
@@ -703,8 +716,15 @@ class EwsClient {
 		$response = curl_exec($ch);
 		$status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 		$error = curl_error($ch);
-		curl_close($ch);
+		if ($status === 401 && $this->auth === CURLAUTH_BASIC && $response !== false) {
+			// Basic refused: this server wants NTLM (kept for the next requests)
+			$this->auth = CURLAUTH_NTLM;
+			return $this->httpPost($body, $headers, $url);
+		}
 		if ($response === false) {
+			// do not reuse a connection in an unknown state
+			curl_close($ch);
+			$this->curl = null;
 			throw new MailException('Impossible de joindre le serveur Exchange : ' . $error);
 		}
 		return [$status, (string)$response];

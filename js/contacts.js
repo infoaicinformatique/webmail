@@ -16,6 +16,14 @@
 		book: 'contacts', // displayed address book
 	}
 
+	/** "account|book" -> { items, total, hasMore }: a book seen before shows at once, then is refreshed */
+	const listCache = new Map()
+
+	function api(path, opts) {
+		if (opts && opts.method && opts.method !== 'GET') listCache.clear()
+		return core.api(path, opts)
+	}
+
 	function currentBook() {
 		return ct.books.find((b) => b.key === ct.book) || { key: 'contacts', name: 'Contacts', kind: 'own', canEdit: true }
 	}
@@ -25,7 +33,7 @@
 		const accountId = core.accountId
 		let books = [{ key: 'contacts', name: 'Contacts', kind: 'own', canEdit: true }]
 		try {
-			books = (await core.api('/accounts/' + accountId + '/contacts/books')).books
+			books = (await api('/accounts/' + accountId + '/contacts/books')).books
 		} catch (e) { core.toast(e.message, true) }
 		if (accountId !== core.accountId) return
 		ct.books = books
@@ -63,7 +71,10 @@
 	async function load(reset) {
 		const mine = ++ct.seq
 		ct.loading = true
-		if (reset) { ct.items = []; ct.total = 0; ct.hasMore = false }
+		const cacheKey = core.accountId + '|' + ct.book
+		const cached = reset && !ct.query && listCache.get(cacheKey)
+		if (cached) Object.assign(ct, { items: cached.items, total: cached.total, hasMore: cached.hasMore })
+		else if (reset) { ct.items = []; ct.total = 0; ct.hasMore = false }
 		renderList()
 		try {
 			await loadBooks(false)
@@ -75,13 +86,14 @@
 				ct.hasMore = false
 				return
 			}
-			const data = await core.api('/accounts/' + core.accountId + '/contacts', {
+			const data = await api('/accounts/' + core.accountId + '/contacts', {
 				query: { offset: reset ? 0 : ct.items.length, limit: PAGE, q: ct.query, book: ct.book },
 			})
 			if (mine !== ct.seq) return
 			ct.items = reset ? data.items : ct.items.concat(data.items)
 			ct.total = data.total
 			ct.hasMore = data.hasMore
+			if (!ct.query) listCache.set(cacheKey, { items: ct.items, total: ct.total, hasMore: ct.hasMore })
 		} catch (e) {
 			core.toast(e.message, true)
 		} finally {
@@ -176,8 +188,8 @@
 				['Editor', 'Modification'],
 			],
 			newLevel: 'Reviewer',
-			load: async () => (await core.api(base, { query: { book: b.key } })).permissions,
-			save: (permissions) => core.api(base, { method: 'POST', body: { book: b.key, permissions } }),
+			load: async () => (await api(base, { query: { book: b.key } })).permissions,
+			save: (permissions) => api(base, { method: 'POST', body: { book: b.key, permissions } }),
 			savedMessage: 'Partage de « ' + b.name + ' » enregistré',
 		})
 	}
@@ -224,7 +236,7 @@
 				btn.disabled = true
 				btn.textContent = offered ? 'Ajout…' : 'Recherche des carnets partagés…'
 				try {
-					const r = await core.api(base, { method: 'POST', body })
+					const r = await api(base, { method: 'POST', body })
 					btn.disabled = false
 					btn.textContent = label
 					if (r.choices) { showChoices(r); return }
@@ -290,7 +302,7 @@
 			list.appendChild(h('li', { class: 'wm-center' }, h('span', { class: 'icon-loading-small' })))
 			let folders
 			try {
-				folders = (await core.api(base, { query: { parent: path[path.length - 1].id } })).folders
+				folders = (await api(base, { query: { parent: path[path.length - 1].id } })).folders
 			} catch (e) {
 				if (mine !== seq) return
 				core.clear(list)
@@ -317,7 +329,7 @@
 								onclick: async (e) => {
 									e.target.disabled = true
 									try {
-										const b = await core.api(base, { method: 'POST', body: { folder: f.id, path: where } })
+										const b = await api(base, { method: 'POST', body: { folder: f.id, path: where } })
 										close()
 										core.toast('« ' + b.name + ' » ajouté (' + (b.canEdit ? 'modification' : 'lecture') + ')')
 										await loadBooks(true)
@@ -347,7 +359,7 @@
 	async function removePublic(b) {
 		if (!window.confirm('Retirer « ' + b.name + ' » de la liste ? (rien n\'est supprimé dans Exchange)')) return
 		try {
-			await core.api('/accounts/' + core.accountId + '/contacts/public/delete', { method: 'POST', body: { folder: b.folder } })
+			await api('/accounts/' + core.accountId + '/contacts/public/delete', { method: 'POST', body: { folder: b.folder } })
 			core.toast('Carnet retiré')
 			if (ct.book === b.key) ct.book = 'contacts'
 			await loadBooks(true)
@@ -358,7 +370,7 @@
 	async function removeShared(b) {
 		if (!window.confirm('Retirer ' + bookTitle(b) + ' de la liste ? (rien n\'est supprimé dans Exchange)')) return
 		try {
-			await core.api('/accounts/' + core.accountId + '/contacts/shared/delete', { method: 'POST', body: { email: b.email, folder: b.folder || '' } })
+			await api('/accounts/' + core.accountId + '/contacts/shared/delete', { method: 'POST', body: { email: b.email, folder: b.folder || '' } })
 			core.toast('Carnet retiré')
 			if (ct.book === b.key) ct.book = 'contacts'
 			await loadBooks(true)
@@ -452,7 +464,7 @@
 		try {
 			c = String(id).startsWith('directory:')
 				? ct.items.find((x) => x.id === id)
-				: await core.api('/accounts/' + core.accountId + '/contact', { query: { contactId: id, book: book.key } })
+				: await api('/accounts/' + core.accountId + '/contact', { query: { contactId: id, book: book.key } })
 			if (!c) throw new Error('Contact introuvable')
 		} catch (e) {
 			core.clear(el)
@@ -499,7 +511,7 @@
 			'street', 'postalCode', 'city', 'country', 'notes'].forEach((k) => { data[k] = c[k] || '' })
 		data.emails = c.emails || []
 		try {
-			await core.api('/accounts/' + core.accountId + '/contacts', { method: 'POST', body: { contact: data, book: 'contacts' } })
+			await api('/accounts/' + core.accountId + '/contacts', { method: 'POST', body: { contact: data, book: 'contacts' } })
 			core.toast((c.displayName || 'Contact') + ' ajouté à vos contacts')
 		} catch (e) { core.toast(e.message, true) }
 	}
@@ -509,7 +521,7 @@
 		if (!window.confirm('Supprimer ' + (isPublic ? 'définitivement ' : '') + 'le contact « ' + (c.displayName || '') + ' »'
 			+ (isPublic ? ' du dossier public ? Il sera supprimé pour tout le monde.' : ' ?'))) return
 		try {
-			await core.api('/accounts/' + core.accountId + '/contacts/delete', { method: 'POST', body: { contactId: c.id, book: ct.book } })
+			await api('/accounts/' + core.accountId + '/contacts/delete', { method: 'POST', body: { contactId: c.id, book: ct.book } })
 			core.toast('Contact supprimé')
 			ct.items = ct.items.filter((x) => x.id !== c.id)
 			ct.selectedId = null
@@ -569,13 +581,13 @@
 					let id = c.id
 					if (isNew) {
 						const target = bookSelect ? bookSelect.value : 'contacts'
-						id = (await core.api('/accounts/' + core.accountId + '/contacts', { method: 'POST', body: { contact: data, book: target } })).id
+						id = (await api('/accounts/' + core.accountId + '/contacts', { method: 'POST', body: { contact: data, book: target } })).id
 						if (target !== ct.book) {
 							ct.book = target
 							core.renderNav()
 						}
 					} else {
-						await core.api('/accounts/' + core.accountId + '/contacts/update', { method: 'POST', body: { contactId: c.id, contact: data, book: ct.book } })
+						await api('/accounts/' + core.accountId + '/contacts/update', { method: 'POST', body: { contactId: c.id, contact: data, book: ct.book } })
 					}
 					core.toast(isNew ? 'Contact créé' : 'Contact enregistré')
 					await load(true)
