@@ -343,6 +343,81 @@ async function main() {
 		await shot('13-calendar-list')
 	})
 
+	// ------------------------------------------------------------------ week view
+	await step('calendar: week view grid', async () => {
+		await page.click('.wm-segmented button:has-text("Semaine")')
+		await page.waitForSelector('.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")')
+		assert((await page.textContent('.wm-cal-title')).startsWith('Semaine du '))
+		assert.strictEqual(await page.$$eval('.wm-week-col', (els) => els.length), 7)
+		// 09:00-10:00 => top = 9 h x 48 px, about one hour high
+		const ev = page.locator('.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")')
+		assert.strictEqual(await ev.evaluate((e) => e.style.top), '432px')
+		const height = await ev.evaluate((e) => parseFloat(e.style.height))
+		assert(height > 40 && height < 48, 'height ' + height)
+		assert((await ev.textContent()).includes('09:00 – 10:00'))
+		assert(await page.isVisible('.wm-week-col.today .wm-now'), 'current time line')
+		assert.strictEqual(await page.$$eval('.wm-mini-day.in-week', (els) => els.length), 7)
+		// all-day events never go into the hour grid
+		assert(!(await page.$('.wm-week-grid .wm-event:has-text("Salon Informatique")')))
+		let allDayRow = await page.$$eval('.wm-week-allday .wm-event', (els) => els.map((e) => e.textContent))
+		if (!allDayRow.some((t) => t.includes('Salon Informatique'))) {
+			await page.click('button[aria-label="Semaine suivante"]')
+			await page.waitForSelector('.wm-week-allday .wm-event:has-text("Salon Informatique")')
+			await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
+			await page.waitForSelector('.wm-week-col.today .wm-week-event')
+		}
+		await shot('17-week')
+	})
+
+	await step('calendar: week view, click on an empty slot and overlapping events', async () => {
+		const col = await page.$('.wm-week-col.today')
+		const box = await col.boundingBox()
+		// 08:30 in today's column
+		await page.mouse.click(box.x + 8, box.y + 8.5 * 48 + 10)
+		await page.waitForSelector('.wm-modal input[name=subject]')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=startTime]'), '08:30')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=endTime]'), '09:30')
+		await page.fill('.wm-modal input[name=subject]', 'Café équipe')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
+		await page.waitForSelector('.wm-week-col.today .wm-week-event:has-text("Café équipe")')
+		const colWidth = (await (await page.$('.wm-week-col.today')).boundingBox()).width
+		const a = await (await page.$('.wm-week-col.today .wm-week-event:has-text("Café équipe")')).boundingBox()
+		const b = await (await page.$('.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")')).boundingBox()
+		assert(a.width < colWidth * 0.6 && b.width < colWidth * 0.6, 'overlapping events share the column')
+		assert(Math.abs(a.x - b.x) > colWidth * 0.3, 'side by side')
+		await shot('18-week-overlap')
+		await page.click('.wm-week-col.today .wm-week-event:has-text("Café équipe")')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-modal button:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Événement supprimé")')
+		await page.waitForFunction(() => !document.querySelector('.wm-week-col.today .wm-week-event') || ![...document.querySelectorAll('.wm-week-col.today .wm-week-event')].some((e) => e.textContent.includes('Café')))
+		// the remaining event takes the full width again
+		const full = await (await page.$('.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")')).boundingBox()
+		assert(full.width > colWidth * 0.9)
+	})
+
+	await step('calendar: week navigation and mini calendar', async () => {
+		const title = await page.textContent('.wm-cal-title')
+		await page.click('button[aria-label="Semaine suivante"]')
+		await page.waitForFunction((t) => document.querySelector('.wm-cal-title').textContent !== t, title)
+		await page.waitForSelector('.wm-week-event:has-text("Sport")') // weekly series
+		assert(!(await page.$('.wm-week-col.today')))
+		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
+		await page.waitForSelector('.wm-week-col.today')
+		// a day of the mini calendar shows its week
+		const target = new Date(); target.setDate(target.getDate() + 14)
+		const ymd = target.getFullYear() + '-' + String(target.getMonth() + 1).padStart(2, '0') + '-' + String(target.getDate()).padStart(2, '0')
+		if (await page.$('.wm-mini-day[data-date="' + ymd + '"]')) {
+			await page.click('.wm-mini-day[data-date="' + ymd + '"]')
+			await page.waitForSelector('.wm-week-col[data-date="' + ymd + '"]')
+			assert(await page.$('.wm-mini-day.in-week[data-date="' + ymd + '"]'))
+		}
+		// the chosen view is remembered: back to the list for the next steps
+		await page.click('.wm-segmented button:has-text("Liste")')
+		await page.waitForSelector('.wm-agenda')
+	})
+
 	// ------------------------------------------------------------------ contacts
 	await step('contacts: list, search, details', async () => {
 		await page.click('.wm-tab[data-module="contacts"]')
@@ -407,7 +482,7 @@ async function main() {
 		await page.click('.wm-tab[data-module="calendar"]')
 		await page.reload()
 		await page.waitForSelector('.wm-tab.active[data-module="calendar"]')
-		await page.waitForSelector('.wm-agenda, .wm-month')
+		await page.waitForSelector('.wm-agenda, .wm-month, .wm-week')
 		await page.click('.wm-tab[data-module="mail"]')
 		await page.waitForSelector('.wm-message')
 	})

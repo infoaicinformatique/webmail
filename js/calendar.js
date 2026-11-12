@@ -8,9 +8,12 @@
 	const FREEBUSY = [['Busy', 'Occupé'], ['Tentative', 'Provisoire'], ['Free', 'Disponible'], ['OOF', 'Absent du bureau'], ['WorkingElsewhere', 'Travail à distance']]
 	const RESPONSES = { Accept: 'Accepté', Tentative: 'Provisoire', Decline: 'Refusé', NoResponseReceived: 'Pas de réponse', Unknown: 'Pas de réponse', Organizer: 'Organisateur' }
 
+	const HOUR_PX = 48 // height of one hour in the week view
+
 	const cal = {
-		view: null, // month | list
-		cursor: startOfMonth(new Date()),
+		view: null, // month | week | list
+		cursor: startOfDay(new Date()), // reference day: its month, its week, or the first day of the list
+		weekScroll: null, // remembered vertical scroll of the week grid
 		events: [],
 		loading: false,
 		seq: 0,
@@ -39,10 +42,14 @@
 
 	function visibleRange() {
 		if (cal.view === 'list') {
-			const from = startOfDay(cal.cursor.getTime() === startOfMonth(new Date()).getTime() ? new Date() : cal.cursor)
+			const from = startOfDay(cal.cursor)
 			return [from, addDays(from, 31)]
 		}
-		const first = startOfWeek(cal.cursor)
+		if (cal.view === 'week') {
+			const first = startOfWeek(cal.cursor)
+			return [first, addDays(first, 7)]
+		}
+		const first = startOfWeek(startOfMonth(cal.cursor))
 		const lastOfMonth = new Date(cal.cursor.getFullYear(), cal.cursor.getMonth() + 1, 0)
 		const end = addDays(startOfWeek(lastOfMonth), 7)
 		return [first, end]
@@ -114,15 +121,19 @@
 	function miniMonth() {
 		const h = core.h
 		const today = new Date()
-		const first = startOfWeek(cal.cursor)
+		const first = startOfWeek(startOfMonth(cal.cursor))
+		const weekStart = startOfWeek(cal.cursor)
 		const grid = h('div', { class: 'wm-mini-grid' }, DAY_NAMES.map((d) => h('span', { class: 'wm-mini-head' }, d[0].toUpperCase())))
 		for (let i = 0; i < 42; i++) {
 			const d = addDays(first, i)
 			grid.appendChild(h('button', {
 				type: 'button',
-				class: 'wm-mini-day' + (d.getMonth() !== cal.cursor.getMonth() ? ' other' : '') + (sameDay(d, today) ? ' today' : ''),
+				class: 'wm-mini-day' + (d.getMonth() !== cal.cursor.getMonth() ? ' other' : '') + (sameDay(d, today) ? ' today' : '')
+					+ (cal.view === 'week' && d >= weekStart && d < addDays(weekStart, 7) ? ' in-week' : '')
+					+ (sameDay(d, cal.cursor) ? ' selected' : ''),
 				'aria-label': d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }),
-				onclick: () => openForm(null, d),
+				dataset: { date: ymd(d) },
+				onclick: () => { cal.cursor = d; cal.weekScroll = null; refreshAll() },
 			}, String(d.getDate())))
 		}
 		return h('div', { class: 'wm-mini' },
@@ -137,29 +148,52 @@
 
 		const title = cal.view === 'list'
 			? 'À venir'
-			: ucfirst(cal.cursor.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }))
-		const move = (n) => { cal.cursor = new Date(cal.cursor.getFullYear(), cal.cursor.getMonth() + n, 1); refreshAll() }
+			: cal.view === 'week'
+				? weekTitle(startOfWeek(cal.cursor))
+				: ucfirst(cal.cursor.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }))
+		const move = (n) => {
+			cal.cursor = cal.view === 'week'
+				? addDays(cal.cursor, 7 * n)
+				: new Date(cal.cursor.getFullYear(), cal.cursor.getMonth() + n, 1)
+			refreshAll()
+		}
+		const unit = cal.view === 'week' ? 'Semaine' : 'Mois'
 
 		el.appendChild(h('div', { class: 'wm-toolbar wm-cal-toolbar' },
 			h('button', { class: 'wm-back wm-mobile-only', 'aria-label': 'Menu', onclick: () => core.setView('nav') }, '☰'),
-			h('button', { onclick: () => { cal.cursor = startOfMonth(new Date()); refreshAll() } }, 'Aujourd\'hui'),
-			cal.view === 'month' ? h('button', { 'aria-label': 'Mois précédent', onclick: () => move(-1) }, '‹') : null,
-			cal.view === 'month' ? h('button', { 'aria-label': 'Mois suivant', onclick: () => move(1) }, '›') : null,
+			h('button', { onclick: () => { cal.cursor = startOfDay(new Date()); cal.weekScroll = null; refreshAll() } }, 'Aujourd\'hui'),
+			cal.view !== 'list' ? h('button', { 'aria-label': unit + ' précédent' + (unit === 'Semaine' ? 'e' : ''), onclick: () => move(-1) }, '‹') : null,
+			cal.view !== 'list' ? h('button', { 'aria-label': unit + ' suivant' + (unit === 'Semaine' ? 'e' : ''), onclick: () => move(1) }, '›') : null,
 			h('h2', { class: 'wm-cal-title' }, title),
 			cal.loading ? h('span', { class: 'icon-loading-small' }) : null,
 			h('div', { class: 'wm-segmented' },
 				h('button', { class: cal.view === 'month' ? 'active' : '', onclick: () => setCalView('month') }, 'Mois'),
+				h('button', { class: cal.view === 'week' ? 'active' : '', onclick: () => setCalView('week') }, 'Semaine'),
 				h('button', { class: cal.view === 'list' ? 'active' : '', onclick: () => setCalView('list') }, 'Liste')),
 			h('button', { class: 'primary wm-mobile-only', onclick: () => openForm(null, new Date()) }, '＋'),
 		))
 
+		if (cal.view === 'week') {
+			const week = renderWeek()
+			el.appendChild(week)
+			restoreWeekScroll(week.querySelector('.wm-week-scroll'))
+			return
+		}
 		el.appendChild(cal.view === 'list' ? renderList() : renderMonth())
+	}
+
+	function weekTitle(first) {
+		const last = addDays(first, 6)
+		const sameMonth = first.getMonth() === last.getMonth()
+		const from = first.toLocaleDateString('fr-FR', sameMonth ? { day: 'numeric' } : { day: 'numeric', month: 'long' })
+		return 'Semaine du ' + from + ' au ' + last.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
 	}
 
 	function setCalView(v) {
 		cal.view = v
+		cal.weekScroll = null
 		try { localStorage.setItem('webmail.calview', v) } catch (e) { /* ignore */ }
-		load()
+		refreshAll() // the mini calendar highlights the displayed week
 	}
 
 	function chip(ev, day) {
@@ -204,6 +238,129 @@
 			grid.appendChild(cell)
 		}
 		return grid
+	}
+
+	/**
+	 * Timed events of `day`, clipped to the day, with side-by-side columns
+	 * for overlapping events.
+	 * @return {Array<{ev, start: Date, end: Date, col: number, cols: number}>}
+	 */
+	function layoutDay(day) {
+		const dayStart = startOfDay(day)
+		const dayEnd = addDays(dayStart, 1)
+		const segs = cal.events
+			.filter((ev) => !ev.allDay)
+			.map((ev) => ({ ev, start: new Date(ev.start), end: new Date(ev.end) }))
+			.filter((s) => s.start < dayEnd && s.end > dayStart)
+			.map((s) => ({ ev: s.ev, start: s.start < dayStart ? dayStart : s.start, end: s.end > dayEnd ? dayEnd : s.end }))
+			.sort((a, b) => (a.start - b.start) || (b.end - a.end))
+
+		// minimum visual duration so that short events stay clickable
+		const visualEnd = (s) => Math.max(s.end.getTime(), s.start.getTime() + 20 * 60000)
+		const out = []
+		let cluster = []
+		let clusterEnd = 0
+		const flush = () => {
+			const columns = [] // end time of the last event in each column
+			cluster.forEach((s) => {
+				let c = columns.findIndex((end) => end <= s.start.getTime())
+				if (c === -1) { c = columns.length; columns.push(0) }
+				columns[c] = visualEnd(s)
+				s.col = c
+			})
+			cluster.forEach((s) => { s.cols = columns.length; out.push(s) })
+			cluster = []
+		}
+		segs.forEach((s) => {
+			if (cluster.length && s.start.getTime() >= clusterEnd) flush()
+			cluster.push(s)
+			clusterEnd = Math.max(clusterEnd, visualEnd(s))
+		})
+		flush()
+		return out
+	}
+
+	function renderWeek() {
+		const h = core.h
+		const first = startOfWeek(cal.cursor)
+		const days = Array.from({ length: 7 }, (_, i) => addDays(first, i))
+		const now = new Date()
+
+		const head = h('div', { class: 'wm-week-row wm-week-head' },
+			h('div', { class: 'wm-week-gutter' }),
+			days.map((d) => h('button', {
+				type: 'button',
+				class: 'wm-week-dayname' + (sameDay(d, now) ? ' today' : ''),
+				title: 'Nouvel événement le ' + d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }),
+				onclick: () => openForm(null, d),
+			}, h('span', { class: 'wm-week-dow' }, DAY_NAMES[(d.getDay() + 6) % 7]), h('span', { class: 'wm-week-date' }, String(d.getDate())))))
+
+		const allDay = h('div', { class: 'wm-week-row wm-week-allday' },
+			h('div', { class: 'wm-week-gutter wm-muted' }, 'Journée'),
+			days.map((d) => h('div', { class: 'wm-week-allday-cell', dataset: { date: ymd(d) } },
+				eventsOn(d).filter((ev) => ev.allDay).map((ev) => chip(ev, d)))))
+
+		const hours = h('div', { class: 'wm-week-gutter wm-week-hours' },
+			Array.from({ length: 24 }, (_, hr) => h('div', { class: 'wm-week-hour', style: 'height:' + HOUR_PX + 'px' }, hr ? pad(hr) + ':00' : '')))
+		const grid = h('div', { class: 'wm-week-row wm-week-grid', style: 'height:' + (24 * HOUR_PX) + 'px' }, hours)
+
+		days.forEach((d) => {
+			const col = h('div', {
+				class: 'wm-week-col' + (sameDay(d, now) ? ' today' : ''),
+				dataset: { date: ymd(d) },
+				style: 'background-size: 100% ' + HOUR_PX + 'px',
+			})
+			// click on an empty slot: new event at that half hour
+			col.addEventListener('click', (e) => {
+				if (e.target !== col) return
+				const minutes = Math.min(23 * 60 + 30, Math.floor(e.offsetY / HOUR_PX * 2) * 30)
+				openForm(null, new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(minutes / 60), minutes % 60), true)
+			})
+			layoutDay(d).forEach((s) => {
+				const top = (s.start.getHours() * 60 + s.start.getMinutes()) * HOUR_PX / 60
+				const minutes = (s.end - s.start) / 60000
+				const height = Math.max(HOUR_PX * 20 / 60, minutes * HOUR_PX / 60) - 2
+				const ev = s.ev
+				const b = chip(ev, d)
+				b.classList.add('wm-week-event')
+				b.style.top = top + 'px'
+				b.style.height = height + 'px'
+				b.style.left = 'calc(' + (100 * s.col / s.cols) + '% + 1px)'
+				b.style.width = 'calc(' + (100 / s.cols) + '% - 3px)'
+				core.clear(b)
+				const startsToday = sameDay(new Date(ev.start), d)
+				const endsToday = sameDay(new Date(new Date(ev.end).getTime() - 1), d)
+				b.append(
+					h('span', { class: 'wm-week-event-time' },
+						(startsToday ? timeLabel(new Date(ev.start)) : '…') + ' – ' + (endsToday ? timeLabel(new Date(ev.end)) : '…')),
+					h('span', { class: 'wm-week-event-subject' }, ev.subject || '(sans titre)'))
+				if (ev.location && minutes >= 45) b.appendChild(h('span', { class: 'wm-week-event-location' }, ev.location))
+				col.appendChild(b)
+			})
+			if (sameDay(d, now)) {
+				col.appendChild(h('div', { class: 'wm-now', style: 'top:' + ((now.getHours() * 60 + now.getMinutes()) * HOUR_PX / 60) + 'px', 'aria-hidden': 'true' }))
+			}
+			grid.appendChild(col)
+		})
+
+		const scroll = h('div', { class: 'wm-week-scroll' }, grid)
+		scroll.addEventListener('scroll', () => { cal.weekScroll = scroll.scrollTop })
+		return h('div', { class: 'wm-week' }, head, allDay, scroll)
+	}
+
+	function restoreWeekScroll(scroll) {
+		if (!scroll) return
+		if (cal.weekScroll !== null) {
+			scroll.scrollTop = cal.weekScroll
+			return
+		}
+		// first display: start of the working day, or the earliest event if sooner
+		let hour = 7.5
+		cal.events.filter((ev) => !ev.allDay).forEach((ev) => {
+			const s = new Date(ev.start)
+			if (s >= startOfWeek(cal.cursor)) hour = Math.min(hour, s.getHours())
+		})
+		scroll.scrollTop = Math.max(0, hour - 0.5) * HOUR_PX
 	}
 
 	function renderList() {
@@ -334,7 +491,7 @@
 	/**
 	 * Create (ev = null, on `day`) or edit an event.
 	 */
-	function openForm(ev, day) {
+	function openForm(ev, day, withTime) {
 		const h = core.h
 		const isNew = !ev
 		let start
@@ -344,10 +501,14 @@
 			end = new Date(ev.end)
 			if (ev.allDay) end = addDays(end, -1) // inclusive last day in the form
 		} else {
-			const base = startOfDay(day || new Date())
-			const now = new Date()
-			const hour = sameDay(base, now) ? Math.min(now.getHours() + 1, 23) : 9
-			start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hour, 0)
+			if (withTime && day) {
+				start = new Date(day)
+			} else {
+				const base = startOfDay(day || new Date())
+				const now = new Date()
+				const hour = sameDay(base, now) ? Math.min(now.getHours() + 1, 23) : 9
+				start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hour, 0)
+			}
 			end = new Date(start.getTime() + 3600000)
 		}
 
@@ -427,8 +588,10 @@
 					core.toast(isNew ? (invited ? 'Événement créé, invitations envoyées' : 'Événement créé') : (invited ? 'Événement modifié, participants prévenus' : 'Événement modifié'))
 					close()
 					const s = readStart()
-					if (!isNaN(s) && cal.view === 'month' && (s.getMonth() !== cal.cursor.getMonth() || s.getFullYear() !== cal.cursor.getFullYear())) {
-						cal.cursor = startOfMonth(s)
+					const [from, to] = visibleRange()
+					if (!isNaN(s) && cal.view !== 'list' && (s < from || s >= to || (cal.view === 'month' && s.getMonth() !== cal.cursor.getMonth()))) {
+						cal.cursor = startOfDay(s)
+						cal.weekScroll = null
 						refreshAll()
 					} else {
 						load()
@@ -471,7 +634,7 @@
 			if (!cal.view) {
 				let saved = null
 				try { saved = localStorage.getItem('webmail.calview') } catch (e) { /* ignore */ }
-				cal.view = saved === 'list' || saved === 'month' ? saved : (window.matchMedia('(max-width: 800px)').matches ? 'list' : 'month')
+				cal.view = ['list', 'month', 'week'].includes(saved) ? saved : (window.matchMedia('(max-width: 800px)').matches ? 'list' : 'month')
 			}
 			core.setView('detail')
 			core.renderNav()
