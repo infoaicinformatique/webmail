@@ -102,6 +102,12 @@
 		navEl.appendChild(core.navFooter())
 	}
 
+	/** "Contacts de Marie Martin", "« Clients VIP » de Marie Martin", or the book's own name */
+	function bookTitle(b) {
+		if (b.kind !== 'shared') return b.name
+		return (b.folderName ? '« ' + b.folderName + ' »' : 'Contacts') + ' de ' + b.name
+	}
+
 	function bookList() {
 		const h = core.h
 		const row = (b) => h('li', { class: 'wm-cal-row wm-book-row' + (b.key === ct.book ? ' active' : ''), dataset: { key: b.key } },
@@ -112,7 +118,7 @@
 				onclick: (e) => { e.preventDefault(); selectBook(b.key) },
 			},
 			h('span', { class: 'wm-book-icon', 'aria-hidden': 'true' }, b.kind === 'directory' ? '🏢' : (b.kind === 'shared' ? '👥' : '📇')),
-			h('span', { class: 'wm-cal-name' }, b.name)),
+			h('span', { class: 'wm-cal-name' }, b.kind === 'shared' && b.folderName ? b.folderName + ' (' + b.name + ')' : b.name)),
 			b.kind === 'shared' ? h('span', { class: 'wm-cal-mode' + (b.canEdit ? ' wm-cal-mode-edit' : '') }, b.canEdit ? 'modification' : 'lecture') : null,
 			b.kind === 'own' ? h('button', {
 				type: 'button',
@@ -125,7 +131,7 @@
 				type: 'button',
 				class: 'wm-cal-remove',
 				title: 'Retirer ce carnet',
-				'aria-label': 'Retirer les contacts de ' + b.name,
+				'aria-label': 'Retirer ' + bookTitle(b),
 				onclick: () => removeShared(b),
 			}, '✕') : null)
 		const own = ct.books.filter((b) => b.kind === 'own')
@@ -149,8 +155,8 @@
 		window.WebmailSharing.open(core, {
 			title: 'Partager « ' + b.name + ' »',
 			intro: 'Choisissez qui peut consulter ou modifier ce carnet d\'adresses, sans en faire un délégué. '
-				+ 'C\'est le réglage « Autorisations » du dossier dans Outlook. Vos collègues l\'ajoutent ensuite avec « Ajouter les contacts d\'un collègue » '
-				+ '(seul le carnet « Contacts » principal peut être ajouté de cette façon).',
+				+ 'C\'est le réglage « Autorisations » du dossier dans Outlook. Vos collègues l\'ajoutent ensuite avec « Ajouter les contacts d\'un collègue ». '
+				+ 'Pour un carnet autre que « Contacts », donnez aussi le droit « Dossier visible » sur votre boîte (dans Outlook) ou rangez-le dans « Contacts ».',
 			levels: [
 				['None', 'Aucun accès'],
 				['Reviewer', 'Lecture'],
@@ -164,37 +170,72 @@
 		})
 	}
 
+	/**
+	 * Add a colleague's address books: their « Contacts » and the other books
+	 * they share. When they share several, the user ticks the ones to add.
+	 */
 	function openAddShared() {
 		const h = core.h
+		const base = '/accounts/' + core.accountId + '/contacts/shared'
 		const email = h('input', { type: 'text', name: 'sharedEmail', required: true, placeholder: 'prenom.nom@exemple.fr' })
+		const choices = h('div', { class: 'wm-shared-choices' })
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
 		const btn = h('button', { type: 'submit', class: 'primary' }, 'Ajouter')
 		const overlay = h('div', { class: 'wm-overlay' })
 		const close = () => overlay.remove()
 		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		let offered = null // books found, once the colleague's address is checked
+		const showChoices = (r) => {
+			offered = r
+			email.readOnly = true
+			core.clear(choices)
+			choices.appendChild(h('p', {}, r.name + ' vous partage ' + r.choices.length + ' carnets. Cochez ceux à ajouter :'))
+			choices.appendChild(h('ul', { class: 'wm-choice-list' }, r.choices.map((b) => h('li', {},
+				h('label', {},
+					h('input', { type: 'checkbox', name: 'sharedFolder', value: b.folder, checked: b.added || b.folder === '', disabled: b.added }),
+					' ' + (b.folderName || 'Contacts') + ' ',
+					h('span', { class: 'wm-cal-mode' + (b.canEdit ? ' wm-cal-mode-edit' : '') }, b.canEdit ? 'modification' : 'lecture'),
+					b.added ? h('span', { class: 'wm-muted' }, ' déjà ajouté') : null)))))
+			btn.textContent = 'Ajouter les carnets cochés'
+		}
 		const form = h('form', {
 			class: 'wm-event-form',
 			onsubmit: async (e) => {
 				e.preventDefault()
 				err.textContent = ''
+				const body = { email: email.value }
+				if (offered) {
+					body.folders = [...choices.querySelectorAll('input[name=sharedFolder]:checked:not(:disabled)')].map((c) => c.value)
+					if (!body.folders.length) { err.textContent = 'Cochez au moins un carnet'; return }
+				}
+				const label = btn.textContent
 				btn.disabled = true
-				btn.textContent = 'Vérification de l\'accès…'
+				btn.textContent = offered ? 'Ajout…' : 'Recherche des carnets partagés…'
 				try {
-					const b = await core.api('/accounts/' + core.accountId + '/contacts/shared', { method: 'POST', body: { email: email.value } })
+					const r = await core.api(base, { method: 'POST', body })
+					btn.disabled = false
+					btn.textContent = label
+					if (r.choices) { showChoices(r); return }
 					close()
-					core.toast('Contacts de ' + b.name + ' ajoutés (' + (b.canEdit ? 'modification' : 'lecture') + ')')
+					const one = r.added[0]
+					const mode = (b) => (b.canEdit ? 'modification' : 'lecture')
+					core.toast(r.added.length > 1
+						? r.added.length + ' carnets de ' + r.name + ' ajoutés'
+						: (one.folderName ? '« ' + one.folderName + ' » de ' + r.name + ' ajouté' : 'Contacts de ' + r.name + ' ajoutés') + ' (' + mode(one) + ')')
 					await loadBooks(true)
-					selectBook(b.key)
+					selectBook(one.key)
 				} catch (ex) {
 					err.textContent = ex.message
 					btn.disabled = false
-					btn.textContent = 'Ajouter'
+					btn.textContent = label
 				}
 			},
 		},
-		h('p', { class: 'wm-muted' }, 'Indiquez l\'adresse d\'un collègue qui vous a partagé son dossier « Contacts » dans Outlook '
-			+ '(clic droit sur « Contacts » → Propriétés → Autorisations). Le niveau d\'accès, lecture ou modification, est détecté automatiquement.'),
+		h('p', { class: 'wm-muted' }, 'Indiquez l\'adresse d\'un collègue qui vous a partagé un carnet d\'adresses dans Outlook '
+			+ '(clic droit sur le carnet → Propriétés → Autorisations). Le niveau d\'accès, lecture ou modification, est détecté automatiquement. '
+			+ 'Ses autres carnets apparaissent s\'ils sont rangés dans son dossier « Contacts » partagé, ou si sa boîte vous donne le droit « Dossier visible ».'),
 		h('label', { class: 'wm-field' }, h('span', {}, 'Adresse'), core.attachAutocomplete(email)),
+		choices,
 		err,
 		h('div', { class: 'wm-compose-actions' }, btn, h('button', { type: 'button', onclick: close }, 'Annuler')))
 		overlay.appendChild(h('div', { class: 'wm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Ajouter des contacts partagés' },
@@ -206,9 +247,9 @@
 	}
 
 	async function removeShared(b) {
-		if (!window.confirm('Retirer les contacts de ' + b.name + ' de la liste ? (rien n\'est supprimé dans Exchange)')) return
+		if (!window.confirm('Retirer ' + bookTitle(b) + ' de la liste ? (rien n\'est supprimé dans Exchange)')) return
 		try {
-			await core.api('/accounts/' + core.accountId + '/contacts/shared/delete', { method: 'POST', body: { email: b.email } })
+			await core.api('/accounts/' + core.accountId + '/contacts/shared/delete', { method: 'POST', body: { email: b.email, folder: b.folder || '' } })
 			core.toast('Carnet retiré')
 			if (ct.book === b.key) ct.book = 'contacts'
 			await loadBooks(true)
@@ -226,7 +267,7 @@
 		const search = h('input', {
 			type: 'search',
 			class: 'wm-search',
-			placeholder: isDirectory ? 'Chercher dans l\'annuaire (nom, adresse…)' : 'Rechercher dans ' + book.name,
+			placeholder: isDirectory ? 'Chercher dans l\'annuaire (nom, adresse…)' : 'Rechercher dans ' + (book.kind === 'shared' && book.folderName ? book.folderName : book.name),
 			value: ct.query,
 			'aria-label': 'Rechercher un contact',
 		})
@@ -324,7 +365,7 @@
 			!book.canEdit || c.isGroup ? null : h('button', { onclick: () => openForm(c) }, '✏️ Modifier'),
 			book.canEdit ? h('button', { class: 'wm-danger', onclick: () => remove(c) }, '🗑 Supprimer') : null,
 			!book.canEdit && !c.isGroup ? h('button', { onclick: () => copyToMine(c) }, '＋ Ajouter à mes contacts') : null,
-			!book.canEdit ? h('span', { class: 'wm-muted' }, book.kind === 'directory' ? '🏢 Annuaire de l\'entreprise' : '🔒 Contacts de ' + book.name + ' (lecture seule)') : null))
+			!book.canEdit ? h('span', { class: 'wm-muted' }, book.kind === 'directory' ? '🏢 Annuaire de l\'entreprise' : '🔒 ' + bookTitle(book) + ' (lecture seule)') : null))
 
 		el.appendChild(h('div', { class: 'wm-contact-card' },
 			h('div', { class: 'wm-contact-head' }, avatar(c.displayName),
@@ -402,7 +443,7 @@
 		const writable = ct.books.filter((b) => b.canEdit)
 		const bookSelect = isNew && writable.length > 1
 			? h('select', { name: 'book', 'aria-label': 'Carnet' }, writable.map((b) => h('option', { value: b.key, selected: b.key === (currentBook().canEdit ? ct.book : 'contacts') },
-				b.kind === 'shared' ? 'Contacts de ' + b.name : b.name)))
+				bookTitle(b))))
 			: null
 
 		el.appendChild(h('form', {

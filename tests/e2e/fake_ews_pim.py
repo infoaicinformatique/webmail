@@ -171,8 +171,57 @@ def contacts_folder(ref):
     return 'shared:' + mb.lower(), None
 
 
+# other address books of colleagues: folder id -> (owner, name, where: 'root' | 'contacts', access)
+COLLEAGUE_BOOKS = {
+    'F-MARIE-VIP': ('marie.martin@societe-a.fr', 'Clients VIP', 'contacts', 'read'),
+    'F-MARIE-PART': ('marie.martin@societe-a.fr', 'Partenaires', 'root', 'edit'),
+}
+# colleagues whose mailbox top is visible to me ("Folder visible")
+ROOT_VISIBLE = {'marie.martin@societe-a.fr'}
+
+
 def can_write(folder):
+    if folder in COLLEAGUE_BOOKS:
+        return COLLEAGUE_BOOKS[folder][3] == 'edit'
     return not folder.startswith('shared:') or SHARED_ACCESS.get(folder[7:]) == 'edit'
+
+
+def rights_xml(write, read=True):
+    w = 'true' if write else 'false'
+    return ('<t:EffectiveRights><t:CreateAssociated>false</t:CreateAssociated><t:CreateContents>%s</t:CreateContents>'
+            '<t:CreateHierarchy>false</t:CreateHierarchy><t:Delete>%s</t:Delete><t:Modify>%s</t:Modify><t:Read>%s</t:Read></t:EffectiveRights>'
+            % (w, w, w, 'true' if read else 'false'))
+
+
+def colleague_folders(parent):
+    """FindFolder (Shallow) in another mailbox: its top or its « Contacts » -> response message."""
+    op = 'FindFolder'
+    email = parent.findtext('t:Mailbox/t:EmailAddress', default='', namespaces=NS).lower()
+    if email not in SHARED_ACCESS:
+        return err(op, 'ErrorNonExistentMailbox', 'No mailbox')
+    where = 'root' if parent.get('Id') == 'msgfolderroot' else 'contacts'
+    if where == 'root' and email not in ROOT_VISIBLE:
+        return err(op, 'ErrorAccessDenied', 'Access is denied.')
+    if where == 'contacts':
+        _, code = contacts_folder(parent)
+        if code:
+            return err(op, code, code)
+    folder = lambda fid, name, cls, write, read=True: (
+        '<t:ContactsFolder><t:FolderId Id="%s" ChangeKey="AQ"/><t:DisplayName>%s</t:DisplayName><t:FolderClass>%s</t:FolderClass>%s</t:ContactsFolder>'
+        % (fid, esc(name), cls, rights_xml(write, read)))
+    out = ''
+    if where == 'root':
+        main = 'shared:' + email
+        out += folder('CONTACTS-' + main, 'Contacts', 'IPF.Contact', can_write(main))
+        out += ('<t:Folder><t:FolderId Id="INBOX-%s" ChangeKey="AQ"/><t:DisplayName>Boîte de réception</t:DisplayName>'
+                '<t:FolderClass>IPF.Note</t:FolderClass>%s</t:Folder>' % (email, rights_xml(False, False)))
+    else:
+        out += folder('RCACHE-' + email, 'Recipient Cache', 'IPF.Contact.RecipientCache', False)
+    for fid, (owner, name, w, access) in COLLEAGUE_BOOKS.items():
+        if owner == email and w == where:
+            out += folder(fid, name, 'IPF.Contact', access == 'edit')
+    return ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Folders>%s</t:Folders></m:RootFolder>'
+              % (out.count('<t:FolderId'), out))
 
 
 # ----------------------------------------------------------------------------
@@ -317,6 +366,8 @@ def seed():
     contact('', '', 'Électricité Azur', 'devis@elec-azur.example', business='04 93 55 55 55', folder='F-CONTACTS2')
     contact('', '', 'Papeterie du Port', 'commandes@papeterie-port.example', folder='F-CONTACTS2')
     contact('Hugo', 'Blanc', 'Client Riviera', 'hugo@client-riviera.example', mobile='06 77 77 77 77', folder='shared:marie.martin@societe-a.fr')
+    contact('Laura', 'Costa', 'Hôtel Bellevue', 'laura@hotel-bellevue.example', job='Directrice', folder='F-MARIE-VIP')
+    contact('', '', 'Agence Horizon', 'contact@agence-horizon.example', folder='F-MARIE-PART')
     contact('Sophie', 'Girard', 'Transports Girard', 'sophie@transports-girard.example', job='Gérante', folder='shared:martine.leroy@societe-b.fr')
     contact('Karim', 'Benali', 'Entrepôt Sud', 'karim@entrepot-sud.example', folder='shared:martine.leroy@societe-b.fr')
 
@@ -506,6 +557,12 @@ def handle(op, el, user, tz, messages, move_message):
             out.append(ok(op, '<m:Folders><t:%s><t:FolderId Id="%s" ChangeKey="AQ"/></t:%s></m:Folders>' % (tag, folder, tag)))
         return wrap(op, out)
 
+    if op == 'FindFolder':
+        parents = list(el.find('m:ParentFolderIds', NS))
+        if not any(p.find('t:Mailbox', NS) is not None for p in parents):
+            return None
+        return wrap(op, [colleague_folders(p) for p in parents])
+
     if op == 'GetFolder':
         refs = list(el.find('m:FolderIds', NS))
         if not any(r.get('Id') in ('calendar', 'contacts') for r in refs):
@@ -561,7 +618,7 @@ def handle(op, el, user, tz, messages, move_message):
             evs = sorted((e for e in EVENTS.values() if e['folder'] == folder and e['start'] < end and e['end'] > start), key=lambda e: e['start'])
             return wrap(op, [ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Items>%s</t:Items></m:RootFolder>'
                                 % (len(evs), ''.join(event_xml(e, False) for e in evs)))])
-        if pid in ('contacts', 'F-CONTACTS', 'F-CONTACTS2'):
+        if pid in ('contacts', 'F-CONTACTS', 'F-CONTACTS2') or pid in COLLEAGUE_BOOKS:
             folder, code = contacts_folder(parent)
             if code:
                 return wrap(op, [err(op, code, code)])

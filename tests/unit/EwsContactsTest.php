@@ -139,20 +139,90 @@ class EwsContactsTest extends EwsTestCase {
 		$this->assertStringContainsString('<m:SavedItemFolderId><t:FolderId Id="CT-FOUR"/></m:SavedItemFolderId>', $this->lastRequest());
 	}
 
-	public function testProbeSharedBook(): void {
-		$this->queue(self::ok('GetFolder', '<m:Folders><t:ContactsFolder><t:FolderId Id="X"/><t:EffectiveRights><t:CreateAssociated>false</t:CreateAssociated>'
-			. '<t:CreateContents>false</t:CreateContents><t:CreateHierarchy>false</t:CreateHierarchy><t:Delete>false</t:Delete><t:Modify>false</t:Modify><t:Read>true</t:Read>'
-			. '</t:EffectiveRights></t:ContactsFolder></m:Folders>'));
-		$this->assertSame(['canEdit' => false], $this->contacts()->probeSharedBook('martine@x.fr'));
+	private const NS = 'xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"';
+
+	private static function rights(bool $edit, bool $read = true): string {
+		$e = $edit ? 'true' : 'false';
+		return '<t:EffectiveRights><t:CreateAssociated>false</t:CreateAssociated><t:CreateContents>' . $e . '</t:CreateContents>'
+			. '<t:CreateHierarchy>false</t:CreateHierarchy><t:Delete>' . $e . '</t:Delete><t:Modify>' . $e . '</t:Modify><t:Read>' . ($read ? 'true' : 'false') . '</t:Read></t:EffectiveRights>';
 	}
 
-	public function testProbeSharedBookNotShared(): void {
-		$this->queue('<m:GetFolderResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"><m:ResponseMessages>'
-			. '<m:GetFolderResponseMessage ResponseClass="Error"><m:MessageText>Access is denied.</m:MessageText><m:ResponseCode>ErrorAccessDenied</m:ResponseCode></m:GetFolderResponseMessage>'
-			. '</m:ResponseMessages></m:GetFolderResponse>');
+	private static function folder(string $id, string $name, string $class, string $rights): string {
+		return '<t:ContactsFolder><t:FolderId Id="' . $id . '"/><t:FolderClass>' . $class . '</t:FolderClass><t:DisplayName>' . $name . '</t:DisplayName>' . $rights . '</t:ContactsFolder>';
+	}
+
+	private static function error(string $op, string $code): string {
+		return '<m:' . $op . 'ResponseMessage ResponseClass="Error"><m:MessageText>x</m:MessageText><m:ResponseCode>' . $code . '</m:ResponseCode></m:' . $op . 'ResponseMessage>';
+	}
+
+	private static function found(string $folders): string {
+		return '<m:FindFolderResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode>'
+			. '<m:RootFolder TotalItemsInView="1" IncludesLastItemInRange="true"><t:Folders>' . $folders . '</t:Folders></m:RootFolder></m:FindFolderResponseMessage>';
+	}
+
+	public function testListSharedBooksFindsTheOtherAddressBooks(): void {
+		$this->queue(self::ok('GetFolder', '<m:Folders>' . self::folder('MAIN', 'Contacts', 'IPF.Contact', self::rights(false)) . '</m:Folders>'));
+		$this->queue('<m:FindFolderResponse ' . self::NS . '><m:ResponseMessages>'
+			// top of the mailbox
+			. self::found(self::folder('MAIN', 'Contacts', 'IPF.Contact', self::rights(false))
+				. self::folder('VIP', 'Clients VIP', 'IPF.Contact', self::rights(true))
+				. '<t:Folder><t:FolderId Id="INBOX"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Inbox</t:DisplayName>' . self::rights(false) . '</t:Folder>'
+				. self::folder('HIDDEN', 'Privé', 'IPF.Contact', self::rights(false, false)))
+			// inside « Contacts »
+			. self::found(self::folder('ARTISANS', 'Artisans', 'IPF.Contact', self::rights(false))
+				. self::folder('RC', 'Recipient Cache', 'IPF.Contact.RecipientCache', self::rights(false))
+				. self::folder('VIP', 'Clients VIP', 'IPF.Contact', self::rights(true)))
+			. '</m:ResponseMessages></m:FindFolderResponse>');
+		$books = $this->contacts()->listSharedBooks('marie@x.fr');
+		$this->assertSame([
+			['folder' => '', 'name' => 'Contacts', 'canEdit' => false],
+			['folder' => 'ARTISANS', 'name' => 'Artisans', 'canEdit' => false],
+			['folder' => 'VIP', 'name' => 'Clients VIP', 'canEdit' => true],
+		], $books);
+		$this->assertStringContainsString('<m:FindFolder Traversal="Shallow">', $this->lastRequest());
+		$this->assertStringContainsString('<m:ParentFolderIds><t:DistinguishedFolderId Id="msgfolderroot"><t:Mailbox><t:EmailAddress>marie@x.fr</t:EmailAddress></t:Mailbox></t:DistinguishedFolderId>'
+			. '<t:DistinguishedFolderId Id="contacts"><t:Mailbox><t:EmailAddress>marie@x.fr</t:EmailAddress></t:Mailbox></t:DistinguishedFolderId></m:ParentFolderIds>', $this->lastRequest());
+	}
+
+	public function testListSharedBooksWithoutTheDefaultOne(): void {
+		// « Contacts » not shared, the mailbox top visible with one shared book
+		$this->queue('<m:GetFolderResponse ' . self::NS . '><m:ResponseMessages>' . self::error('GetFolder', 'ErrorAccessDenied') . '</m:ResponseMessages></m:GetFolderResponse>');
+		$this->queue('<m:FindFolderResponse ' . self::NS . '><m:ResponseMessages>'
+			. self::found(self::folder('PROS', 'Prospects', 'IPF.Contact', self::rights(false)))
+			. self::error('FindFolder', 'ErrorAccessDenied')
+			. '</m:ResponseMessages></m:FindFolderResponse>');
+		$this->assertSame([['folder' => 'PROS', 'name' => 'Prospects', 'canEdit' => false]], $this->contacts()->listSharedBooks('paul@x.fr'));
+	}
+
+	public function testListSharedBooksNothingShared(): void {
+		$this->queue('<m:GetFolderResponse ' . self::NS . '><m:ResponseMessages>' . self::error('GetFolder', 'ErrorAccessDenied') . '</m:ResponseMessages></m:GetFolderResponse>');
+		$this->queue('<m:FindFolderResponse ' . self::NS . '><m:ResponseMessages>' . self::error('FindFolder', 'ErrorAccessDenied')
+			. self::error('FindFolder', 'ErrorAccessDenied') . '</m:ResponseMessages></m:FindFolderResponse>');
 		$this->expectException(MailException::class);
-		$this->expectExceptionMessage('ne partage pas ses contacts');
-		$this->contacts()->probeSharedBook('paul@x.fr');
+		$this->expectExceptionMessage('ne partage pas de carnet d\'adresses avec vous');
+		$this->contacts()->listSharedBooks('paul@x.fr');
+	}
+
+	public function testListSharedBooksUnknownMailbox(): void {
+		$this->queue('<m:GetFolderResponse ' . self::NS . '><m:ResponseMessages>' . self::error('GetFolder', 'ErrorNonExistentMailbox') . '</m:ResponseMessages></m:GetFolderResponse>');
+		$this->expectException(MailException::class);
+		$this->expectExceptionMessage('Aucune boîte Exchange ne correspond à inconnu@x.fr');
+		$this->contacts()->listSharedBooks('inconnu@x.fr');
+	}
+
+	public function testColleagueSecondaryBookUsesItsFolderId(): void {
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="0" IncludesLastItemInRange="true"><t:Items/></m:RootFolder>'));
+		$this->contacts()->listContacts(0, 100, null, 'shared:marie@x.fr:AAMk+/x=');
+		$this->assertStringContainsString('<m:ParentFolderIds><t:FolderId Id="AAMk+/x="/></m:ParentFolderIds>', $this->lastRequest());
+		$this->assertSame(['marie@x.fr', 'AAMk+/x='], EwsContacts::parseSharedKey('shared:Marie@x.fr:AAMk+/x='));
+		$this->assertSame(['marie@x.fr', ''], EwsContacts::parseSharedKey('shared:marie@x.fr'));
+		$this->assertNull(EwsContacts::parseSharedKey('CT-FOUR'));
+		$this->assertSame('shared:marie@x.fr:F1', EwsContacts::sharedKey('Marie@x.fr', 'F1'));
+	}
+
+	public function testColleagueSecondaryBookCannotBeShared(): void {
+		$this->expectException(MailException::class);
+		$this->contacts()->getPermissions('shared:marie@x.fr:F1');
 	}
 
 	public function testSearchDirectoryReturnsFullCards(): void {

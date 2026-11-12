@@ -715,7 +715,8 @@
 				onmousedown: (e) => { e.preventDefault(); choose(r) },
 			}, h('span', { class: 'wm-ac-name' }, r.name || r.email), ' ',
 			h('span', { class: 'wm-muted' }, r.email + (r.source === 'directory' ? ' · annuaire' : '')))))
-			menu.hidden = items.length === 0
+			// a late answer must not reopen the menu once the field is left
+			menu.hidden = items.length === 0 || document.activeElement !== input
 		}
 		input.setAttribute('autocomplete', 'off')
 		input.addEventListener('input', () => {

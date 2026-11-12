@@ -384,8 +384,9 @@ async function main() {
 	})
 
 	await step('calendar: week view, click on an empty slot and overlapping events', async () => {
-		const col = await page.$('.wm-week-col.today')
-		const box = await col.boundingBox()
+		// a locator is resolved again if the week is re-rendered meanwhile
+		await page.locator('.icon-loading-small').waitFor({ state: 'detached' })
+		const box = await page.locator('.wm-week-col.today').boundingBox()
 		// 08:30 in today's column
 		await page.mouse.click(box.x + 8, box.y + 8.5 * 48 + 10)
 		await page.waitForSelector('.wm-modal input[name=subject]')
@@ -851,12 +852,20 @@ async function main() {
 		await page.waitForSelector('.wm-modal .wm-form-error:has-text("Aucune boîte Exchange ne correspond")')
 		await page.fill('.wm-modal input[name=sharedEmail]', 'paul.durand@societe-a.fr')
 		await page.click('.wm-modal button[type=submit]')
-		await page.waitForSelector('.wm-modal .wm-form-error:has-text("ne partage pas ses contacts")')
+		await page.waitForSelector('.wm-modal .wm-form-error:has-text("ne partage pas de carnet d\'adresses avec vous")')
 		await page.click('.wm-modal-close')
 
+		// Marie shares three address books: tick the ones to add
 		await add('marie.martin@societe-a.fr')
-		await page.waitForSelector('.wm-toast:has-text("Contacts de Marie Martin ajoutés (modification)")')
-		await page.waitForSelector('.wm-book-row.active:has-text("Marie Martin")')
+		await page.waitForSelector('.wm-modal .wm-choice-list')
+		const choices = await page.$$eval('.wm-modal .wm-choice-list li', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()))
+		assert.deepStrictEqual(choices, ['Contacts modification', 'Clients VIP lecture', 'Partenaires modification'], 'secondary books inside « Contacts » and at the top of the mailbox')
+		assert(await page.isChecked('.wm-modal input[name=sharedFolder][value=""]'), 'the default book is ticked')
+		await page.check('.wm-modal li:has-text("Clients VIP") input')
+		await shot('30-add-colleague-books')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("2 carnets de Marie Martin ajoutés")')
+		await page.waitForSelector('.wm-book-row.active[data-key="shared:marie.martin@societe-a.fr"]')
 		await page.click('.wm-contact:has-text("Hugo Blanc")')
 		await page.click('.wm-toolbar button:has-text("Modifier")')
 		await page.fill('input[name=jobTitle]', 'Acheteur')
@@ -870,12 +879,53 @@ async function main() {
 		assert(!(await page.$('.wm-toolbar button:has-text("Modifier")')))
 		assert(!(await page.$('.wm-toolbar button:has-text("Supprimer")')))
 		const badges = await page.$$eval('.wm-book-row .wm-cal-mode', (els) => els.map((e) => e.textContent))
-		assert.deepStrictEqual(badges, ['modification', 'lecture'])
+		assert.deepStrictEqual(badges, ['modification', 'lecture', 'lecture'])
+		const sharedNames = await page.$$eval('.wm-book-row[data-key^="shared:"] .wm-cal-name', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(sharedNames, ['Marie Martin', 'Clients VIP (Marie Martin)', 'Martine Leroy'])
 		await shot('23-shared-contacts')
 		await page.click('.wm-toolbar button:has-text("Ajouter à mes contacts")')
 		await page.waitForSelector('.wm-toast:has-text("Sophie Girard ajouté à vos contacts")')
 		await page.click(book('Contacts'))
 		await page.waitForSelector('.wm-contact:has-text("Sophie Girard")')
+	})
+
+	await step('contacts: add another address book of a colleague', async () => {
+		await page.click('.wm-book-row:has-text("Clients VIP") .wm-book-link')
+		await page.click('.wm-contact:has-text("Laura Costa")')
+		await page.waitForSelector('.wm-toolbar:has-text("« Clients VIP » de Marie Martin (lecture seule)")')
+
+		// books already added are shown as such; add the last one
+		await page.click('.wm-cal-add:has-text("Ajouter les contacts")')
+		await page.fill('.wm-modal input[name=sharedEmail]', 'marie.martin@societe-a.fr')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-modal .wm-choice-list')
+		assert(await page.isDisabled('.wm-modal li:has-text("Clients VIP") input'))
+		assert((await page.textContent('.wm-modal li:has-text("Clients VIP")')).includes('déjà ajouté'))
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-modal .wm-form-error:has-text("Cochez au moins un carnet")')
+		await page.check('.wm-modal li:has-text("Partenaires") input')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("« Partenaires » de Marie Martin ajouté (modification)")')
+		await page.waitForSelector('.wm-book-row.active:has-text("Partenaires (Marie Martin)")')
+		await page.waitForSelector('.wm-contact:has-text("Agence Horizon")')
+
+		// edit access: a new contact goes into her « Partenaires »
+		await page.click('.wm-compose-btn:has-text("Nouveau contact")')
+		assert.strictEqual(await page.inputValue('select[name=book]'), 'shared:marie.martin@societe-a.fr:F-MARIE-PART')
+		const options = await page.$$eval('select[name=book] option', (els) => els.map((e) => e.textContent))
+		assert(options.includes('« Partenaires » de Marie Martin') && options.includes('Contacts de Marie Martin'), options.join('|'))
+		await page.fill('input[name=company]', 'Traiteur des Collines')
+		await page.click('.wm-contact-form button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Contact créé")')
+		await page.waitForSelector('.wm-contact:has-text("Traiteur des Collines")')
+
+		// removing one of her books keeps the others
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-book-row:has-text("Partenaires") .wm-cal-remove')
+		await page.waitForSelector('.wm-toast:has-text("Carnet retiré")')
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-book-row')].some((e) => e.textContent.includes('Partenaires')))
+		assert(await page.$('.wm-book-row[data-key="shared:marie.martin@societe-a.fr"]'))
+		assert(await page.$('.wm-book-row:has-text("Clients VIP")'))
 	})
 
 	await step('contacts: company directory', async () => {
