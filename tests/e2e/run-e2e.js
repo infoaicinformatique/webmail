@@ -1822,6 +1822,34 @@ async function main() {
 		await page.waitForSelector('.wm-notify-toggle:has-text("Activer les notifications")')
 	})
 
+	await step('Nextcloud unified search: messages and events, the link opens them', async () => {
+		const search = async (term, section) => {
+			await page.goto(NC + '/apps/files/')
+			await page.click('header button[aria-label="Recherche unifiée"]')
+			await page.keyboard.type(term)
+			await page.waitForSelector('text=' + section)
+		}
+		await search('facture', 'Courrier Exchange')
+		const result = page.locator('a:has-text("Votre facture OVH")').first()
+		assert((await result.textContent()).includes('OVHcloud'))
+		await shot('47-unified-search')
+		await result.click()
+		await page.waitForURL(/apps\/webmail/)
+		await page.waitForSelector('.wm-message-header h2:has-text("Votre facture OVH")')
+		// an event: the calendar at its date, the event open
+		await search('revue budget', 'Agenda Exchange')
+		await page.locator('a:has-text("Revue budget")').first().click()
+		await page.waitForURL(/apps\/webmail/)
+		await page.waitForSelector('.wm-modal .wm-event-when')
+		assert(await page.isVisible('.wm-modal h2:has-text("Revue budget")'))
+		await page.click('.wm-modal-close')
+		// two letters: nothing asked to Exchange
+		const r = await page.evaluate(async () => (await (await fetch('/ocs/v2.php/search/providers/webmail-mail/search?term=fa&format=json', { headers: { 'OCS-APIREQUEST': 'true' } })).json()).ocs.data.entries.length)
+		assert.strictEqual(r, 0)
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('Nextcloud dashboard: unread messages and next events', async () => {
 		const ocs = (path, opts = {}) => page.evaluate(async ({ path, opts }) => {
 			const r = await fetch(OC.linkToOCS('apps/dashboard/api', 2).replace(/\/$/, '') + path, {
@@ -1882,7 +1910,9 @@ async function main() {
 	})
 
 	// expected: deliberate 400s (bad domain/password, missing recipient) and the fake tracker pixel
-	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED/.test(e))
+	// errors of other Nextcloud apps (Files, Text… where the unified search is tried) are not ours
+	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED/.test(e)
+		&& !/\/apps\/(?!webmail\/)[a-z_]+\/js\//.test(e))
 	await browser.close()
 	if (relevant.length) {
 		console.log('\nBrowser errors:\n' + relevant.join('\n'))

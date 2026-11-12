@@ -44,6 +44,7 @@ et sur les téléphones, et inversement.
 | Délégation | Si vous êtes **délégué** d'un collègue dans Outlook, Exchange vous transmet une copie de ses invitations : le bandeau indique « Invitation reçue pour Marie Martin (vous êtes son délégué) » et la réponse est envoyée **en son nom** (après confirmation) |
 | Nouveaux messages | Le nombre de non-lus de la boîte de réception s'affiche dans le **titre de l'onglet** (« (3) Webmail »). Avec « 🔔 Activer les notifications » (en bas à gauche), chaque nouveau message de chaque compte déclenche une **notification du navigateur** quand la fenêtre n'est pas au premier plan (un clic ouvre le message), ou un message dans la page sinon. Vérification chaque minute, tant que Nextcloud est ouvert dans un onglet |
 | Notifications Nextcloud | Même **webmail fermé**, chaque nouveau message de la boîte de réception apparaît dans les **notifications Nextcloud** (la cloche, et le téléphone avec l'application Nextcloud) : « Nouveau message de … », l'objet et le début du texte. Un clic ouvre le message ; ouvert, lu, déplacé ou supprimé dans le webmail, il quitte la cloche. Au plus 5 par compte à chaque vérification, rien pour les messages déjà là au premier passage. Case « 🔔 Signaler chaque nouveau message… » dans « Comptes et signature » (cochée par défaut). Vérification toutes les 5 minutes par les tâches de fond de Nextcloud : réglez-les sur **Cron** (Paramètres d'administration → Paramètres de base) |
+| Recherche unifiée | La loupe de Nextcloud (depuis n'importe quelle app) cherche aussi dans Exchange : « **Courrier Exchange** » (tous les dossiers de tous les comptes, les plus récents d'abord, avec l'expéditeur et la date) et « **Agenda Exchange** » (six mois avant et après, les prochains rendez-vous d'abord). Un clic ouvre le message, ou l'agenda à la bonne date avec l'événement ouvert. À partir de 3 lettres |
 | Mobile | Affichage adapté aux téléphones ; le bouton **Retour** du téléphone ferme le message (ou le menu) au lieu de quitter le webmail |
 
 ![Raccourcis clavier](docs/capture-raccourcis.png)
@@ -55,6 +56,8 @@ et sur les téléphones, et inversement.
 ![Règles](docs/capture-regles.png)
 
 ![Notifications Nextcloud](docs/capture-cloche.png)
+
+![Recherche unifiée](docs/capture-recherche-unifiee.png)
 
 ![Plusieurs messages](docs/capture-selection.png)
 
@@ -165,7 +168,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.28.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.29.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -187,7 +190,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.28 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.29 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -287,7 +290,6 @@ templates/          page principale et page d'administration
 - Groupes de contacts modifiables, photos, import et export vCard
 
 **Nextcloud et serveur**
-- Recherche unifiée Nextcloud
 - Notifications Exchange en direct (abonnement « streaming ») à la place de la vérification régulière
 - Tâches Exchange
 - Découverte automatique (Autodiscover) à la place de la table domaine/serveur

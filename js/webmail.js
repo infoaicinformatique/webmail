@@ -2386,6 +2386,7 @@
 		if (linkModule === 'calendar' || linkModule === 'contacts' || linkModule === 'mail') state.module = linkModule
 		else if (link.get('message')) state.module = 'mail'
 		const linkMessage = link.get('message')
+		const linkEvent = link.get('event')
 		if (link.toString()) {
 			try { history.replaceState(history.state, '', window.location.pathname) } catch (e) { /* ignore */ }
 		}
@@ -2398,6 +2399,7 @@
 		const first = state.accounts.find((a) => a.id === saved) || state.accounts[0]
 		await selectAccount(first.id)
 		if (linkMessage && state.module === 'mail') openMessage(linkMessage)
+		if (linkEvent && state.module === 'calendar' && window.WebmailModules.calendar.openLinked) window.WebmailModules.calendar.openLinked(core, linkEvent)
 		startBackground()
 	}
 
