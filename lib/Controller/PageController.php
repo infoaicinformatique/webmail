@@ -30,6 +30,7 @@ class PageController extends Controller {
 	#[NoCSRFRequired]
 	public function index(): TemplateResponse {
 		// modules first: they register themselves in window.WebmailModules
+		Util::addScript(Application::APP_ID, 'sharing');
 		Util::addScript(Application::APP_ID, 'calendar');
 		Util::addScript(Application::APP_ID, 'contacts');
 		Util::addScript(Application::APP_ID, 'delegates');

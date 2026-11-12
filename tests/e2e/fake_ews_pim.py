@@ -104,7 +104,14 @@ PERMISSIONS = {
               ('paul.durand@societe-a.fr', 'Paul Durand', 'Custom',
                '<t:CanCreateItems>true</t:CanCreateItems><t:EditItems>Owned</t:EditItems><t:DeleteItems>Owned</t:DeleteItems><t:ReadItems>FullDetails</t:ReadItems>')],
     'F-CAL2': [('Default', '', 'None', ''), ('Anonymous', '', 'None', '')],
+    'F-CONTACTS': [('Default', '', 'None', ''), ('Anonymous', '', 'None', ''),
+                   ('martine.leroy@societe-b.fr', 'Martine Leroy', 'Custom', '<t:ReadItems>FullDetails</t:ReadItems>')],
+    'F-CONTACTS2': [('Default', '', 'None', ''), ('Anonymous', '', 'None', '')],
 }
+
+
+def is_calendar(folder):
+    return folder.startswith('F-CAL')
 
 
 def permission_set_xml(folder):
@@ -113,16 +120,20 @@ def permission_set_xml(folder):
         uid = ('<t:DistinguishedUser>%s</t:DistinguishedUser>' % user if user in ('Default', 'Anonymous')
                else '<t:SID>S-1-5-21-%d</t:SID><t:PrimarySmtpAddress>%s</t:PrimarySmtpAddress><t:DisplayName>%s</t:DisplayName>'
                % (abs(hash(user)) % 1000, esc(user), esc(name)))
-        out += '<t:CalendarPermission><t:UserId>%s</t:UserId>%s<t:CalendarPermissionLevel>%s</t:CalendarPermissionLevel></t:CalendarPermission>' % (uid, extra, level)
-    return '<t:PermissionSet><t:CalendarPermissions>%s</t:CalendarPermissions></t:PermissionSet>' % out
+        if is_calendar(folder):
+            out += '<t:CalendarPermission><t:UserId>%s</t:UserId>%s<t:CalendarPermissionLevel>%s</t:CalendarPermissionLevel></t:CalendarPermission>' % (uid, extra, level)
+        else:
+            out += '<t:Permission><t:UserId>%s</t:UserId>%s<t:PermissionLevel>%s</t:PermissionLevel></t:Permission>' % (uid, extra, level)
+    tag = 'CalendarPermissions' if is_calendar(folder) else 'Permissions'
+    return '<t:PermissionSet><t:%s>%s</t:%s></t:PermissionSet>' % (tag, out, tag)
 
 
 def own_calendar_ref(ref):
     """F-CAL / F-CAL2 for a reference to one of my calendars, else None."""
     if ref.tag == T + 'FolderId' and ref.get('Id') in PERMISSIONS:
         return ref.get('Id')
-    if ref.tag == T + 'DistinguishedFolderId' and ref.get('Id') == 'calendar' and ref.find('t:Mailbox', NS) is None:
-        return 'F-CAL'
+    if ref.tag == T + 'DistinguishedFolderId' and ref.find('t:Mailbox', NS) is None:
+        return {'calendar': 'F-CAL', 'contacts': 'F-CONTACTS'}.get(ref.get('Id'))
     return None
 
 
@@ -457,8 +468,9 @@ def handle(op, el, user, tz, messages, move_message):
             if folder is None:
                 out.append(err(op, 'ErrorAccessDenied', 'Access is denied.'))
             else:
-                out.append(ok(op, '<m:Folders><t:CalendarFolder><t:FolderId Id="%s" ChangeKey="AQ"/>%s</t:CalendarFolder></m:Folders>'
-                              % (folder, permission_set_xml(folder))))
+                tag = 'CalendarFolder' if is_calendar(folder) else 'ContactsFolder'
+                out.append(ok(op, '<m:Folders><t:%s><t:FolderId Id="%s" ChangeKey="AQ"/>%s</t:%s></m:Folders>'
+                              % (tag, folder, permission_set_xml(folder), tag)))
         return wrap(op, out)
 
     if op == 'UpdateFolder':
@@ -468,17 +480,20 @@ def handle(op, el, user, tz, messages, move_message):
             if folder is None:
                 out.append(err(op, 'ErrorAccessDenied', 'Access is denied.'))
                 continue
-            perms = ch.findall('t:Updates/t:SetFolderField/t:CalendarFolder/t:PermissionSet/t:CalendarPermissions/t:CalendarPermission', NS)
+            cal = is_calendar(folder)
+            perms = ch.findall('t:Updates/t:SetFolderField/t:CalendarFolder/t:PermissionSet/t:CalendarPermissions/t:CalendarPermission' if cal
+                               else 't:Updates/t:SetFolderField/t:ContactsFolder/t:PermissionSet/t:Permissions/t:Permission', NS)
+            level_tag = 'CalendarPermissionLevel' if cal else 'PermissionLevel'
             new = []
             bad = None
             for p in perms:
                 user = text(p, 't:UserId/t:DistinguishedUser') or text(p, 't:UserId/t:PrimarySmtpAddress').lower()
-                level = text(p, 't:CalendarPermissionLevel')
+                level = text(p, 't:' + level_tag)
                 if user not in ('Default', 'Anonymous') and user not in [e for _, e in DIRECTORY]:
                     bad = 'ErrorInvalidUserInfo'
                     break
                 extra = ''.join('<t:%s>%s</t:%s>' % (c.tag.replace(T, ''), esc(c.text or ''), c.tag.replace(T, ''))
-                                for c in p if c.tag.replace(T, '') not in ('UserId', 'CalendarPermissionLevel'))
+                                for c in p if c.tag.replace(T, '') not in ('UserId', level_tag))
                 name = next((n for n, e in DIRECTORY if e == user), '')
                 new.append((user, name, level, extra))
             if bad is None and not any(u == 'Default' for u, _, _, _ in new):
@@ -487,7 +502,8 @@ def handle(op, el, user, tz, messages, move_message):
                 out.append(err(op, bad, bad))
                 continue
             PERMISSIONS[folder] = new
-            out.append(ok(op, '<m:Folders><t:CalendarFolder><t:FolderId Id="%s" ChangeKey="AQ"/></t:CalendarFolder></m:Folders>' % folder))
+            tag = 'CalendarFolder' if cal else 'ContactsFolder'
+            out.append(ok(op, '<m:Folders><t:%s><t:FolderId Id="%s" ChangeKey="AQ"/></t:%s></m:Folders>' % (tag, folder, tag)))
         return wrap(op, out)
 
     if op == 'GetFolder':

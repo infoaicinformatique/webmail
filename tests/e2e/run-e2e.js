@@ -908,6 +908,46 @@ async function main() {
 		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
 	})
 
+	await step('contacts: share my address book without delegation', async () => {
+		const row = (user) => '.wm-share-row[data-user="' + user + '"]'
+		const openShare = async (key, name) => {
+			await page.click('.wm-book-row[data-key="' + key + '"] .wm-cal-share')
+			await page.waitForSelector('.wm-modal h2:has-text("Partager « ' + name + ' »")')
+			await page.waitForSelector('.wm-share-row')
+		}
+		// only my own address books can be shared
+		assert(!(await page.$('.wm-book-row[data-key="shared:marie.martin@societe-a.fr"] .wm-cal-share')))
+		assert(!(await page.$('.wm-book-row[data-key="directory"] .wm-cal-share')))
+
+		await openShare('contacts', 'Contacts')
+		const levels = await page.$$eval(row('Default') + ' select option', (els) => els.map((e) => e.value))
+		assert.deepStrictEqual(levels, ['None', 'Reviewer', 'Author', 'Editor'], 'no free/busy levels for contacts')
+		assert.strictEqual(await page.inputValue(row('Default') + ' select'), 'None')
+		assert.strictEqual(await page.inputValue(row('martine.leroy@societe-b.fr') + ' select'), 'keep', 'custom level from Outlook kept')
+
+		await page.selectOption(row('Default') + ' select', 'Reviewer')
+		await page.fill('.wm-modal input[name=shareEmail]', 'paul.durand@societe-a.fr')
+		await page.selectOption('.wm-modal select[name=newLevel]', 'Editor')
+		await page.click('.wm-share-add button:has-text("Ajouter")')
+		await page.waitForSelector(row('paul.durand@societe-a.fr'))
+		await shot('29-share-contacts')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Partage de « Contacts » enregistré")')
+		await page.waitForSelector('.wm-modal', { state: 'detached' })
+
+		await openShare('contacts', 'Contacts')
+		assert.strictEqual(await page.inputValue(row('Default') + ' select'), 'Reviewer')
+		assert.strictEqual(await page.inputValue(row('paul.durand@societe-a.fr') + ' select'), 'Editor')
+		assert.strictEqual(await page.inputValue(row('martine.leroy@societe-b.fr') + ' select'), 'keep')
+		await page.click('.wm-modal-close')
+
+		// a second address book of mine
+		await openShare('F-CONTACTS2', 'Fournisseurs')
+		await page.selectOption(row('Default') + ' select', 'Author')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Partage de « Fournisseurs » enregistré")')
+	})
+
 	// ------------------------------------------------------------------ delegates
 	await step('delegates: add, update and remove delegates of the mailbox', async () => {
 		await page.click('.wm-nav-footer a:has-text("Comptes et signature")')

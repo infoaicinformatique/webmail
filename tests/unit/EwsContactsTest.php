@@ -183,6 +183,55 @@ class EwsContactsTest extends EwsTestCase {
 		$this->assertSame([], $this->requests);
 	}
 
+	public function testGetAndSetBookPermissions(): void {
+		$perms = self::ok('GetFolder', '<m:Folders><t:ContactsFolder><t:FolderId Id="CT"/><t:PermissionSet><t:Permissions>'
+			. '<t:Permission><t:UserId><t:DistinguishedUser>Default</t:DistinguishedUser></t:UserId><t:PermissionLevel>None</t:PermissionLevel></t:Permission>'
+			. '<t:Permission><t:UserId><t:DistinguishedUser>Anonymous</t:DistinguishedUser></t:UserId><t:PermissionLevel>None</t:PermissionLevel></t:Permission>'
+			. '<t:Permission><t:UserId><t:SID>S-1</t:SID><t:PrimarySmtpAddress>paul@x.fr</t:PrimarySmtpAddress><t:DisplayName>Paul</t:DisplayName></t:UserId>'
+			. '<t:CanCreateItems>true</t:CanCreateItems><t:ReadItems>FullDetails</t:ReadItems><t:PermissionLevel>Custom</t:PermissionLevel></t:Permission>'
+			. '</t:Permissions></t:PermissionSet></t:ContactsFolder></m:Folders>');
+		$this->queue($perms);
+		$this->assertSame([
+			['user' => 'Default', 'name' => '', 'level' => 'None'],
+			['user' => 'Anonymous', 'name' => '', 'level' => 'None'],
+			['user' => 'paul@x.fr', 'name' => 'Paul', 'level' => 'Custom'],
+		], $this->contacts()->getPermissions('contacts'));
+
+		$this->queue($perms);
+		$this->queue(self::ok('UpdateFolder', '<m:Folders><t:ContactsFolder><t:FolderId Id="CT"/></t:ContactsFolder></m:Folders>'));
+		$this->contacts()->setPermissions('CT-FOUR', [
+			['user' => 'Default', 'level' => 'Reviewer'],
+			['user' => 'paul@x.fr', 'level' => 'keep'],
+			['user' => 'anne@x.fr', 'level' => 'Editor'],
+		], 'user@example.fr');
+		$req = $this->lastRequest();
+		$this->assertStringContainsString('<t:FolderChange><t:FolderId Id="CT-FOUR"/><t:Updates><t:SetFolderField><t:FieldURI FieldURI="folder:PermissionSet"/><t:ContactsFolder><t:PermissionSet><t:Permissions>', $req);
+		$this->assertStringContainsString('<t:Permission><t:UserId><t:DistinguishedUser>Default</t:DistinguishedUser></t:UserId><t:PermissionLevel>Reviewer</t:PermissionLevel></t:Permission>', $req);
+		$this->assertStringContainsString('<t:CanCreateItems>true</t:CanCreateItems><t:ReadItems>FullDetails</t:ReadItems><t:PermissionLevel>Custom</t:PermissionLevel>', $req);
+		$this->assertStringContainsString('<t:PrimarySmtpAddress>anne@x.fr</t:PrimarySmtpAddress></t:UserId><t:PermissionLevel>Editor</t:PermissionLevel>', $req);
+		$this->assertStringContainsString('<t:DistinguishedUser>Anonymous</t:DistinguishedUser></t:UserId><t:PermissionLevel>None</t:PermissionLevel>', $req);
+		$this->assertStringNotContainsString('Calendar', $req);
+	}
+
+	public function testFreeBusyLevelsDoNotExistForContacts(): void {
+		$this->queue(self::ok('GetFolder', '<m:Folders><t:ContactsFolder><t:FolderId Id="CT"/></t:ContactsFolder></m:Folders>'));
+		$this->expectException(MailException::class);
+		$this->expectExceptionMessage('Niveau de partage inconnu');
+		$this->contacts()->setPermissions('contacts', [['user' => 'Default', 'level' => 'FreeBusyTimeOnly']], 'user@example.fr');
+	}
+
+	/**
+	 * @dataProvider notMine
+	 */
+	public function testOnlyOwnBooksCanBeShared(string $book): void {
+		$this->expectException(MailException::class);
+		$this->contacts()->getPermissions($book);
+	}
+
+	public static function notMine(): array {
+		return [['shared:marie@x.fr'], ['directory']];
+	}
+
 	public function testResolveIgnoresShortQueries(): void {
 		$this->assertSame([], $this->contacts()->resolve('a'));
 		$this->assertSame([], $this->requests);
