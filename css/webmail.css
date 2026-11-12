@@ -603,3 +603,9 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-share-add .wm-ac-wrap { flex: 1; min-width: 200px; display: flex; }
 .wm-share-add button { margin: 0; }
 @media (max-width: 800px) { .wm-share-row { grid-template-columns: 1fr 28px; } .wm-share-row select { grid-column: 1; } }
+
+/* colleague's address books to add */
+.wm-choice-list { list-style: none; margin: 4px 0 8px; padding: 0; }
+.wm-choice-list li { padding: 2px 0; }
+.wm-choice-list input[type="checkbox"] { margin: 0; min-height: 0; height: auto; }
+.wm-choice-list label { display: flex; align-items: center; gap: 6px; cursor: pointer; }

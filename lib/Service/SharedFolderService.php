@@ -33,7 +33,9 @@ class SharedFolderService {
 	}
 
 	/**
-	 * @return array<int, array{email: string, name: string, mode: string, canEdit: bool}>
+	 * Entries are identified by the owner's address and, for an address book
+	 * other than their default one, the folder id ("" otherwise).
+	 * @return array<int, array{email: string, name: string, mode: string, canEdit: bool, folder: string, folderName: string}>
 	 */
 	public function list(string $type, string $userId, int $accountId): array {
 		$data = json_decode($this->config->getUserValue($userId, Application::APP_ID, self::key($type, $accountId), '[]'), true);
@@ -48,6 +50,8 @@ class SharedFolderService {
 					'name' => (string)($c['name'] ?? $c['email']),
 					'mode' => ($c['mode'] ?? '') === 'freebusy' ? 'freebusy' : 'full',
 					'canEdit' => !empty($c['canEdit']),
+					'folder' => (string)($c['folder'] ?? ''),
+					'folderName' => (string)($c['folderName'] ?? ''),
 				];
 			}
 		}
@@ -55,11 +59,11 @@ class SharedFolderService {
 	}
 
 	/**
-	 * @return ?array{email: string, name: string, mode: string, canEdit: bool}
+	 * @return ?array{email: string, name: string, mode: string, canEdit: bool, folder: string, folderName: string}
 	 */
-	public function find(string $type, string $userId, int $accountId, string $email): ?array {
+	public function find(string $type, string $userId, int $accountId, string $email, string $folder = ''): ?array {
 		foreach ($this->list($type, $userId, $accountId) as $c) {
-			if ($c['email'] === strtolower($email)) {
+			if (self::same($c, $email, $folder)) {
 				return $c;
 			}
 		}
@@ -68,22 +72,30 @@ class SharedFolderService {
 
 	/**
 	 * Add or refresh an entry.
-	 * @param array{email: string, name: string, mode: string, canEdit: bool} $entry
+	 * @param array{email: string, name: string, mode: string, canEdit: bool, folder?: string, folderName?: string} $entry
 	 */
 	public function save(string $type, string $userId, int $accountId, array $entry): void {
-		$list = array_values(array_filter($this->list($type, $userId, $accountId), fn ($c) => $c['email'] !== strtolower($entry['email'])));
+		$entry += ['folder' => '', 'folderName' => ''];
+		$list = array_values(array_filter($this->list($type, $userId, $accountId), fn ($c) => !self::same($c, $entry['email'], $entry['folder'])));
 		if (count($list) >= self::MAX) {
 			throw new MailException('Trop d\'éléments partagés (maximum ' . self::MAX . ')');
 		}
 		$entry['email'] = strtolower($entry['email']);
 		$list[] = $entry;
-		usort($list, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+		// a person's default folder first, then their other ones
+		usort($list, fn ($a, $b) => strcasecmp($a['name'], $b['name']) ?: strcmp($a['email'], $b['email'])
+			?: (($a['folder'] !== '') <=> ($b['folder'] !== '')) ?: strcasecmp($a['folderName'], $b['folderName']));
 		$this->config->setUserValue($userId, Application::APP_ID, self::key($type, $accountId), json_encode($list));
 	}
 
-	public function remove(string $type, string $userId, int $accountId, string $email): void {
-		$list = array_values(array_filter($this->list($type, $userId, $accountId), fn ($c) => $c['email'] !== strtolower($email)));
+	public function remove(string $type, string $userId, int $accountId, string $email, string $folder = ''): void {
+		$list = array_values(array_filter($this->list($type, $userId, $accountId), fn ($c) => !self::same($c, $email, $folder)));
 		$this->config->setUserValue($userId, Application::APP_ID, self::key($type, $accountId), json_encode($list));
+	}
+
+	/** @param array{email: string, folder: string} $entry */
+	private static function same(array $entry, string $email, string $folder): bool {
+		return $entry['email'] === strtolower($email) && $entry['folder'] === $folder;
 	}
 
 	/** Forget every shared folder of an account (when the account is removed). */

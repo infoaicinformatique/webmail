@@ -35,6 +35,7 @@ class EwsContacts {
 	 * Folder reference for an address book key:
 	 *  - "contacts"        the default contacts folder of the mailbox
 	 *  - "shared:<email>"  the default contacts folder of another mailbox
+	 *  - "shared:<email>:<folder id>"  another contact folder of that mailbox
 	 *  - anything else     a FolderId of the mailbox (another contact folder)
 	 */
 	public function folderXml(string $book): string {
@@ -42,9 +43,12 @@ class EwsContacts {
 			return '<t:DistinguishedFolderId Id="contacts"/>';
 		}
 		if (str_starts_with($book, 'shared:')) {
-			$email = substr($book, 7);
+			[$email, $folder] = self::parseSharedKey($book);
 			if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
 				throw new MailException('Carnet partagé invalide');
+			}
+			if ($folder !== '') {
+				return '<t:FolderId Id="' . $this->client->esc($folder) . '"/>';
 			}
 			return '<t:DistinguishedFolderId Id="contacts"><t:Mailbox><t:EmailAddress>' . $this->client->esc($email)
 				. '</t:EmailAddress></t:Mailbox></t:DistinguishedFolderId>';
@@ -87,27 +91,82 @@ class EwsContacts {
 	}
 
 	/**
-	 * Access to another person's contacts folder (shared in Outlook).
-	 * @return array{canEdit: bool}
-	 * @throws MailException when the mailbox does not exist or does not share its contacts
+	 * Address books another person shares with me (Outlook: right-click on the
+	 * folder > Properties > Permissions): their default « Contacts » and their
+	 * other contact folders I can read. Exchange has no "shared with me" list,
+	 * so the other folders are looked for at the top of their mailbox and inside
+	 * their « Contacts »; they only show up when I can see the parent folder
+	 * ("Folder visible" on the mailbox, or any access to « Contacts »).
+	 * @return array<int, array{folder: string, name: string, canEdit: bool}> folder "" = their default « Contacts »
+	 * @throws MailException when the mailbox does not exist or shares no address book
 	 */
-	public function probeSharedBook(string $email): array {
-		$xp = $this->client->request(
-			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
-			. '<t:FieldURI FieldURI="folder:EffectiveRights"/></t:AdditionalProperties></m:FolderShape>'
-			. '<m:FolderIds>' . $this->folderXml('shared:' . $email) . '</m:FolderIds></m:GetFolder>',
-			false
-		);
+	public function listSharedBooks(string $email): array {
+		$main = $this->folderXml('shared:' . $email);
+		$mailbox = '<t:Mailbox><t:EmailAddress>' . $this->client->esc($email) . '</t:EmailAddress></t:Mailbox>';
+		$shape = '<t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:FieldURI FieldURI="folder:DisplayName"/><t:FieldURI FieldURI="folder:FolderClass"/><t:FieldURI FieldURI="folder:EffectiveRights"/>'
+			. '</t:AdditionalProperties>';
+		$xp = $this->client->request('<m:GetFolder><m:FolderShape>' . $shape . '</m:FolderShape><m:FolderIds>' . $main . '</m:FolderIds></m:GetFolder>', false);
 		$msg = $xp->query('//m:ResponseMessages/*')->item(0);
-		if ($msg instanceof \DOMElement && $msg->getAttribute('ResponseClass') !== 'Error'
-			&& $this->client->text($xp, './/t:EffectiveRights/t:Read', $msg) !== 'false') {
-			return ['canEdit' => $this->client->text($xp, './/t:EffectiveRights/t:CreateContents', $msg) === 'true'];
-		}
 		$code = $msg !== null ? $this->client->text($xp, 'm:ResponseCode', $msg) : null;
 		if ($code === 'ErrorNonExistentMailbox' || $code === 'ErrorInvalidSmtpAddress') {
 			throw new MailException('Aucune boîte Exchange ne correspond à ' . $email);
 		}
-		throw new MailException($email . ' ne partage pas ses contacts avec vous (à faire dans Outlook : clic droit sur « Contacts » → Propriétés → Autorisations)');
+		$books = [];
+		$mainId = null;
+		if ($msg instanceof \DOMElement && $msg->getAttribute('ResponseClass') !== 'Error') {
+			$folder = $xp->query('.//m:Folders/*', $msg)->item(0);
+			$mainId = $folder !== null ? $this->client->attr($xp, 't:FolderId', 'Id', $folder) : null;
+			if ($folder !== null && $this->client->text($xp, 't:EffectiveRights/t:Read', $folder) !== 'false') {
+				$books[] = ['folder' => '', 'name' => 'Contacts', 'canEdit' => $this->client->text($xp, 't:EffectiveRights/t:CreateContents', $folder) === 'true'];
+			}
+		}
+
+		// other contact folders: top of the mailbox and inside « Contacts » (each may be refused)
+		$xp = $this->client->request(
+			'<m:FindFolder Traversal="Shallow"><m:FolderShape>' . $shape . '</m:FolderShape><m:ParentFolderIds>'
+			. '<t:DistinguishedFolderId Id="msgfolderroot">' . $mailbox . '</t:DistinguishedFolderId>' . $main
+			. '</m:ParentFolderIds></m:FindFolder>',
+			false
+		);
+		$others = [];
+		foreach ($xp->query('//m:ResponseMessages/*[@ResponseClass!="Error"]//t:Folders/*') as $node) {
+			$id = (string)$this->client->attr($xp, 't:FolderId', 'Id', $node);
+			if ($id === '' || $id === $mainId || isset($others[$id])
+				|| $this->client->text($xp, 't:FolderClass', $node) !== 'IPF.Contact'
+				|| $this->client->text($xp, 't:EffectiveRights/t:Read', $node) === 'false') {
+				continue;
+			}
+			$others[$id] = [
+				'folder' => $id,
+				'name' => (string)$this->client->text($xp, 't:DisplayName', $node),
+				'canEdit' => $this->client->text($xp, 't:EffectiveRights/t:CreateContents', $node) === 'true',
+			];
+		}
+		$others = array_values($others);
+		usort($others, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+		$books = array_merge($books, $others);
+		if ($books === []) {
+			throw new MailException($email . ' ne partage pas de carnet d\'adresses avec vous (à faire dans Outlook : clic droit sur le carnet → Propriétés → Autorisations)');
+		}
+		return $books;
+	}
+
+	/**
+	 * Key of a colleague's address book: "shared:<email>" for their default
+	 * « Contacts », "shared:<email>:<folder id>" for another one.
+	 * @return ?array{0: string, 1: string} [email, folder id or ""], null when not a shared book
+	 */
+	public static function parseSharedKey(string $book): ?array {
+		if (!str_starts_with($book, 'shared:')) {
+			return null;
+		}
+		$parts = explode(':', substr($book, 7), 2);
+		return [strtolower($parts[0]), $parts[1] ?? ''];
+	}
+
+	public static function sharedKey(string $email, string $folder = ''): string {
+		return 'shared:' . strtolower($email) . ($folder !== '' ? ':' . $folder : '');
 	}
 
 	/**
