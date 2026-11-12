@@ -20,6 +20,8 @@ import threading
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import fake_ews_pim as pim
+
 NS = {
     's': 'http://schemas.xmlsoap.org/soap/envelope/',
     'm': 'http://schemas.microsoft.com/exchange/services/2006/messages',
@@ -35,7 +37,7 @@ REQ_COUNTER = itertools.count(1)
 
 
 def now(minutes_ago=0):
-    return (dt.datetime.utcnow() - dt.timedelta(minutes=minutes_ago)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    return (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=minutes_ago)).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
 FOLDERS = [
@@ -93,6 +95,9 @@ def seed():
 
 
 seed()
+_mr, _meeting = pim.seed_meeting_request(add_message)
+MESSAGES[_mr]['kind'] = 'MeetingRequest'
+MESSAGES[_mr]['meeting'] = _meeting
 
 
 # ----------------------------------------------------------------------------
@@ -151,9 +156,9 @@ def item_summary_xml(m):
     text = html.unescape(re.sub(r'<[^>]+>', ' ', text))
     text = ' '.join(text.split())[:255]
     display_to = '; '.join(n for n, _ in m['to'])
-    return ('<t:Message><t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject><t:DateTimeReceived>%s</t:DateTimeReceived>'
+    return (('<t:Message><t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject><t:DateTimeReceived>%s</t:DateTimeReceived>'
             '<t:HasAttachments>%s</t:HasAttachments><t:Importance>%s</t:Importance><t:DisplayTo>%s</t:DisplayTo><t:Preview>%s</t:Preview>'
-            '<t:Flag><t:FlagStatus>%s</t:FlagStatus></t:Flag><t:IsRead>%s</t:IsRead><t:From>%s</t:From></t:Message>'
+            '<t:Flag><t:FlagStatus>%s</t:FlagStatus></t:Flag><t:IsRead>%s</t:IsRead><t:From>%s</t:From></t:Message>').replace('Message>', m.get('kind', 'Message') + '>')
             % (m['id'], m['ck'], esc(m['subject']), m['date'],
                'true' if any(not ATTACHMENTS[a].get('inline') for a in m['attachments']) else 'false',
                m['importance'], esc(display_to), esc(text),
@@ -161,6 +166,13 @@ def item_summary_xml(m):
 
 
 def item_full_xml(m):
+    xml = _item_full_xml(m)
+    kind = m.get('kind', 'Message')
+    head, _, tail = xml.replace('<t:Message>', '<t:%s>' % kind, 1).rpartition('</t:Message>')
+    return head + '</t:%s>' % kind + tail
+
+
+def _item_full_xml(m):
     atts = ''
     for aid in m['attachments']:
         a = ATTACHMENTS[aid]
@@ -195,7 +207,17 @@ def recipients(el, name):
 
 
 # ----------------------------------------------------------------------------
+CURRENT_TZ = 'UTC'
+
+
+def move_message(mid, folder):
+    MESSAGES[mid]['folder'] = folder
+
+
 def handle(op, el, user):
+    r = pim.handle(op, el, user, CURRENT_TZ, MESSAGES, move_message)
+    if r is not None:
+        return r
     if op == 'GetFolder':
         msgs = []
         for f in el.find('m:FolderIds', NS):
@@ -392,7 +414,10 @@ class Handler(BaseHTTPRequestHandler):
             root = ET.fromstring(raw)
             body = root.find('s:Body', NS)[0]
             op = body.tag.replace(M, '')
+            tzdef = root.find('s:Header/t:TimeZoneContext/t:TimeZoneDefinition', NS)
             with LOCK:
+                global CURRENT_TZ
+                CURRENT_TZ = tzdef.get('Id') if tzdef is not None else 'UTC'
                 resp = handle(op, body, user)
             if resp is None:
                 self.send(500, envelope('<s:Fault><faultcode>s:Client</faultcode><faultstring>Unsupported operation %s</faultstring></s:Fault>' % esc(op)))

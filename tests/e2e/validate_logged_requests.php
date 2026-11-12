@@ -25,6 +25,13 @@ foreach ($files as $file) {
 	$single->loadXML($single->saveXML());
 	libxml_use_internal_errors(true);
 	$ok = $single->schemaValidate($xsd);
+	// SOAP header (RequestServerVersion, TimeZoneContext)
+	foreach ($xp->query('//soap:Header/*') as $headerEl) {
+		$hdoc = new DOMDocument();
+		$hdoc->appendChild($hdoc->importNode($headerEl, true));
+		$hdoc->loadXML($hdoc->saveXML());
+		$ok = $hdoc->schemaValidate(__DIR__ . '/../fixtures/xsd/types.xsd') && $ok;
+	}
 	$op = $body->localName;
 	$ops[$op] = ($ops[$op] ?? 0) + 1;
 	if (!$ok) {

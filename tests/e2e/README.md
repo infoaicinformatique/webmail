@@ -20,3 +20,8 @@
 
 3. `NC_URL=http://localhost:8080 NC_PASS=... node tests/e2e/run-e2e.js`
 4. `php tests/e2e/validate_logged_requests.php /tmp/ews-log` : vérifie chaque requête envoyée avec le schéma EWS officiel.
+
+Entre deux exécutions, remettez l'état à zéro : relancez `fake_ews.py` (ses données sont en mémoire),
+videz `oc_webmail_accounts`, et videz aussi `oc_ratelimit_entries`. Sans cela, la limite de 10 ajouts de compte
+par 5 minutes bloque le scénario après quelques passages.
+Lancez Playwright avec le fuseau `Europe/Paris` (déjà configuré dans `run-e2e.js`).

@@ -17,6 +17,7 @@
 
 /* ---------- navigation ---------- */
 .wm-nav {
+	overflow-x: hidden;
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
@@ -211,12 +212,19 @@
 .wm-mobile-only { display: none !important; }
 #webmail-app[data-view="setup"] { display: block; overflow-y: auto; }
 
-.wm-toast {
+#wm-toasts {
 	position: fixed;
 	bottom: 24px;
 	left: 50%;
 	transform: translateX(-50%);
 	z-index: 10000;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	pointer-events: none;
+}
+.wm-toast {
 	padding: 10px 18px;
 	border-radius: var(--border-radius-large, 10px);
 	background: var(--color-main-text);
@@ -242,4 +250,212 @@
 	.wm-field { flex-direction: column; align-items: stretch; gap: 2px; }
 	.wm-field > span { width: auto; }
 	.wm-field input, .wm-field textarea { width: 100%; }
+}
+
+/* =====================================================================
+   Modules: tabs (Courrier / Agenda / Contacts)
+   ===================================================================== */
+.wm-tabs { display: flex; gap: 2px; background: var(--color-background-dark); border-radius: var(--border-radius-large, 10px); padding: 2px; }
+.wm-tab {
+	flex: 1 1 0;
+	min-width: 0;
+	display: flex !important;
+	flex-direction: column;
+	align-items: center;
+	gap: 0;
+	margin: 0 !important;
+	min-height: 44px !important;
+	padding: 2px !important;
+	line-height: 1.2;
+	border: none !important;
+	background: transparent !important;
+	font-size: 13px;
+	white-space: nowrap;
+	color: var(--color-main-text);
+}
+.wm-tab-icon { font-size: 16px; }
+.wm-tab-label { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.wm-tab.active { background: var(--color-main-background) !important; font-weight: bold; box-shadow: 0 1px 3px var(--color-box-shadow); }
+.wm-cal-hint { font-size: 12px; padding: 0 4px; }
+
+/* calendar takes the list + detail columns */
+#webmail-app[data-module="calendar"] .wm-list { display: none; }
+#webmail-app[data-module="calendar"] .wm-detail { grid-column: 2 / 4; }
+
+/* ---------- mini month (navigation) ---------- */
+.wm-mini { padding: 4px; }
+.wm-mini-title { text-align: center; font-weight: bold; margin-bottom: 4px; }
+.wm-mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; text-align: center; }
+.wm-mini-head { font-size: 11px; color: var(--color-text-maxcontrast); }
+.wm-mini-day {
+	margin: 0 !important; padding: 0 !important; min-height: 28px !important; min-width: 0 !important;
+	border: none !important; background: transparent !important; font-size: 12px; font-weight: normal !important; border-radius: 50% !important;
+}
+.wm-mini-day:hover { background: var(--color-background-hover) !important; }
+.wm-mini-day.other { color: var(--color-text-maxcontrast); }
+.wm-mini-day.today { background: var(--color-primary-element) !important; color: var(--color-primary-element-text) !important; }
+
+/* ---------- toolbar ---------- */
+.wm-cal-toolbar { align-items: center; }
+.wm-cal-title { margin: 0 8px; font-size: 20px; flex: 1; }
+.wm-segmented { display: inline-flex; border: 1px solid var(--color-border-dark); border-radius: var(--border-radius-element, 8px); overflow: hidden; }
+.wm-segmented button { margin: 0 !important; border: none !important; border-radius: 0 !important; background: transparent; }
+.wm-segmented button.active { background: var(--color-primary-element-light) !important; font-weight: bold; }
+
+/* ---------- month grid ---------- */
+.wm-month {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	border-top: 1px solid var(--color-border);
+	border-left: 1px solid var(--color-border);
+	margin-top: 8px;
+}
+.wm-month-head { text-align: center; padding: 4px; font-size: 12px; color: var(--color-text-maxcontrast); border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); text-transform: capitalize; }
+.wm-month-cell {
+	border-right: 1px solid var(--color-border);
+	border-bottom: 1px solid var(--color-border);
+	padding: 2px 3px 4px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+	cursor: pointer;
+}
+.wm-month-cell:hover { background: var(--color-background-hover); }
+.wm-month-cell.other { background: var(--color-background-dark); }
+.wm-month-cell.other .wm-month-day { color: var(--color-text-maxcontrast); }
+.wm-month-day { font-size: 12px; text-align: end; padding: 2px 4px; }
+.wm-month-cell.today .wm-month-day { font-weight: bold; color: var(--color-primary-element); }
+.wm-event {
+	display: block;
+	width: 100%;
+	margin: 0 !important;
+	min-height: 0 !important;
+	padding: 1px 6px !important;
+	border: none !important;
+	border-radius: 4px !important;
+	text-align: start;
+	font-size: 12px;
+	font-weight: normal !important;
+	line-height: 18px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	background: var(--color-primary-element-light) !important;
+	color: var(--color-primary-element-light-text, var(--color-main-text)) !important;
+	border-inline-start: 3px solid var(--color-primary-element) !important;
+}
+.wm-event.allday { background: var(--color-primary-element) !important; color: var(--color-primary-element-text) !important; }
+.wm-event.tentative { background: repeating-linear-gradient(45deg, var(--color-primary-element-light), var(--color-primary-element-light) 4px, var(--color-main-background) 4px, var(--color-main-background) 8px) !important; }
+.wm-event.fb-Free { border-inline-start-color: var(--color-success) !important; }
+.wm-event.fb-OOF { border-inline-start-color: #8b2cad !important; }
+.wm-event.cancelled { text-decoration: line-through; opacity: .6; }
+.wm-event-time { font-weight: bold; }
+.wm-more { margin: 0 !important; min-height: 0 !important; padding: 0 6px !important; border: none !important; background: none !important; font-size: 12px; color: var(--color-text-maxcontrast); text-align: start; }
+.wm-day-list { display: flex; flex-direction: column; gap: 4px; }
+
+/* ---------- agenda list ---------- */
+.wm-agenda { max-width: 900px; padding-bottom: 24px; }
+.wm-agenda-day { font-size: 15px; margin: 16px 0 4px; border-bottom: 1px solid var(--color-border); padding-bottom: 4px; }
+.wm-agenda-day.today { color: var(--color-primary-element); }
+.wm-agenda-item {
+	display: flex !important; gap: 12px; width: 100%; margin: 0 !important; padding: 8px !important; min-height: 0 !important;
+	border: none !important; background: none !important; text-align: start; font-weight: normal !important; border-radius: var(--border-radius-large, 10px) !important;
+}
+.wm-agenda-item:hover { background: var(--color-background-hover) !important; }
+.wm-agenda-time { width: 120px; flex-shrink: 0; color: var(--color-text-maxcontrast); }
+.wm-agenda-subject { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.wm-agenda-subject.cancelled { text-decoration: line-through; }
+
+/* ---------- modal ---------- */
+.wm-overlay {
+	position: fixed; inset: 0; z-index: 9000;
+	background: rgba(0, 0, 0, .45);
+	display: flex; align-items: flex-start; justify-content: center;
+	padding: 6vh 16px 16px;
+	overflow-y: auto;
+}
+.wm-modal {
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	border-radius: var(--border-radius-container-large, 16px);
+	box-shadow: 0 8px 40px rgba(0, 0, 0, .35);
+	width: 100%;
+	max-width: 640px;
+	padding: 16px 20px 20px;
+}
+.wm-modal-header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.wm-modal-header h2 { flex: 1; margin: 0; font-size: 20px; overflow-wrap: anywhere; }
+.wm-modal-close { margin: 0 !important; min-width: 36px; border: none !important; background: none !important; font-size: 18px; }
+.wm-event-detail { display: flex; flex-direction: column; gap: 8px; }
+.wm-event-when { font-weight: bold; text-transform: none; }
+
+.wm-event-body { white-space: pre-wrap; padding: 8px 12px; background: var(--color-background-dark); border-radius: var(--border-radius-large, 10px); overflow-wrap: anywhere; }
+.wm-attendees { margin: 2px 0 0 20px; list-style: disc; }
+.wm-event-form { display: flex; flex-direction: column; gap: 6px; }
+.wm-event-form textarea { width: 100%; resize: vertical; margin: 4px 0 0; }
+.wm-event-form .wm-field input[type="date"], .wm-event-form .wm-field input[type="time"] { flex: 0 1 auto; }
+.wm-inline { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---------- meeting invitation in an e-mail ---------- */
+.wm-meeting {
+	margin: 8px 0;
+	padding: 10px 14px;
+	border-radius: var(--border-radius-large, 10px);
+	border: 1px solid var(--color-primary-element);
+	background: var(--color-primary-element-light);
+	display: flex; flex-direction: column; gap: 2px;
+}
+.wm-meeting.cancelled { border-color: var(--color-error); background: var(--color-background-dark); }
+.wm-meeting-title { font-weight: bold; }
+
+.wm-meeting-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.wm-meeting-actions button { margin: 0; }
+
+/* ---------- contacts ---------- */
+.wm-letter { padding: 4px 14px; font-size: 12px; font-weight: bold; color: var(--color-text-maxcontrast); background: var(--color-background-dark); }
+.wm-contact { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--color-border); cursor: pointer; }
+.wm-contact:hover, .wm-contact:focus-visible { background: var(--color-background-hover); outline: none; }
+.wm-contact.selected { background: var(--color-primary-element-light); }
+.wm-contact-text { min-width: 0; flex: 1; }
+.wm-contact-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-avatar {
+	width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+	display: inline-flex; align-items: center; justify-content: center;
+	color: #fff; font-weight: bold; font-size: 14px;
+}
+.wm-contact-card { padding: 16px 0; display: flex; flex-direction: column; gap: 8px; max-width: 760px; }
+.wm-contact-head { display: flex; gap: 16px; align-items: center; margin-bottom: 8px; }
+.wm-contact-head .wm-avatar { width: 64px; height: 64px; font-size: 24px; }
+.wm-contact-head .wm-subject { margin: 0; }
+.wm-contact-row { display: flex; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
+.wm-contact-icon { width: 22px; flex-shrink: 0; }
+.wm-contact-label { width: 90px; flex-shrink: 0; }
+
+/* ---------- address autocompletion ---------- */
+.wm-ac { position: relative; flex: 1; display: flex; min-width: 0; }
+.wm-ac > input { flex: 1; margin: 0; min-width: 0; }
+.wm-ac-menu {
+	position: absolute; top: 100%; inset-inline-start: 0; inset-inline-end: 0; z-index: 9500;
+	margin: 2px 0 0; padding: 4px; list-style: none;
+	background: var(--color-main-background);
+	border: 1px solid var(--color-border-dark);
+	border-radius: var(--border-radius-large, 10px);
+	box-shadow: 0 4px 16px var(--color-box-shadow);
+	max-height: 280px; overflow-y: auto;
+}
+.wm-ac-item { padding: 6px 8px; border-radius: var(--border-radius, 6px); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-ac-item.active, .wm-ac-item:hover { background: var(--color-primary-element-light); }
+.wm-ac-name { font-weight: 600; }
+
+@media (max-width: 800px) {
+	#webmail-app[data-module="calendar"] .wm-detail { grid-column: auto; }
+	.wm-cal-title { font-size: 16px; }
+	.wm-month { grid-template-rows: auto !important; }
+	.wm-month-cell { min-height: 64px; }
+	.wm-event { font-size: 10px; padding: 0 3px !important; }
+	.wm-event-time { display: none; }
+	.wm-overlay { padding: 0; }
+	.wm-modal { max-width: none; min-height: 100%; border-radius: 0; }
+	.wm-agenda-time { width: 90px; }
 }
