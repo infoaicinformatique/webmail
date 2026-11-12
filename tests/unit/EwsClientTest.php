@@ -109,9 +109,11 @@ class EwsClientTest extends EwsTestCase {
 			. '</t:Items></m:RootFolder>'));
 		$this->queue($this->inboxUnread(4));
 		$r = $this->client()->newMessages(null);
-		$this->assertSame(['items' => [], 'latest' => '2026-11-12T08:00:00Z', 'unread' => 4], $r, 'nothing announced the first time');
+		// the page learns the newest messages (not announced) and where to start from
+		$this->assertSame(['M1'], array_column($r['items'], 'id'));
+		$this->assertSame('2026-11-12T08:00:00Z', $r['latest']);
+		$this->assertSame(4, $r['unread']);
 		$this->assertStringNotContainsString('Restriction', $this->requests[0]);
-		$this->assertStringContainsString('MaxEntriesReturned="1"', $this->requests[0]);
 	}
 
 	public function testNewMessagesSince(): void {
@@ -124,7 +126,7 @@ class EwsClientTest extends EwsTestCase {
 		$this->assertSame(['N2', 'N1'], array_column($r['items'], 'id'));
 		$this->assertSame('2026-11-12T09:05:00Z', $r['latest']);
 		$this->assertSame(6, $r['unread']);
-		$this->assertStringContainsString('<t:IsGreaterThan><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURIOrConstant><t:Constant Value="2026-11-12T09:00:00Z"/></t:FieldURIOrConstant></t:IsGreaterThan>', $this->requests[0]);
+		$this->assertStringContainsString('<t:IsGreaterThanOrEqualTo><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURIOrConstant><t:Constant Value="2026-11-12T09:00:00Z"/></t:FieldURIOrConstant></t:IsGreaterThanOrEqualTo>', $this->requests[0]);
 		$this->assertStringContainsString('<t:FieldURI FieldURI="message:IsRead"/><t:FieldURIOrConstant><t:Constant Value="false"/>', $this->requests[0]);
 	}
 

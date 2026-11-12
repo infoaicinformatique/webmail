@@ -319,9 +319,9 @@ def handle(op, el, user):
                 words.append(tok)
         text = ' '.join(words)
         # Restriction used for notifications: received after a date, unread
-        after = el.find('m:Restriction//t:IsGreaterThan/t:FieldURIOrConstant/t:Constant', NS)
+        after = el.find('m:Restriction//t:IsGreaterThanOrEqualTo/t:FieldURIOrConstant/t:Constant', NS)
         if after is not None:
-            conds.append(lambda m, d=after.get('Value'): m['date'] > d)
+            conds.append(lambda m, d=after.get('Value'): m['date'] >= d)
             # both test accounts share this fake inbox: for new messages, each only
             # sees what was sent to it, as with two real mailboxes
             conds.append(lambda m: any(e.lower() == user.lower() for _, e in m['to'] + m['cc']))

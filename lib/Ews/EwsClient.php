@@ -355,9 +355,9 @@ class EwsClient {
 	}
 
 	/**
-	 * Unread messages received in the inbox after $since (for notifications),
-	 * and the number of unread messages of the inbox. Without $since, only
-	 * gives the date to start from (the newest message).
+	 * Unread messages received in the inbox on or after $since (for
+	 * notifications), and the number of unread messages of the inbox. Without
+	 * $since: the newest messages, read or not, and the date to start from.
 	 * @return array{items: array<int, array<string, mixed>>, latest: string, unread: int}
 	 */
 	public function newMessages(?string $since, int $max = 10): array {
@@ -369,14 +369,16 @@ class EwsClient {
 			}
 			$since = $d->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
 			$restriction = '<m:Restriction><t:And>'
-				. '<t:IsGreaterThan><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURIOrConstant><t:Constant Value="' . $since . '"/></t:FieldURIOrConstant></t:IsGreaterThan>'
+				// "on or after": dates are to the second, a message received in the same second
+				// as the last one seen must not be missed (the page ignores those already announced)
+				. '<t:IsGreaterThanOrEqualTo><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURIOrConstant><t:Constant Value="' . $since . '"/></t:FieldURIOrConstant></t:IsGreaterThanOrEqualTo>'
 				. '<t:IsEqualTo><t:FieldURI FieldURI="message:IsRead"/><t:FieldURIOrConstant><t:Constant Value="false"/></t:FieldURIOrConstant></t:IsEqualTo>'
 				. '</t:And></m:Restriction>';
 		}
 		$xp = $this->request(
 			'<m:FindItem Traversal="Shallow">'
 			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $this->summaryFields() . '</t:AdditionalProperties></m:ItemShape>'
-			. '<m:IndexedPageItemView MaxEntriesReturned="' . ($since !== null ? max(1, $max) : 1) . '" Offset="0" BasePoint="Beginning"/>'
+			. '<m:IndexedPageItemView MaxEntriesReturned="' . max(1, $max) . '" Offset="0" BasePoint="Beginning"/>'
 			. $restriction
 			. '<m:SortOrder><t:FieldOrder Order="Descending"><t:FieldURI FieldURI="item:DateTimeReceived"/></t:FieldOrder></m:SortOrder>'
 			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="inbox"/></m:ParentFolderIds>'
@@ -397,7 +399,8 @@ class EwsClient {
 			. '<m:FolderIds><t:DistinguishedFolderId Id="inbox"/></m:FolderIds></m:GetFolder>'
 		);
 		return [
-			'items' => $since !== null ? $items : [],
+			// without a date: the newest messages, for the page to know them (not announced)
+			'items' => $items,
 			'latest' => $latest,
 			'unread' => (int)$this->text($folder, '//m:Folders/*/t:UnreadCount'),
 		];
