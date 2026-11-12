@@ -31,6 +31,8 @@
 	 * loaded in advance. Any change made from here empties it.
 	 */
 	const eventCache = new Map()
+	// room lists and rooms of the organisation, per account: { lists, rooms: { listEmail: [...] } }
+	const roomCache = new Map()
 	const EVENT_CACHE_MAX = 24
 
 	function api(path, opts) {
@@ -249,14 +251,14 @@
 					load()
 				},
 			})
-			const mode = c.kind !== 'shared' ? null : (c.mode === 'freebusy' ? 'freebusy' : (c.canEdit ? 'edit' : 'read'))
+			const mode = c.kind !== 'shared' && c.kind !== 'public' ? null : (c.mode === 'freebusy' ? 'freebusy' : (c.canEdit ? 'edit' : 'read'))
 			return h('li', { class: 'wm-cal-row', dataset: { key: c.key } },
-				h('label', { class: 'wm-cal-label', title: c.email || c.name },
+				h('label', { class: 'wm-cal-label', title: c.email || c.path || c.name },
 					box,
 					h('span', { class: 'wm-cal-dot', style: c.color ? 'background:' + c.color : '' }),
 					h('span', { class: 'wm-cal-name' }, c.name)),
 				mode ? h('span', { class: 'wm-cal-mode wm-cal-mode-' + mode }, MODE_LABEL[mode]) : null,
-				c.kind !== 'shared' ? h('button', {
+				c.kind !== 'shared' && c.kind !== 'public' ? h('button', {
 					type: 'button',
 					class: 'wm-cal-share',
 					title: 'Partager cet agenda',
@@ -269,16 +271,53 @@
 					title: 'Retirer cet agenda',
 					'aria-label': 'Retirer l\'agenda de ' + c.name,
 					onclick: () => removeShared(c),
+				}, '✕') : null,
+				c.kind === 'public' ? h('button', {
+					type: 'button',
+					class: 'wm-cal-remove',
+					title: 'Retirer cet agenda (rien n\'est supprimé dans Exchange)',
+					'aria-label': 'Retirer ' + c.name,
+					onclick: () => removePublic(c),
 				}, '✕') : null)
 		}
-		const own = cal.calendars.filter((c) => c.kind !== 'shared')
+		const own = cal.calendars.filter((c) => c.kind !== 'shared' && c.kind !== 'public')
 		const shared = cal.calendars.filter((c) => c.kind === 'shared')
+		const publicCals = cal.calendars.filter((c) => c.kind === 'public')
 		return h('div', { class: 'wm-cal-list' },
 			h('div', { class: 'wm-cal-section' }, 'Mes agendas'),
 			h('ul', {}, own.map(row)),
 			h('div', { class: 'wm-cal-section' }, 'Agendas partagés'),
 			shared.length ? h('ul', {}, shared.map(row)) : h('p', { class: 'wm-muted wm-cal-hint' }, 'Ajoutez l\'agenda d\'un collègue qui vous l\'a partagé dans Outlook.'),
-			h('button', { type: 'button', class: 'wm-cal-add', onclick: openAddShared }, '＋ Ajouter un agenda partagé'))
+			h('button', { type: 'button', class: 'wm-cal-add', onclick: openAddShared }, '＋ Ajouter un agenda partagé'),
+			h('div', { class: 'wm-cal-section' }, 'Dossiers publics'),
+			publicCals.length ? h('ul', {}, publicCals.map(row)) : null,
+			h('button', { type: 'button', class: 'wm-cal-add wm-public-cal-add', onclick: openAddPublic }, '＋ Ajouter un agenda des dossiers publics'))
+	}
+
+	function isPublicCal(ev) { return String((ev && ev.calendar) || '').startsWith('public:') }
+
+	/** Browse the public folders for a calendar (the picker of contacts.js). */
+	function openAddPublic() {
+		if (!window.WebmailPublicPicker) { core.toast('Module indisponible', true); return }
+		window.WebmailPublicPicker(core, {
+			base: '/accounts/' + core.accountId + '/calendar/public',
+			title: 'Ajouter un agenda des dossiers publics',
+			intro: 'Les dossiers publics sont partagés par toute l\'organisation (planning commun, réservations…). Ouvrez les dossiers pour trouver les agendas ; '
+				+ 'le niveau d\'accès, lecture ou modification, est celui défini par l\'administrateur Exchange.',
+			icon: '📅',
+			empty: 'Aucun agenda ici.',
+			onAdded: async () => { await loadCalendars(true); refreshAll() },
+		})
+	}
+
+	async function removePublic(c) {
+		if (!window.confirm('Retirer « ' + c.name + ' » de la liste ? (rien n\'est supprimé dans Exchange)')) return
+		try {
+			await api('/accounts/' + core.accountId + '/calendar/public/delete', { method: 'POST', body: { folder: c.key.slice(7) } })
+			core.toast('Agenda retiré')
+			await loadCalendars(true)
+			refreshAll()
+		} catch (e) { core.toast(e.message, true) }
 	}
 
 	/**
@@ -749,7 +788,7 @@
 					h('span', { class: 'wm-agenda-time' }, ev.allDay ? 'Journée' : (sameDay(s, d) ? timeLabel(s) : '…') + ' – ' + (sameDay(e, d) ? timeLabel(e) : '…')),
 					h('span', { class: 'wm-agenda-subject' + (ev.isCancelled ? ' cancelled' : '') }, ev.subject || '(sans titre)',
 						ev.location ? h('span', { class: 'wm-muted' }, ' · ' + ev.location) : null,
-						ev.isMeeting && !ev.isOrganizer && RESPONSES[ev.response] ? h('span', { class: 'wm-muted' }, ' · ' + RESPONSES[ev.response]) : null)))
+						ev.isMeeting && !ev.isOrganizer && !isPublicCal(ev) && RESPONSES[ev.response] ? h('span', { class: 'wm-muted' }, ' · ' + RESPONSES[ev.response]) : null)))
 			})
 		}
 		if (!any) wrap.appendChild(h('div', { class: 'wm-empty' }, cal.loading ? 'Chargement…' : 'Aucun événement dans les 30 prochains jours'))
@@ -896,6 +935,7 @@
 			await api('/accounts/' + core.accountId + '/calendar/move', {
 				method: 'POST',
 				body: {
+					calendar: ev.calendar || '',
 					eventId: ev.id,
 					start: ev.allDay ? ymd(r.start) : local(r.start),
 					end: ev.allDay ? ymd(addDays(r.end, -1)) : local(r.end), // all-day: inclusive last day
@@ -1154,7 +1194,8 @@
 		const close = modal(summary.subject || '(sans titre)', body)
 		let ev
 		try {
-			ev = await api('/accounts/' + core.accountId + '/calendar/event', { query: { eventId: summary.id, tz: core.TZ } })
+			ev = await api('/accounts/' + core.accountId + '/calendar/event', { query: { eventId: summary.id, tz: core.TZ, calendar: summary.calendar || '' } })
+			ev.calendar = summary.calendar
 		} catch (e) {
 			core.clear(body)
 			body.appendChild(h('div', { class: 'wm-form-error' }, e.message))
@@ -1178,6 +1219,8 @@
 			ev.isMeeting && ev.organizer ? h('div', {}, '👤 Organisateur : ' + core.personLabel(ev.organizer)) : null,
 			ev.attendees.length ? h('div', {}, h('strong', {}, 'Participants'), h('ul', { class: 'wm-attendees' }, people(ev.attendees))) : null,
 			ev.optionalAttendees.length ? h('div', {}, h('strong', {}, 'Facultatifs'), h('ul', { class: 'wm-attendees' }, people(ev.optionalAttendees))) : null,
+			(ev.resources || []).length ? h('div', { class: 'wm-event-rooms' }, h('strong', {}, 'Salle'), h('ul', { class: 'wm-attendees' }, ev.resources.map((a) => h('li', {}, '🚪 ' + (a.name || a.email),
+				h('span', { class: 'wm-muted' }, ' — ' + ({ Accept: 'réservée', Tentative: 'réservation provisoire', Decline: 'refusée (déjà prise ?)' }[a.response] || 'en attente de confirmation')))))) : null,
 			ev.body.trim() ? h('div', { class: 'wm-event-body' }, ev.body.trim()) : null,
 		].filter(Boolean))
 
@@ -1187,7 +1230,8 @@
 		const canEdit = ev.isOrganizer && !readOnly
 		// in a colleague's calendar shared with edit rights, answer on their behalf
 		const principal = shared ? calendar.name : null
-		if (ev.isMeeting && !ev.isOrganizer && !ev.isCancelled && (!shared || !readOnly)) {
+		// an event of a common calendar (public folders) is not an invitation to answer
+		if (ev.isMeeting && !ev.isOrganizer && !ev.isCancelled && !isPublicCal(summary) && (!shared || !readOnly)) {
 			const answer = async (response, label) => {
 				if (principal && !window.confirm('Répondre « ' + label + ' » au nom de ' + principal + ' ? L\'organisateur recevra la réponse de votre part, au nom de ' + principal + '.')) return
 				try {
@@ -1218,7 +1262,8 @@
 			const ruleLine = body.querySelector('.wm-event-rule')
 			const editSeries = h('button', { disabled: true, onclick: () => { close(); openForm(editSeries.series, null, false, { series: true }) } }, '🔁 Modifier la série')
 			if (canEdit) actions.appendChild(editSeries)
-			api('/accounts/' + core.accountId + '/calendar/series', { query: { eventId: ev.id, tz: core.TZ } }).then((series) => {
+			api('/accounts/' + core.accountId + '/calendar/series', { query: { eventId: ev.id, tz: core.TZ, calendar: summary.calendar || '' } }).then((series) => {
+				series.calendar = summary.calendar
 				editSeries.series = series
 				editSeries.disabled = false
 				if (ruleLine) ruleLine.textContent = '🔁 ' + describeRule(series.recurrence, new Date(series.start))
@@ -1234,7 +1279,7 @@
 			const notify = ev.isMeeting && ev.isOrganizer ? ' Les participants recevront une annulation.' : ''
 			if (!window.confirm('Supprimer ' + what + ' ?' + notify)) return
 			try {
-				await api('/accounts/' + core.accountId + '/calendar/delete', { method: 'POST', body: { eventId: ev.id, series } })
+				await api('/accounts/' + core.accountId + '/calendar/delete', { method: 'POST', body: { eventId: ev.id, series, calendar: summary.calendar || '' } })
 				core.toast('Événement supprimé')
 				close()
 				load()
@@ -1296,6 +1341,122 @@
 			value: ev ? ev.optionalAttendees.map((a) => a.email).filter((e) => e && !e.startsWith('/')).join(', ') : '' })
 		const description = h('textarea', { name: 'body', rows: '5', placeholder: 'Description' })
 		description.value = ev ? ev.body : ''
+
+		// ---- meeting rooms (Exchange room lists): booked as resources, the room answers itself
+		const rooms = ((ev && ev.resources) || []).filter((r) => r.email).map((r) => ({ name: r.name || r.email, email: r.email }))
+		const roomChips = h('span', { class: 'wm-room-chips' })
+		const roomBox = h('div', { class: 'wm-rooms', hidden: true })
+		const roomName = (email) => (rooms.find((r) => r.email.toLowerCase() === email.toLowerCase()) || {}).name
+		function renderRoomChips() {
+			core.clear(roomChips)
+			if (!rooms.length) roomChips.appendChild(h('span', { class: 'wm-muted' }, 'Aucune'))
+			rooms.forEach((r) => roomChips.appendChild(h('span', { class: 'wm-room-chip', dataset: { email: r.email } }, '🚪 ' + r.name,
+				h('button', {
+					type: 'button',
+					class: 'wm-chip-remove',
+					'aria-label': 'Retirer la salle ' + r.name,
+					onclick: () => {
+						rooms.splice(rooms.indexOf(r), 1)
+						if (location.value.trim() === r.name) location.value = ''
+						renderRoomChips()
+						if (!planBox.hidden) loadPlan()
+					},
+				}, '✕'))))
+		}
+		renderRoomChips()
+		const roomBtn = h('button', {
+			type: 'button',
+			class: 'wm-room-btn',
+			title: 'Réserver une salle de réunion de l\'entreprise',
+			onclick: () => {
+				roomBox.hidden = !roomBox.hidden
+				if (!roomBox.hidden) loadRooms()
+			},
+		}, '🚪 Choisir une salle')
+		let roomSeq = 0
+		async function loadRooms() {
+			const mine = ++roomSeq
+			core.clear(roomBox)
+			roomBox.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading-small' })))
+			const base = '/accounts/' + core.accountId + '/calendar/rooms'
+			const cache = roomCache.get(core.accountId) || { lists: null, rooms: {} }
+			roomCache.set(core.accountId, cache)
+			try {
+				if (!cache.lists) cache.lists = (await api(base)).lists
+				if (mine !== roomSeq) return
+				if (!cache.lists.length) {
+					core.clear(roomBox)
+					roomBox.appendChild(h('div', { class: 'wm-muted' }, 'Aucune liste de salles n\'est définie dans Exchange : l\'administrateur peut en créer (salles de réunion regroupées par site).'))
+					return
+				}
+				// the list chosen last time
+				if (!cache.lists.some((l) => l.email === cache.last)) cache.last = cache.lists[0].email
+				if (!cache.rooms[cache.last]) cache.rooms[cache.last] = (await api(base, { query: { list: cache.last } })).rooms
+				if (mine !== roomSeq) return
+				const list = cache.rooms[cache.last]
+				const s = readStart()
+				const e = readEnd()
+				let busy = {}
+				if (list.length && !isNaN(s) && !isNaN(e)) {
+					const r = await api('/accounts/' + core.accountId + '/calendar/availability', {
+						query: { emails: list.map((x) => x.email).join(','), day: startDate.value, from: s.toISOString(), minutes: 60, tz: core.TZ },
+					})
+					if (mine !== roomSeq) return
+					r.people.forEach((p) => {
+						const hit = p.error ? null : p.busy.filter((b) => b.type !== 'Free' && new Date(b.start) < e && new Date(b.end) > s)
+						busy[p.email.toLowerCase()] = p.error ? 'unknown' : hit
+					})
+				}
+				renderRooms(cache.lists, cache.last, list, busy)
+			} catch (ex) {
+				if (mine !== roomSeq) return
+				core.clear(roomBox)
+				roomBox.appendChild(h('div', { class: 'wm-form-error' }, ex.message))
+			}
+		}
+		function renderRooms(lists, current, list, busy) {
+			core.clear(roomBox)
+			const s = readStart()
+			const e = readEnd()
+			roomBox.appendChild(h('div', { class: 'wm-rooms-head' },
+				lists.length > 1
+					? h('select', { name: 'roomList', 'aria-label': 'Liste de salles', onchange: (ev2) => { roomCache.get(core.accountId).last = ev2.target.value; loadRooms() } },
+						lists.map((l) => h('option', { value: l.email, selected: l.email === current }, l.name)))
+					: h('strong', {}, lists[0].name),
+				!isNaN(s) && !isNaN(e) ? h('span', { class: 'wm-muted' }, ' ' + ucfirst(core.formatRange(s.toISOString(), e.toISOString(), allDay.checked))) : null))
+			if (!list.length) {
+				roomBox.appendChild(h('div', { class: 'wm-muted' }, 'Aucune salle dans cette liste'))
+				return
+			}
+			const ul = h('ul', { class: 'wm-room-list' })
+			// free rooms first
+			const state = (r) => busy[r.email.toLowerCase()]
+			const sorted = list.slice().sort((a, b) => (Array.isArray(state(a)) && state(a).length ? 1 : 0) - (Array.isArray(state(b)) && state(b).length ? 1 : 0))
+			sorted.forEach((r) => {
+				const st = state(r)
+				const taken = Array.isArray(st) && st.length > 0
+				const chosen = rooms.some((x) => x.email.toLowerCase() === r.email.toLowerCase())
+				ul.appendChild(h('li', { class: 'wm-room' + (taken ? ' taken' : ''), dataset: { email: r.email } },
+					h('span', { class: 'wm-room-name' }, '🚪 ' + r.name),
+					h('span', { class: 'wm-room-state' }, st === 'unknown' ? 'disponibilité inconnue'
+						: taken ? 'occupée ' + st.map((b) => timeLabel(new Date(b.start)) + '–' + timeLabel(new Date(b.end))).join(', ')
+							: st ? 'libre' : ''),
+					chosen ? h('span', { class: 'wm-muted' }, '✓ choisie') : h('button', {
+						type: 'button',
+						class: 'wm-small' + (taken ? '' : ' primary'),
+						onclick: () => {
+							if (taken && !window.confirm(r.name + ' est déjà occupée à ce moment : elle refusera sans doute la réservation. La demander quand même ?')) return
+							rooms.push({ name: r.name, email: r.email })
+							if (!location.value.trim()) location.value = r.name
+							renderRoomChips()
+							roomBox.hidden = true
+							if (!planBox.hidden) loadPlan()
+							core.toast(r.name + ' sera réservée à l\'enregistrement')
+						},
+					}, 'Réserver')))
+			})
+			roomBox.appendChild(ul)
+		}
 		// a video meeting: a Nextcloud Talk room, its link in the place and the description
 		const talkBtn = talkEnabled() ? h('button', {
 			type: 'button',
@@ -1356,6 +1517,105 @@
 		endDate.addEventListener('change', () => { duration = readEnd() - readStart() })
 		endTime.addEventListener('change', () => { duration = readEnd() - readStart() })
 
+		// ---- scheduling assistant: who is free when
+		const planBox = h('div', { class: 'wm-plan', hidden: true })
+		let planDay = null
+		const planBtn = h('button', {
+			type: 'button',
+			class: 'wm-plan-btn',
+			title: 'Voir quand les participants sont libres et trouver un créneau',
+			onclick: () => {
+				planBox.hidden = !planBox.hidden
+				if (!planBox.hidden) { planDay = startDate.value; loadPlan() }
+			},
+		}, '📅 Disponibilités')
+		let planSeq = 0
+		async function loadPlan() {
+			const mine = ++planSeq
+			core.clear(planBox)
+			planBox.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading-small' })))
+			const emails = (attendees.value + ',' + optional.value).split(/[,;]/).map((x) => (x.match(/<([^>]+)>/) || [null, x])[1].trim()).filter((x) => x.includes('@'))
+				.concat(rooms.map((r) => r.email))
+			const s = readStart()
+			const minutes = allDay.checked ? 60 : Math.max(15, Math.round((readEnd() - s) / 60000) || 60)
+			try {
+				const r = await api('/accounts/' + core.accountId + '/calendar/availability', {
+					query: { emails: emails.join(','), day: planDay, from: isNaN(s) ? new Date().toISOString() : s.toISOString(), minutes, tz: core.TZ },
+				})
+				if (mine === planSeq) renderPlan(r, minutes)
+			} catch (e) {
+				if (mine !== planSeq) return
+				core.clear(planBox)
+				planBox.appendChild(h('div', { class: 'wm-form-error' }, e.message))
+			}
+		}
+		function renderPlan(r, minutes) {
+			core.clear(planBox)
+			const FROM = 7
+			const TO = 20
+			const day = new Date(planDay + 'T00:00')
+			const pct = (d) => Math.max(0, Math.min(100, ((d - day) / 3600000 - FROM) / (TO - FROM) * 100))
+			const shift = (n) => { const d = new Date(planDay + 'T12:00'); d.setDate(d.getDate() + n); planDay = ymd(d); loadPlan() }
+			planBox.appendChild(h('div', { class: 'wm-plan-head' },
+				h('button', { type: 'button', class: 'wm-small', 'aria-label': 'Jour précédent', onclick: () => shift(-1) }, '‹'),
+				h('strong', {}, ucfirst(day.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }))),
+				h('button', { type: 'button', class: 'wm-small', 'aria-label': 'Jour suivant', onclick: () => shift(1) }, '›')))
+			const hours = h('div', { class: 'wm-plan-hours' })
+			for (let hr = FROM; hr < TO; hr += 2) hours.appendChild(h('span', { style: 'left:' + ((hr - FROM) / (TO - FROM) * 100) + '%' }, hr + ' h'))
+			planBox.appendChild(h('div', { class: 'wm-plan-row' }, h('span', { class: 'wm-plan-who' }), hours))
+			// the meeting as it is set now
+			const s = readStart()
+			const e = readEnd()
+			const sameDay = !isNaN(s) && ymd(s) === planDay
+			r.people.forEach((p) => {
+				const track = h('div', { class: 'wm-plan-track' })
+				p.busy.forEach((b) => {
+					const bs = new Date(b.start)
+					const be = new Date(b.end)
+					if (be <= day || bs >= new Date(day.getTime() + 86400000)) return
+					const left = pct(bs)
+					const width = pct(be) - left
+					if (width <= 0) return
+					track.appendChild(h('span', {
+						class: 'wm-plan-busy' + (b.type === 'Tentative' ? ' tentative' : '') + (b.type === 'OOF' ? ' oof' : ''),
+						style: 'left:' + left + '%;width:' + width + '%',
+						title: ({ Busy: 'Occupé', Tentative: 'Provisoire', OOF: 'Absent', WorkingElsewhere: 'Ailleurs' }[b.type] || 'Occupé') + ' ' + timeLabel(bs) + ' – ' + timeLabel(be),
+					}))
+				})
+				if (sameDay && !allDay.checked) track.appendChild(h('span', { class: 'wm-plan-meeting', style: 'left:' + pct(s) + '%;width:' + Math.max(0.5, pct(e) - pct(s)) + '%' }))
+				if (p.error) track.appendChild(h('span', { class: 'wm-plan-unknown' }, p.error))
+				planBox.appendChild(h('div', { class: 'wm-plan-row', dataset: { email: p.email } },
+					h('span', { class: 'wm-plan-who', title: p.email }, p.self ? 'Moi' : roomName(p.email) ? '🚪 ' + roomName(p.email) : p.email), track))
+			})
+			const sug = r.suggestion
+			planBox.appendChild(h('div', { class: 'wm-plan-foot' },
+				h('span', { class: 'wm-plan-legend' }, h('span', { class: 'wm-plan-busy' }), ' occupé ', h('span', { class: 'wm-plan-busy tentative' }), ' provisoire ',
+					h('span', { class: 'wm-plan-meeting' }), ' votre réunion'),
+				sug
+					? h('button', {
+						type: 'button',
+						class: 'primary wm-plan-suggest',
+						onclick: () => {
+							const ns = new Date(sug.start)
+							const ne = new Date(sug.end)
+							startDate.value = ymd(ns)
+							startTime.value = hm(ns)
+							endDate.value = ymd(ne)
+							endTime.value = hm(ne)
+							duration = ne - ns
+							if (rule) rule.sync()
+							planDay = ymd(ns)
+							loadPlan()
+							core.toast('Réunion placée ' + ns.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' à ' + timeLabel(ns))
+						},
+					}, 'Premier créneau libre pour tous : ' + new Date(sug.start).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + timeLabel(new Date(sug.start)))
+					: h('span', { class: 'wm-muted' }, 'Aucun créneau libre de ' + minutes + ' minutes pour tous dans les 2 semaines (jours ouvrés, 8 h – 18 h)')))
+		}
+		;[startDate, startTime, endDate, endTime].forEach((i) => i.addEventListener('change', () => {
+			if (!planBox.hidden) { planDay = startDate.value; loadPlan() }
+			if (!roomBox.hidden) loadRooms()
+		}))
+
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
 		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? 'Créer' : 'Enregistrer')
 		const field = (label, ...inputs) => h('label', { class: 'wm-field' }, h('span', {}, label), ...inputs)
@@ -1373,6 +1633,7 @@
 					location: location.value,
 					attendees: attendees.value,
 					optionalAttendees: optional.value,
+					resources: rooms.map((r) => r.email),
 					body: description.value,
 					reminder: parseInt(reminder.value, 10),
 					freeBusy: freeBusy.value,
@@ -1388,7 +1649,7 @@
 					await api('/accounts/' + core.accountId + '/calendar/events', { method: 'POST', body: { event: data, tz: core.TZ, calendar: target } })
 					cal.hidden.delete(target)
 					} else {
-						await api('/accounts/' + core.accountId + '/calendar/update', { method: 'POST', body: { eventId: ev.id, event: data, tz: core.TZ, series: isSeries } })
+						await api('/accounts/' + core.accountId + '/calendar/update', { method: 'POST', body: { eventId: ev.id, event: data, tz: core.TZ, series: isSeries, calendar: ev.calendar || '' } })
 					}
 					const invited = (attendees.value + optional.value).trim() !== ''
 					core.toast(isNew ? (invited ? 'Événement créé, invitations envoyées' : 'Événement créé')
@@ -1416,8 +1677,10 @@
 		field('Début', startDate, startTime),
 		field('Fin', endDate, endTime),
 		field('Lieu', location, talkBtn),
+		h('div', { class: 'wm-field' }, h('span', {}, 'Salle'), h('div', { class: 'wm-room-field' }, roomChips, roomBtn, roomBox)),
 		field('Participants', core.attachAutocomplete(attendees)),
 		field('Facultatifs', core.attachAutocomplete(optional)),
+		h('div', { class: 'wm-field' }, h('span', {}), h('div', {}, planBtn, planBox)),
 		rule ? h('div', { class: 'wm-field wm-field-top' }, h('span', {}, 'Répétition'), rule.el) : (ev.isRecurring ? h('p', { class: 'wm-muted' }, '🔁 Seule cette occurrence sera modifiée.') : null),
 		isSeries ? h('p', { class: 'wm-muted' }, customRule
 			? '🔁 Les modifications s\'appliquent à toutes les occurrences. La répétition a été définie dans Outlook : seuls les horaires sont modifiables ici, pas les dates.'

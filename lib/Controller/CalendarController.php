@@ -38,8 +38,25 @@ class CalendarController extends Controller {
 		return $this->logger;
 	}
 
-	private function calendar(int $id, string $tz): EwsCalendar {
-		$client = $this->accounts->getClient($this->accounts->find((string)$this->userId, $id));
+	/**
+	 * @param string $calendar the calendar the request is about: a calendar of
+	 *        the public folders is reached through the public folder mailbox
+	 * @param bool $write the request changes something in it
+	 */
+	private function calendar(int $id, string $tz, string $calendar = '', bool $write = false): EwsCalendar {
+		$account = $this->accounts->find((string)$this->userId, $id);
+		if (str_starts_with($calendar, 'public:')) {
+			$entry = $this->shared->find(SharedFolderService::PUBLIC_CALENDARS, (string)$this->userId, $id, '', substr($calendar, 7));
+			if ($entry === null) {
+				throw new MailException('Agenda des dossiers publics inconnu');
+			}
+			if ($write && !$entry['canEdit']) {
+				throw new MailException('Cet agenda des dossiers publics est en lecture seule pour vous');
+			}
+			$client = $this->accounts->getPublicFolderClient($account);
+		} else {
+			$client = $this->accounts->getClient($account);
+		}
 		$client->setTimeZone(TimeZones::toWindows($tz));
 		return new EwsCalendar($client);
 	}
@@ -67,7 +84,15 @@ class CalendarController extends Controller {
 				'canEdit' => $c['canEdit'],
 				'mode' => $c['mode'],
 			], $this->shared->list(SharedFolderService::CALENDARS, (string)$this->userId, $id));
-			return ['calendars' => array_merge($own, $shared)];
+			$public = array_map(fn ($c) => [
+				'key' => 'public:' . $c['folder'],
+				'name' => $c['name'],
+				'path' => $c['folderName'],
+				'kind' => 'public',
+				'canEdit' => $c['canEdit'],
+				'mode' => 'full',
+			], $this->shared->list(SharedFolderService::PUBLIC_CALENDARS, (string)$this->userId, $id));
+			return ['calendars' => array_merge($own, $shared, $public)];
 		});
 	}
 
@@ -145,7 +170,7 @@ class CalendarController extends Controller {
 	#[NoAdminRequired]
 	public function events(int $id, string $start, string $end, string $tz = 'UTC', string $calendar = 'calendar'): Response {
 		return $this->handle(function () use ($id, $start, $end, $tz, $calendar) {
-			$cal = $this->calendar($id, $tz);
+			$cal = $this->calendar($id, $tz, $calendar);
 			if (str_starts_with($calendar, 'shared:')) {
 				$entry = $this->shared->find(SharedFolderService::CALENDARS, (string)$this->userId, $id, substr($calendar, 7));
 				if ($entry === null) {
@@ -156,6 +181,64 @@ class CalendarController extends Controller {
 				}
 			}
 			return ['events' => $cal->findEvents(self::date($start), self::date($end), $calendar)];
+		});
+	}
+
+	/**
+	 * Room lists of the organisation, or (with $list) the rooms of one.
+	 */
+	#[NoAdminRequired]
+	public function rooms(int $id, string $list = ''): Response {
+		return $this->handle(function () use ($id, $list) {
+			$cal = $this->calendar($id, 'UTC');
+			return $list === '' ? ['lists' => $cal->roomLists()] : ['rooms' => $cal->rooms($list)];
+		});
+	}
+
+	/**
+	 * Scheduling assistant: the availability of the attendees (and of the
+	 * account) on a day, and the first moment from $from when everybody
+	 * is free for $minutes (working days, 8:00–18:00, two weeks ahead).
+	 */
+	#[NoAdminRequired]
+	public function availability(int $id, string $emails, string $day, string $from, int $minutes = 60, string $tz = 'UTC'): Response {
+		return $this->handle(function () use ($id, $emails, $day, $from, $minutes, $tz) {
+			$account = $this->accounts->find((string)$this->userId, $id);
+			try {
+				$zone = new \DateTimeZone($tz);
+			} catch (\Exception) {
+				throw new MailException('Fuseau horaire inconnu');
+			}
+			$dayStart = \DateTimeImmutable::createFromFormat('!Y-m-d', $day, $zone);
+			$start = date_create_immutable($from);
+			if ($dayStart === false || $start === false) {
+				throw new MailException('Date invalide');
+			}
+			// never a moment already past
+			$now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+			if ($start < $now) {
+				$start = $now;
+			}
+			$list = array_merge([$account->getEmail()], preg_split('/[,;\s]+/', $emails) ?: []);
+			// one request (14 days at most): the day shown, and the search from $start
+			$windowStart = min($dayStart, $start);
+			$windowEnd = $windowStart->modify('+14 days');
+			if ($dayStart->modify('+1 day') > $windowEnd) {
+				// a day far ahead: shown in full, the search starts there
+				$windowStart = $dayStart;
+				$windowEnd = $dayStart->modify('+14 days');
+			}
+			$start = max($start, $windowStart);
+			$searchEnd = $windowEnd;
+			$people = $this->calendar($id, 'UTC')->availability($list, $windowStart, $windowEnd);
+			$slot = EwsCalendar::firstFreeSlot(array_filter($people, fn ($p) => $p['error'] === null), $start, $searchEnd, max(15, min(600, $minutes)), $zone);
+			return [
+				'people' => array_map(fn ($p) => $p + ['self' => strtolower($p['email']) === strtolower($account->getEmail())], $people),
+				'suggestion' => $slot === null ? null : [
+					'start' => $slot->format('Y-m-d\TH:i'),
+					'end' => $slot->modify('+' . max(15, min(600, $minutes)) . ' minutes')->format('Y-m-d\TH:i'),
+				],
+			];
 		});
 	}
 
@@ -174,13 +257,13 @@ class CalendarController extends Controller {
 					return ['events' => []]; // only free / busy times: nothing to search
 				}
 			}
-			return ['events' => $this->calendar($id, $tz)->searchEvents($q, $calendar)];
+			return ['events' => $this->calendar($id, $tz, $calendar)->searchEvents($q, $calendar)];
 		});
 	}
 
 	#[NoAdminRequired]
-	public function event(int $id, string $eventId, string $tz = 'UTC'): Response {
-		return $this->handle(fn () => $this->calendar($id, $tz)->getEvent($eventId));
+	public function event(int $id, string $eventId, string $tz = 'UTC', string $calendar = ''): Response {
+		return $this->handle(fn () => $this->calendar($id, $tz, $calendar)->getEvent($eventId));
 	}
 
 	/**
@@ -195,7 +278,7 @@ class CalendarController extends Controller {
 					throw new MailException('Vous ne pouvez pas ajouter d\'événement dans cet agenda');
 				}
 			}
-			return ['id' => $this->calendar($id, $tz)->createEvent($event, $calendar)];
+			return ['id' => $this->calendar($id, $tz, $calendar, true)->createEvent($event, $calendar)];
 		});
 	}
 
@@ -203,8 +286,8 @@ class CalendarController extends Controller {
 	 * The recurring series of an occurrence, with its recurrence rule.
 	 */
 	#[NoAdminRequired]
-	public function series(int $id, string $eventId, string $tz = 'UTC'): Response {
-		return $this->handle(fn () => $this->calendar($id, $tz)->getSeries($eventId));
+	public function series(int $id, string $eventId, string $tz = 'UTC', string $calendar = ''): Response {
+		return $this->handle(fn () => $this->calendar($id, $tz, $calendar)->getSeries($eventId));
 	}
 
 	/**
@@ -212,9 +295,9 @@ class CalendarController extends Controller {
 	 * @param bool $series true: $eventId is a series master, the recurrence rule is updated too
 	 */
 	#[NoAdminRequired]
-	public function update(int $id, string $eventId, array $event, string $tz = 'UTC', bool $series = false): Response {
-		return $this->handle(function () use ($id, $eventId, $event, $tz, $series) {
-			$this->calendar($id, $tz)->updateEvent($eventId, $event, $series);
+	public function update(int $id, string $eventId, array $event, string $tz = 'UTC', bool $series = false, string $calendar = ''): Response {
+		return $this->handle(function () use ($id, $eventId, $event, $tz, $series, $calendar) {
+			$this->calendar($id, $tz, $calendar, true)->updateEvent($eventId, $event, $series);
 			return ['status' => 'ok'];
 		});
 	}
@@ -223,17 +306,59 @@ class CalendarController extends Controller {
 	 * Drag and drop: new start and end of an event.
 	 */
 	#[NoAdminRequired]
-	public function move(int $id, string $eventId, string $start, string $end, bool $allDay = false, bool $notify = false, string $tz = 'UTC'): Response {
-		return $this->handle(function () use ($id, $eventId, $start, $end, $allDay, $notify, $tz) {
-			$this->calendar($id, $tz)->moveEvent($eventId, $start, $end, $allDay, $notify);
+	public function move(int $id, string $eventId, string $start, string $end, bool $allDay = false, bool $notify = false, string $tz = 'UTC', string $calendar = ''): Response {
+		return $this->handle(function () use ($id, $eventId, $start, $end, $allDay, $notify, $tz, $calendar) {
+			$this->calendar($id, $tz, $calendar, true)->moveEvent($eventId, $start, $end, $allDay, $notify);
 			return ['status' => 'ok'];
 		});
 	}
 
 	#[NoAdminRequired]
-	public function delete(int $id, string $eventId, bool $series = false): Response {
-		return $this->handle(function () use ($id, $eventId, $series) {
-			$this->calendar($id, 'UTC')->deleteEvent($eventId, $series);
+	public function delete(int $id, string $eventId, bool $series = false, string $calendar = ''): Response {
+		return $this->handle(function () use ($id, $eventId, $series, $calendar) {
+			$this->calendar($id, 'UTC', $calendar, true)->deleteEvent($eventId, $series, str_starts_with($calendar, 'public:'));
+			return ['status' => 'ok'];
+		});
+	}
+
+	/**
+	 * Browse the public folders for calendars.
+	 */
+	#[NoAdminRequired]
+	public function publicFolders(int $id, string $parent = ''): Response {
+		return $this->handle(function () use ($id, $parent) {
+			$account = $this->accounts->find((string)$this->userId, $id);
+			$added = array_column($this->shared->list(SharedFolderService::PUBLIC_CALENDARS, (string)$this->userId, $id), 'folder');
+			$folders = (new EwsContacts($this->accounts->getPublicFolderClient($account)))->listPublicFolders($parent !== '' ? $parent : null, 'IPF.Appointment');
+			foreach ($folders as &$f) {
+				$f['added'] = in_array($f['id'], $added, true);
+			}
+			return ['folders' => $folders];
+		});
+	}
+
+	/**
+	 * Add a calendar of the public folders.
+	 * @param string $path where it is, for display ("Société › Planning")
+	 */
+	#[NoAdminRequired]
+	public function addPublic(int $id, string $folder, string $path = ''): Response {
+		return $this->handle(function () use ($id, $folder, $path) {
+			$account = $this->accounts->find((string)$this->userId, $id);
+			$cal = (new EwsContacts($this->accounts->getPublicFolderClient($account)))->getPublicBook($folder, 'IPF.Appointment');
+			$this->shared->save(SharedFolderService::PUBLIC_CALENDARS, (string)$this->userId, $id, [
+				'email' => '', 'name' => $cal['name'], 'mode' => 'full', 'canEdit' => $cal['canEdit'],
+				'folder' => $folder, 'folderName' => mb_substr(trim($path), 0, 300),
+			]);
+			return ['key' => 'public:' . $folder, 'name' => $cal['name'], 'canEdit' => $cal['canEdit']];
+		});
+	}
+
+	#[NoAdminRequired]
+	public function removePublic(int $id, string $folder): Response {
+		return $this->handle(function () use ($id, $folder) {
+			$this->accounts->find((string)$this->userId, $id);
+			$this->shared->remove(SharedFolderService::PUBLIC_CALENDARS, (string)$this->userId, $id, '', $folder);
 			return ['status' => 'ok'];
 		});
 	}
@@ -253,7 +378,7 @@ class CalendarController extends Controller {
 					throw new MailException('Vous ne pouvez pas répondre au nom de cette personne : son agenda vous est partagé en lecture seule');
 				}
 			}
-			$this->calendar($id, 'UTC')->respond($eventId, $response, $message);
+			$this->calendar($id, 'UTC', $calendar)->respond($eventId, $response, $message);
 			return ['status' => 'ok'];
 		});
 	}

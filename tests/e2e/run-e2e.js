@@ -847,6 +847,57 @@ async function main() {
 		await page.waitForSelector('.wm-message-header h2:has-text("Sans notification")')
 	})
 
+	await step('shared mailbox: add, read, reply as it, move, remove', async () => {
+		await page.click('text=Comptes et signature')
+		const card = '.wm-account-card:has-text("user@societe-a.fr")'
+		// no access: a clear message
+		await page.fill(card + ' input[name=sharedMailbox]', 'direction@societe-a.fr')
+		await page.click(card + ' .wm-shared-editor button:has-text("Ajouter")')
+		await page.waitForSelector(card + ' .wm-shared-editor .wm-form-error:has-text("Vous n\'avez pas accès à la boîte direction@societe-a.fr")')
+		await page.fill(card + ' input[name=sharedMailbox]', 'contact@societe-a.fr')
+		await page.click(card + ' .wm-shared-editor button:has-text("Ajouter")')
+		await page.waitForSelector('.wm-toast:has-text("Boîte partagée ajoutée")')
+		await page.waitForSelector(card + ' .wm-shared-list li:has-text("contact@societe-a.fr")')
+		// its folders under the account's own
+		const mb = '.wm-shared-mailbox[data-mailbox="contact@societe-a.fr"]'
+		await page.waitForSelector(mb + ' .wm-folder:has-text("Boîte de réception") .wm-badge:text-is("1")')
+		await page.waitForSelector(mb + ' .wm-folder:has-text("Demandes de devis")')
+		await page.click(mb + ' .wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector('.wm-message:has-text("Demande de devis cuisine")')
+		assert(await page.$('.wm-message:has-text("Horaires d\'ouverture")'))
+		await page.click('.wm-message:has-text("Demande de devis cuisine")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Demande de devis cuisine")')
+		await shot('55-shared-mailbox')
+		// moved within that mailbox only
+		const targets = await page.$$eval('.wm-toolbar select.wm-move option', (els) => els.map((e) => e.textContent))
+		assert(targets.includes('Demandes de devis') && !targets.includes('Factures'), targets.join(', '))
+		// answered as the shared mailbox
+		await page.click('.wm-toolbar button:has-text("↩ Répondre")')
+		assert.strictEqual(await page.inputValue('.wm-compose select[name=from]'), 'contact@societe-a.fr')
+		await page.fill('.wm-editor', 'Bonjour Madame, nous vous rappelons demain.')
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		// the account's own folders come first
+		await page.click('.wm-folder:has-text("Éléments envoyés") >> nth=0')
+		await page.click('.wm-message:has-text("RE: Demande de devis cuisine")')
+		await page.waitForSelector('.wm-message-header:has-text("Contact Société A <contact@societe-a.fr>")')
+		// a message moved to a folder of the shared mailbox
+		await page.click(mb + ' .wm-folder:has-text("Boîte de réception")')
+		await page.click('.wm-message:has-text("Horaires d\'ouverture")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Horaires d\'ouverture")')
+		await page.selectOption('.wm-toolbar select.wm-move', { label: 'Demandes de devis' })
+		await page.waitForSelector('.wm-toast:has-text("Demandes de devis")')
+		await page.click(mb + ' .wm-folder:has-text("Demandes de devis")')
+		await page.waitForSelector('.wm-message:has-text("Horaires d\'ouverture")')
+		// removed from the webmail: nothing deleted in Exchange
+		await page.click('text=Comptes et signature')
+		await page.click(card + ' .wm-shared-list li:has-text("contact@societe-a.fr") button')
+		await page.waitForSelector(card + ' .wm-shared-list li:has-text("Aucune")')
+		await page.waitForSelector(mb, { state: 'detached' })
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('calendar reminders in Nextcloud notifications', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\ReminderJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
@@ -1412,6 +1463,133 @@ async function main() {
 			})
 		}, created)
 		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
+	})
+
+	await step('calendar: scheduling assistant, first free slot for all', async () => {
+		const ymd = (x) => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0')
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		await page.fill('.wm-modal input[name=subject]', 'Réunion projet')
+		await page.fill('.wm-modal input[name=attendees]', 'paul.durand@societe-a.fr, client@exterieur.example')
+		await page.fill('.wm-modal input[name=startDate]', ymd(new Date()))
+		await page.dispatchEvent('.wm-modal input[name=startDate]', 'change')
+		await page.fill('.wm-modal input[name=startTime]', '10:30')
+		await page.dispatchEvent('.wm-modal input[name=startTime]', 'change')
+		await page.click('.wm-modal .wm-plan-btn')
+		// a row per person: me, Paul (busy this morning), someone outside (unknown)
+		await page.waitForSelector('.wm-plan-row[data-email="paul.durand@societe-a.fr"] .wm-plan-busy')
+		const who = await page.$$eval('.wm-plan-row[data-email] .wm-plan-who', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(who, ['Moi', 'paul.durand@societe-a.fr', 'client@exterieur.example'])
+		await page.waitForSelector('.wm-plan-row[data-email="client@exterieur.example"] .wm-plan-unknown:has-text("disponibilités inconnues")')
+		await page.waitForSelector('.wm-plan-row[data-email="paul.durand@societe-a.fr"] .wm-plan-meeting')
+		await shot('56-scheduling')
+		// the first moment everybody is free: the meeting moves there, as long as it was
+		const before = await page.inputValue('.wm-modal input[name=startTime]')
+		await page.click('.wm-plan-suggest')
+		await page.waitForSelector('.wm-toast:has-text("Réunion placée")')
+		const s = new Date(await page.inputValue('.wm-modal input[name=startDate]') + 'T' + await page.inputValue('.wm-modal input[name=startTime]'))
+		const e = new Date(await page.inputValue('.wm-modal input[name=endDate]') + 'T' + await page.inputValue('.wm-modal input[name=endTime]'))
+		assert.strictEqual(e - s, 3600000)
+		assert(s.getDay() >= 1 && s.getDay() <= 5 && s.getHours() >= 8 && s.getHours() < 18, String(s))
+		assert(!(await page.inputValue('.wm-modal input[name=startTime]') === before && ymd(s) === ymd(new Date())), 'moved')
+		assert(s > new Date(), 'not in the past: ' + s)
+		// the new time is free for everybody known
+		await page.waitForSelector('.wm-plan-meeting')
+		await page.click('.wm-modal button:has-text("Annuler")')
+	})
+
+	await step('calendar: a calendar of the public folders', async () => {
+		const ymd = (x) => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0')
+		await page.click('.wm-public-cal-add')
+		await page.waitForSelector('.wm-modal h2:has-text("Ajouter un agenda des dossiers publics")')
+		await page.click('.wm-modal .wm-pf-open:has-text("Société A")')
+		const row = '.wm-modal .wm-pf-folder[data-name="Agenda commun"]'
+		await page.waitForSelector(row + ' .wm-cal-mode:has-text("modification")')
+		// only calendars are offered there
+		assert(!(await page.$('.wm-modal .wm-pf-folder[data-name="Clients communs"] button')), 'an address book is not a calendar')
+		await page.click(row + ' button:has-text("Ajouter")')
+		await page.waitForSelector('.wm-toast:has-text("« Agenda commun » ajouté (modification)")')
+		await page.waitForSelector('.wm-cal-row:has-text("Agenda commun") .wm-cal-mode:has-text("modification")')
+		await page.click('.wm-segmented button:has-text("Liste")')
+		await page.waitForSelector('.wm-agenda-item:has-text("Inventaire annuel")')
+		// an event added to it
+		const d = new Date(); d.setDate(d.getDate() + 3)
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		await page.fill('.wm-modal input[name=subject]', 'Journée portes ouvertes')
+		await page.selectOption('.wm-modal select[name=calendar]', { label: 'Agenda commun' })
+		await page.fill('.wm-modal input[name=startDate]', ymd(d))
+		await page.dispatchEvent('.wm-modal input[name=startDate]', 'change')
+		await page.fill('.wm-modal input[name=startTime]', '10:00')
+		await page.dispatchEvent('.wm-modal input[name=startTime]', 'change')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
+		await page.waitForSelector('.wm-agenda-item:has-text("Journée portes ouvertes")')
+		await shot('57-public-calendar')
+		// opened and deleted there (for good: public folders have no « Éléments supprimés »)
+		await page.click('.wm-agenda-item:has-text("Journée portes ouvertes")')
+		await page.waitForSelector('.wm-modal .wm-event-when')
+		assert((await page.textContent('.wm-modal')).includes('Agenda commun'))
+		page.once('dialog', (dlg) => dlg.accept())
+		await page.click('.wm-modal button:has-text("🗑 Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Événement supprimé")')
+		await page.waitForSelector('.wm-agenda-item:has-text("Journée portes ouvertes")', { state: 'detached' })
+		// removed from the list: its events go away, nothing is deleted
+		page.once('dialog', (dlg) => dlg.accept())
+		await page.click('.wm-cal-row:has-text("Agenda commun") .wm-cal-remove')
+		await page.waitForSelector('.wm-toast:has-text("Agenda retiré")')
+		await page.waitForSelector('.wm-agenda-item:has-text("Inventaire annuel")', { state: 'detached' })
+	})
+
+	await step('calendar: book a meeting room of the room lists', async () => {
+		const ymd = (x) => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0')
+		const d = new Date(); d.setDate(d.getDate() + 2)
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		await page.fill('.wm-modal input[name=subject]', 'Atelier devis')
+		await page.fill('.wm-modal input[name=startDate]', ymd(d))
+		await page.dispatchEvent('.wm-modal input[name=startDate]', 'change')
+		await page.fill('.wm-modal input[name=startTime]', '14:00')
+		await page.dispatchEvent('.wm-modal input[name=startTime]', 'change')
+		await page.click('.wm-modal .wm-room-btn')
+		// the room lists of the organisation; in Paris, free rooms first, Mistral is taken
+		await page.waitForSelector('.wm-modal .wm-room[data-email="fourviere@societe-a.fr"]')
+		await page.selectOption('.wm-modal select[name=roomList]', { label: 'Salles Paris' })
+		await page.waitForSelector('.wm-modal .wm-room[data-email="mistral@societe-a.fr"].taken .wm-room-state:has-text("occupée")')
+		await page.waitForSelector('.wm-modal .wm-room[data-email="alize@societe-a.fr"] .wm-room-state:has-text("libre")')
+		const names = await page.$$eval('.wm-modal .wm-room .wm-room-name', (els) => els.map((e) => e.textContent))
+		assert.strictEqual(names[names.length - 1], '🚪 Salle Mistral (8 places)')
+		assert.deepStrictEqual(await page.$$eval('.wm-modal select[name=roomList] option', (els) => els.map((e) => e.textContent)), ['Salles Lyon', 'Salles Paris'])
+		await shot('59-rooms')
+		await page.click('.wm-modal .wm-room[data-email="alize@societe-a.fr"] button:has-text("Réserver")')
+		await page.waitForSelector('.wm-modal .wm-room-chip:has-text("Salle Alizé (4 places)")')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=location]'), 'Salle Alizé (4 places)')
+		// the room is in the scheduling assistant too
+		await page.click('.wm-modal .wm-plan-btn')
+		await page.waitForSelector('.wm-plan-row[data-email="alize@societe-a.fr"] .wm-plan-who:has-text("🚪 Salle Alizé")')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
+		// the room accepted
+		await page.click('.wm-agenda-item:has-text("Atelier devis")')
+		await page.waitForSelector('.wm-modal .wm-event-rooms:has-text("Salle Alizé (4 places) — réservée")')
+		// the room is now busy at that time
+		await page.click('.wm-modal button:has-text("Modifier")')
+		await page.waitForSelector('.wm-modal .wm-room-chip:has-text("Salle Alizé")')
+		await page.click('.wm-modal .wm-room-btn')
+		await page.waitForSelector('.wm-modal .wm-room[data-email="alize@societe-a.fr"] .wm-muted:has-text("choisie")')
+		// the list chosen last time
+		assert.strictEqual(await page.$eval('.wm-modal select[name=roomList]', (s) => s.selectedOptions[0].textContent), 'Salles Paris')
+		await page.waitForSelector('.wm-modal .wm-room[data-email="sirocco@societe-a.fr"] .wm-room-state:has-text("libre")')
+		// another room instead: Alizé removed, Sirocco booked
+		await page.click('.wm-modal .wm-room-chip:has-text("Salle Alizé") .wm-chip-remove')
+		await page.click('.wm-modal .wm-room[data-email="sirocco@societe-a.fr"] button:has-text("Réserver")')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=location]'), 'Salle Sirocco (12 places)')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement modifié")')
+		await page.click('.wm-agenda-item:has-text("Atelier devis")')
+		await page.waitForSelector('.wm-modal .wm-event-rooms:has-text("Salle Sirocco (12 places) — réservée")')
+		assert(!(await page.textContent('.wm-modal .wm-event-rooms')).includes('Alizé'))
+		page.once('dialog', (dlg) => dlg.accept())
+		await page.click('.wm-modal button:has-text("🗑 Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Événement supprimé")')
+		await page.waitForSelector('.wm-agenda-item:has-text("Atelier devis")', { state: 'detached' })
 	})
 
 	await step('calendar: a series can become a single event', async () => {
@@ -2042,6 +2220,60 @@ async function main() {
 		// back to the accounts
 		await page.click('.wm-delegates .wm-back')
 		await page.waitForSelector('.wm-settings h2:has-text("Comptes Exchange")')
+	})
+
+	await step('tasks: add, edit, complete and delete an Exchange task', async () => {
+		await page.click('.wm-tab[data-module="tasks"]')
+		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
+		// the late one first, in red; the completed one is not in « À faire »
+		assert.ok((await page.textContent('.wm-task >> nth=0')).includes('Relancer le cabinet comptable'))
+		await page.waitForSelector('.wm-task.late:has-text("Relancer le cabinet comptable") .wm-task-due:has-text("En retard")')
+		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine") .wm-task-due:has-text("Demain")')
+		await page.waitForSelector('.wm-task:has-text("Commander des cartouches") .wm-task-status:has-text("En cours")')
+		assert.strictEqual(await page.locator('.wm-task:has-text("Envoyer les vœux")').count(), 0)
+
+		// quick add
+		await page.fill('input[name=quickTask]', 'Préparer le devis Dupont')
+		await page.press('input[name=quickTask]', 'Enter')
+		await page.waitForSelector('.wm-toast:has-text("Tâche ajoutée")')
+		const devis = '.wm-task:has-text("Préparer le devis Dupont")'
+		await page.waitForSelector(devis)
+
+		// edit: due tomorrow, high importance, notes
+		await page.click(devis + ' .wm-task-subject')
+		await page.waitForSelector('.wm-task-form input[name=subject]')
+		assert.strictEqual(await page.inputValue('.wm-task-form input[name=subject]'), 'Préparer le devis Dupont')
+		await page.click('.wm-task-form button:has-text("Demain")')
+		await page.selectOption('.wm-task-form select[name=importance]', 'High')
+		await page.fill('.wm-task-form textarea[name=notes]', 'Chiffrer la maintenance sur 3 ans')
+		await page.click('.wm-task-form button:has-text("Enregistrer")')
+		await page.waitForSelector('.wm-toast:has-text("Tâche enregistrée")')
+		await page.waitForSelector(devis + ' .wm-important')
+		await page.waitForSelector(devis + ' .wm-task-due:has-text("Demain")')
+		await shot('58-tasks')
+		// saved on the server: reopen it
+		await page.click('.wm-task:has-text("Renouveler le nom de domaine") .wm-task-subject')
+		await page.waitForFunction(() => document.querySelector('.wm-task-form input[name=subject]')?.value === 'Renouveler le nom de domaine')
+		await page.click(devis + ' .wm-task-subject')
+		await page.waitForFunction(() => document.querySelector('.wm-task-form textarea[name=notes]')?.value === 'Chiffrer la maintenance sur 3 ans')
+
+		// done: it leaves « À faire » and is in « Terminées »
+		await page.check(devis + ' .wm-task-done')
+		await page.waitForSelector('.wm-toast:has-text("Tâche terminée")')
+		await page.locator(devis).waitFor({ state: 'detached' })
+		await page.click('.wm-task-filter[data-filter="done"]')
+		await page.waitForSelector('.wm-task.done:has-text("Préparer le devis Dupont")')
+		await page.waitForSelector('.wm-task.done:has-text("Envoyer les vœux")')
+
+		// delete
+		await page.click(devis + ' .wm-task-subject')
+		await page.waitForSelector('.wm-task-form button:has-text("Remettre à faire")')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-task-form button:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Tâche supprimée")')
+		await page.locator(devis).waitFor({ state: 'detached' })
+		await page.click('.wm-task-filter[data-filter="todo"]')
+		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
 	})
 
 	await step('module choice is remembered', async () => {

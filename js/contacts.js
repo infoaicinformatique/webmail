@@ -275,8 +275,24 @@
 	 * and add the address books found there.
 	 */
 	function openAddPublic() {
+		publicPicker(core, {
+			base: '/accounts/' + core.accountId + '/contacts/public',
+			title: 'Ajouter un carnet des dossiers publics',
+			intro: 'Les dossiers publics sont partagés par toute l\'organisation. Ouvrez les dossiers pour trouver les carnets d\'adresses ; '
+				+ 'le niveau d\'accès, lecture ou modification, est celui défini par l\'administrateur Exchange.',
+			icon: '📇',
+			empty: 'Aucun carnet d\'adresses ici.',
+			onAdded: async (b) => { await loadBooks(true); selectBook(b.key) },
+		})
+	}
+
+	/**
+	 * Browse the public folders and add one of them (an address book, or a
+	 * calendar for the calendar module: window.WebmailPublicPicker).
+	 */
+	function publicPicker(core, opts) {
 		const h = core.h
-		const base = '/accounts/' + core.accountId + '/contacts/public'
+		const base = opts.base
 		const overlay = h('div', { class: 'wm-overlay' })
 		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
 		const onKey = (e) => { if (e.key === 'Escape') close() }
@@ -302,7 +318,7 @@
 			list.appendChild(h('li', { class: 'wm-center' }, h('span', { class: 'icon-loading-small' })))
 			let folders
 			try {
-				folders = (await api(base, { query: { parent: path[path.length - 1].id } })).folders
+				folders = (await core.api(base, { query: { parent: path[path.length - 1].id } })).folders
 			} catch (e) {
 				if (mine !== seq) return
 				core.clear(list)
@@ -311,14 +327,14 @@
 			}
 			if (mine !== seq) return
 			core.clear(list)
-			if (!folders.length) list.appendChild(h('li', { class: 'wm-muted' }, 'Aucun carnet d\'adresses ici.'))
+			if (!folders.length) list.appendChild(h('li', { class: 'wm-muted' }, opts.empty))
 			folders.forEach((f) => {
 				const where = path.slice(1).map((p) => p.name).concat(f.name).join(' › ')
 				list.appendChild(h('li', { class: 'wm-pf-folder', dataset: { name: f.name } },
 					f.hasChildren
 						? h('a', { href: '#', class: 'wm-pf-open', onclick: (e) => { e.preventDefault(); path.push({ id: f.id, name: f.name }); open() } },
-							h('span', { 'aria-hidden': 'true' }, f.isContacts ? '📇 ' : '📁 '), f.name, h('span', { class: 'wm-muted' }, ' ›'))
-						: h('span', {}, h('span', { 'aria-hidden': 'true' }, '📇 '), f.name),
+							h('span', { 'aria-hidden': 'true' }, f.isContacts ? opts.icon + ' ' : '📁 '), f.name, h('span', { class: 'wm-muted' }, ' ›'))
+						: h('span', {}, h('span', { 'aria-hidden': 'true' }, opts.icon + ' '), f.name),
 					f.isContacts ? h('span', { class: 'wm-cal-mode' + (f.canEdit ? ' wm-cal-mode-edit' : '') }, f.canEdit ? 'modification' : 'lecture') : null,
 					f.isContacts
 						? (f.added
@@ -329,11 +345,10 @@
 								onclick: async (e) => {
 									e.target.disabled = true
 									try {
-										const b = await api(base, { method: 'POST', body: { folder: f.id, path: where } })
+										const b = await core.api(base, { method: 'POST', body: { folder: f.id, path: where } })
 										close()
 										core.toast('« ' + b.name + ' » ajouté (' + (b.canEdit ? 'modification' : 'lecture') + ')')
-										await loadBooks(true)
-										selectBook(b.key)
+										await opts.onAdded(b)
 									} catch (ex) {
 										err.textContent = ex.message
 										e.target.disabled = false
@@ -344,12 +359,11 @@
 			})
 		}
 
-		overlay.appendChild(h('div', { class: 'wm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Ajouter un carnet des dossiers publics' },
-			h('div', { class: 'wm-modal-header' }, h('h2', {}, 'Ajouter un carnet des dossiers publics'),
+		overlay.appendChild(h('div', { class: 'wm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': opts.title },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, opts.title),
 				h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
 			h('div', { class: 'wm-event-form' },
-				h('p', { class: 'wm-muted' }, 'Les dossiers publics sont partagés par toute l\'organisation. Ouvrez les dossiers pour trouver les carnets d\'adresses ; '
-					+ 'le niveau d\'accès, lecture ou modification, est celui défini par l\'administrateur Exchange.'),
+				h('p', { class: 'wm-muted' }, opts.intro),
 				crumbs, list, err,
 				h('div', { class: 'wm-compose-actions' }, h('button', { type: 'button', onclick: close }, 'Fermer')))))
 		document.body.appendChild(overlay)
@@ -671,4 +685,5 @@
 			renderNav(navEl)
 		},
 	}
+	window.WebmailPublicPicker = publicPicker
 })()

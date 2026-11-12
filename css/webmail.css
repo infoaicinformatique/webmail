@@ -808,3 +808,65 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-talk-btn { margin-left: 6px; white-space: nowrap; }
 .wm-event-join { margin: 6px 0; }
 .wm-event-join .wm-join-btn { display: inline-block; text-decoration: none; }
+
+/* shared mailboxes */
+.wm-shared-mailbox { margin-top: 10px; }
+.wm-shared-mailbox-title { display: block; width: 100%; text-align: left; background: none !important; border: 0; font-weight: bold; margin: 0; padding: 4px 8px; min-height: 0; }
+.wm-shared-error { padding: 4px 12px; font-size: .9em; }
+.wm-shared-editor { margin: 8px 0; padding: 8px 0; border-top: 1px solid var(--color-border); }
+.wm-shared-editor-title { font-weight: bold; }
+.wm-shared-list { list-style: none; margin: 4px 0; padding: 0; }
+.wm-shared-list li { padding: 2px 0; }
+.wm-shared-editor input[type=email] { margin: 0 6px 0 0; min-width: 240px; }
+.wm-from { margin: 0; padding: 0 6px; min-height: 28px; }
+
+/* scheduling assistant */
+.wm-plan-btn { margin: 0; }
+.wm-plan { margin-top: 8px; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); }
+.wm-plan-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.wm-plan-head .wm-small { min-height: 26px; padding: 0 10px; margin: 0; }
+.wm-plan-row { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 6px; min-height: 26px; }
+.wm-plan-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9em; }
+.wm-plan-hours { position: relative; height: 18px; font-size: 11px; color: var(--color-text-maxcontrast); }
+.wm-plan-hours span { position: absolute; transform: translateX(-2px); }
+.wm-plan-track { position: relative; height: 20px; background: repeating-linear-gradient(90deg, var(--color-background-dark) 0, var(--color-background-dark) 1px, transparent 1px, transparent calc(100% / 13)); border-radius: 4px; }
+.wm-plan-busy { position: absolute; top: 2px; bottom: 2px; background: #2858a5; border-radius: 3px; display: inline-block; }
+.wm-plan-busy.tentative { background: repeating-linear-gradient(45deg, #9db7e8 0, #9db7e8 4px, #fff 4px, #fff 7px); border: 1px solid #9db7e8; }
+.wm-plan-busy.oof { background: #8e44ad; }
+.wm-plan-meeting { position: absolute; top: 0; bottom: 0; border: 2px solid var(--color-success, #46ba61); background: rgba(70, 186, 97, .18); border-radius: 3px; display: inline-block; }
+.wm-plan-unknown { position: absolute; left: 6px; top: 1px; font-size: 11px; color: var(--color-text-maxcontrast); font-style: italic; }
+.wm-plan-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.wm-plan-legend { font-size: 11px; color: var(--color-text-maxcontrast); }
+.wm-plan-legend .wm-plan-busy, .wm-plan-legend .wm-plan-meeting { position: static; width: 14px; height: 10px; vertical-align: middle; }
+.wm-plan-suggest { margin: 0; }
+@media (max-width: 800px) { .wm-plan-row { grid-template-columns: 90px 1fr; } }
+
+/* Tasks */
+.wm-tasks { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
+.wm-task { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-bottom: 1px solid var(--color-border); cursor: pointer; }
+.wm-task:hover { background: var(--color-background-hover); }
+.wm-task.selected { background: var(--color-primary-element-light, var(--color-background-dark)); }
+.wm-task-done { margin-top: 3px !important; cursor: pointer; flex: none; }
+.wm-task-text { min-width: 0; flex: 1; }
+.wm-task-subject { overflow-wrap: anywhere; }
+.wm-task.done .wm-task-subject { text-decoration: line-through; color: var(--color-text-maxcontrast); }
+.wm-task-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--color-text-maxcontrast); margin-top: 2px; }
+.wm-task.late .wm-task-due { color: var(--color-error); font-weight: bold; }
+.wm-task-status { background: var(--color-background-dark); border-radius: 8px; padding: 0 6px; }
+.wm-task-quick { width: 100%; }
+.wm-task-title { padding: 8px 4px; }
+.wm-task-form .wm-field .wm-small { margin-left: 4px; }
+.wm-task-form .wm-field { flex-wrap: wrap; }
+
+/* Meeting rooms */
+.wm-room-field { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1; min-width: 0; }
+.wm-room-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.wm-room-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--color-background-dark); border-radius: 14px; padding: 2px 4px 2px 10px; }
+.wm-chip-remove { min-height: 22px !important; min-width: 22px; padding: 0 !important; margin: 0 !important; border: none !important; background: transparent !important; }
+.wm-rooms { flex-basis: 100%; border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); padding: 8px; }
+.wm-rooms-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; }
+.wm-room-list { list-style: none; margin: 0; padding: 0; }
+.wm-room { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 4px 0; border-top: 1px solid var(--color-border); }
+.wm-room-name { flex: 1; min-width: 140px; }
+.wm-room-state { color: var(--color-success, #2d7b41); font-size: 12px; }
+.wm-room.taken .wm-room-state { color: var(--color-error); }

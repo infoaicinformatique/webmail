@@ -41,6 +41,7 @@ et sur les téléphones, et inversement.
 | Invitations | Une invitation reçue par e-mail affiche la date et le lieu, avec les boutons **Accepter / Provisoire / Refuser** |
 | Réponse automatique | « 🌴 Réponse automatique » (dans « Comptes et signature ») : comme dans Outlook, activée tout de suite ou **pendant une période**, avec un message pour vos collègues et, au choix, aucune réponse, une réponse à vos contacts extérieurs ou à tout le monde à l'extérieur (même message ou un autre). Tant qu'elle est active, un rappel avec « Modifier » et « Désactiver » s'affiche au-dessus des dossiers |
 | Liens Nextcloud | « 🔗 Lien Nextcloud » dans la rédaction : un fichier ou un dossier de Fichiers devient un **lien de téléchargement** dans le texte du message (nom, taille, date de fin si l'administrateur en impose une), au lieu d'une pièce jointe. Un fichier déjà joint depuis Fichiers passe en lien avec « 🔗 en lien ». Un fichier lourd de l'ordinateur (15 Mo et plus) est signalé, et « 🔗 Envoyer en lien » le dépose dans Fichiers (dossier « Pièces jointes envoyées ») puis met son lien dans le message. Un lien en lecture seule déjà existant est réutilisé |
+| Boîtes partagées | Dans « Comptes et signature », « 📮 Boîtes partagées » : ajoutez une boîte commune (contact@, accueil@…) dont l'administrateur Exchange vous a donné l'**accès total**. Ses dossiers s'affichent sous les vôtres (avec les non-lus) : lecture, réponse, déplacement entre ses dossiers, suppression. En répondant depuis la boîte partagée, « De : » propose cette boîte (il faut le droit « **Envoyer en tant que** ») ; la liste « De : » permet aussi d'écrire un nouveau message en son nom. Retirer une boîte du webmail ne supprime rien dans Exchange |
 | Conversations | Sous l'en-tête d'un message : « ▸ Conversation : 3 messages » quand il fait partie d'un échange. Tous les messages de la conversation, **dans tous les dossiers** (vos réponses dans « Éléments envoyés » comprises, sauf brouillons et éléments supprimés), du plus ancien au plus récent, avec l'expéditeur, la date, le dossier et le début du texte. Un clic déplie un message sur place (avec « Ouvrir ce message » et « Répondre ») ; la conversation reste dépliée ou repliée d'un message à l'autre |
 | Catégories | Les **catégories Outlook** s'affichent en pastilles de couleur dans la liste et sur le message (mêmes noms et couleurs qu'Outlook, lus dans la boîte). Bouton « 🏷 » sur un message, ou « 🏷 Catégoriser » pour plusieurs messages cochés : cocher / décocher une catégorie, ou en **créer une** avec sa couleur (25 couleurs d'Outlook), ajoutée à la liste de la boîte. Un clic sur une pastille du message affiche tous les messages de cette catégorie, dans tous les dossiers |
 | Règles | « 📋 Règles » (dans « Comptes et signature ») ou « 📋 Règle… » sur un message (son expéditeur est déjà rempli) : les règles qu'Exchange applique à chaque message reçu, **même webmail fermé**. Conditions : expéditeur, mots dans l'expéditeur, l'objet ou le texte, destinataire, pièce jointe, envoyé à moi seul, importance. Actions : déplacer, copier, mettre à la corbeille, marquer comme lu, importance, catégorie, transférer, ne pas appliquer les règles suivantes. Activer / désactiver, changer l'ordre, supprimer. Les règles faites dans Outlook avec d'autres réglages sont affichées (« créée dans Outlook ») et peuvent être activées, désactivées, déplacées ou supprimées sans être abîmées. Comme dans Outlook sur le web, la première modification remplace la copie des règles gardée par Outlook pour Windows : ses règles « côté client uniquement » (qui ne fonctionnent qu'Outlook ouvert) sont alors à refaire |
@@ -62,6 +63,8 @@ et sur les téléphones, et inversement.
 ![Catégories](docs/capture-categories.png)
 
 ![Conversation](docs/capture-conversation.png)
+
+![Boîte partagée](docs/capture-boite-partagee.png)
 
 ![Lien Nextcloud](docs/capture-lien-partage.png)
 
@@ -95,6 +98,12 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Visio Talk](docs/capture-talk.png)
 
+![Disponibilités](docs/capture-disponibilites.png)
+
+![Salles de réunion](docs/capture-salles.png)
+
+![Agenda des dossiers publics](docs/capture-agenda-public.png)
+
 | | |
 |---|---|
 | Vues | **Jour**, **semaine**, **mois** et **liste** des 30 prochains jours. Mini-calendrier à gauche : un point sous les jours qui ont des rendez-vous (dans la période affichée), ses propres flèches pour parcourir les mois sans changer l'affichage principal, un clic va au jour, un double-clic l'affiche seul (vue jour). Les événements périodiques sont dépliés |
@@ -109,6 +118,9 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Glisser-déposer | À la souris, dans la vue **semaine**, glisser un événement le déplace à une autre heure ou un autre jour, par pas de 15 minutes. Tirer son **bord inférieur** change l'heure de fin. Dans la vue **mois** et la ligne « Journée », glisser un événement le déplace sur un autre jour en gardant ses horaires. **Échap** annule. Pour une réunion, une confirmation est demandée et les participants reçoivent la mise à jour. Seuls les événements dont vous êtes l'organisateur peuvent être déplacés. Sur écran tactile, un appui ouvre l'événement, et on le modifie avec « Modifier » |
 | Séries | Depuis une occurrence : **« Modifier cette occurrence »** ou **« Modifier la série »**. Les deux modifient titre, horaires, lieu, participants, rappel et disponibilité ; seule la série permet de changer la règle de répétition ou de la supprimer (la série devient alors un événement unique). Les participants reçoivent la mise à jour. Pour une règle créée dans Outlook que l'application ne sait pas modifier (par ex. « le 2e jour ouvré du mois »), la règle est conservée et seuls les horaires sont modifiables |
 | Réunions | Les participants reçoivent l'invitation, puis les mises à jour et les annulations (envoyées par Exchange) |
+| Dossiers publics | « ＋ Ajouter un agenda des dossiers publics » : parcourez les dossiers publics Exchange et ajoutez un agenda commun (planning de l'équipe, réservations, fermetures…). Il s'affiche avec vos agendas ; lecture ou modification selon les droits donnés par l'administrateur Exchange (création, modification, déplacement, suppression d'événements — définitive, les dossiers publics n'ayant pas d'« Éléments supprimés »). Retirer l'agenda de la liste ne supprime rien |
+| Disponibilités | « 📅 Disponibilités » dans le formulaire : une ligne par participant (et vous), sur la journée de 7 h à 20 h : occupé, provisoire, absent, et la réunion telle qu'elle est placée ; ‹ › pour changer de jour. « **Premier créneau libre pour tous** » place la réunion (même durée) au premier moment où tout le monde est libre, jours ouvrés de 8 h à 18 h, dans les deux semaines. Les personnes extérieures sont signalées « disponibilités inconnues » et ne bloquent pas la recherche |
+| Salles de réunion | « 🚪 Choisir une salle » dans le formulaire : les **listes de salles** d'Exchange (« Salles Paris », « Salles Lyon »…, la dernière choisie est retenue) et, pour chaque salle, si elle est **libre** ou **occupée** au moment de la réunion (les libres d'abord). « Réserver » ajoute la salle à l'événement (et son nom dans le lieu s'il est vide) ; à l'enregistrement, Exchange lui envoie la demande et la salle **accepte ou refuse** d'elle-même. Le détail de l'événement indique « réservée », « refusée » ou « en attente de confirmation ». La salle apparaît aussi dans les disponibilités. ✕ retire une salle. Les listes de salles sont créées par l'administrateur Exchange |
 | Visio | Avec **Nextcloud Talk** installé, « 🎥 Visio Talk » dans le formulaire crée une salle de visio publique pour l'événement : son lien va dans le lieu et dans la description, donc dans l'invitation ; les invités extérieurs y entrent sans compte. Dans le détail d'un événement, « 🎥 Rejoindre la visio » ouvre la salle (ou le lien Teams, Zoom… donné comme lieu) |
 | Invitations reçues | Accepter, provisoire ou refuser depuis l'agenda ou depuis l'e-mail |
 | Réponse au nom d'un collègue | Dans l'agenda d'un collègue partagé en **modification** (délégué ou éditeur), ses invitations affichent « Réponse de Marie Martin » et les boutons pour répondre **en son nom**, après confirmation. Impossible en lecture seule |
@@ -145,6 +157,19 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Actions | Créer (dans le carnet choisi), modifier, supprimer, **écrire** (ouvre un nouveau message), appeler (lien `tel:`) |
 | Import / export | « ⬇ » au-dessus de la liste : tout le carnet affiché dans un fichier **vCard** (.vcf) pour Outlook, un téléphone, Nextcloud Contacts… « ⬆ » : les contacts d'un fichier vCard (2.1, 3.0 ou 4.0, celui d'Outlook ou d'un téléphone) sont ajoutés au carnet ; ceux déjà présents (même adresse e-mail) sont ignorés, et le bilan s'affiche |
 | Groupes | Les listes de distribution sont affichées, leur gestion reste dans Outlook |
+
+### Tâches
+
+![Tâches](docs/capture-taches.png)
+
+L'onglet **✅ Tâches** affiche le dossier « Tâches » de la boîte Exchange, le même que dans Outlook et Outlook sur le web.
+
+| | |
+|---|---|
+| Liste | « À faire » : les tâches en retard d'abord (échéance en rouge, « En retard · 10 nov. »), puis par échéance (« Aujourd'hui », « Demain »…), puis celles sans échéance ; importance haute marquée ❗, état « En cours » / « En attente » / « Reportée » affiché. « Terminées » : les tâches finies, les plus récentes d'abord |
+| Ajout rapide | Champ « Ajouter une tâche » en haut de la liste : un titre, Entrée, et la tâche est créée |
+| Terminer | La case devant une tâche la marque **terminée** (100 %) ou la remet à faire, tout de suite |
+| Modifier | Un clic ouvre la tâche : titre, **échéance** (raccourcis Aujourd'hui, Demain, Dans une semaine, Aucune), état, importance, notes. « Supprimer » la met dans « Éléments supprimés » |
 
 ### Délégués
 
@@ -188,7 +213,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.36.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.41.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -210,7 +235,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.36 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.41 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -236,7 +261,7 @@ sudo -u www-data php occ config:app:set webmail servers --value='[{"domain":"soc
 
 1. Ouvrez l'application **Webmail** dans la barre du haut.
 2. Saisissez l'adresse Exchange et son mot de passe. La connexion est testée avant l'enregistrement.
-3. Passez du courrier à l'agenda ou aux contacts avec les onglets en haut à gauche. L'application se rouvre sur le dernier onglet utilisé.
+3. Passez du courrier à l'agenda, aux contacts ou aux tâches avec les onglets en haut à gauche. L'application se rouvre sur le dernier onglet utilisé.
 4. Pour la signature, une autre boîte ou un changement de mot de passe, utilisez **Comptes et signature**
    en bas à gauche.
 
@@ -296,17 +321,12 @@ templates/          page principale et page d'administration
 **Courrier**
 - Images collées dans l'éditeur, signature mise en forme, pièces jointes enregistrées avec le brouillon
 - Liste des messages regroupée par conversation
-- Boîtes partagées (contact@…) et boîtes des collègues dont on est délégué
-
-**Agenda**
-- Assistant de planification (disponibilités des participants, salles de réunion)
-- Agendas des dossiers publics
+- Boîtes des collègues dont on est délégué (courrier)
 
 **Contacts**
 - Groupes de contacts modifiables, photos
 
 **Nextcloud et serveur**
 - Notifications Exchange en direct (abonnement « streaming ») à la place de la vérification régulière
-- Tâches Exchange
 - Découverte automatique (Autodiscover) à la place de la table domaine/serveur
 - Traduction (anglais)
