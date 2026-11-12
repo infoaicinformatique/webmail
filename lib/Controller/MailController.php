@@ -50,7 +50,13 @@ class MailController extends Controller {
 
 	#[NoAdminRequired]
 	public function folders(int $id): Response {
-		return $this->handle(fn () => ['folders' => $this->client($id)->listFolders()]);
+		return $this->handle(function () use ($id) {
+			$account = $this->accounts->find((string)$this->userId, $id);
+			$client = $this->accounts->getClient($account);
+			$used = null;
+			$folders = $client->listFolders($used);
+			return ['folders' => $folders, 'usage' => ['used' => $used, 'limit' => $this->accounts->mailboxQuota($account, $client)]];
+		});
 	}
 
 	#[NoAdminRequired]

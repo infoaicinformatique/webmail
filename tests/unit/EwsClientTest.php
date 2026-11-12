@@ -23,20 +23,39 @@ class EwsClientTest extends EwsTestCase {
 			. '<m:GetFolderResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Folders><t:Folder><t:FolderId Id="ROOT-ID" ChangeKey="a"/></t:Folder></m:Folders></m:GetFolderResponseMessage>'
 			. '</m:ResponseMessages></m:GetFolderResponse>');
 		$this->queue(self::ok('FindFolder', '<m:RootFolder TotalItemsInView="4" IncludesLastItemInRange="true"><t:Folders>'
-			. '<t:Folder><t:FolderId Id="INBOX-ID"/><t:ParentFolderId Id="ROOT-ID"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Boîte de réception</t:DisplayName><t:TotalCount>12</t:TotalCount><t:ChildFolderCount>1</t:ChildFolderCount><t:UnreadCount>3</t:UnreadCount></t:Folder>'
+			. '<t:Folder><t:FolderId Id="INBOX-ID"/><t:ParentFolderId Id="ROOT-ID"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Boîte de réception</t:DisplayName><t:TotalCount>12</t:TotalCount><t:ChildFolderCount>1</t:ChildFolderCount><t:UnreadCount>3</t:UnreadCount><t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0xe08" PropertyType="Long"/><t:Value>1000000</t:Value></t:ExtendedProperty></t:Folder>'
 			. '<t:Folder><t:FolderId Id="SUB-ID"/><t:ParentFolderId Id="INBOX-ID"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Clients</t:DisplayName><t:TotalCount>2</t:TotalCount><t:ChildFolderCount>0</t:ChildFolderCount><t:UnreadCount>0</t:UnreadCount></t:Folder>'
-			. '<t:CalendarFolder><t:FolderId Id="CAL-ID"/><t:ParentFolderId Id="ROOT-ID"/><t:FolderClass>IPF.Appointment</t:FolderClass><t:DisplayName>Calendrier</t:DisplayName></t:CalendarFolder>'
+			. '<t:CalendarFolder><t:FolderId Id="CAL-ID"/><t:ParentFolderId Id="ROOT-ID"/><t:FolderClass>IPF.Appointment</t:FolderClass><t:DisplayName>Calendrier</t:DisplayName><t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0xe08" PropertyType="Long"/><t:Value>250000</t:Value></t:ExtendedProperty></t:CalendarFolder>'
 			. '<t:Folder><t:FolderId Id="SENT-ID"/><t:ParentFolderId Id="ROOT-ID"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Éléments envoyés</t:DisplayName><t:TotalCount>5</t:TotalCount><t:UnreadCount>0</t:UnreadCount></t:Folder>'
 			. '</t:Folders></m:RootFolder>'));
 
-		$folders = $this->client()->listFolders();
+		$used = null;
+		$folders = $this->client()->listFolders($used);
 
 		$this->assertCount(3, $folders);
+		$this->assertSame(1250000, $used, 'all folders count, calendars and contacts too');
+		$this->assertStringContainsString('<t:ExtendedFieldURI PropertyTag="0x0E08" PropertyType="Long"/>', $this->requests[1]);
 		$this->assertSame(['id' => 'INBOX-ID', 'name' => 'Boîte de réception', 'parentId' => null, 'total' => 12, 'unread' => 3, 'role' => 'inbox'], $folders[0]);
 		$this->assertSame('INBOX-ID', $folders[1]['parentId']);
 		$this->assertNull($folders[1]['role']);
 		$this->assertSame('sentitems', $folders[2]['role']);
 		$this->assertStringContainsString('Traversal="Deep"', $this->requests[1]);
+	}
+
+	public function testMailboxQuotaPrefersTheSendLimit(): void {
+		$prop = fn (string $tag, int $kb) => '<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="' . $tag . '" PropertyType="Integer"/><t:Value>' . $kb . '</t:Value></t:ExtendedProperty>';
+		$this->queue('<m:GetFolderResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>'
+			. '<m:GetFolderResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Folders><t:Folder><t:FolderId Id="TOP"/>'
+			. $prop('0x666a', 52428800) . $prop('0x666e', 51200000) . '</t:Folder></m:Folders></m:GetFolderResponseMessage>'
+			. '<m:GetFolderResponseMessage ResponseClass="Error"><m:MessageText>x</m:MessageText><m:ResponseCode>ErrorAccessDenied</m:ResponseCode></m:GetFolderResponseMessage>'
+			. '</m:ResponseMessages></m:GetFolderResponse>');
+		$this->assertSame(51200000 * 1024, $this->client()->mailboxQuota());
+		$this->assertStringContainsString('<m:FolderIds><t:DistinguishedFolderId Id="msgfolderroot"/><t:DistinguishedFolderId Id="root"/></m:FolderIds>', $this->requests[0]);
+	}
+
+	public function testMailboxQuotaUnknown(): void {
+		$this->queue(self::ok('GetFolder', '<m:Folders><t:Folder><t:FolderId Id="TOP"/></t:Folder></m:Folders>'));
+		$this->assertNull($this->client()->mailboxQuota());
 	}
 
 	public function testFindItemsWithSearchAndPaging(): void {

@@ -123,7 +123,25 @@ class AccountService {
 		return $client;
 	}
 
-	private function buildClient(string $url, string $email, string $password): EwsClient {
+	/**
+	 * Mailbox size limit (bytes, null if unknown), remembered for an hour.
+	 */
+	public function mailboxQuota(Account $account, EwsClient $client): ?int {
+		$cache = $this->cacheFactory->createDistributed('webmail-quota');
+		$key = 'q_' . $account->getId();
+		$value = $cache->get($key);
+		if (!is_int($value)) {
+			try {
+				$value = $client->mailboxQuota() ?? 0;
+			} catch (MailException) {
+				$value = 0;
+			}
+			$cache->set($key, $value, 3600);
+		}
+		return $value > 0 ? $value : null;
+	}
+
+		private function buildClient(string $url, string $email, string $password): EwsClient {
 		$verify = $this->config->getAppValue('webmail', 'verify_tls', 'yes') !== 'no';
 		return new EwsClient($url, $email, $password, 60, $verify);
 	}

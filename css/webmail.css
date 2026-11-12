@@ -626,3 +626,11 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-shortcuts kbd { font-family: inherit; font-size: 0.9em; padding: 1px 6px; border: 1px solid var(--color-border-dark, #bbb); border-bottom-width: 2px; border-radius: 4px; background: var(--color-background-hover); }
 /* the next page of messages is loaded when this comes into view */
 .wm-list-more { padding: 12px 0; }
+
+/* mailbox size */
+.wm-quota { padding: 6px 12px 8px; font-size: 0.85em; color: var(--color-text-maxcontrast); }
+.wm-quota-bar { height: 6px; border-radius: 3px; background: var(--color-background-darker, #e5e5e5); overflow: hidden; margin-bottom: 4px; }
+.wm-quota-fill { height: 100%; background: var(--color-primary-element, #0082c9); border-radius: 3px; }
+.wm-quota-high .wm-quota-fill { background: var(--color-warning, #e9a200); }
+.wm-quota-full .wm-quota-fill { background: var(--color-error, #e9322d); }
+.wm-quota-full .wm-quota-text { color: var(--color-error-text, var(--color-error, #c00)); font-weight: 600; }

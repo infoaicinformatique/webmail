@@ -76,6 +76,11 @@ async function main() {
 		const count = await page.$$eval('.wm-message', (els) => els.length)
 		assert.strictEqual(count, 50)
 		assert.strictEqual(await page.textContent('.wm-folder.active .wm-badge'), '3')
+		// space used by the mailbox, against the limit set in Exchange
+		await page.waitForSelector('.wm-quota-text')
+		assert.strictEqual(await page.textContent('.wm-quota-text'), '1,2 Go sur 2 Go (60 %)')
+		assert.strictEqual(await page.getAttribute('.wm-quota-bar', 'aria-valuenow'), '60')
+		assert(await page.$('.wm-quota.wm-quota-ok'))
 	})
 
 	await step('pagination: load more', async () => {

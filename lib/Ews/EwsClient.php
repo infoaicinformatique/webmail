@@ -120,7 +120,7 @@ class EwsClient {
 	 *
 	 * @return array<int, array{id: string, name: string, parentId: ?string, total: int, unread: int, role: ?string}>
 	 */
-	public function listFolders(): array {
+	public function listFolders(?int &$usedBytes = null): array {
 		$roles = $this->distinguishedFolderIds(['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'msgfolderroot']);
 		$rootId = $roles['msgfolderroot'] ?? null;
 		unset($roles['msgfolderroot']);
@@ -130,10 +130,16 @@ class EwsClient {
 			'<m:FindFolder Traversal="Deep">'
 			. '<m:FolderShape><t:BaseShape>Default</t:BaseShape><t:AdditionalProperties>'
 			. '<t:FieldURI FieldURI="folder:FolderClass"/><t:FieldURI FieldURI="folder:ParentFolderId"/>'
+			// size of each folder (PR_MESSAGE_SIZE_EXTENDED): their sum is the space used by the mailbox
+			. '<t:ExtendedFieldURI PropertyTag="0x0E08" PropertyType="Long"/>'
 			. '</t:AdditionalProperties></m:FolderShape>'
 			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="msgfolderroot"/></m:ParentFolderIds>'
 			. '</m:FindFolder>'
 		);
+		$usedBytes = 0;
+		foreach ($xp->query('//t:Folders/*/t:ExtendedProperty/t:Value') as $v) {
+			$usedBytes += max(0, (int)$v->textContent);
+		}
 
 		$folders = [];
 		foreach ($xp->query('//t:Folders/t:Folder') as $node) {
@@ -162,6 +168,37 @@ class EwsClient {
 	 * @param string[] $names
 	 * @return array<string, string> distinguished name => FolderId
 	 */
+	/**
+	 * Mailbox size limit set by the administrator (MAPI quota properties, in
+	 * KB, read on the top of the mailbox): the "prohibit send" quota, else the
+	 * storage limit, else the "prohibit receive" quota.
+	 * @return ?int bytes, null when Exchange does not tell
+	 */
+	public function mailboxQuota(): ?int {
+		$tags = ['0x666E', '0x3FF5', '0x666A'];
+		$props = '';
+		foreach ($tags as $tag) {
+			$props .= '<t:ExtendedFieldURI PropertyTag="' . $tag . '" PropertyType="Integer"/>';
+		}
+		$xp = $this->request(
+			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $props . '</t:AdditionalProperties></m:FolderShape>'
+			. '<m:FolderIds><t:DistinguishedFolderId Id="msgfolderroot"/><t:DistinguishedFolderId Id="root"/></m:FolderIds></m:GetFolder>',
+			false
+		);
+		foreach ($tags as $tag) {
+			foreach ($xp->query('//m:Folders/*/t:ExtendedProperty') as $p) {
+				$uri = $xp->query('t:ExtendedFieldURI', $p)->item(0);
+				if ($uri instanceof \DOMElement && hexdec($uri->getAttribute('PropertyTag')) === hexdec($tag)) {
+					$kb = (int)$this->text($xp, 't:Value', $p);
+					if ($kb > 0) {
+						return $kb * 1024;
+					}
+				}
+			}
+		}
+		return null;
+	}
+
 	public function distinguishedFolderIds(array $names): array {
 		$ids = '';
 		foreach ($names as $n) {

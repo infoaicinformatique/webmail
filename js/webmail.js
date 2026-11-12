@@ -398,13 +398,50 @@
 		}
 		top.forEach((f) => addFolder(f, 0))
 		navEl.appendChild(ul)
+		const usage = usageGauge()
+		if (usage) navEl.appendChild(usage)
 		navEl.appendChild(navFooter())
+	}
+
+	// ------------------------------------------------------------------
+	// mailbox size
+	// ------------------------------------------------------------------
+
+	function formatBytes(n) {
+		if (n >= 1024 ** 3) return (n / 1024 ** 3).toLocaleString('fr-FR', { maximumFractionDigits: n >= 10 * 1024 ** 3 ? 0 : 1 }) + ' Go'
+		if (n >= 1024 ** 2) return Math.round(n / 1024 ** 2) + ' Mo'
+		return Math.max(1, Math.round(n / 1024)) + ' Ko'
+	}
+
+	/** Space used by the mailbox, against its limit when Exchange gives it. */
+	function usageGauge() {
+		const u = state.usage
+		if (!u || typeof u.used !== 'number') return null
+		if (!u.limit) {
+			return h('div', { class: 'wm-quota', title: 'Espace utilisé par la boîte aux lettres' }, h('span', { class: 'wm-muted' }, formatBytes(u.used) + ' utilisés'))
+		}
+		const pct = Math.min(100, Math.round((u.used / u.limit) * 100))
+		const level = pct >= 90 ? 'full' : (pct >= 75 ? 'high' : 'ok')
+		return h('div', { class: 'wm-quota wm-quota-' + level, title: 'Espace utilisé par la boîte aux lettres' },
+			h('div', { class: 'wm-quota-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': 'Espace utilisé' },
+				h('div', { class: 'wm-quota-fill', style: 'width:' + pct + '%' })),
+			h('span', { class: 'wm-quota-text' }, formatBytes(u.used) + ' sur ' + formatBytes(u.limit) + ' (' + pct + ' %)'))
+	}
+
+	const warnedFull = new Set()
+	function warnIfFull() {
+		const u = state.usage
+		if (!u || !u.limit || u.used / u.limit < 0.9 || warnedFull.has(state.accountId)) return
+		warnedFull.add(state.accountId)
+		toast('Votre boîte aux lettres est presque pleine (' + Math.round((u.used / u.limit) * 100) + ' %) : videz les éléments supprimés ou archivez des messages, sinon l\'envoi sera bloqué.', true)
 	}
 
 	async function loadFolders() {
 		try {
 			const data = await api('/accounts/' + state.accountId + '/folders')
 			state.folders = data.folders
+			state.usage = data.usage || null
+			warnIfFull()
 			// switch from the "inbox" alias to the real id so the active state works
 			const inbox = state.folders.find((f) => f.role === 'inbox')
 			if (state.folderId === 'inbox' && inbox) state.folderId = inbox.id

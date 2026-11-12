@@ -144,13 +144,23 @@ def counts(fid):
     return len(msgs), sum(1 for m in msgs if not m['is_read'])
 
 
-def folder_xml(f):
+# mailbox size: the inbox holds 1.2 GB of old mail, each message adds 60 KB; limit 2 GB (KB)
+OLD_MAIL_BYTES = 1288490188
+QUOTA_KB = 2097152
+
+
+def size_xml(nbytes):
+    return '<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0xe08" PropertyType="Long"/><t:Value>%d</t:Value></t:ExtendedProperty>' % nbytes
+
+
+def folder_xml(f, with_size=False):
     fid, name, parent, _ = f
     total, unread = counts(fid)
     children = sum(1 for x in FOLDERS if x[2] == fid)
+    size = size_xml(total * 61440 + (OLD_MAIL_BYTES if fid == 'F-INBOX' else 0)) if with_size else ''
     return ('<t:Folder><t:FolderId Id="%s" ChangeKey="AQ"/>%s<t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>%s</t:DisplayName>'
-            '<t:TotalCount>%d</t:TotalCount><t:ChildFolderCount>%d</t:ChildFolderCount><t:UnreadCount>%d</t:UnreadCount></t:Folder>'
-            % (fid, '<t:ParentFolderId Id="%s" ChangeKey="AQ"/>' % parent if parent else '', esc(name), total, children, unread))
+            '<t:TotalCount>%d</t:TotalCount><t:ChildFolderCount>%d</t:ChildFolderCount><t:UnreadCount>%d</t:UnreadCount>%s</t:Folder>'
+            % (fid, '<t:ParentFolderId Id="%s" ChangeKey="AQ"/>' % parent if parent else '', esc(name), total, children, unread, size))
 
 
 def item_summary_xml(m):
@@ -228,7 +238,11 @@ def handle(op, el, user):
             if fid is None:
                 msgs.append(err(op, 'ErrorFolderNotFound', 'The specified folder could not be found in the store.'))
             else:
-                msgs.append(ok(op, '<m:Folders><t:Folder><t:FolderId Id="%s" ChangeKey="AQ"/></t:Folder></m:Folders>' % fid))
+                quota = ''
+                if fid == 'F-ROOT' and any(u.get('PropertyTag', '').lower() == '0x666e' for u in el.iter(T + 'ExtendedFieldURI')):
+                    quota = ('<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0x666e" PropertyType="Integer"/><t:Value>%d</t:Value></t:ExtendedProperty>'
+                             % QUOTA_KB)
+                msgs.append(ok(op, '<m:Folders><t:Folder><t:FolderId Id="%s" ChangeKey="AQ"/>%s</t:Folder></m:Folders>' % (fid, quota)))
         return wrap(op, msgs)
 
     if op == 'FindFolder':
@@ -247,7 +261,8 @@ def handle(op, el, user):
                '<t:ContactsFolder><t:FolderId Id="F-RCACHE" ChangeKey="AQ"/><t:ParentFolderId Id="F-CONTACTS" ChangeKey="AQ"/>'
                '<t:FolderClass>IPF.Contact.RecipientCache</t:FolderClass><t:DisplayName>Recipient Cache</t:DisplayName><t:TotalCount>0</t:TotalCount>'
                '<t:ChildFolderCount>0</t:ChildFolderCount></t:ContactsFolder>')
-        folders = ''.join(folder_xml(f) for f in FOLDERS if f[3] != 'msgfolderroot') + cal
+        with_size = any(u.get('PropertyTag') == '0x0E08' for u in el.iter(T + 'ExtendedFieldURI'))
+        folders = ''.join(folder_xml(f, with_size) for f in FOLDERS if f[3] != 'msgfolderroot') + cal
         return wrap(op, [ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Folders>%s</t:Folders></m:RootFolder>'
                             % (len(FOLDERS), folders))])
 
