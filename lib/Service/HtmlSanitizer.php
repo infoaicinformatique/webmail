@@ -234,6 +234,36 @@ class HtmlSanitizer {
 		return ['html' => $out ?? $html, 'images' => array_values($images)];
 	}
 
+	/** Largest signature kept (a small logo pasted in it is part of it). */
+	public const MAX_SIGNATURE_BYTES = 512 * 1024;
+
+	/**
+	 * A signature written in the editor of the account settings: only
+	 * harmless formatting, links and images are kept. A signature in plain
+	 * text (written before 1.44) is kept as it is.
+	 * @throws \OCA\Webmail\Exception\MailException
+	 */
+	public static function signature(string $signature): string {
+		$signature = trim($signature);
+		if (!self::isHtml($signature)) {
+			return $signature;
+		}
+		$html = trim((new self())->sanitize($signature, [], true)['html']);
+		// an editor left empty (« <div><br></div> »)
+		if (trim(strip_tags($html, '<img>')) === '') {
+			return '';
+		}
+		if (strlen($html) > self::MAX_SIGNATURE_BYTES) {
+			throw new \OCA\Webmail\Exception\MailException('Signature trop lourde : réduisez l\'image qu\'elle contient (512 Ko au plus)');
+		}
+		return $html;
+	}
+
+	/** A signature in HTML (from the editor), or in plain text. */
+	public static function isHtml(string $text): bool {
+		return preg_match('#<(div|p|br|b|strong|i|em|u|a|img|span|font|ul|ol|li|table|blockquote)\b[^>]*>#i', $text) === 1;
+	}
+
 	public static function textToHtml(string $text): string {
 		$escaped = htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 		$linked = (string)preg_replace('#(https?://[^\s<>"\']+)#i', '<a href="$1">$1</a>', $escaped);

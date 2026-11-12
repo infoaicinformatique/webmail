@@ -2265,7 +2265,7 @@
 	 * IMAGE_MAX_SIDE are reduced (JPEG); screenshots stay PNG when they are
 	 * light enough; GIFs are kept as they are (animation).
 	 */
-	function imageDataUrl(file) {
+	function imageDataUrl(file, maxSide = IMAGE_MAX_SIDE) {
 		const read = (blob) => new Promise((resolve, reject) => {
 			const r = new FileReader()
 			r.onload = () => resolve(r.result)
@@ -2281,8 +2281,8 @@
 			const img = new Image()
 			img.onerror = () => reject(new Error('Image illisible : ' + file.name))
 			img.onload = () => {
-				const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight))
-				if (scale === 1 && file.size <= 1024 * 1024) { resolve(url); return }
+				const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight))
+				if (scale === 1 && file.size <= (maxSide < IMAGE_MAX_SIDE ? 200 * 1024 : 1024 * 1024)) { resolve(url); return }
 				const canvas = document.createElement('canvas')
 				canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
 				canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
@@ -2298,6 +2298,66 @@
 			}
 			img.src = url
 		}))
+	}
+
+	/** A signature from the editor (HTML), or one written in plain text before. */
+	function signatureHtml(sig) {
+		if (!sig) return ''
+		return /<(div|p|br|b|strong|i|em|u|a|img|span|font|ul|ol|li|table|blockquote)\b[^>]*>/i.test(sig) ? sig : escapeHtml(sig).replace(/\n/g, '<br>')
+	}
+
+	/**
+	 * The signature editor of an account: bold, italic, underline, links and
+	 * a logo (an image, reduced to 400 pixels), like in Outlook.
+	 */
+	function signatureEditor(value) {
+		const ed = h('div', { class: 'wm-editor wm-signature-editor', contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Signature' })
+		ed.innerHTML = signatureHtml(value)
+		const exec = (cmd, v) => { ed.focus(); document.execCommand(cmd, false, v) }
+		let range = null
+		const picker = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', hidden: true, name: 'signatureImage', 'aria-label': 'Ajouter une image à la signature' })
+		const insert = async (list) => {
+			for (const f of Array.from(list).filter((x) => /^image\/(png|jpeg|gif|webp)$/.test(x.type))) {
+				try {
+					const url = await imageDataUrl(f, 400)
+					ed.focus()
+					if (range) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range); range = null }
+					exec('insertHTML', '<img src="' + url + '" alt="' + escapeHtml(f.name || 'logo') + '">')
+				} catch (e) { toast(e.message, true) }
+			}
+		}
+		picker.addEventListener('change', () => { insert(picker.files); picker.value = '' })
+		ed.addEventListener('paste', (e) => {
+			const list = Array.from((e.clipboardData && e.clipboardData.files) || [])
+			if (list.some((f) => f.type.startsWith('image/')) && !(e.clipboardData.types || []).includes('text/html')) { e.preventDefault(); insert(list) }
+		})
+		const tool = (label, title, action) => h('button', { type: 'button', class: 'wm-editor-btn', title, 'aria-label': title, onmousedown: (e) => e.preventDefault(), onclick: action }, label)
+		const bar = h('div', { class: 'wm-editor-bar', role: 'toolbar', 'aria-label': 'Mise en forme de la signature' },
+			tool('G', 'Gras', () => exec('bold')),
+			tool('I', 'Italique', () => exec('italic')),
+			tool('S', 'Souligné', () => exec('underline')),
+			tool('🔗', 'Insérer un lien', () => {
+				const sel = window.getSelection()
+				const r = sel && sel.rangeCount ? sel.getRangeAt(0) : null
+				const url = (window.prompt('Adresse du lien (https://…)', 'https://') || '').trim()
+				if (!/^(https?:\/\/|mailto:)\S+$/i.test(url)) return
+				ed.focus()
+				if (r) { sel.removeAllRanges(); sel.addRange(r) }
+				if (r && !r.collapsed) exec('createLink', url)
+				else exec('insertHTML', '<a href="' + escapeHtml(url) + '">' + escapeHtml(url) + '</a>')
+			}),
+			tool('🖼', 'Ajouter une image (logo)', () => {
+				const sel = window.getSelection()
+				range = sel && sel.rangeCount && ed.contains(sel.anchorNode) ? sel.getRangeAt(0) : null
+				picker.click()
+			}),
+			tool('⌫', 'Effacer la mise en forme', () => { exec('removeFormat'); exec('unlink') }),
+			picker)
+		return {
+			el: h('div', { class: 'wm-editor-wrap wm-signature-wrap' }, bar, ed),
+			// empty editor: no signature
+			value: () => (ed.textContent.trim() || ed.querySelector('img') ? ed.innerHTML : ''),
+		}
 	}
 
 	function openCompose(mode, original, prefill) {
@@ -2364,7 +2424,7 @@
 				subject.value = /^(re|tr|fw|fwd)\s?:/i.test(original.subject || '') ? original.subject : prefix + (original.subject || '')
 				subject.disabled = true
 			}
-			body.innerHTML = '<div><br></div>' + (account && account.signature ? '<div><br></div><div>-- <br>' + textHtml(account.signature) + '</div>' : '')
+			body.innerHTML = '<div><br></div>' + (account && account.signature ? '<div><br></div><div class="wm-signature">-- <br>' + signatureHtml(account.signature) + '</div>' : '')
 			if (prefill) {
 				if (prefill.to) to.value = prefill.to
 				if (prefill.subject) subject.value = prefill.subject
@@ -2806,14 +2866,13 @@
 
 		state.accounts.forEach((a) => {
 			const name = h('input', { type: 'text', value: a.displayName === a.email ? '' : a.displayName, placeholder: 'Nom affiché (facultatif)' })
-			const sig = h('textarea', { rows: '4', placeholder: 'Signature (texte)' })
-			sig.value = a.signature || ''
+			const sig = signatureEditor(a.signature || '')
 			const pwd = h('input', { type: 'password', placeholder: 'Nouveau mot de passe (si changé)', autocomplete: 'new-password' })
 			const save = h('button', { class: 'primary' }, 'Enregistrer')
 			save.addEventListener('click', async () => {
 				save.disabled = true
 				try {
-					const updated = await api('/accounts/' + a.id, { method: 'PUT', body: { displayName: name.value, signature: sig.value, password: pwd.value || null } })
+					const updated = await api('/accounts/' + a.id, { method: 'PUT', body: { displayName: name.value, signature: sig.value(), password: pwd.value || null } })
 					Object.assign(a, updated)
 					pwd.value = ''
 					toast('Compte mis à jour')
@@ -2868,7 +2927,7 @@
 				h('legend', {}, a.email),
 				h('label', { class: 'wm-field' }, h('span', {}, 'Nom'), name),
 				h('label', { class: 'wm-field' }, h('span', {}, 'Mot de passe'), pwd),
-				h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Signature'), sig),
+				h('div', { class: 'wm-field wm-field-top' }, h('span', {}, 'Signature'), sig.el),
 				sharedMailboxesEditor(a),
 				h('label', { class: 'wm-radio wm-bell' }, bell, ' 🔔 Signaler chaque nouveau message dans les notifications Nextcloud, même webmail fermé (et sur le téléphone avec l\'application Nextcloud)'),
 				h('label', { class: 'wm-radio wm-bell' }, remind, ' ⏰ Rappels des rendez-vous de l\'agenda dans les notifications Nextcloud (au moment choisi pour chaque rendez-vous : 15 minutes avant…)'),
