@@ -1465,6 +1465,38 @@ async function main() {
 		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
 	})
 
+	await step('calendar: scheduling assistant, first free slot for all', async () => {
+		const ymd = (x) => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0')
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		await page.fill('.wm-modal input[name=subject]', 'Réunion projet')
+		await page.fill('.wm-modal input[name=attendees]', 'paul.durand@societe-a.fr, client@exterieur.example')
+		await page.fill('.wm-modal input[name=startDate]', ymd(new Date()))
+		await page.dispatchEvent('.wm-modal input[name=startDate]', 'change')
+		await page.fill('.wm-modal input[name=startTime]', '10:30')
+		await page.dispatchEvent('.wm-modal input[name=startTime]', 'change')
+		await page.click('.wm-modal .wm-plan-btn')
+		// a row per person: me, Paul (busy this morning), someone outside (unknown)
+		await page.waitForSelector('.wm-plan-row[data-email="paul.durand@societe-a.fr"] .wm-plan-busy')
+		const who = await page.$$eval('.wm-plan-row[data-email] .wm-plan-who', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(who, ['Moi', 'paul.durand@societe-a.fr', 'client@exterieur.example'])
+		await page.waitForSelector('.wm-plan-row[data-email="client@exterieur.example"] .wm-plan-unknown:has-text("disponibilités inconnues")')
+		await page.waitForSelector('.wm-plan-row[data-email="paul.durand@societe-a.fr"] .wm-plan-meeting')
+		await shot('56-scheduling')
+		// the first moment everybody is free: the meeting moves there, as long as it was
+		const before = await page.inputValue('.wm-modal input[name=startTime]')
+		await page.click('.wm-plan-suggest')
+		await page.waitForSelector('.wm-toast:has-text("Réunion placée")')
+		const s = new Date(await page.inputValue('.wm-modal input[name=startDate]') + 'T' + await page.inputValue('.wm-modal input[name=startTime]'))
+		const e = new Date(await page.inputValue('.wm-modal input[name=endDate]') + 'T' + await page.inputValue('.wm-modal input[name=endTime]'))
+		assert.strictEqual(e - s, 3600000)
+		assert(s.getDay() >= 1 && s.getDay() <= 5 && s.getHours() >= 8 && s.getHours() < 18, String(s))
+		assert(!(await page.inputValue('.wm-modal input[name=startTime]') === before && ymd(s) === ymd(new Date())), 'moved')
+		assert(s > new Date(), 'not in the past: ' + s)
+		// the new time is free for everybody known
+		await page.waitForSelector('.wm-plan-meeting')
+		await page.click('.wm-modal button:has-text("Annuler")')
+	})
+
 	await step('calendar: a series can become a single event', async () => {
 		await page.click('.wm-agenda-item:has-text("Sport collectif") >> nth=0')
 		await page.click('.wm-modal button:has-text("Modifier la série")')

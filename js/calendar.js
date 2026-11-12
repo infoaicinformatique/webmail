@@ -1356,6 +1356,101 @@
 		endDate.addEventListener('change', () => { duration = readEnd() - readStart() })
 		endTime.addEventListener('change', () => { duration = readEnd() - readStart() })
 
+		// ---- scheduling assistant: who is free when
+		const planBox = h('div', { class: 'wm-plan', hidden: true })
+		let planDay = null
+		const planBtn = h('button', {
+			type: 'button',
+			class: 'wm-plan-btn',
+			title: 'Voir quand les participants sont libres et trouver un créneau',
+			onclick: () => {
+				planBox.hidden = !planBox.hidden
+				if (!planBox.hidden) { planDay = startDate.value; loadPlan() }
+			},
+		}, '📅 Disponibilités')
+		let planSeq = 0
+		async function loadPlan() {
+			const mine = ++planSeq
+			core.clear(planBox)
+			planBox.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading-small' })))
+			const emails = (attendees.value + ',' + optional.value).split(/[,;]/).map((x) => (x.match(/<([^>]+)>/) || [null, x])[1].trim()).filter((x) => x.includes('@'))
+			const s = readStart()
+			const minutes = allDay.checked ? 60 : Math.max(15, Math.round((readEnd() - s) / 60000) || 60)
+			try {
+				const r = await api('/accounts/' + core.accountId + '/calendar/availability', {
+					query: { emails: emails.join(','), day: planDay, from: isNaN(s) ? new Date().toISOString() : s.toISOString(), minutes, tz: core.TZ },
+				})
+				if (mine === planSeq) renderPlan(r, minutes)
+			} catch (e) {
+				if (mine !== planSeq) return
+				core.clear(planBox)
+				planBox.appendChild(h('div', { class: 'wm-form-error' }, e.message))
+			}
+		}
+		function renderPlan(r, minutes) {
+			core.clear(planBox)
+			const FROM = 7
+			const TO = 20
+			const day = new Date(planDay + 'T00:00')
+			const pct = (d) => Math.max(0, Math.min(100, ((d - day) / 3600000 - FROM) / (TO - FROM) * 100))
+			const shift = (n) => { const d = new Date(planDay + 'T12:00'); d.setDate(d.getDate() + n); planDay = ymd(d); loadPlan() }
+			planBox.appendChild(h('div', { class: 'wm-plan-head' },
+				h('button', { type: 'button', class: 'wm-small', 'aria-label': 'Jour précédent', onclick: () => shift(-1) }, '‹'),
+				h('strong', {}, ucfirst(day.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }))),
+				h('button', { type: 'button', class: 'wm-small', 'aria-label': 'Jour suivant', onclick: () => shift(1) }, '›')))
+			const hours = h('div', { class: 'wm-plan-hours' })
+			for (let hr = FROM; hr < TO; hr += 2) hours.appendChild(h('span', { style: 'left:' + ((hr - FROM) / (TO - FROM) * 100) + '%' }, hr + ' h'))
+			planBox.appendChild(h('div', { class: 'wm-plan-row' }, h('span', { class: 'wm-plan-who' }), hours))
+			// the meeting as it is set now
+			const s = readStart()
+			const e = readEnd()
+			const sameDay = !isNaN(s) && ymd(s) === planDay
+			r.people.forEach((p) => {
+				const track = h('div', { class: 'wm-plan-track' })
+				p.busy.forEach((b) => {
+					const bs = new Date(b.start)
+					const be = new Date(b.end)
+					if (be <= day || bs >= new Date(day.getTime() + 86400000)) return
+					const left = pct(bs)
+					const width = pct(be) - left
+					if (width <= 0) return
+					track.appendChild(h('span', {
+						class: 'wm-plan-busy' + (b.type === 'Tentative' ? ' tentative' : '') + (b.type === 'OOF' ? ' oof' : ''),
+						style: 'left:' + left + '%;width:' + width + '%',
+						title: ({ Busy: 'Occupé', Tentative: 'Provisoire', OOF: 'Absent', WorkingElsewhere: 'Ailleurs' }[b.type] || 'Occupé') + ' ' + timeLabel(bs) + ' – ' + timeLabel(be),
+					}))
+				})
+				if (sameDay && !allDay.checked) track.appendChild(h('span', { class: 'wm-plan-meeting', style: 'left:' + pct(s) + '%;width:' + Math.max(0.5, pct(e) - pct(s)) + '%' }))
+				if (p.error) track.appendChild(h('span', { class: 'wm-plan-unknown' }, p.error))
+				planBox.appendChild(h('div', { class: 'wm-plan-row', dataset: { email: p.email } },
+					h('span', { class: 'wm-plan-who', title: p.email }, p.self ? 'Moi' : p.email), track))
+			})
+			const sug = r.suggestion
+			planBox.appendChild(h('div', { class: 'wm-plan-foot' },
+				h('span', { class: 'wm-plan-legend' }, h('span', { class: 'wm-plan-busy' }), ' occupé ', h('span', { class: 'wm-plan-busy tentative' }), ' provisoire ',
+					h('span', { class: 'wm-plan-meeting' }), ' votre réunion'),
+				sug
+					? h('button', {
+						type: 'button',
+						class: 'primary wm-plan-suggest',
+						onclick: () => {
+							const ns = new Date(sug.start)
+							const ne = new Date(sug.end)
+							startDate.value = ymd(ns)
+							startTime.value = hm(ns)
+							endDate.value = ymd(ne)
+							endTime.value = hm(ne)
+							duration = ne - ns
+							if (rule) rule.sync()
+							planDay = ymd(ns)
+							loadPlan()
+							core.toast('Réunion placée ' + ns.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' à ' + timeLabel(ns))
+						},
+					}, 'Premier créneau libre pour tous : ' + new Date(sug.start).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + timeLabel(new Date(sug.start)))
+					: h('span', { class: 'wm-muted' }, 'Aucun créneau libre de ' + minutes + ' minutes pour tous dans les 2 semaines (jours ouvrés, 8 h – 18 h)')))
+		}
+		;[startDate, startTime, endDate, endTime].forEach((i) => i.addEventListener('change', () => { if (!planBox.hidden) { planDay = startDate.value; loadPlan() } }))
+
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
 		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? 'Créer' : 'Enregistrer')
 		const field = (label, ...inputs) => h('label', { class: 'wm-field' }, h('span', {}, label), ...inputs)
@@ -1418,6 +1513,7 @@
 		field('Lieu', location, talkBtn),
 		field('Participants', core.attachAutocomplete(attendees)),
 		field('Facultatifs', core.attachAutocomplete(optional)),
+		h('div', { class: 'wm-field' }, h('span', {}), h('div', {}, planBtn, planBox)),
 		rule ? h('div', { class: 'wm-field wm-field-top' }, h('span', {}, 'Répétition'), rule.el) : (ev.isRecurring ? h('p', { class: 'wm-muted' }, '🔁 Seule cette occurrence sera modifiée.') : null),
 		isSeries ? h('p', { class: 'wm-muted' }, customRule
 			? '🔁 Les modifications s\'appliquent à toutes les occurrences. La répétition a été définie dans Outlook : seuls les horaires sont modifiables ici, pas les dates.'

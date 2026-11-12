@@ -160,6 +160,53 @@ class CalendarController extends Controller {
 	}
 
 	/**
+	 * Scheduling assistant: the availability of the attendees (and of the
+	 * account) on a day, and the first moment from $from when everybody
+	 * is free for $minutes (working days, 8:00–18:00, two weeks ahead).
+	 */
+	#[NoAdminRequired]
+	public function availability(int $id, string $emails, string $day, string $from, int $minutes = 60, string $tz = 'UTC'): Response {
+		return $this->handle(function () use ($id, $emails, $day, $from, $minutes, $tz) {
+			$account = $this->accounts->find((string)$this->userId, $id);
+			try {
+				$zone = new \DateTimeZone($tz);
+			} catch (\Exception) {
+				throw new MailException('Fuseau horaire inconnu');
+			}
+			$dayStart = \DateTimeImmutable::createFromFormat('!Y-m-d', $day, $zone);
+			$start = date_create_immutable($from);
+			if ($dayStart === false || $start === false) {
+				throw new MailException('Date invalide');
+			}
+			// never a moment already past
+			$now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+			if ($start < $now) {
+				$start = $now;
+			}
+			$list = array_merge([$account->getEmail()], preg_split('/[,;\s]+/', $emails) ?: []);
+			// one request (14 days at most): the day shown, and the search from $start
+			$windowStart = min($dayStart, $start);
+			$windowEnd = $windowStart->modify('+14 days');
+			if ($dayStart->modify('+1 day') > $windowEnd) {
+				// a day far ahead: shown in full, the search starts there
+				$windowStart = $dayStart;
+				$windowEnd = $dayStart->modify('+14 days');
+			}
+			$start = max($start, $windowStart);
+			$searchEnd = $windowEnd;
+			$people = $this->calendar($id, 'UTC')->availability($list, $windowStart, $windowEnd);
+			$slot = EwsCalendar::firstFreeSlot(array_filter($people, fn ($p) => $p['error'] === null), $start, $searchEnd, max(15, min(600, $minutes)), $zone);
+			return [
+				'people' => array_map(fn ($p) => $p + ['self' => strtolower($p['email']) === strtolower($account->getEmail())], $people),
+				'suggestion' => $slot === null ? null : [
+					'start' => $slot->format('Y-m-d\TH:i'),
+					'end' => $slot->modify('+' . max(15, min(600, $minutes)) . ' minutes')->format('Y-m-d\TH:i'),
+				],
+			];
+		});
+	}
+
+	/**
 	 * Search the events of a calendar (six months back and ahead).
 	 */
 	#[NoAdminRequired]

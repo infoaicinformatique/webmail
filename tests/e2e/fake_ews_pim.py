@@ -725,25 +725,34 @@ def handle(op, el, user, tz, messages, move_message):
         return wrap(op, out)
 
     if op == 'GetUserAvailabilityRequest':
-        email = text(el, 'm:MailboxDataArray/t:MailboxData/t:Email/t:Address').lower()
         win = el.find('t:FreeBusyViewOptions/t:TimeWindow', NS)
         start = parse_dt(text(win, 't:StartTime')[:19] + 'Z', 'UTC')
         end = parse_dt(text(win, 't:EndTime')[:19] + 'Z', 'UTC')
-        if email not in SHARED_ACCESS:
-            msg = '<ResponseMessage ResponseClass="Error"><MessageText>Not found</MessageText><ResponseCode>ErrorMailRecipientNotFound</ResponseCode></ResponseMessage>'
-            events = ''
-        else:
-            msg = '<ResponseMessage ResponseClass="Success"><ResponseCode>NoError</ResponseCode></ResponseMessage>'
-            blocks = list(FREEBUSY.get(email, []))
-            folder = 'shared:' + email
-            blocks += [(e['start'], e['end'], e['free_busy'], e['subject']) for e in EVENTS.values() if e['folder'] == folder]
-            fmt = lambda d: d.astimezone(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+        view = text(el, 't:FreeBusyViewOptions/t:RequestedView') or 'Detailed'
+        fmt = lambda d: d.astimezone(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+        responses = ''
+        # one response per address asked, in order (the scheduling assistant asks for several)
+        for md in el.findall('m:MailboxDataArray/t:MailboxData', NS):
+            email = text(md, 't:Email/t:Address').lower()
+            if email == user.lower():
+                # one's own calendar
+                blocks = [(e['start'], e['end'], e['free_busy'], e['subject']) for e in EVENTS.values()
+                          if e['folder'] in ('F-CAL', 'F-CAL2') and not e.get('series_master')]
+            elif email in SHARED_ACCESS:
+                blocks = list(FREEBUSY.get(email, []))
+                folder = 'shared:' + email
+                blocks += [(e['start'], e['end'], e['free_busy'], e['subject']) for e in EVENTS.values() if e['folder'] == folder]
+            else:
+                responses += ('<FreeBusyResponse><ResponseMessage ResponseClass="Error"><MessageText>Not found</MessageText>'
+                              '<ResponseCode>ErrorMailRecipientNotFound</ResponseCode></ResponseMessage></FreeBusyResponse>')
+                continue
             events = ''.join('<CalendarEvent><StartTime>%s</StartTime><EndTime>%s</EndTime><BusyType>%s</BusyType>%s</CalendarEvent>'
-                             % (fmt(s_), fmt(e_), b, '<CalendarEventDetails><Subject>%s</Subject></CalendarEventDetails>' % esc(subj) if subj else '')
+                             % (fmt(s_), fmt(e_), b, '<CalendarEventDetails><Subject>%s</Subject></CalendarEventDetails>' % esc(subj) if subj and view == 'Detailed' else '')
                              for s_, e_, b, subj in blocks if s_ < end and e_ > start)
-        return ('<GetUserAvailabilityResponse xmlns="%s"><FreeBusyResponseArray><FreeBusyResponse>%s<FreeBusyView>'
-                '<FreeBusyViewType xmlns="%s">Detailed</FreeBusyViewType><CalendarEventArray xmlns="%s">%s</CalendarEventArray>'
-                '</FreeBusyView></FreeBusyResponse></FreeBusyResponseArray></GetUserAvailabilityResponse>' % (NS['m'], msg, NS['t'], NS['t'], events))
+            responses += ('<FreeBusyResponse><ResponseMessage ResponseClass="Success"><ResponseCode>NoError</ResponseCode></ResponseMessage><FreeBusyView>'
+                          '<FreeBusyViewType xmlns="%s">%s</FreeBusyViewType><CalendarEventArray xmlns="%s">%s</CalendarEventArray></FreeBusyView></FreeBusyResponse>'
+                          % (NS['t'], view, NS['t'], events))
+        return '<GetUserAvailabilityResponse xmlns="%s"><FreeBusyResponseArray>%s</FreeBusyResponseArray></GetUserAvailabilityResponse>' % (NS['m'], responses)
 
     if op == 'FindItem':
         parent = el.find('m:ParentFolderIds', NS)[0]

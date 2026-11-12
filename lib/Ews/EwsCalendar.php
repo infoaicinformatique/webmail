@@ -183,6 +183,127 @@ class EwsCalendar {
 		return $events;
 	}
 
+	/**
+	 * Availability of several people at once (the scheduling assistant):
+	 * for each address, its busy blocks, or an error (unknown address,
+	 * someone outside the organisation…). Times in UTC.
+	 * @param string[] $emails at most 20
+	 * @return list<array{email: string, busy: list<array{start: string, end: string, type: string}>, error: ?string}>
+	 */
+	public function availability(array $emails, \DateTimeInterface $start, \DateTimeInterface $end): array {
+		$emails = array_values(array_unique(array_filter(array_map(fn ($e) => strtolower(trim((string)$e)), $emails), fn ($e) => filter_var($e, FILTER_VALIDATE_EMAIL) !== false)));
+		if ($emails === []) {
+			return [];
+		}
+		if (count($emails) > 20) {
+			throw new MailException('Trop de participants pour afficher leurs disponibilités (20 au plus)');
+		}
+		if ($end <= $start || $end->getTimestamp() - $start->getTimestamp() > 14 * 86400) {
+			throw new MailException('Période de disponibilités invalide (14 jours au plus)');
+		}
+		$utc = '<t:Bias>0</t:Bias><t:Time>00:00:00</t:Time><t:DayOrder>1</t:DayOrder>';
+		$xp = $this->client->request(
+			'<m:GetUserAvailabilityRequest>'
+			. '<t:TimeZone><t:Bias>0</t:Bias>'
+			. '<t:StandardTime>' . $utc . '<t:Month>1</t:Month><t:DayOfWeek>Sunday</t:DayOfWeek></t:StandardTime>'
+			. '<t:DaylightTime>' . $utc . '<t:Month>1</t:Month><t:DayOfWeek>Sunday</t:DayOfWeek></t:DaylightTime>'
+			. '</t:TimeZone>'
+			. '<m:MailboxDataArray>'
+			. implode('', array_map(fn ($e) => '<t:MailboxData><t:Email><t:Address>' . $this->client->esc($e) . '</t:Address></t:Email>'
+				. '<t:AttendeeType>Required</t:AttendeeType></t:MailboxData>', $emails))
+			. '</m:MailboxDataArray>'
+			. '<t:FreeBusyViewOptions><t:TimeWindow><t:StartTime>' . self::utcNoZone($start) . '</t:StartTime>'
+			. '<t:EndTime>' . self::utcNoZone($end) . '</t:EndTime></t:TimeWindow>'
+			. '<t:RequestedView>FreeBusy</t:RequestedView></t:FreeBusyViewOptions>'
+			. '</m:GetUserAvailabilityRequest>',
+			false
+		);
+		$out = [];
+		// one FreeBusyResponse per address, in the order asked
+		foreach ($xp->query('//m:FreeBusyResponseArray/m:FreeBusyResponse') as $i => $resp) {
+			if (!isset($emails[$i])) {
+				break;
+			}
+			$msg = $xp->query('m:ResponseMessage', $resp)->item(0);
+			if ($msg instanceof \DOMElement && $msg->getAttribute('ResponseClass') === 'Error') {
+				$code = $this->client->text($xp, 'm:ResponseCode', $msg);
+				$out[] = ['email' => $emails[$i], 'busy' => [], 'error' => in_array($code, ['ErrorMailRecipientNotFound', 'ErrorNonExistentMailbox'], true)
+					? 'disponibilités inconnues (personne extérieure ou adresse inconnue)'
+					: 'disponibilités non partagées'];
+				continue;
+			}
+			$busy = [];
+			foreach ($xp->query('m:FreeBusyView/t:CalendarEventArray/t:CalendarEvent', $resp) as $node) {
+				$type = (string)$this->client->text($xp, 't:BusyType', $node);
+				if ($type === 'Free' || $type === 'NoData') {
+					continue;
+				}
+				$busy[] = [
+					'start' => substr((string)$this->client->text($xp, 't:StartTime', $node), 0, 19) . 'Z',
+					'end' => substr((string)$this->client->text($xp, 't:EndTime', $node), 0, 19) . 'Z',
+					'type' => $type,
+				];
+			}
+			$out[] = ['email' => $emails[$i], 'busy' => $busy, 'error' => null];
+		}
+		return $out;
+	}
+
+	/**
+	 * The first moment from $from where everybody is free for $minutes,
+	 * on a working day (Monday to Friday) between $dayStart and $dayEnd
+	 * (hours, in $tz), on the quarter hour; null within the period.
+	 * Tentative is busy; people whose availability is unknown are ignored.
+	 * @param list<array{busy: list<array{start: string, end: string, type: string}>}> $people
+	 */
+	public static function firstFreeSlot(array $people, \DateTimeImmutable $from, \DateTimeImmutable $until, int $minutes, \DateTimeZone $tz,
+		int $dayStart = 8, int $dayEnd = 18): ?\DateTimeImmutable {
+		$blocks = [];
+		foreach ($people as $p) {
+			foreach ($p['busy'] as $b) {
+				$blocks[] = [(new \DateTimeImmutable($b['start']))->getTimestamp(), (new \DateTimeImmutable($b['end']))->getTimestamp()];
+			}
+		}
+		$len = max(5, $minutes) * 60;
+		$t = $from->setTimezone($tz);
+		// next quarter hour
+		$m = (int)$t->format('i');
+		$t = $t->setTime((int)$t->format('H'), $m - $m % 15)->modify($m % 15 ? '+15 minutes' : '+0 minutes');
+		while ($t < $until) {
+			$h = (int)$t->format('G');
+			if ((int)$t->format('N') >= 6 || $h >= $dayEnd) {
+				$t = $t->modify('+1 day')->setTime($dayStart, 0);
+				continue;
+			}
+			if ($h < $dayStart) {
+				$t = $t->setTime($dayStart, 0);
+				continue;
+			}
+			$s = $t->getTimestamp();
+			$e = $s + $len;
+			if ($e > $t->setTime($dayEnd, 0)->getTimestamp()) {
+				$t = $t->modify('+1 day')->setTime($dayStart, 0);
+				continue;
+			}
+			$clash = null;
+			foreach ($blocks as [$bs, $be]) {
+				if ($bs < $e && $be > $s) {
+					$clash = max($clash ?? 0, $be);
+				}
+			}
+			if ($clash === null) {
+				return $t;
+			}
+			// after the meeting in the way, on the quarter hour
+			$t = (new \DateTimeImmutable('@' . $clash))->setTimezone($tz);
+			$m = (int)$t->format('i');
+			if ($m % 15) {
+				$t = $t->setTime((int)$t->format('H'), $m - $m % 15)->modify('+15 minutes');
+			}
+		}
+		return null;
+	}
+
 	// ------------------------------------------------------------------
 	// Sharing one of my calendars (folder permissions, without delegation)
 	// ------------------------------------------------------------------
