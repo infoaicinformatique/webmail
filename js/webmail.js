@@ -21,6 +21,7 @@
 		filters: { unread: false, attachments: false, flagged: false, since: '', all: false },
 		showFilters: false,
 		selectedId: null,
+		checked: new Set(), // messages ticked for a grouped action
 		current: null, // opened message
 		view: 'list', // mobile: list | detail
 		loadingList: false,
@@ -416,6 +417,7 @@
 		['n', 'Nouveau message'],
 		['Suppr', 'Supprimer (Maj+Suppr : définitivement)'],
 		['u', 'Marquer comme non lu'],
+		['x', 'Sélectionner le message (Ctrl+clic, Maj+clic dans la liste)'],
 		['s', 'Assurer un suivi / le retirer'],
 		['/', 'Rechercher dans le dossier'],
 		['Échap', 'Revenir à la liste'],
@@ -439,7 +441,8 @@
 	function onShortcut(e) {
 		if (state.module !== 'mail' || !root || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
 		const t = e.target
-		if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"]')) return
+		// (a message's tick box is not a field one types in)
+		if (t && t.closest && t.closest('input:not(.wm-check), textarea, select, [contenteditable="true"]')) return
 		if (document.querySelector('.wm-overlay') || detailEl.querySelector('.wm-compose')) return
 		const m = state.current
 		const role = folderRole()
@@ -451,7 +454,8 @@
 			n: () => openCompose('new'),
 			'/': () => { const s = listEl.querySelector('.wm-search'); if (s) { setView('list'); s.focus() } },
 			'?': () => showShortcuts(),
-			Escape: () => { if (state.view !== 'list') setView('list') },
+			x: () => { if (state.selectedId) toggleChecked(state.selectedId) },
+			Escape: () => { if (state.checked.size) clearChecked(); else if (state.view !== 'list') setView('list') },
 		}
 		if (m) {
 			Object.assign(actions, {
@@ -514,6 +518,8 @@
 			return
 		}
 		navEl.appendChild(h('button', { class: 'wm-compose-btn primary', onclick: () => openCompose('new') }, '✉️  Nouveau message'))
+		const away = oofBanner()
+		if (away) navEl.appendChild(away)
 		const sel = accountSelector()
 		if (sel) navEl.appendChild(sel)
 
@@ -528,8 +534,7 @@
 
 		const addFolder = (f, depth) => {
 			const active = f.id === state.folderId || f.role === state.folderId
-			const li = h('li', {},
-				h('a', {
+			const link = h('a', {
 					href: '#',
 					class: 'wm-folder' + (active ? ' active' : '') + (f.unread ? ' has-unread' : ''),
 					style: 'padding-inline-start:' + (12 + depth * 16) + 'px',
@@ -538,14 +543,23 @@
 				},
 				h('span', { class: 'wm-folder-icon', 'aria-hidden': 'true' }, ROLE_ICON[f.role] || '📁'),
 				h('span', { class: 'wm-folder-name' }, f.name),
-				f.unread && f.role !== 'sentitems' && f.role !== 'deleteditems' ? h('span', { class: 'wm-badge' }, String(f.unread)) : null),
-			)
-			ul.appendChild(li)
+				f.unread && f.role !== 'sentitems' && f.role !== 'deleteditems' ? h('span', { class: 'wm-badge' }, String(f.unread)) : null)
+			folderDropTarget(link, f)
+			ul.appendChild(h('li', { class: 'wm-folder-row' }, link,
+				h('button', {
+					type: 'button',
+					class: 'wm-folder-menu-btn',
+					title: 'Actions sur le dossier',
+					'aria-label': 'Actions sur le dossier ' + f.name,
+					'aria-haspopup': 'menu',
+					onclick: (e) => { e.stopPropagation(); openFolderMenu(e.currentTarget, f) },
+				}, '⋯')))
 			const children = (byParent[f.id] || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'))
 			children.forEach((c) => addFolder(c, depth + 1))
 		}
 		top.forEach((f) => addFolder(f, 0))
 		navEl.appendChild(ul)
+		navEl.appendChild(h('a', { href: '#', class: 'wm-new-folder', onclick: (e) => { e.preventDefault(); createFolder(null) } }, '＋ Nouveau dossier'))
 		const usage = usageGauge()
 		if (usage) navEl.appendChild(usage)
 		navEl.appendChild(navFooter())
@@ -613,13 +627,149 @@
 		}
 		renderNav()
 		renderEmptyDetail()
+		loadOof(id)
 		await Promise.all([loadFolders(), loadMessages(true)])
+	}
+
+	// ------------------------------------------------------------------
+	// automatic replies (out of office)
+	// ------------------------------------------------------------------
+
+	/** account id -> automatic reply settings */
+	const oofState = {}
+
+	async function loadOof(accountId) {
+		try {
+			oofState[accountId] = await api('/accounts/' + accountId + '/oof')
+			if (accountId === state.accountId && state.module === 'mail') renderNav()
+		} catch (e) { /* not shown when Exchange does not answer */ }
+	}
+
+	const shortDate = (iso) => new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+
+	/** Reminder in the folder pane while automatic replies are on. */
+	function oofBanner() {
+		const o = oofState[state.accountId]
+		if (!o || !o.active) return null
+		const account = state.accounts.find((a) => a.id === state.accountId)
+		return h('div', { class: 'wm-oof-banner', role: 'status' },
+			h('div', {}, '🌴 Réponse automatique activée' + (o.state === 'Scheduled' && o.end ? ' jusqu\'au ' + shortDate(o.end) : '')),
+			h('div', {},
+				h('a', { href: '#', onclick: (e) => { e.preventDefault(); openOof(account) } }, 'Modifier'), ' · ',
+				h('a', {
+					href: '#',
+					onclick: async (e) => {
+						e.preventDefault()
+						try {
+							oofState[account.id] = await api('/accounts/' + account.id + '/oof', { method: 'POST', body: { state: 'Disabled', audience: o.audience, internal: o.internal, external: o.external } })
+							toast('Réponse automatique désactivée')
+							renderNav()
+						} catch (err) { toast(err.message, true) }
+					},
+				}, 'Désactiver')))
+	}
+
+	/** Same settings as Outlook's "Automatic replies". */
+	async function openOof(account) {
+		const overlay = h('div', { class: 'wm-overlay' })
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const body = h('div', { class: 'wm-event-form' }, h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
+		overlay.appendChild(h('div', { class: 'wm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Réponse automatique' },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, 'Réponse automatique – ' + account.email),
+				h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
+			body))
+		document.body.appendChild(overlay)
+		let o
+		try {
+			o = await api('/accounts/' + account.id + '/oof')
+		} catch (e) {
+			clear(body)
+			body.appendChild(h('div', { class: 'wm-form-error' }, e.message))
+			return
+		}
+		const local = (iso, fallbackDays) => {
+			const d = iso ? new Date(iso) : new Date(Date.now() + fallbackDays * 86400000)
+			if (!iso) d.setHours(fallbackDays ? 18 : 8, 0, 0, 0)
+			const p = (n) => String(n).padStart(2, '0')
+			return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes())
+		}
+		const radio = (value, label) => h('label', { class: 'wm-radio' },
+			h('input', { type: 'radio', name: 'oofState', value, checked: o.state === value, onchange: sync }), ' ' + label)
+		// Exchange keeps an old period when none is set: propose today → in a week instead
+		const current = o.state === 'Scheduled' && o.end && new Date(o.end) > new Date()
+		const start = h('input', { type: 'datetime-local', name: 'oofStart', value: local(current ? o.start : null, 0) })
+		const end = h('input', { type: 'datetime-local', name: 'oofEnd', value: local(current ? o.end : null, 7) })
+		const internal = h('textarea', { name: 'oofInternal', rows: '5', placeholder: 'Bonjour, je suis absent jusqu\'au … Pour toute urgence, contactez …' })
+		internal.value = o.internal || ''
+		const audience = h('select', { name: 'oofAudience' },
+			[['None', 'Ne pas répondre aux personnes extérieures'], ['Known', 'Répondre seulement à mes contacts extérieurs'], ['All', 'Répondre à toutes les personnes extérieures']]
+				.map(([v, l]) => h('option', { value: v, selected: o.audience === v }, l)))
+		const differs = h('input', { type: 'checkbox', name: 'oofDiffers', checked: !!o.external && o.external !== o.internal, onchange: sync })
+		const external = h('textarea', { name: 'oofExternal', rows: '4', placeholder: 'Message pour les personnes extérieures' })
+		external.value = o.external && o.external !== o.internal ? o.external : ''
+		const period = h('div', { class: 'wm-oof-period' }, h('label', {}, 'Du ', start), h('label', {}, ' au ', end))
+		const externalBox = h('div', {}, h('label', { class: 'wm-radio' }, differs, ' Message différent pour l\'extérieur'), external)
+		const details = h('div', {}, h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Message'), internal),
+			h('label', { class: 'wm-field' }, h('span', {}, 'Extérieur'), audience), externalBox)
+		function sync() {
+			const st = overlay.querySelector('input[name=oofState]:checked').value
+			period.hidden = st !== 'Scheduled'
+			details.hidden = st === 'Disabled'
+			externalBox.hidden = audience.value === 'None'
+			external.hidden = !differs.checked
+		}
+		audience.addEventListener('change', sync)
+		const err = h('div', { class: 'wm-form-error', role: 'alert' })
+		const save = h('button', { type: 'submit', class: 'primary' }, 'Enregistrer')
+		clear(body)
+		body.appendChild(h('form', {
+			class: 'wm-event-form',
+			onsubmit: async (e) => {
+				e.preventDefault()
+				err.textContent = ''
+				const st = overlay.querySelector('input[name=oofState]:checked').value
+				save.disabled = true
+				try {
+					oofState[account.id] = await api('/accounts/' + account.id + '/oof', {
+						method: 'POST',
+						body: {
+							state: st,
+							audience: audience.value,
+							start: st === 'Scheduled' ? new Date(start.value).toISOString() : '',
+							end: st === 'Scheduled' ? new Date(end.value).toISOString() : '',
+							internal: internal.value,
+							external: differs.checked ? external.value : '',
+						},
+					})
+					close()
+					const r = oofState[account.id]
+					toast(r.state === 'Disabled' ? 'Réponse automatique désactivée'
+						: r.state === 'Enabled' ? 'Réponse automatique activée'
+							: 'Réponse automatique programmée du ' + shortDate(r.start) + ' au ' + shortDate(r.end))
+					if (account.id === state.accountId) renderNav()
+				} catch (ex) {
+					err.textContent = ex.message
+					save.disabled = false
+				}
+			},
+		},
+		h('div', { class: 'wm-oof-states' },
+			radio('Disabled', 'Ne pas envoyer de réponse automatique'),
+			radio('Enabled', 'Envoyer une réponse automatique'),
+			radio('Scheduled', 'Envoyer une réponse automatique pendant une période')),
+		period, details, err,
+		h('div', { class: 'wm-compose-actions' }, save, h('button', { type: 'button', onclick: close }, 'Annuler'))))
+		sync()
 	}
 
 	function selectFolder(id) {
 		saveListCache()
 		state.folderId = id
 		resetSearch()
+		state.checked.clear()
 		state.selectedId = null
 		renderNav()
 		renderEmptyDetail()
@@ -736,6 +886,9 @@
 		)
 		listEl.appendChild(form)
 		if (state.showFilters || filtersOn()) listEl.appendChild(filterBar(searchInput))
+		bulkBarEl = h('div', { class: 'wm-bulk-slot' })
+		listEl.appendChild(bulkBarEl)
+		renderBulkBar()
 		if (typing) {
 			const caret = typing.selectionStart
 			searchInput.focus()
@@ -764,15 +917,42 @@
 		state.messages.forEach((m) => {
 			const who = showRecipients ? ('À : ' + (m.displayTo || '')) : (personShort(m.from) || '(expéditeur inconnu)')
 			const li = h('li', {
-				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : ''),
+				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : '') + (state.checked.has(m.id) ? ' checked' : ''),
 				tabindex: '0',
+				draggable: 'true',
 				dataset: { id: m.id },
-				onclick: () => openMessage(m.id),
+				onclick: (e) => {
+					// Ctrl/Cmd+click: tick; Shift+click: tick a range; click: open
+					if (e.ctrlKey || e.metaKey) toggleChecked(m.id)
+					else if (e.shiftKey) checkRange(m.id)
+					else openMessage(m.id)
+				},
+				ondragstart: (e) => {
+					const ids = state.checked.has(m.id) ? [...state.checked] : [m.id]
+					e.dataTransfer.setData('application/x-webmail-ids', JSON.stringify(ids))
+					e.dataTransfer.effectAllowed = 'move'
+					// the image shown under the pointer, kept until the drag ends
+					dragGhost = h('div', { class: 'wm-drag-ghost' }, ids.length > 1 ? ids.length + ' messages' : (m.subject || '(sans objet)'))
+					document.body.appendChild(dragGhost)
+					e.dataTransfer.setDragImage(dragGhost, 10, 10)
+					root.classList.add('wm-dragging')
+				},
+				ondragend: () => {
+					root.classList.remove('wm-dragging')
+					if (dragGhost) { dragGhost.remove(); dragGhost = null }
+				},
 				onkeydown: (e) => { if (e.key === 'Enter') openMessage(m.id) },
 				// hovering a message for a moment loads it in advance
 				onmouseenter: () => { clearTimeout(hoverTimer); hoverTimer = setTimeout(() => prefetchMessage(m.id), 150) },
 				onmouseleave: () => clearTimeout(hoverTimer),
 			},
+			h('input', {
+				type: 'checkbox',
+				class: 'wm-check',
+				checked: state.checked.has(m.id),
+				'aria-label': 'Sélectionner « ' + (m.subject || '(sans objet)') + ' »',
+				onclick: (e) => { e.stopPropagation(); if (e.shiftKey) { e.preventDefault(); checkRange(m.id) } else toggleChecked(m.id) },
+			}),
 			h('div', { class: 'wm-message-line1' },
 				h('span', { class: 'wm-message-from' }, who),
 				m.folderId && state.filters.all ? h('span', { class: 'wm-message-folder' }, folderName(m.folderId)) : null,
@@ -806,6 +986,246 @@
 			}
 		}
 		listEl.scrollTop = keepScroll
+	}
+
+	// ------------------------------------------------------------------
+	// several messages at once: ticks, grouped actions, drag and drop
+	// ------------------------------------------------------------------
+
+	let bulkBarEl = null
+	let dragGhost = null
+	let checkAnchor = null
+
+	function toggleChecked(id) {
+		if (state.checked.has(id)) state.checked.delete(id); else state.checked.add(id)
+		checkAnchor = id
+		refreshChecks()
+	}
+
+	/** Shift+click: everything between the last ticked message and this one. */
+	function checkRange(id) {
+		const ids = state.messages.map((m) => m.id)
+		const a = ids.indexOf(checkAnchor !== null ? checkAnchor : (state.selectedId || id))
+		const b = ids.indexOf(id)
+		if (a < 0 || b < 0) { toggleChecked(id); return }
+		ids.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((x) => state.checked.add(x))
+		checkAnchor = id
+		refreshChecks()
+	}
+
+	function clearChecked() {
+		state.checked.clear()
+		checkAnchor = null
+		refreshChecks()
+	}
+
+	/** Ticks and the action bar, without redrawing the list. */
+	function refreshChecks() {
+		listEl.querySelectorAll('.wm-message').forEach((li) => {
+			const on = state.checked.has(li.dataset.id)
+			li.classList.toggle('checked', on)
+			const box = li.querySelector('.wm-check')
+			if (box) box.checked = on
+		})
+		listEl.classList.toggle('wm-has-checked', state.checked.size > 0)
+		renderBulkBar()
+	}
+
+	function renderBulkBar() {
+		if (!bulkBarEl) return
+		clear(bulkBarEl)
+		// ticks of messages no longer listed are dropped
+		const listed = new Set(state.messages.map((m) => m.id))
+		;[...state.checked].forEach((id) => { if (!listed.has(id)) state.checked.delete(id) })
+		listEl.classList.toggle('wm-has-checked', state.checked.size > 0)
+		if (!state.checked.size) return
+		const ids = () => [...state.checked]
+		const role = folderRole()
+		const move = h('select', {
+			class: 'wm-move',
+			name: 'bulkMove',
+			'aria-label': 'Déplacer les messages sélectionnés vers',
+			onchange: (e) => { if (e.target.value) moveMessages(ids(), e.target.value) },
+		}, h('option', { value: '' }, 'Déplacer vers…'),
+		state.folders.filter((f) => f.id !== state.folderId).map((f) => h('option', { value: f.id }, f.name)))
+		const allTicked = state.checked.size === state.messages.length
+		bulkBarEl.appendChild(h('div', { class: 'wm-bulk', role: 'toolbar', 'aria-label': 'Messages sélectionnés' },
+			h('strong', {}, state.checked.size + ' sélectionné' + (state.checked.size > 1 ? 's' : '')),
+			h('button', {
+				type: 'button',
+				class: 'wm-small',
+				onclick: () => {
+					if (allTicked) state.checked.clear(); else state.messages.forEach((m) => state.checked.add(m.id))
+					refreshChecks()
+				},
+			}, allTicked ? 'Tout désélectionner' : 'Tout sélectionner'),
+			h('button', { type: 'button', class: 'wm-small', onclick: () => setReadMany(ids(), true) }, 'Lu'),
+			h('button', { type: 'button', class: 'wm-small', onclick: () => setReadMany(ids(), false) }, 'Non lu'),
+			h('button', { type: 'button', class: 'wm-small', onclick: () => setFlagMany(ids()) }, '⚑ Suivi'),
+			move,
+			h('button', { type: 'button', class: 'wm-small wm-danger', onclick: () => deleteMessages(ids(), role === 'deleteditems') },
+				role === 'deleteditems' ? 'Supprimer définitivement' : '🗑 Supprimer'),
+			h('button', { type: 'button', class: 'wm-small wm-icon-btn', 'aria-label': 'Annuler la sélection', title: 'Annuler la sélection (Échap)', onclick: clearChecked }, '✕')))
+	}
+
+	/** Read / unread for several messages, at once on screen. */
+	async function setReadMany(ids, value) {
+		const changed = state.messages.filter((m) => ids.includes(m.id) && m.isRead !== value)
+		changed.forEach((m) => updateListItem(m.id, { isRead: value }))
+		const f = currentFolder()
+		if (f) { f.unread = Math.max(0, f.unread + (value ? -changed.length : changed.length)); renderNav() }
+		clearChecked()
+		try {
+			await api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: ids, flag: 'read', value } })
+			toast(ids.length + ' message' + (ids.length > 1 ? 's marqués' : ' marqué') + (value ? ' comme lu' : ' comme non lu') + (ids.length > 1 ? 's' : ''))
+		} catch (e) {
+			changed.forEach((m) => updateListItem(m.id, { isRead: !value }))
+			toast(e.message, true)
+		}
+		loadFolders()
+	}
+
+	/** Follow-up flag: on for all, or off if all already have it. */
+	async function setFlagMany(ids) {
+		const items = state.messages.filter((m) => ids.includes(m.id))
+		const value = !items.every((m) => m.flagged)
+		const before = items.map((m) => [m.id, m.flagged])
+		items.forEach((m) => updateListItem(m.id, { flagged: value }))
+		clearChecked()
+		try {
+			await api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: ids, flag: 'flagged', value } })
+		} catch (e) {
+			before.forEach(([id, v]) => updateListItem(id, { flagged: v }))
+			toast(e.message, true)
+		}
+	}
+
+	/** Folders accept messages dropped on them. */
+	function folderDropTarget(el, folder) {
+		el.addEventListener('dragover', (e) => {
+			if (folder.id === state.folderId || !e.dataTransfer.types.includes('application/x-webmail-ids')) return
+			e.preventDefault()
+			e.dataTransfer.dropEffect = 'move'
+			el.classList.add('wm-drop-target')
+		})
+		el.addEventListener('dragleave', () => el.classList.remove('wm-drop-target'))
+		el.addEventListener('drop', (e) => {
+			el.classList.remove('wm-drop-target')
+			root.classList.remove('wm-dragging')
+			let ids = []
+			try { ids = JSON.parse(e.dataTransfer.getData('application/x-webmail-ids')) } catch (err) { return }
+			if (!Array.isArray(ids) || !ids.length || folder.id === state.folderId) return
+			e.preventDefault()
+			ids.forEach((id) => state.checked.delete(id))
+			moveMessages(ids, folder.id, folder.name)
+		})
+	}
+
+	// ------------------------------------------------------------------
+	// managing folders: create, rename, move, delete
+	// ------------------------------------------------------------------
+
+	const FIXED_ROLES = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail']
+
+	function openFolderMenu(anchor, f) {
+		document.querySelectorAll('.wm-folder-menu').forEach((m) => m.remove())
+		const fixed = FIXED_ROLES.includes(f.role)
+		const item = (label, action, danger) => h('button', {
+			type: 'button',
+			role: 'menuitem',
+			class: 'wm-folder-menu-item' + (danger ? ' wm-danger' : ''),
+			onclick: () => { close(); action() },
+		}, label)
+		const menu = h('div', { class: 'wm-folder-menu', role: 'menu', 'aria-label': 'Dossier ' + f.name },
+			item('＋ Nouveau sous-dossier', () => createFolder(f)),
+			fixed ? null : item('✏️ Renommer', () => renameFolder(f)),
+			fixed ? null : item('↪ Déplacer…', () => moveFolder(f)),
+			fixed ? null : item('🗑 Supprimer', () => deleteFolder(f), true))
+		const close = () => { menu.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', onKey, true) }
+		const outside = (e) => { if (!menu.contains(e.target)) close() }
+		const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close() } }
+		document.addEventListener('mousedown', outside, true)
+		document.addEventListener('keydown', onKey, true)
+		const r = anchor.getBoundingClientRect()
+		menu.style.top = Math.min(r.bottom + 2, window.innerHeight - 180) + 'px'
+		menu.style.left = Math.max(8, r.right - 210) + 'px'
+		document.body.appendChild(menu)
+		const first = menu.querySelector('button')
+		if (first) first.focus()
+	}
+
+	/**
+	 * Small dialog: a name to type, or a choice in a list.
+	 * @return {Promise<string|null>} null when cancelled
+	 */
+	function askFolder({ title, label, value = '', choices = null, confirmLabel }) {
+		return new Promise((resolve) => {
+			const overlay = h('div', { class: 'wm-overlay' })
+			const done = (v) => { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(v) }
+			const onKey = (e) => { if (e.key === 'Escape') done(null) }
+			document.addEventListener('keydown', onKey)
+			overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) done(null) })
+			const field = choices
+				? h('select', { name: 'folderChoice' }, choices.map(([v, l]) => h('option', { value: v }, l)))
+				: h('input', { type: 'text', name: 'folderName', value, maxlength: '255', required: true })
+			overlay.appendChild(h('div', { class: 'wm-modal wm-modal-small', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+				h('div', { class: 'wm-modal-header' }, h('h2', {}, title), h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: () => done(null) }, '✕')),
+				h('form', {
+					class: 'wm-event-form',
+					onsubmit: (e) => { e.preventDefault(); const v = field.value.trim ? field.value.trim() : field.value; if (choices || v) done(v) },
+				},
+				h('label', { class: 'wm-field' }, h('span', {}, label), field),
+				h('div', { class: 'wm-compose-actions' }, h('button', { type: 'submit', class: 'primary' }, confirmLabel), h('button', { type: 'button', onclick: () => done(null) }, 'Annuler')))))
+			document.body.appendChild(overlay)
+			field.focus()
+			if (field.select) field.select()
+		})
+	}
+
+	async function folderAction(path, body, message) {
+		try {
+			const r = await api('/accounts/' + state.accountId + '/folders' + path, { method: 'POST', body })
+			toast(message)
+			await loadFolders()
+			return r
+		} catch (e) {
+			toast(e.message, true)
+			return null
+		}
+	}
+
+	async function createFolder(parent) {
+		const name = await askFolder({ title: parent ? 'Nouveau dossier dans « ' + parent.name + ' »' : 'Nouveau dossier', label: 'Nom', confirmLabel: 'Créer' })
+		if (name) await folderAction('', { name, parentId: parent ? parent.id : '' }, 'Dossier « ' + name + ' » créé')
+	}
+
+	async function renameFolder(f) {
+		const name = await askFolder({ title: 'Renommer « ' + f.name + ' »', label: 'Nouveau nom', value: f.name, confirmLabel: 'Renommer' })
+		if (name && name !== f.name) await folderAction('/rename', { folderId: f.id, name }, 'Dossier renommé en « ' + name + ' »')
+	}
+
+	async function moveFolder(f) {
+		// not into itself nor into one of its own sub-folders
+		const inside = new Set([f.id])
+		let grew = true
+		while (grew) {
+			grew = false
+			state.folders.forEach((x) => { if (x.parentId && inside.has(x.parentId) && !inside.has(x.id)) { inside.add(x.id); grew = true } })
+		}
+		const choices = [['', '(en haut de la boîte aux lettres)']].concat(state.folders.filter((x) => !inside.has(x.id) && x.id !== f.parentId).map((x) => [x.id, x.name]))
+		const target = await askFolder({ title: 'Déplacer « ' + f.name + ' »', label: 'Dans', choices, confirmLabel: 'Déplacer' })
+		if (target === null) return
+		const where = target ? '« ' + folderName(target) + ' »' : 'en haut de la boîte aux lettres'
+		await folderAction('/move', { folderId: f.id, parentId: target }, 'Dossier « ' + f.name + ' » déplacé ' + (target ? 'dans ' : '') + where)
+	}
+
+	async function deleteFolder(f) {
+		if (!window.confirm('Supprimer le dossier « ' + f.name + ' » et tout son contenu ? Il sera placé dans « Éléments supprimés ».')) return
+		const wasOpen = state.folderId === f.id
+		if (await folderAction('/delete', { folderId: f.id }, 'Dossier « ' + f.name + ' » placé dans les éléments supprimés') && wasOpen) {
+			const inbox = state.folders.find((x) => x.role === 'inbox')
+			if (inbox) selectFolder(inbox.id)
+		}
 	}
 
 	function folderName(id) {
@@ -1194,11 +1614,12 @@
 		}
 	}
 
-	async function moveMessages(ids, target) {
+	async function moveMessages(ids, target, targetName) {
 		const undo = removeFromList(ids)
 		try {
 			await api('/accounts/' + state.accountId + '/move', { method: 'POST', body: { itemIds: ids, target } })
-			toast('Message déplacé')
+			const name = targetName || folderName(target)
+			toast((ids.length > 1 ? ids.length + ' messages déplacés' : 'Message déplacé') + (name ? ' vers « ' + name + ' »' : ''))
 			listCache.delete(state.accountId + '|' + target)
 			loadFolders()
 		} catch (e) {
@@ -1208,11 +1629,14 @@
 	}
 
 	async function deleteMessages(ids, permanent) {
-		if (permanent && !window.confirm('Supprimer définitivement ce message ?')) return
+		if (permanent && !window.confirm(ids.length > 1 ? 'Supprimer définitivement ces ' + ids.length + ' messages ?' : 'Supprimer définitivement ce message ?')) return
+		ids.forEach((id) => state.checked.delete(id))
 		const undo = removeFromList(ids)
 		try {
 			await api('/accounts/' + state.accountId + '/delete', { method: 'POST', body: { itemIds: ids, permanent: !!permanent } })
-			toast(permanent ? 'Message supprimé définitivement' : 'Message placé dans les éléments supprimés')
+			const n = ids.length > 1 ? ids.length + ' messages ' : 'Message '
+			toast(permanent ? n + (ids.length > 1 ? 'supprimés définitivement' : 'supprimé définitivement')
+				: n + (ids.length > 1 ? 'placés' : 'placé') + ' dans les éléments supprimés')
 			const trash = state.folders.find((f) => f.role === 'deleteditems')
 			if (trash) listCache.delete(state.accountId + '|' + trash.id)
 			loadFolders()
@@ -1716,6 +2140,7 @@
 				h('label', { class: 'wm-field' }, h('span', {}, 'Mot de passe'), pwd),
 				h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Signature'), sig),
 				h('div', { class: 'wm-compose-actions' }, save,
+					h('button', { type: 'button', class: 'wm-oof-btn', onclick: () => openOof(a) }, '🌴 Réponse automatique'),
 					h('button', {
 						type: 'button',
 						class: 'wm-delegates-btn',
@@ -1753,12 +2178,9 @@
 					const acc = await api('/accounts', { method: 'POST', body: { email: email.value, password: pwd.value, displayName: name.value } })
 					state.accounts.push(acc)
 					toast('Compte ajouté')
-					if (!navEl || !root.contains(navEl)) {
-						buildLayout()
-						clearInterval(refreshTimer)
-						refreshTimer = setInterval(refresh, REFRESH_MS)
-					}
+					if (!navEl || !root.contains(navEl)) buildLayout()
 					await selectAccount(acc.id)
+					startBackground()
 					renderEmptyDetail()
 					setView('list')
 				} catch (ex) {
@@ -1842,6 +2264,17 @@
 			const mod = localStorage.getItem('webmail.module')
 			if (mod === 'calendar' || mod === 'contacts') state.module = mod
 		} catch (e) { /* ignore */ }
+		// links from the Nextcloud dashboard: ?account=…&message=… or ?module=calendar
+		const link = new URLSearchParams(window.location.search)
+		const linkAccount = parseInt(link.get('account') || '', 10)
+		if (state.accounts.some((a) => a.id === linkAccount)) saved = linkAccount
+		const linkModule = link.get('module')
+		if (linkModule === 'calendar' || linkModule === 'contacts' || linkModule === 'mail') state.module = linkModule
+		else if (link.get('message')) state.module = 'mail'
+		const linkMessage = link.get('message')
+		if (link.toString()) {
+			try { history.replaceState(history.state, '', window.location.pathname) } catch (e) { /* ignore */ }
+		}
 		// calendar.js / contacts.js may be loaded after this file
 		if (state.module !== 'mail' && !window.WebmailModules[state.module]) {
 			await new Promise((resolve) => (document.readyState === 'complete' ? resolve() : window.addEventListener('load', resolve, { once: true })))
@@ -1850,11 +2283,20 @@
 		buildLayout()
 		const first = state.accounts.find((a) => a.id === saved) || state.accounts[0]
 		await selectAccount(first.id)
+		if (linkMessage && state.module === 'mail') openMessage(linkMessage)
+		startBackground()
+	}
 
-		clearInterval(refreshTimer)
+	let backgroundStarted = false
+	/**
+	 * Refresh, new message checks and keyboard shortcuts: once there is an
+	 * account (at start, or after the first account is added).
+	 */
+	function startBackground() {
+		if (backgroundStarted) return
+		backgroundStarted = true
 		refreshTimer = setInterval(refresh, REFRESH_MS)
 		document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); checkNewMessages() } })
-		clearInterval(notifyTimer)
 		notifyTimer = setInterval(checkNewMessages, NOTIFY_MS)
 		checkNewMessages()
 		document.addEventListener('keydown', onShortcut)

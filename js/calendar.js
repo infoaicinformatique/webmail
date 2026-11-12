@@ -13,7 +13,8 @@
 	const cal = {
 		view: null, // month | week | list
 		cursor: startOfDay(new Date()), // reference day: its month, its week, or the first day of the list
-		weekScroll: null, // remembered vertical scroll of the week grid
+		weekScroll: null,
+		miniMonth: null, // month shown by the small calendar when browsed with its arrows // remembered vertical scroll of the week grid
 		calendars: [], // own and shared calendars of the current account
 		calendarsFor: null, // account id the list belongs to
 		hidden: new Set(), // keys of calendars the user unticked
@@ -60,6 +61,10 @@
 		if (cal.view === 'list') {
 			const from = startOfDay(cursor)
 			return [from, addDays(from, 31)]
+		}
+		if (cal.view === 'day') {
+			const day = startOfDay(cursor)
+			return [day, addDays(day, 1)]
 		}
 		if (cal.view === 'week') {
 			const first = startOfWeek(cursor)
@@ -164,7 +169,9 @@
 	/** Load the previous and next periods in the background. */
 	function prefetchAround() {
 		if (cal.view === 'list') return
-		const cursors = cal.view === 'week'
+		const cursors = cal.view === 'day'
+			? [addDays(cal.cursor, 1), addDays(cal.cursor, -1)]
+			: cal.view === 'week'
 			? [addDays(cal.cursor, 7), addDays(cal.cursor, -7)]
 			: [new Date(cal.cursor.getFullYear(), cal.cursor.getMonth() + 1, 1), new Date(cal.cursor.getFullYear(), cal.cursor.getMonth() - 1, 1)]
 		const seq = cal.seq
@@ -204,6 +211,8 @@
 			if (mine === cal.seq) {
 				cal.loading = false
 				render()
+				// the small calendar marks the days with events
+				if (core.state.module === 'calendar') core.renderNav()
 				prefetchAround()
 			}
 		}
@@ -342,26 +351,41 @@
 		} catch (e) { core.toast(e.message, true) }
 	}
 
+	/**
+	 * Small month to move around: its own ‹ › arrows (the main view does not
+	 * change until a day is clicked), a dot under the days that have events.
+	 */
 	function miniMonth() {
 		const h = core.h
 		const today = new Date()
-		const first = startOfWeek(startOfMonth(cal.cursor))
+		const shown = cal.miniMonth || startOfMonth(cal.cursor)
+		const first = startOfWeek(shown)
 		const weekStart = startOfWeek(cal.cursor)
+		const busy = new Set()
+		cal.events.forEach((ev) => eventDays(ev).forEach((d) => busy.add(ymd(d))))
 		const grid = h('div', { class: 'wm-mini-grid' }, DAY_NAMES.map((d) => h('span', { class: 'wm-mini-head' }, d[0].toUpperCase())))
 		for (let i = 0; i < 42; i++) {
 			const d = addDays(first, i)
 			grid.appendChild(h('button', {
 				type: 'button',
-				class: 'wm-mini-day' + (d.getMonth() !== cal.cursor.getMonth() ? ' other' : '') + (sameDay(d, today) ? ' today' : '')
+				class: 'wm-mini-day' + (d.getMonth() !== shown.getMonth() ? ' other' : '') + (sameDay(d, today) ? ' today' : '')
 					+ (cal.view === 'week' && d >= weekStart && d < addDays(weekStart, 7) ? ' in-week' : '')
-					+ (sameDay(d, cal.cursor) ? ' selected' : ''),
-				'aria-label': d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }),
+					+ (sameDay(d, cal.cursor) ? ' selected' : '')
+					+ (busy.has(ymd(d)) ? ' has-events' : ''),
+				'aria-label': d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + (busy.has(ymd(d)) ? ', avec des événements' : ''),
 				dataset: { date: ymd(d) },
-				onclick: () => { cal.cursor = d; cal.weekScroll = null; refreshAll() },
+				onclick: () => { cal.cursor = d; cal.miniMonth = null; cal.weekScroll = null; refreshAll() },
+				// double-click: this day on its own
+				ondblclick: () => { cal.cursor = d; cal.miniMonth = null; setCalView('day') },
 			}, String(d.getDate())))
 		}
+		const step = (n) => { cal.miniMonth = new Date(shown.getFullYear(), shown.getMonth() + n, 1); core.renderNav() }
 		return h('div', { class: 'wm-mini' },
-			h('div', { class: 'wm-mini-title' }, ucfirst(cal.cursor.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }))), grid)
+			h('div', { class: 'wm-mini-title' },
+				h('button', { type: 'button', class: 'wm-mini-nav', 'aria-label': 'Mois précédent', onclick: () => step(-1) }, '‹'),
+				h('span', {}, ucfirst(shown.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }))),
+				h('button', { type: 'button', class: 'wm-mini-nav', 'aria-label': 'Mois suivant', onclick: () => step(1) }, '›')),
+			grid)
 	}
 
 	function render() {
@@ -372,32 +396,38 @@
 
 		const title = cal.view === 'list'
 			? 'À venir'
-			: cal.view === 'week'
-				? weekTitle(startOfWeek(cal.cursor))
-				: ucfirst(cal.cursor.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }))
+			: cal.view === 'day'
+				? ucfirst(cal.cursor.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
+				: cal.view === 'week'
+					? weekTitle(startOfWeek(cal.cursor))
+					: ucfirst(cal.cursor.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }))
 		const move = (n) => {
-			cal.cursor = cal.view === 'week'
-				? addDays(cal.cursor, 7 * n)
-				: new Date(cal.cursor.getFullYear(), cal.cursor.getMonth() + n, 1)
+			cal.cursor = cal.view === 'day'
+				? addDays(cal.cursor, n)
+				: cal.view === 'week'
+					? addDays(cal.cursor, 7 * n)
+					: new Date(cal.cursor.getFullYear(), cal.cursor.getMonth() + n, 1)
+			cal.miniMonth = null
 			refreshAll()
 		}
-		const unit = cal.view === 'week' ? 'Semaine' : 'Mois'
+		const unit = { day: ['Jour précédent', 'Jour suivant'], week: ['Semaine précédente', 'Semaine suivante'] }[cal.view] || ['Mois précédent', 'Mois suivant']
 
 		el.appendChild(h('div', { class: 'wm-toolbar wm-cal-toolbar' },
 			h('button', { class: 'wm-back wm-mobile-only', 'aria-label': 'Menu', onclick: () => core.setView('nav') }, '☰'),
 			h('button', { onclick: () => { cal.cursor = startOfDay(new Date()); cal.weekScroll = null; refreshAll() } }, 'Aujourd\'hui'),
-			cal.view !== 'list' ? h('button', { 'aria-label': unit + ' précédent' + (unit === 'Semaine' ? 'e' : ''), onclick: () => move(-1) }, '‹') : null,
-			cal.view !== 'list' ? h('button', { 'aria-label': unit + ' suivant' + (unit === 'Semaine' ? 'e' : ''), onclick: () => move(1) }, '›') : null,
+			cal.view !== 'list' ? h('button', { 'aria-label': unit[0], onclick: () => move(-1) }, '‹') : null,
+			cal.view !== 'list' ? h('button', { 'aria-label': unit[1], onclick: () => move(1) }, '›') : null,
 			h('h2', { class: 'wm-cal-title' }, title),
 			cal.loading ? h('span', { class: 'icon-loading-small' }) : null,
 			h('div', { class: 'wm-segmented' },
+				h('button', { class: cal.view === 'day' ? 'active' : '', onclick: () => setCalView('day') }, 'Jour'),
 				h('button', { class: cal.view === 'month' ? 'active' : '', onclick: () => setCalView('month') }, 'Mois'),
 				h('button', { class: cal.view === 'week' ? 'active' : '', onclick: () => setCalView('week') }, 'Semaine'),
 				h('button', { class: cal.view === 'list' ? 'active' : '', onclick: () => setCalView('list') }, 'Liste')),
 			h('button', { class: 'primary wm-mobile-only', onclick: () => openForm(null, new Date()) }, '＋'),
 		))
 
-		if (cal.view === 'week') {
+		if (cal.view === 'week' || cal.view === 'day') {
 			const week = renderWeek()
 			el.appendChild(week)
 			restoreWeekScroll(week.querySelector('.wm-week-scroll'))
@@ -513,8 +543,10 @@
 
 	function renderWeek() {
 		const h = core.h
-		const first = startOfWeek(cal.cursor)
-		const days = Array.from({ length: 7 }, (_, i) => addDays(first, i))
+		// the day view is the week grid with one column
+		const days = cal.view === 'day'
+			? [startOfDay(cal.cursor)]
+			: Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(cal.cursor), i))
 		const now = new Date()
 
 		const head = h('div', { class: 'wm-week-row wm-week-head' },
@@ -577,7 +609,7 @@
 
 		const scroll = h('div', { class: 'wm-week-scroll' }, grid)
 		scroll.addEventListener('scroll', () => { cal.weekScroll = scroll.scrollTop })
-		return h('div', { class: 'wm-week' }, head, allDay, scroll)
+		return h('div', { class: 'wm-week' + (cal.view === 'day' ? ' wm-day-view' : '') }, head, allDay, scroll)
 	}
 
 	function restoreWeekScroll(scroll) {
@@ -590,7 +622,7 @@
 		let hour = 7.5
 		cal.events.filter((ev) => !ev.allDay).forEach((ev) => {
 			const s = new Date(ev.start)
-			if (s >= startOfWeek(cal.cursor)) hour = Math.min(hour, s.getHours())
+			if (s >= (cal.view === 'day' ? startOfDay(cal.cursor) : startOfWeek(cal.cursor))) hour = Math.min(hour, s.getHours())
 		})
 		scroll.scrollTop = Math.max(0, hour - 0.5) * HOUR_PX
 	}
@@ -1204,7 +1236,7 @@
 			if (!cal.view) {
 				let saved = null
 				try { saved = localStorage.getItem('webmail.calview') } catch (e) { /* ignore */ }
-				cal.view = ['list', 'month', 'week'].includes(saved) ? saved : (window.matchMedia('(max-width: 800px)').matches ? 'list' : 'month')
+				cal.view = ['list', 'month', 'week', 'day'].includes(saved) ? saved : (window.matchMedia('(max-width: 800px)').matches ? 'list' : 'month')
 			}
 			if (cal.calendarsFor !== core.accountId) {
 				cal.calendars = []

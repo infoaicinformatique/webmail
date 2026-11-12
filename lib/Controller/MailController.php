@@ -48,6 +48,37 @@ class MailController extends Controller {
 		return $this->accounts->getClient($this->accounts->find((string)$this->userId, $id));
 	}
 
+	/** @param string $parentId "" = top of the mailbox */
+	#[NoAdminRequired]
+	public function createFolder(int $id, string $name, string $parentId = ''): Response {
+		return $this->handle(fn () => ['id' => $this->client($id)->createFolder($name, $parentId !== '' ? $parentId : null)]);
+	}
+
+	#[NoAdminRequired]
+	public function renameFolder(int $id, string $folderId, string $name): Response {
+		return $this->handle(function () use ($id, $folderId, $name) {
+			$this->client($id)->renameFolder($folderId, $name);
+			return ['status' => 'ok'];
+		});
+	}
+
+	/** @param string $parentId "" = top of the mailbox */
+	#[NoAdminRequired]
+	public function moveFolder(int $id, string $folderId, string $parentId = ''): Response {
+		return $this->handle(function () use ($id, $folderId, $parentId) {
+			$this->client($id)->moveFolder($folderId, $parentId !== '' ? $parentId : null);
+			return ['status' => 'ok'];
+		});
+	}
+
+	#[NoAdminRequired]
+	public function deleteFolder(int $id, string $folderId): Response {
+		return $this->handle(function () use ($id, $folderId) {
+			$this->client($id)->deleteFolder($folderId);
+			return ['status' => 'ok'];
+		});
+	}
+
 	#[NoAdminRequired]
 	public function folders(int $id): Response {
 		return $this->handle(function () use ($id) {
@@ -59,12 +90,12 @@ class MailController extends Controller {
 		});
 	}
 
-	#[NoAdminRequired]
 	/**
 	 * Messages of a folder, or search results. Filters: unread, with
 	 * attachments, flagged, received since a date (Y-m-d); scope "all"
 	 * searches every mail folder.
 	 */
+	#[NoAdminRequired]
 	public function messages(int $id, string $folder = 'inbox', int $offset = 0, int $limit = 50, string $q = '',
 		bool $unread = false, bool $attachments = false, bool $flagged = false, string $since = '', string $scope = 'folder'): Response {
 		$limit = max(1, min(100, $limit));

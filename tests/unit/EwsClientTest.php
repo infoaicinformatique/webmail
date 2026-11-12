@@ -109,9 +109,11 @@ class EwsClientTest extends EwsTestCase {
 			. '</t:Items></m:RootFolder>'));
 		$this->queue($this->inboxUnread(4));
 		$r = $this->client()->newMessages(null);
-		$this->assertSame(['items' => [], 'latest' => '2026-11-12T08:00:00Z', 'unread' => 4], $r, 'nothing announced the first time');
+		// the page learns the newest messages (not announced) and where to start from
+		$this->assertSame(['M1'], array_column($r['items'], 'id'));
+		$this->assertSame('2026-11-12T08:00:00Z', $r['latest']);
+		$this->assertSame(4, $r['unread']);
 		$this->assertStringNotContainsString('Restriction', $this->requests[0]);
-		$this->assertStringContainsString('MaxEntriesReturned="1"', $this->requests[0]);
 	}
 
 	public function testNewMessagesSince(): void {
@@ -124,7 +126,7 @@ class EwsClientTest extends EwsTestCase {
 		$this->assertSame(['N2', 'N1'], array_column($r['items'], 'id'));
 		$this->assertSame('2026-11-12T09:05:00Z', $r['latest']);
 		$this->assertSame(6, $r['unread']);
-		$this->assertStringContainsString('<t:IsGreaterThan><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURIOrConstant><t:Constant Value="2026-11-12T09:00:00Z"/></t:FieldURIOrConstant></t:IsGreaterThan>', $this->requests[0]);
+		$this->assertStringContainsString('<t:IsGreaterThanOrEqualTo><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURIOrConstant><t:Constant Value="2026-11-12T09:00:00Z"/></t:FieldURIOrConstant></t:IsGreaterThanOrEqualTo>', $this->requests[0]);
 		$this->assertStringContainsString('<t:FieldURI FieldURI="message:IsRead"/><t:FieldURIOrConstant><t:Constant Value="false"/>', $this->requests[0]);
 	}
 
@@ -177,6 +179,55 @@ class EwsClientTest extends EwsTestCase {
 		$this->queue(self::ok('SendItem'));
 		$this->client()->sendSavedDraft('D1');
 		$this->assertStringContainsString('<m:SendItem SaveItemToFolder="true"><m:ItemIds><t:ItemId Id="D1" ChangeKey="CK3"/></m:ItemIds>', $this->requests[1]);
+	}
+
+	private function roles(): string {
+		$ok = fn (string $id) => '<m:GetFolderResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Folders><t:Folder><t:FolderId Id="' . $id . '"/></t:Folder></m:Folders></m:GetFolderResponseMessage>';
+		return '<m:GetFolderResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>'
+			. $ok('INBOX') . $ok('DRAFTS') . $ok('SENT') . $ok('DELETED') . $ok('JUNK') . $ok('OUTBOX') . $ok('ROOT')
+			. '</m:ResponseMessages></m:GetFolderResponse>';
+	}
+
+	public function testCreateFolder(): void {
+		$this->queue(self::ok('CreateFolder', '<m:Folders><t:Folder><t:FolderId Id="NEW" ChangeKey="c"/></t:Folder></m:Folders>'));
+		$this->assertSame('NEW', $this->client()->createFolder(' Projets 2027 ', 'INBOX'));
+		$this->assertStringContainsString('<m:CreateFolder><m:ParentFolderId><t:FolderId Id="INBOX"/></m:ParentFolderId><m:Folders><t:Folder><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Projets 2027</t:DisplayName>', $this->requests[0]);
+		$this->queue(self::ok('CreateFolder', '<m:Folders><t:Folder><t:FolderId Id="TOP" ChangeKey="c"/></t:Folder></m:Folders>'));
+		$this->client()->createFolder('Archives');
+		$this->assertStringContainsString('<m:ParentFolderId><t:DistinguishedFolderId Id="msgfolderroot"/></m:ParentFolderId>', $this->lastRequest());
+	}
+
+	public function testFolderNameIsChecked(): void {
+		$this->expectException(MailException::class);
+		$this->client()->createFolder('   ');
+	}
+
+	public function testRenameMoveDeleteFolder(): void {
+		$this->queue($this->roles());
+		$this->queue(self::ok('UpdateFolder', '<m:Folders><t:Folder><t:FolderId Id="F1"/></t:Folder></m:Folders>'));
+		$this->client()->renameFolder('F1', 'Clients 2027');
+		$this->assertStringContainsString('<t:FolderChange><t:FolderId Id="F1"/><t:Updates><t:SetFolderField><t:FieldURI FieldURI="folder:DisplayName"/><t:Folder><t:DisplayName>Clients 2027</t:DisplayName>', $this->lastRequest());
+		$this->queue($this->roles());
+		$this->queue(self::ok('MoveFolder', '<m:Folders><t:Folder><t:FolderId Id="F1"/></t:Folder></m:Folders>'));
+		$this->client()->moveFolder('F1', null);
+		$this->assertStringContainsString('<m:MoveFolder><m:ToFolderId><t:DistinguishedFolderId Id="msgfolderroot"/></m:ToFolderId><m:FolderIds><t:FolderId Id="F1"/>', $this->lastRequest());
+		$this->queue($this->roles());
+		$this->queue(self::ok('DeleteFolder'));
+		$this->client()->deleteFolder('F1');
+		$this->assertStringContainsString('<m:DeleteFolder DeleteType="MoveToDeletedItems"><m:FolderIds><t:FolderId Id="F1"/>', $this->lastRequest());
+	}
+
+	public function testExchangeFoldersAreProtected(): void {
+		$this->queue($this->roles());
+		try {
+			$this->client()->deleteFolder('SENT');
+			$this->fail('the Sent Items folder must not be deleted');
+		} catch (MailException $e) {
+			$this->assertStringContainsString('indispensable', $e->getMessage());
+		}
+		$this->assertCount(1, $this->requests, 'nothing sent besides the check');
+		$this->expectException(MailException::class);
+		$this->client()->renameFolder('inbox', 'x');
 	}
 
 	public function testFindItemsWithSearchAndPaging(): void {

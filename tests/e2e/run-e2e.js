@@ -389,6 +389,117 @@ async function main() {
 		assert(!(await page.$('.wm-message:has-text("Réunion de lundi")')))
 	})
 
+	await step('several messages: ticks, grouped actions, drag and drop', async () => {
+		const msg = (n) => '.wm-message:has(.wm-message-subject:text-is("Newsletter n°' + n + '"))'
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector(msg(7))
+		// tick 7, then Shift+click 9: 7, 8 and 9
+		await page.click(msg(7) + ' .wm-check')
+		await page.waitForSelector('.wm-bulk:has-text("1 sélectionné")')
+		await page.click(msg(9) + ' .wm-check', { modifiers: ['Shift'] })
+		await page.waitForSelector('.wm-bulk:has-text("3 sélectionnés")')
+		assert.strictEqual(await page.$$eval('.wm-message.checked', (els) => els.length), 3)
+		await shot('38-several-messages')
+		await page.click('.wm-bulk button:has-text("Non lu")')
+		await page.waitForSelector('.wm-toast:has-text("3 messages marqués comme non lus")')
+		for (const n of [7, 8, 9]) await page.waitForSelector(msg(n) + '.unread')
+		assert(!(await page.$('.wm-bulk')), 'ticks cleared after the action')
+
+		// Ctrl+click ticks without opening, then move them all
+		await page.click(msg(7), { modifiers: ['Control'] })
+		await page.click(msg(8), { modifiers: ['Control'] })
+		await page.click(msg(9), { modifiers: ['Control'] })
+		await page.waitForSelector('.wm-bulk:has-text("3 sélectionnés")')
+		await page.selectOption('.wm-bulk select[name=bulkMove]', { label: 'Factures' })
+		await page.waitForSelector('.wm-toast:has-text("3 messages déplacés vers « Factures »")')
+		for (const n of [7, 8, 9]) assert(!(await page.$(msg(n))))
+
+		// Escape drops the ticks
+		await page.click(msg(11) + ' .wm-check')
+		await page.waitForSelector('.wm-bulk')
+		await page.keyboard.press('Escape')
+		await page.waitForSelector('.wm-bulk', { state: 'detached' })
+
+		// drag a message onto a folder (the browser's drag events, fired here:
+		// Playwright's drag emulation hangs with this headless Chromium)
+		const accepted = await page.evaluate(() => {
+			const li = [...document.querySelectorAll('.wm-message')].find((e) => e.querySelector('.wm-message-subject').textContent === 'Newsletter n°10')
+			const folder = [...document.querySelectorAll('.wm-folder')].find((e) => e.textContent.includes('Factures'))
+			const dt = new DataTransfer()
+			li.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }))
+			const over = new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt })
+			folder.dispatchEvent(over)
+			folder.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
+			li.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }))
+			return over.defaultPrevented
+		})
+		assert(accepted, 'the folder accepts the drop')
+		await page.waitForSelector('.wm-toast:has-text("Message déplacé vers « Factures »")')
+		assert(!(await page.$(msg(10))))
+		await page.click('.wm-folder:has-text("Factures")')
+		for (const n of [7, 8, 9, 10]) await page.waitForSelector(msg(n))
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector(msg(11))
+	})
+
+	await step('managing folders: create, sub-folder, rename, move, delete', async () => {
+		const row = (name) => '.wm-folder-row:has(.wm-folder-name:text-is("' + name + '"))'
+		const menu = async (name, action) => {
+			await page.hover(row(name))
+			await page.click(row(name) + ' .wm-folder-menu-btn')
+			await page.click('.wm-folder-menu button:has-text("' + action + '")')
+		}
+		const ask = async (value, button) => {
+			await page.fill('.wm-modal input[name=folderName]', value)
+			await page.click('.wm-modal button:has-text("' + button + '")')
+		}
+		await page.click('.wm-new-folder')
+		await ask('Projets', 'Créer')
+		await page.waitForSelector('.wm-toast:has-text("Dossier « Projets » créé")')
+		await page.waitForSelector(row('Projets'))
+		// same name at the same place: refused by Exchange
+		await page.click('.wm-new-folder')
+		await ask('Projets', 'Créer')
+		await page.waitForSelector('.wm-toast:has-text("Un dossier porte déjà ce nom")')
+
+		await menu('Projets', 'Nouveau sous-dossier')
+		await page.waitForSelector('.wm-modal h2:has-text("Nouveau dossier dans « Projets »")')
+		await ask('Chantier Nice', 'Créer')
+		await page.waitForSelector(row('Chantier Nice'))
+		const indent = async (name) => parseInt(await page.$eval(row(name) + ' .wm-folder', (a) => getComputedStyle(a).paddingInlineStart), 10)
+		assert((await indent('Chantier Nice')) > (await indent('Projets')), 'shown inside « Projets »')
+		await menu('Chantier Nice', 'Renommer')
+		await ask('Chantier Antibes', 'Renommer')
+		await page.waitForSelector('.wm-toast:has-text("Dossier renommé en « Chantier Antibes »")')
+		await page.waitForSelector(row('Chantier Antibes'))
+		await shot('39-folders')
+
+		// a message into it, then the folder to the top of the mailbox
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°11")) .wm-check')
+		await page.selectOption('.wm-bulk select[name=bulkMove]', { label: 'Chantier Antibes' })
+		await page.waitForSelector('.wm-toast:has-text("Message déplacé vers « Chantier Antibes »")')
+		await menu('Chantier Antibes', 'Déplacer')
+		await page.selectOption('.wm-modal select[name=folderChoice]', '')
+		await page.click('.wm-modal button:has-text("Déplacer")')
+		await page.waitForSelector('.wm-toast:has-text("déplacé en haut de la boîte aux lettres")')
+		await page.waitForFunction(() => { const a = [...document.querySelectorAll('.wm-folder')].find((x) => x.textContent.includes('Chantier Antibes')); return a && parseInt(getComputedStyle(a).paddingInlineStart, 10) === 12 })
+		await page.click(row('Chantier Antibes') + ' .wm-folder')
+		await page.waitForSelector('.wm-message:has-text("Newsletter n°11")')
+
+		// delete: into « Éléments supprimés », with what it contains
+		page.once('dialog', (d) => d.accept())
+		await menu('Projets', 'Supprimer')
+		await page.waitForSelector('.wm-toast:has-text("Dossier « Projets » placé dans les éléments supprimés")')
+		// Exchange's own folders cannot be renamed, moved or deleted
+		await page.hover(row('Boîte de réception'))
+		await page.click(row('Boîte de réception') + ' .wm-folder-menu-btn')
+		const items = await page.$$eval('.wm-folder-menu button', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(items, ['＋ Nouveau sous-dossier'])
+		await page.keyboard.press('Escape')
+		await page.click(row('Boîte de réception') + ' .wm-folder')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('account settings: signature', async () => {
 		await page.click('text=Comptes et signature')
 		await page.fill('.wm-account-card textarea', 'Utilisateur\nSociété A')
@@ -397,6 +508,36 @@ async function main() {
 		await page.click('.wm-compose-btn')
 		const signed = await page.innerText('.wm-editor')
 		assert(/--\s*\nUtilisateur\nSociété A/.test(signed), signed)
+	})
+
+	await step('automatic replies (out of office)', async () => {
+		await page.click('text=Comptes et signature')
+		await page.click('.wm-account-card:has-text("user@societe-a.fr") .wm-oof-btn')
+		await page.waitForSelector('.wm-modal input[name=oofState][value=Disabled]:checked')
+		assert(!(await page.isVisible('.wm-modal textarea[name=oofInternal]')), 'nothing to fill while disabled')
+		await page.check('.wm-modal input[name=oofState][value=Scheduled]')
+		const local = (d) => { const p = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()) }
+		const end = new Date(Date.now() + 3 * 86400000)
+		await page.fill('.wm-modal input[name=oofStart]', local(new Date(Date.now() - 3600000)))
+		await page.fill('.wm-modal input[name=oofEnd]', local(end))
+		await page.fill('.wm-modal textarea[name=oofInternal]', 'Bonjour,\nje suis absent. Pour toute urgence : Paul Durand.')
+		await page.selectOption('.wm-modal select[name=oofAudience]', 'Known')
+		await shot('37-out-of-office')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Réponse automatique programmée du")')
+		// reminder in the folder pane
+		await page.waitForSelector('.wm-oof-banner:has-text("Réponse automatique activée jusqu\'au")')
+		// saved as set
+		await page.click('.wm-oof-banner a:has-text("Modifier")')
+		await page.waitForSelector('.wm-modal input[name=oofState][value=Scheduled]:checked')
+		assert.strictEqual(await page.inputValue('.wm-modal textarea[name=oofInternal]'), 'Bonjour,\nje suis absent. Pour toute urgence : Paul Durand.')
+		assert.strictEqual(await page.inputValue('.wm-modal select[name=oofAudience]'), 'Known')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=oofEnd]'), local(end))
+		await page.click('.wm-modal-close')
+		// switched off from the reminder
+		await page.click('.wm-oof-banner a:has-text("Désactiver")')
+		await page.waitForSelector('.wm-toast:has-text("Réponse automatique désactivée")')
+		await page.waitForSelector('.wm-oof-banner', { state: 'detached' })
 	})
 
 	await step('rich text editor and drafts', async () => {
@@ -938,6 +1079,40 @@ async function main() {
 		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-agenda-item')].some((e) => e.textContent.includes('Rendez-vous fournisseur')))
 	})
 
+	await step('calendar: day view and small calendar', async () => {
+		await page.click('.wm-tab[data-module="calendar"]')
+		await page.waitForSelector('.wm-cal-toolbar')
+		const before = await page.textContent('.wm-segmented button.active')
+		const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+		const tomorrow = new Date(Date.now() + 86400000)
+		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
+		await page.click('.wm-segmented button:has-text("Jour")')
+		await page.waitForSelector('.wm-week.wm-day-view')
+		assert.strictEqual(await page.$$eval('.wm-week-col', (els) => els.length), 1, 'one column')
+		const today = await page.textContent('.wm-cal-title')
+		assert(today.includes(String(new Date().getDate())), today)
+		// next day: its events
+		await page.click('.wm-cal-toolbar button[aria-label="Jour suivant"]')
+		await page.waitForSelector('.wm-week-col[data-date="' + ymd(tomorrow) + '"]')
+		await page.waitForSelector('.wm-day-view .wm-week-event:has-text("Point hebdo équipe")')
+		await page.waitForFunction(() => !document.querySelector('.wm-cal-toolbar .icon-loading-small'))
+		// the small calendar: a dot under the days with events, its own arrows
+		await page.waitForSelector('.wm-mini-day.has-events[data-date="' + ymd(tomorrow) + '"]')
+		await shot('41-day-view')
+		const shownMonth = await page.textContent('.wm-mini-title span')
+		await page.click('.wm-mini-nav[aria-label="Mois suivant"]')
+		await page.waitForFunction((m) => document.querySelector('.wm-mini-title span').textContent !== m, shownMonth)
+		assert(await page.$('.wm-week-col[data-date="' + ymd(tomorrow) + '"]'), 'the main view did not move')
+		await page.click('.wm-mini-nav[aria-label="Mois précédent"]')
+		// double-click a day of the small calendar: that day alone
+		await page.click('.wm-segmented button:has-text("Semaine")')
+		await page.waitForSelector('.wm-week:not(.wm-day-view)')
+		await page.dblclick('.wm-mini-day[data-date="' + ymd(new Date()) + '"]')
+		await page.waitForSelector('.wm-week.wm-day-view .wm-week-col[data-date="' + ymd(new Date()) + '"]')
+		// back to the view used before
+		await page.click('.wm-segmented button:has-text("' + before.trim() + '")')
+	})
+
 	await step('calendar: share my calendar without delegation', async () => {
 		const openShare = async (name) => {
 			await page.click('.wm-cal-row:has-text("' + name + '") .wm-cal-share')
@@ -1409,16 +1584,71 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 
 		// window in front: a message in the page, no notification
-		await page.evaluate(() => { document.hasFocus = () => true })
+		await page.evaluate(() => {
+			document.hasFocus = () => true
+			// every message shown in the page, even if it is gone before it is looked for
+			window.__toasts = []
+			const box = document.getElementById('wm-toasts')
+			new MutationObserver((records) => records.forEach((r) => r.addedNodes.forEach((n) => window.__toasts.push(n.textContent))))
+				.observe(box, { childList: true })
+		})
+		const polls = []
+		const onPoll = async (r) => {
+			if (r.url().includes('/new?')) polls.push(r.url().replace(/.*\/accounts\//, '').replace(/\?.*/, '') + ' ' + decodeURIComponent(r.url().split('?')[1]) + ' -> ' + (await r.text().catch(() => '?')).slice(0, 160))
+			if (r.url().endsWith('/send')) polls.push('SEND via ' + r.url().replace(/.*\/accounts\//, ''))
+		}
+		page.on('response', onPoll)
 		await sendToMe('Rappel 2')
 		await check()
-		await page.locator('.wm-toast', { hasText: /Nouveau message de Utilisateur \(.+\) : Rappel 2/ }).waitFor()
+		await page.waitForFunction(() => window.__toasts.some((t) => /Nouveau message de Utilisateur \(.+\) : Rappel 2/.test(t)), null, { timeout: 30000 })
+			.catch(async (e) => {
+				const seen = await page.evaluate(() => ({ toasts: window.__toasts, notes: window.__notes.map((n) => n.title + ' / ' + n.body), focus: document.hasFocus(), hidden: document.hidden }))
+				const inbox = await page.$$eval('.wm-message-subject', (els) => els.slice(0, 4).map((x) => x.textContent))
+				polls.push('selected account: ' + await page.inputValue('.wm-account-select').catch(() => '?'))
+				throw new Error('no in-page message for Rappel 2: ' + JSON.stringify(seen) + ' polls=' + JSON.stringify(polls) + ' list=' + JSON.stringify(inbox) + ' (' + e.message.split('\n')[0] + ')')
+			})
 		await page.waitForSelector('.wm-message:has-text("Rappel 2")')
 		assert.strictEqual(await page.evaluate(() => window.__notes.length), 1)
+		page.off('response', onPoll)
 		await shot('35-new-message')
 
 		await page.click('.wm-notify-toggle')
 		await page.waitForSelector('.wm-notify-toggle:has-text("Activer les notifications")')
+	})
+
+	await step('Nextcloud dashboard: unread messages and next events', async () => {
+		const ocs = (path, opts = {}) => page.evaluate(async ({ path, opts }) => {
+			const r = await fetch(OC.linkToOCS('apps/dashboard/api', 2).replace(/\/$/, '') + path, {
+				method: opts.method || 'GET',
+				headers: { 'OCS-APIRequest': 'true', Accept: 'application/json', 'Content-Type': 'application/json', requesttoken: OC.requestToken },
+				body: opts.body ? JSON.stringify(opts.body) : undefined,
+			})
+			return (await r.json()).ocs
+		}, { path, opts })
+		// both widgets are offered, and put on this user's dashboard
+		const widgets = (await ocs('/v1/widgets')).data
+		assert(widgets['webmail-unread'] && widgets['webmail-agenda'], Object.keys(widgets).join(','))
+		assert.strictEqual(widgets['webmail-unread'].title, 'Courrier non lu')
+		await ocs('/v3/layout', { method: 'POST', body: { layout: ['webmail-unread', 'webmail-agenda'] } })
+		const items = (await ocs('/v2/widget-items?widgets[]=webmail-unread&widgets[]=webmail-agenda')).data
+		const unread = items['webmail-unread'].items
+		assert(unread.length > 0 && unread.every((i) => /[?&]account=\d+&message=/.test(i.link)), 'unread widget: ' + JSON.stringify(items['webmail-unread']))
+		assert(unread.some((i) => i.title === 'Rappel 2'), unread.map((i) => i.title).join('|'))
+		const events = items['webmail-agenda'].items
+		assert(events.length > 0, 'next events')
+		assert(events.every((e) => /^(Aujourd'hui|Demain|[a-zé]+\. \d+ [a-zéû.]+)( |, toute la journée)/.test(e.subtitle)), events.map((e) => e.subtitle).join('|'))
+
+		await page.goto(NC + '/apps/dashboard/')
+		await page.waitForSelector('text=Courrier non lu')
+		await page.waitForSelector('a:has-text("Rappel 2")')
+		await shot('40-dashboard')
+		// an item opens the message in the webmail (the dashboard opens links in a new tab)
+		const [tab] = await Promise.all([page.context().waitForEvent('page'), page.click('a:has-text("Rappel 2")')])
+		await tab.waitForSelector('.wm-message-header h2:has-text("Rappel 2")')
+		assert(!tab.url().includes('message='), 'the link is not kept in the address')
+		await tab.close()
+		await page.goto(NC + '/apps/webmail/')
+		await page.waitForSelector('.wm-message')
 	})
 
 	await step('mobile layout', async () => {

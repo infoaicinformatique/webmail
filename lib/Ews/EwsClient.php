@@ -199,6 +199,71 @@ class EwsClient {
 		return null;
 	}
 
+	// ------------------------------------------------------------------
+	// Managing mail folders
+	// ------------------------------------------------------------------
+
+	/** Folders Exchange needs: they cannot be renamed, moved or deleted. */
+	private const PROTECTED_ROLES = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'outbox', 'msgfolderroot'];
+
+	private static function folderName(string $name): string {
+		$name = trim($name);
+		if ($name === '' || mb_strlen($name) > 255 || preg_match('/[\x00-\x1f]/', $name)) {
+			throw new MailException('Nom de dossier invalide');
+		}
+		return $name;
+	}
+
+	private function assertEditable(string $folderId): void {
+		if (in_array($folderId, self::DISTINGUISHED, true)
+			|| in_array($folderId, $this->distinguishedFolderIds(self::PROTECTED_ROLES), true)) {
+			throw new MailException('Ce dossier est indispensable à Exchange : il ne peut pas être renommé, déplacé ni supprimé');
+		}
+	}
+
+	/**
+	 * New mail folder, at the top of the mailbox or inside $parentId.
+	 * @return string id of the folder
+	 */
+	public function createFolder(string $name, ?string $parentId = null): string {
+		$xp = $this->request(
+			'<m:CreateFolder><m:ParentFolderId>' . $this->folderIdXml($parentId ?? 'msgfolderroot') . '</m:ParentFolderId>'
+			. '<m:Folders><t:Folder><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>' . $this->esc(self::folderName($name)) . '</t:DisplayName></t:Folder></m:Folders>'
+			. '</m:CreateFolder>'
+		);
+		return (string)$this->attr($xp, '//m:Folders/*/t:FolderId', 'Id');
+	}
+
+	public function renameFolder(string $folderId, string $name): void {
+		$this->assertEditable($folderId);
+		$this->request(
+			'<m:UpdateFolder><m:FolderChanges><t:FolderChange>' . $this->folderIdXml($folderId)
+			. '<t:Updates><t:SetFolderField><t:FieldURI FieldURI="folder:DisplayName"/><t:Folder><t:DisplayName>'
+			. $this->esc(self::folderName($name)) . '</t:DisplayName></t:Folder></t:SetFolderField></t:Updates>'
+			. '</t:FolderChange></m:FolderChanges></m:UpdateFolder>'
+		);
+	}
+
+	/** Move a folder (and what it contains) inside $parentId, or to the top of the mailbox. */
+	public function moveFolder(string $folderId, ?string $parentId): void {
+		$this->assertEditable($folderId);
+		if ($parentId === $folderId) {
+			throw new MailException('Un dossier ne peut pas être déplacé dans lui-même');
+		}
+		$this->request(
+			'<m:MoveFolder><m:ToFolderId>' . $this->folderIdXml($parentId ?? 'msgfolderroot') . '</m:ToFolderId>'
+			. '<m:FolderIds>' . $this->folderIdXml($folderId) . '</m:FolderIds></m:MoveFolder>'
+		);
+	}
+
+	/** Delete a folder and what it contains: to « Éléments supprimés », like Outlook. */
+	public function deleteFolder(string $folderId): void {
+		$this->assertEditable($folderId);
+		$this->request(
+			'<m:DeleteFolder DeleteType="MoveToDeletedItems"><m:FolderIds>' . $this->folderIdXml($folderId) . '</m:FolderIds></m:DeleteFolder>'
+		);
+	}
+
 	public function distinguishedFolderIds(array $names): array {
 		$ids = '';
 		foreach ($names as $n) {
@@ -355,9 +420,9 @@ class EwsClient {
 	}
 
 	/**
-	 * Unread messages received in the inbox after $since (for notifications),
-	 * and the number of unread messages of the inbox. Without $since, only
-	 * gives the date to start from (the newest message).
+	 * Unread messages received in the inbox on or after $since (for
+	 * notifications), and the number of unread messages of the inbox. Without
+	 * $since: the newest messages, read or not, and the date to start from.
 	 * @return array{items: array<int, array<string, mixed>>, latest: string, unread: int}
 	 */
 	public function newMessages(?string $since, int $max = 10): array {
@@ -369,14 +434,16 @@ class EwsClient {
 			}
 			$since = $d->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
 			$restriction = '<m:Restriction><t:And>'
-				. '<t:IsGreaterThan><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURIOrConstant><t:Constant Value="' . $since . '"/></t:FieldURIOrConstant></t:IsGreaterThan>'
+				// "on or after": dates are to the second, a message received in the same second
+				// as the last one seen must not be missed (the page ignores those already announced)
+				. '<t:IsGreaterThanOrEqualTo><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURIOrConstant><t:Constant Value="' . $since . '"/></t:FieldURIOrConstant></t:IsGreaterThanOrEqualTo>'
 				. '<t:IsEqualTo><t:FieldURI FieldURI="message:IsRead"/><t:FieldURIOrConstant><t:Constant Value="false"/></t:FieldURIOrConstant></t:IsEqualTo>'
 				. '</t:And></m:Restriction>';
 		}
 		$xp = $this->request(
 			'<m:FindItem Traversal="Shallow">'
 			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $this->summaryFields() . '</t:AdditionalProperties></m:ItemShape>'
-			. '<m:IndexedPageItemView MaxEntriesReturned="' . ($since !== null ? max(1, $max) : 1) . '" Offset="0" BasePoint="Beginning"/>'
+			. '<m:IndexedPageItemView MaxEntriesReturned="' . max(1, $max) . '" Offset="0" BasePoint="Beginning"/>'
 			. $restriction
 			. '<m:SortOrder><t:FieldOrder Order="Descending"><t:FieldURI FieldURI="item:DateTimeReceived"/></t:FieldOrder></m:SortOrder>'
 			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="inbox"/></m:ParentFolderIds>'
@@ -397,7 +464,8 @@ class EwsClient {
 			. '<m:FolderIds><t:DistinguishedFolderId Id="inbox"/></m:FolderIds></m:GetFolder>'
 		);
 		return [
-			'items' => $since !== null ? $items : [],
+			// without a date: the newest messages, for the page to know them (not announced)
+			'items' => $items,
 			'latest' => $latest,
 			'unread' => (int)$this->text($folder, '//m:Folders/*/t:UnreadCount'),
 		];
@@ -931,6 +999,10 @@ class EwsClient {
 			'ErrorInvalidPermissionSettings' => 'Exchange a refusé ces autorisations',
 			'ErrorIrresolvableConflict' => 'L\'élément a été modifié entre-temps, rechargez la page',
 			'ErrorTimeZone' => 'Fuseau horaire non reconnu par Exchange',
+			'ErrorFolderExists' => 'Un dossier porte déjà ce nom à cet endroit',
+			'ErrorDeleteDistinguishedFolder' => 'Ce dossier est indispensable à Exchange et ne peut pas être supprimé',
+			'ErrorMoveDistinguishedFolder' => 'Ce dossier est indispensable à Exchange et ne peut pas être déplacé',
+			'ErrorMoveCopyFailed' => 'Exchange n\'a pas pu déplacer le dossier (pas dans un de ses sous-dossiers)',
 			default => 'Erreur Exchange' . ($code ? ' (' . $code . ')' : '') . ($text ? ' : ' . $text : ''),
 		};
 	}
