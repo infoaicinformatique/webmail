@@ -126,6 +126,19 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 Côté délégué, l'agenda et les contacts partagés s'ajoutent dans l'onglet correspondant. Les invitations reçues en délégation permettent de répondre au nom de la personne.
 
+### Tableau de bord Nextcloud
+
+Deux widgets pour le tableau de bord de Nextcloud (bouton « Personnaliser » en bas du tableau de bord) :
+
+| | |
+|---|---|
+| Courrier non lu | Les derniers messages non lus des boîtes de réception de tous vos comptes Exchange (expéditeur, objet ; le compte s'il y en a plusieurs). Un clic ouvre le message dans le webmail |
+| Prochains rendez-vous (Exchange) | Les rendez-vous des 7 prochains jours de vos agendas Exchange, avec l'heure (« Aujourd'hui 14:00 », « Demain, toute la journée ») et le lieu. Un clic ouvre l'agenda |
+
+Les deux sont actualisés toutes les quelques minutes ; Exchange n'est interrogé qu'une fois par minute au plus. Un administrateur peut les proposer à tout le monde par défaut : `occ config:app:set dashboard layout --value="webmail-unread,webmail-agenda,…"`.
+
+![Tableau de bord](docs/capture-tableau-de-bord.png)
+
 ## Prérequis
 
 - Nextcloud 28 à 32, PHP 8.1 ou plus récent, avec les extensions `curl` et `dom`
@@ -139,7 +152,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.21.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.22.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -161,7 +174,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.21 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.22 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -264,7 +277,7 @@ templates/          page principale et page d'administration
 - Groupes de contacts modifiables, photos, import et export vCard
 
 **Nextcloud et serveur**
-- Widget du tableau de bord (non lus, prochains rendez-vous) et recherche unifiée Nextcloud
+- Recherche unifiée Nextcloud
 - Notifications Nextcloud (cloche) même quand aucun onglet n'est ouvert, et notifications Exchange en direct à la place de la vérification chaque minute
 - Tâches Exchange
 - Découverte automatique (Autodiscover) à la place de la table domaine/serveur

@@ -1578,6 +1578,38 @@ async function main() {
 		await page.waitForSelector('.wm-notify-toggle:has-text("Activer les notifications")')
 	})
 
+	await step('Nextcloud dashboard: unread messages and next events', async () => {
+		const ocs = (path, opts = {}) => page.evaluate(async ({ path, opts }) => {
+			const r = await fetch(OC.linkToOCS('apps/dashboard/api', 2).replace(/\/$/, '') + path, {
+				method: opts.method || 'GET',
+				headers: { 'OCS-APIRequest': 'true', Accept: 'application/json', 'Content-Type': 'application/json', requesttoken: OC.requestToken },
+				body: opts.body ? JSON.stringify(opts.body) : undefined,
+			})
+			return (await r.json()).ocs
+		}, { path, opts })
+		// both widgets are offered, and put on this user's dashboard
+		const widgets = (await ocs('/v1/widgets')).data
+		assert(widgets['webmail-unread'] && widgets['webmail-agenda'], Object.keys(widgets).join(','))
+		assert.strictEqual(widgets['webmail-unread'].title, 'Courrier non lu')
+		await ocs('/v3/layout', { method: 'POST', body: { layout: ['webmail-unread', 'webmail-agenda'] } })
+		const items = (await ocs('/v2/widget-items?widgets[]=webmail-unread&widgets[]=webmail-agenda')).data
+		const unread = items['webmail-unread'].items
+		assert(unread.length > 0 && unread.every((i) => /[?&]account=\d+&message=/.test(i.link)), JSON.stringify(unread[0]))
+		assert(unread.some((i) => i.title === 'Rappel 2'), unread.map((i) => i.title).join('|'))
+		const events = items['webmail-agenda'].items
+		assert(events.length > 0, 'next events')
+		assert(events.every((e) => /^(Aujourd'hui|Demain|[a-zé]+\. \d+ [a-zéû.]+)( |, toute la journée)/.test(e.subtitle)), events.map((e) => e.subtitle).join('|'))
+
+		await page.goto(NC + '/apps/dashboard/')
+		await page.waitForSelector('text=Courrier non lu')
+		await page.waitForSelector('a:has-text("Rappel 2")')
+		await shot('40-dashboard')
+		// an item opens the message in the webmail
+		await page.click('a:has-text("Rappel 2")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Rappel 2")')
+		assert(!page.url().includes('message='), 'the link is not kept in the address')
+	})
+
 	await step('mobile layout', async () => {
 		await page.setViewportSize({ width: 390, height: 844 })
 		await page.goto(NC + '/apps/webmail/')

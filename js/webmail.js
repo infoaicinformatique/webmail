@@ -2264,6 +2264,17 @@
 			const mod = localStorage.getItem('webmail.module')
 			if (mod === 'calendar' || mod === 'contacts') state.module = mod
 		} catch (e) { /* ignore */ }
+		// links from the Nextcloud dashboard: ?account=…&message=… or ?module=calendar
+		const link = new URLSearchParams(window.location.search)
+		const linkAccount = parseInt(link.get('account') || '', 10)
+		if (state.accounts.some((a) => a.id === linkAccount)) saved = linkAccount
+		const linkModule = link.get('module')
+		if (linkModule === 'calendar' || linkModule === 'contacts' || linkModule === 'mail') state.module = linkModule
+		else if (link.get('message')) state.module = 'mail'
+		const linkMessage = link.get('message')
+		if (link.toString()) {
+			try { history.replaceState(history.state, '', window.location.pathname) } catch (e) { /* ignore */ }
+		}
 		// calendar.js / contacts.js may be loaded after this file
 		if (state.module !== 'mail' && !window.WebmailModules[state.module]) {
 			await new Promise((resolve) => (document.readyState === 'complete' ? resolve() : window.addEventListener('load', resolve, { once: true })))
@@ -2272,6 +2283,7 @@
 		buildLayout()
 		const first = state.accounts.find((a) => a.id === saved) || state.accounts[0]
 		await selectAccount(first.id)
+		if (linkMessage && state.module === 'mail') openMessage(linkMessage)
 		startBackground()
 	}
 
