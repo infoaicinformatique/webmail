@@ -1492,10 +1492,21 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 
 		// window in front: a message in the page, no notification
-		await page.evaluate(() => { document.hasFocus = () => true })
+		await page.evaluate(() => {
+			document.hasFocus = () => true
+			// every message shown in the page, even if it is gone before it is looked for
+			window.__toasts = []
+			const box = document.getElementById('wm-toasts')
+			new MutationObserver((records) => records.forEach((r) => r.addedNodes.forEach((n) => window.__toasts.push(n.textContent))))
+				.observe(box, { childList: true })
+		})
 		await sendToMe('Rappel 2')
 		await check()
-		await page.locator('.wm-toast', { hasText: /Nouveau message de Utilisateur \(.+\) : Rappel 2/ }).waitFor()
+		await page.waitForFunction(() => window.__toasts.some((t) => /Nouveau message de Utilisateur \(.+\) : Rappel 2/.test(t)), null, { timeout: 30000 })
+			.catch(async (e) => {
+				const seen = await page.evaluate(() => ({ toasts: window.__toasts, notes: window.__notes.map((n) => n.title + ' / ' + n.body), focus: document.hasFocus(), hidden: document.hidden }))
+				throw new Error('no in-page message for Rappel 2: ' + JSON.stringify(seen) + ' (' + e.message.split('\n')[0] + ')')
+			})
 		await page.waitForSelector('.wm-message:has-text("Rappel 2")')
 		assert.strictEqual(await page.evaluate(() => window.__notes.length), 1)
 		await shot('35-new-message')
