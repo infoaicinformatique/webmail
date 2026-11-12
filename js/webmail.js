@@ -2390,6 +2390,21 @@
 					}
 				},
 			})
+			// saved at once: the calendar reminders as Nextcloud notifications
+			const remind = h('input', {
+				type: 'checkbox',
+				name: 'reminders',
+				checked: a.reminders !== false,
+				onchange: async () => {
+					try {
+						Object.assign(a, await api('/accounts/' + a.id, { method: 'PUT', body: { reminders: remind.checked } }))
+						toast(remind.checked ? 'Les rappels des rendez-vous arriveront dans Nextcloud' : 'Les rappels des rendez-vous n\'arriveront plus dans Nextcloud')
+					} catch (e) {
+						remind.checked = !remind.checked
+						toast(e.message, true)
+					}
+				},
+			})
 			const del = h('button', { class: 'wm-danger' }, 'Retirer ce compte')
 			del.addEventListener('click', async () => {
 				if (!window.confirm('Retirer le compte ' + a.email + ' du webmail ? (aucun e-mail n\'est supprimé)')) return
@@ -2410,6 +2425,7 @@
 				h('label', { class: 'wm-field' }, h('span', {}, 'Mot de passe'), pwd),
 				h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Signature'), sig),
 				h('label', { class: 'wm-radio wm-bell' }, bell, ' 🔔 Signaler chaque nouveau message dans les notifications Nextcloud, même webmail fermé (et sur le téléphone avec l\'application Nextcloud)'),
+				h('label', { class: 'wm-radio wm-bell' }, remind, ' ⏰ Rappels des rendez-vous de l\'agenda dans les notifications Nextcloud (au moment choisi pour chaque rendez-vous : 15 minutes avant…)'),
 				h('div', { class: 'wm-compose-actions' }, save,
 					h('button', { type: 'button', class: 'wm-oof-btn', onclick: () => openOof(a) }, '🌴 Réponse automatique'),
 					h('button', { type: 'button', class: 'wm-rules-btn', onclick: () => openRules(a) }, '📋 Règles'),

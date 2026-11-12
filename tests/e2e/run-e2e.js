@@ -778,6 +778,64 @@ async function main() {
 		await page.waitForSelector('.wm-message-header h2:has-text("Sans notification")')
 	})
 
+	await step('calendar reminders in Nextcloud notifications', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\ReminderJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		assert(jobId, 'background job registered')
+		const runJob = () => occ('background-job:execute ' + jobId + ' --force-execute')
+		const reminders = () => page.evaluate(async () => {
+			const r = await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })
+			return (await r.json()).ocs.data.filter((n) => n.app === 'webmail' && n.subject.startsWith('Rappel'))
+		})
+		// an appointment in 10 minutes, reminder 15 minutes before: due now
+		const created = await page.evaluate(async () => {
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const iso = (min) => new Date(Date.now() + min * 60000).toISOString().slice(0, 16)
+			const r = await fetch('/apps/webmail/api/accounts/' + id + '/calendar/events?tz=UTC', {
+				method: 'POST',
+				headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ event: { subject: 'Appel fournisseur', start: iso(10), end: iso(40), location: 'Bureau 2', reminder: 15 } }),
+			})
+			if (!r.ok) throw new Error('event not created: ' + r.status)
+			return { account: id, event: (await r.json()).id }
+		})
+		runJob()
+		let mine = (await reminders()).filter((n) => n.subject === 'Rappel : Appel fournisseur')
+		assert.strictEqual(mine.length, 1, JSON.stringify(await reminders()))
+		assert(/^Aujourd'hui \d\d:\d\d · Bureau 2 · user@societe-a\.fr$/.test(mine[0].message), mine[0].message)
+		// once only
+		runJob()
+		assert.strictEqual((await reminders()).filter((n) => n.subject === 'Rappel : Appel fournisseur').length, 1)
+		await page.reload()
+		await page.click('.notifications-button')
+		await page.waitForSelector('.notification:has-text("Appel fournisseur")')
+		await shot('49-reminder')
+		// its link: the calendar, the appointment open
+		await page.goto(mine[0].link)
+		await page.waitForSelector('.wm-modal h2:has-text("Appel fournisseur")')
+		await page.click('.wm-modal-close')
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+		// can be switched off per account
+		await page.click('text=Comptes et signature')
+		const box = '.wm-account-card:has-text("user@societe-a.fr") input[name=reminders]'
+		assert(await page.isChecked(box))
+		await page.uncheck(box)
+		await page.waitForSelector('.wm-toast:has-text("n\'arriveront plus dans Nextcloud")')
+		await page.check(box)
+		await page.waitForSelector('.wm-toast:has-text("arriveront dans Nextcloud")')
+		// the next steps start from an empty bell and the calendar as before
+		await page.evaluate(async (c) => {
+			await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications', { method: 'DELETE', headers: { 'OCS-APIREQUEST': 'true', requesttoken: OC.requestToken } })
+			await fetch('/apps/webmail/api/accounts/' + c.account + '/calendar/delete', {
+				method: 'POST',
+				headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ eventId: c.event }),
+			})
+		}, created)
+	})
+
 	await step('rich text editor and drafts', async () => {
 		// a new message with formatting, saved as a draft while writing
 		await page.click('.wm-compose-btn')

@@ -472,11 +472,13 @@ def attendees_xml(tag, lst):
     return '<t:%s>%s</t:%s>' % (tag, ''.join('<t:Attendee>%s<t:ResponseType>%s</t:ResponseType></t:Attendee>' % (mailbox(n, e), r) for n, e, r in lst), tag)
 
 
-def event_xml(e, detail, recurrence=''):
+def event_xml(e, detail, recurrence='', reminders=False):
     is_meeting = bool(e['attendees'] or e['optional']) or e['organizer'] != ME
     x = '<t:CalendarItem><t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject>' % (e['id'], e['ck'], esc(e['subject']))
     if detail:
         x += '<t:Body BodyType="Text">%s</t:Body>' % esc(e['body'])
+    # reminders: in the details, and in lists that ask for them (Nextcloud reminders)
+    if detail or reminders:
         x += '<t:ReminderIsSet>%s</t:ReminderIsSet>' % ('true' if e['reminder'] >= 0 else 'false')
         if e['reminder'] >= 0:
             x += '<t:ReminderMinutesBeforeStart>%d</t:ReminderMinutesBeforeStart>' % e['reminder']
@@ -731,9 +733,10 @@ def handle(op, el, user, tz, messages, move_message):
                 return wrap(op, [err(op, code, code)])
             view = el.find('m:CalendarView', NS)
             start, end = parse_dt(view.get('StartDate'), tz), parse_dt(view.get('EndDate'), tz)
+            reminders = any(u.get('FieldURI') == 'item:ReminderIsSet' for u in el.iter('{%s}FieldURI' % NS['t']))
             evs = sorted((e for e in EVENTS.values() if e['folder'] == folder and e['start'] < end and e['end'] > start), key=lambda e: e['start'])
             return wrap(op, [ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Items>%s</t:Items></m:RootFolder>'
-                                % (len(evs), ''.join(event_xml(e, False) for e in evs)))])
+                                % (len(evs), ''.join(event_xml(e, False, reminders=reminders) for e in evs)))])
         if pid in ('contacts', 'F-CONTACTS', 'F-CONTACTS2') or pid in COLLEAGUE_BOOKS or pid in PUBLIC_FOLDERS:
             folder, code = contacts_folder(parent)
             if code:

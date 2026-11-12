@@ -287,6 +287,31 @@ class EwsCalendar {
 	}
 
 	/**
+	 * Events of the own calendar starting between $from and $to, with their
+	 * reminder (minutes before the start, -1 when there is none).
+	 * @return list<array<string, mixed>>
+	 */
+	public function withReminders(\DateTimeImmutable $from, \DateTimeImmutable $to): array {
+		$xp = $this->client->request(
+			'<m:FindItem Traversal="Shallow">'
+			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. self::fields(array_merge(self::LIST_FIELDS, ['item:ReminderIsSet', 'item:ReminderMinutesBeforeStart']))
+			. '</t:AdditionalProperties></m:ItemShape>'
+			. '<m:CalendarView MaxEntriesReturned="200" StartDate="' . self::utc($from) . '" EndDate="' . self::utc($to) . '"/>'
+			. '<m:ParentFolderIds>' . $this->folderXml('calendar') . '</m:ParentFolderIds>'
+			. '</m:FindItem>'
+		);
+		$events = [];
+		foreach ($xp->query('//m:RootFolder/t:Items/t:CalendarItem') as $node) {
+			$e = $this->parseEvent($xp, $node, false);
+			$e['reminder'] = $this->client->text($xp, 't:ReminderIsSet', $node) === 'true'
+				? (int)$this->client->text($xp, 't:ReminderMinutesBeforeStart', $node) : -1;
+			$events[] = $e;
+		}
+		return $events;
+	}
+
+	/**
 	 * @return array<string, mixed>
 	 */
 	public function getEvent(string $id): array {

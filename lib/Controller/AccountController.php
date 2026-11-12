@@ -8,6 +8,7 @@ use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Db\Account;
 use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\MailNotificationService;
+use OCA\Webmail\Service\MeetingReminderService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\UserRateLimit;
@@ -22,6 +23,7 @@ class AccountController extends Controller {
 		IRequest $request,
 		private AccountService $accounts,
 		private MailNotificationService $bell,
+		private MeetingReminderService $reminders,
 		private LoggerInterface $logger,
 		private ?string $userId,
 	) {
@@ -34,7 +36,10 @@ class AccountController extends Controller {
 
 	/** The account, and whether new messages are announced in Nextcloud's notifications. */
 	private function out(Account $a): array {
-		return $a->jsonSerialize() + ['bell' => $this->bell->isEnabled((string)$this->userId, $a->getId())];
+		return $a->jsonSerialize() + [
+			'bell' => $this->bell->isEnabled((string)$this->userId, $a->getId()),
+			'reminders' => $this->reminders->isEnabled((string)$this->userId, $a->getId()),
+		];
 	}
 
 	#[NoAdminRequired]
@@ -50,11 +55,14 @@ class AccountController extends Controller {
 
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: 10, period: 300)]
-	public function update(int $id, ?string $displayName = null, ?string $password = null, ?string $signature = null, ?bool $bell = null): Response {
-		return $this->handle(function () use ($id, $displayName, $password, $signature, $bell) {
+	public function update(int $id, ?string $displayName = null, ?string $password = null, ?string $signature = null, ?bool $bell = null, ?bool $reminders = null): Response {
+		return $this->handle(function () use ($id, $displayName, $password, $signature, $bell, $reminders) {
 			$account = $this->accounts->update((string)$this->userId, $id, $displayName, $password, $signature);
 			if ($bell !== null) {
 				$this->bell->setEnabled((string)$this->userId, $id, $bell);
+			}
+			if ($reminders !== null) {
+				$this->reminders->setEnabled((string)$this->userId, $id, $reminders);
 			}
 			return $this->out($account);
 		});
@@ -65,6 +73,7 @@ class AccountController extends Controller {
 		return $this->handle(function () use ($id) {
 			$this->accounts->delete((string)$this->userId, $id);
 			$this->bell->forget((string)$this->userId, $id);
+			$this->reminders->forget((string)$this->userId, $id);
 			return ['status' => 'ok'];
 		});
 	}
