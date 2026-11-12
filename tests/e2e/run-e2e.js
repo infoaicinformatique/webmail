@@ -1632,6 +1632,40 @@ async function main() {
 		assert(!(await page.$('.wm-contact:has-text("Zoé Garnier")')))
 	})
 
+	await step('contacts: export and import vCard files', async () => {
+		await page.click('.wm-tab[data-module="contacts"]')
+		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
+		// the whole book in a .vcf file (the group is left out)
+		const [download] = await Promise.all([page.waitForEvent('download'), page.click('.wm-vcf-export')])
+		assert.strictEqual(download.suggestedFilename(), 'Contacts.vcf')
+		const vcf = fs.readFileSync(await download.path(), 'utf8')
+		// as many cards as people in the list (groups excepted); Jean Dupont as edited above
+		const people = await page.$$eval('.wm-contact', (els) => els.filter((e) => !e.textContent.includes('· groupe')).length)
+		assert.strictEqual((vcf.match(/BEGIN:VCARD/g) || []).length, people, vcf.slice(0, 300))
+		assert(vcf.includes('FN:Jean Dupont\r\nN:Dupont;Jean;;;\r\nORG:Client Exemple SA\r\nTITLE:Président\r\nEMAIL;TYPE=INTERNET,PREF:jean.dupont@client-exemple.fr\r\nEMAIL;TYPE=INTERNET:jean@perso.example'), vcf.slice(0, 400))
+		assert(vcf.includes('ADR;TYPE=WORK:;;12 promenade des Anglais;Nice;;06000;France'))
+		assert(!vcf.includes('Équipe projet'))
+		// a file from another program: one new person, one already there, one from an old Outlook
+		const cards = 'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Sophie Lambert\r\nN:Lambert;Sophie;;;\r\nORG:Lambert Conseil\r\nEMAIL;TYPE=INTERNET:sophie@lambert-conseil.example\r\nTEL;TYPE=CELL:06 98 76 54 32\r\nEND:VCARD\r\n'
+			+ 'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Jean Dupont\r\nEMAIL:JEAN.DUPONT@client-exemple.fr\r\nEND:VCARD\r\n'
+			+ 'BEGIN:VCARD\r\nVERSION:2.1\r\nN:Faure;Hugo\r\nFN:Hugo Faure\r\nORG;ENCODING=QUOTED-PRINTABLE;CHARSET=utf-8:Menuiserie Fa=C3=BBre\r\nTEL;WORK;VOICE:04 93 12 12 12\r\nEND:VCARD\r\n'
+		const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('.wm-vcf-import')])
+		await chooser.setFiles({ name: 'clients.vcf', mimeType: 'text/vcard', buffer: Buffer.from(cards) })
+		await page.waitForSelector('.wm-toast:has-text("2 contacts importés dans « Contacts » ; 1 déjà présent (même adresse e-mail)")')
+		await page.waitForSelector('.wm-contact:has-text("Sophie Lambert")')
+		await shot('52-vcard-import')
+		await page.click('.wm-contact:has-text("Hugo Faure")')
+		await page.waitForSelector('.wm-contact-card:has-text("Menuiserie Faûre")')
+		assert((await page.textContent('.wm-contact-card')).includes('04 93 12 12 12'))
+		// the next steps count the contacts of the book: as they were
+		for (const name of ['Sophie Lambert', 'Hugo Faure']) {
+			await page.click('.wm-contact:has-text("' + name + '")')
+			page.once('dialog', (d) => d.accept())
+			await page.click('.wm-toolbar button:has-text("Supprimer")')
+			await page.waitForSelector('.wm-contact:has-text("' + name + '")', { state: 'detached' })
+		}
+	})
+
 	// ------------------------------------------------------------------ shared contacts
 	const book = (name) => '.wm-book-row:has-text("' + name + '") .wm-book-link'
 

@@ -117,6 +117,8 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Contacts](docs/capture-contacts.png)
 
+![Import vCard](docs/capture-vcard.png)
+
 ![Contacts partagés](docs/capture-contacts-partages.png)
 
 ![Partager mes contacts](docs/capture-partage-contacts.png)
@@ -135,6 +137,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Annuaire de l'entreprise | Toutes les personnes et listes de diffusion de l'organisation Exchange, avec service, fonction, téléphone et site. Exchange ne permet que la **recherche**, à partir de 2 lettres et dans la limite de 100 résultats. Lecture seule, avec « Écrire » et « Ajouter à mes contacts » |
 | Fiche | Société, fonction, jusqu'à 3 e-mails, mobile, téléphone du bureau et du domicile, adresse (lien vers la carte), notes |
 | Actions | Créer (dans le carnet choisi), modifier, supprimer, **écrire** (ouvre un nouveau message), appeler (lien `tel:`) |
+| Import / export | « ⬇ » au-dessus de la liste : tout le carnet affiché dans un fichier **vCard** (.vcf) pour Outlook, un téléphone, Nextcloud Contacts… « ⬆ » : les contacts d'un fichier vCard (2.1, 3.0 ou 4.0, celui d'Outlook ou d'un téléphone) sont ajoutés au carnet ; ceux déjà présents (même adresse e-mail) sont ignorés, et le bilan s'affiche |
 | Groupes | Les listes de distribution sont affichées, leur gestion reste dans Outlook |
 
 ### Délégués
@@ -179,7 +182,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.33.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.34.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -201,7 +204,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.33 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.34 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -295,7 +298,7 @@ templates/          page principale et page d'administration
 - Agendas des dossiers publics
 
 **Contacts**
-- Groupes de contacts modifiables, photos, import et export vCard
+- Groupes de contacts modifiables, photos
 
 **Nextcloud et serveur**
 - Notifications Exchange en direct (abonnement « streaming ») à la place de la vérification régulière

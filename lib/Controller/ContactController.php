@@ -9,8 +9,12 @@ use OCA\Webmail\Ews\EwsContacts;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\SharedFolderService;
+use OCA\Webmail\Service\VCard;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
+use OCP\AppFramework\Http\DataDownloadResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\IRequest;
 use Psr\Log\LoggerInterface;
@@ -289,6 +293,79 @@ class ContactController extends Controller {
 			$this->assertKnownBook($id, $book);
 			$this->contacts($id, $book)->updateContact($contactId, $contact);
 			return ['status' => 'ok'];
+		});
+	}
+
+	/**
+	 * The contacts of a book as a vCard file (.vcf), to open in Outlook,
+	 * Nextcloud Contacts, a phone…
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[UserRateLimit(limit: 20, period: 300)]
+	public function export(int $id, string $book = 'contacts', string $name = 'Contacts'): Response {
+		return $this->handle(function () use ($id, $book, $name) {
+			if ($book === 'directory') {
+				throw new MailException('L\'annuaire de l\'entreprise ne s\'exporte pas');
+			}
+			$this->assertKnownBook($id, $book);
+			$vcf = VCard::export($this->contacts($id, $book)->exportContacts($book));
+			$file = trim(preg_replace('/[\\\/:*?"<>|]+/', ' ', $name) ?? '') ?: 'Contacts';
+			return new DataDownloadResponse($vcf, $file . '.vcf', 'text/vcard; charset=utf-8');
+		});
+	}
+
+	/**
+	 * Add the cards of a vCard file to a book. The people already there
+	 * (same e-mail address) are left out.
+	 */
+	#[NoAdminRequired]
+	#[UserRateLimit(limit: 10, period: 300)]
+	public function import(int $id, string $book = 'contacts'): Response {
+		return $this->handle(function () use ($id, $book) {
+			if ($book === 'directory') {
+				throw new MailException('L\'annuaire de l\'entreprise est en lecture seule');
+			}
+			$entry = $this->sharedEntry($id, $book);
+			if ($entry === false || ($entry !== null && !$entry['canEdit'])) {
+				throw new MailException('Vous ne pouvez pas ajouter de contact dans ce carnet');
+			}
+			$file = $this->request->getUploadedFile('file');
+			if (!is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_file((string)$file['tmp_name'])) {
+				throw new MailException('Choisissez un fichier vCard (.vcf)');
+			}
+			if ((int)$file['size'] > 20 * 1024 * 1024) {
+				throw new MailException('Fichier trop volumineux (20 Mo au plus)');
+			}
+			$cards = VCard::parse((string)file_get_contents((string)$file['tmp_name']));
+			if ($cards === []) {
+				throw new MailException('Aucun contact dans ce fichier (est-ce bien un fichier vCard ?)');
+			}
+			if (count($cards) > EwsContacts::MAX_TRANSFER) {
+				throw new MailException('Trop de contacts dans ce fichier (' . EwsContacts::MAX_TRANSFER . ' au plus)');
+			}
+			$contacts = $this->contacts($id, $book);
+			$known = $contacts->knownEmails($book);
+			$created = 0;
+			$skipped = 0;
+			$failed = [];
+			foreach ($cards as $card) {
+				$emails = array_map('mb_strtolower', $card['emails']);
+				if ($emails !== [] && array_intersect_key($known, array_flip($emails)) !== []) {
+					$skipped++;
+					continue;
+				}
+				try {
+					$contacts->createContact($card, $book);
+					$created++;
+					foreach ($emails as $e) {
+						$known[$e] = true;
+					}
+				} catch (MailException $e) {
+					$failed[] = ['name' => $card['displayName'] ?: ($card['emails'][0] ?? '?'), 'error' => $e->getMessage()];
+				}
+			}
+			return ['created' => $created, 'skipped' => $skipped, 'failed' => $failed];
 		});
 	}
 

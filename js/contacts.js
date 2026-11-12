@@ -378,6 +378,36 @@
 		} catch (e) { core.toast(e.message, true) }
 	}
 
+	/** Add the cards of a .vcf file to the book shown. */
+	function importVcf(book) {
+		const input = document.createElement('input')
+		input.type = 'file'
+		input.accept = '.vcf,text/vcard,text/x-vcard'
+		input.className = 'wm-vcf-input'
+		input.hidden = true
+		document.body.appendChild(input)
+		input.addEventListener('change', async () => {
+			const file = input.files[0]
+			input.remove()
+			if (!file) return
+			const fd = new FormData()
+			fd.append('file', file, file.name)
+			fd.append('book', book.key)
+			core.toast('Import de « ' + file.name + ' »…')
+			try {
+				const r = await api('/accounts/' + core.accountId + '/contacts/import', { method: 'POST', body: fd })
+				const parts = [r.created + ' contact' + (r.created > 1 ? 's importés' : ' importé') + ' dans « ' + (book.folderName || book.name) + ' »']
+				if (r.skipped) parts.push(r.skipped + ' déjà présent' + (r.skipped > 1 ? 's' : '') + ' (même adresse e-mail)')
+				if (r.failed.length) parts.push(r.failed.length + ' refusé' + (r.failed.length > 1 ? 's' : '') + ' : ' + r.failed.slice(0, 3).map((f) => f.name + ' (' + f.error + ')').join(', '))
+				core.toast(parts.join(' ; '), r.failed.length > 0 && !r.created)
+				load(true)
+			} catch (e) {
+				core.toast(e.message, true)
+			}
+		})
+		input.click()
+	}
+
 	function renderList() {
 		if (!core || core.state.module !== 'contacts') return
 		const h = core.h
@@ -398,6 +428,14 @@
 		},
 		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': 'Menu', onclick: () => core.setView('nav') }, '☰'),
 		search,
+		isDirectory ? null : h('a', {
+			class: 'button wm-icon-btn wm-vcf-export',
+			href: OC.generateUrl('/apps/webmail/api/accounts/' + core.accountId + '/contacts/export') + '?' + new URLSearchParams({ book: ct.book, name: book.folderName || book.name }),
+			download: '',
+			title: 'Exporter ce carnet (fichier vCard .vcf, pour Outlook, un téléphone, Nextcloud Contacts…)',
+			'aria-label': 'Exporter ce carnet',
+		}, '⬇\uFE0E'),
+		book.canEdit && !isDirectory ? h('button', { type: 'button', class: 'wm-icon-btn wm-vcf-import', title: 'Importer des contacts (fichier vCard .vcf)', 'aria-label': 'Importer des contacts', onclick: () => importVcf(book) }, '⬆\uFE0E') : null,
 		h('button', { type: 'button', class: 'wm-icon-btn primary wm-mobile-only', 'aria-label': 'Nouveau contact', onclick: () => openForm(null) }, '＋')))
 
 		if (ct.query) {
