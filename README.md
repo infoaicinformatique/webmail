@@ -50,6 +50,8 @@ et sur les téléphones, et inversement.
 
 ![Plusieurs messages](docs/capture-selection.png)
 
+![Dossiers](docs/capture-dossiers.png)
+
 ![Aperçu des pièces jointes](docs/capture-apercu.png)
 
 ![Recherche avec filtres](docs/capture-recherche.png)
