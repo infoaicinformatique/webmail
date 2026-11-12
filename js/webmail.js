@@ -17,6 +17,9 @@
 		total: 0,
 		hasMore: false,
 		query: '',
+		// search filters; all: every folder instead of the current one
+		filters: { unread: false, attachments: false, flagged: false, since: '', all: false },
+		showFilters: false,
 		selectedId: null,
 		current: null, // opened message
 		view: 'list', // mobile: list | detail
@@ -53,6 +56,33 @@
 	let listObserver = null
 
 	const listKey = () => state.accountId + '|' + state.folderId
+	const NO_FILTERS = { unread: false, attachments: false, flagged: false, since: '', all: false }
+	const filtersOn = () => ['unread', 'attachments', 'flagged', 'since'].filter((k) => state.filters[k]).length
+	/** a search or a filter is active: the list is not the folder's content */
+	const isSearching = () => !!state.query || filtersOn() > 0
+
+	function resetSearch() {
+		state.query = ''
+		state.filters = Object.assign({}, NO_FILTERS)
+		state.showFilters = false
+	}
+
+	/** Query parameters of the list request (folder, search words, filters). */
+	function listQuery(offset, limit) {
+		const f = state.filters
+		const since = f.since ? new Date(Date.now() - parseInt(f.since, 10) * 86400000) : null
+		return {
+			folder: state.folderId,
+			offset,
+			limit,
+			q: state.query,
+			unread: f.unread ? 1 : undefined,
+			attachments: f.attachments ? 1 : undefined,
+			flagged: f.flagged ? 1 : undefined,
+			since: since ? since.getFullYear() + '-' + String(since.getMonth() + 1).padStart(2, '0') + '-' + String(since.getDate()).padStart(2, '0') : undefined,
+			scope: f.all && isSearching() ? 'all' : undefined,
+		}
+	}
 	const msgKey = (id) => state.accountId + '|' + id
 
 	function cacheMessage(msg) {
@@ -63,7 +93,7 @@
 	}
 
 	function saveListCache() {
-		if (state.query || !state.accountId) return
+		if (isSearching() || !state.accountId) return
 		listCache.set(listKey(), { messages: state.messages.slice(), total: state.total, hasMore: state.hasMore, scrollTop: listEl ? listEl.scrollTop : 0 })
 	}
 
@@ -251,7 +281,125 @@
 	function navFooter() {
 		return h('div', { class: 'wm-nav-footer' },
 			h('a', { href: '#', onclick: (e) => { e.preventDefault(); openAccountSettings() } }, '⚙️  Comptes et signature'),
-			h('a', { href: '#', class: 'wm-shortcuts-link wm-desktop-only', onclick: (e) => { e.preventDefault(); showShortcuts() } }, '⌨️  Raccourcis clavier'))
+			h('a', { href: '#', class: 'wm-shortcuts-link wm-desktop-only', onclick: (e) => { e.preventDefault(); showShortcuts() } }, '⌨️  Raccourcis clavier'),
+			'Notification' in window
+				? h('a', { href: '#', class: 'wm-notify-toggle', onclick: (e) => { e.preventDefault(); toggleNotifications() } },
+					notificationsOn() ? '🔔  Notifications activées' : '🔕  Activer les notifications')
+				: null)
+	}
+
+	// ------------------------------------------------------------------
+	// new messages: notifications and unread count in the tab title
+	// ------------------------------------------------------------------
+
+	const NOTIFY_MS = 60000
+	/** account id -> date of the newest message already announced */
+	const notifySince = {}
+	const baseTitle = document.title
+	let notifyTimer = null
+
+	function notificationsOn() {
+		try { return localStorage.getItem('webmail.notify') === 'on' && window.Notification.permission === 'granted' } catch (e) { return false }
+	}
+
+	async function toggleNotifications() {
+		if (notificationsOn()) {
+			try { localStorage.setItem('webmail.notify', 'off') } catch (e) { /* ignore */ }
+			toast('Notifications désactivées')
+		} else {
+			const permission = window.Notification.permission === 'granted' ? 'granted' : await window.Notification.requestPermission()
+			if (permission !== 'granted') {
+				toast('Le navigateur refuse les notifications pour ce site : autorisez-les dans les réglages du site (icône à gauche de l\'adresse).', true)
+				return
+			}
+			try { localStorage.setItem('webmail.notify', 'on') } catch (e) { /* ignore */ }
+			toast('Vous serez prévenu des nouveaux messages tant que Nextcloud est ouvert dans un onglet')
+		}
+		renderNav()
+	}
+
+	function setUnreadTitle(n) {
+		document.title = (n > 0 ? '(' + n + ') ' : '') + baseTitle
+	}
+
+	/**
+	 * Ask each account for the unread messages received since the last check.
+	 * Runs every minute, also when the tab is in the background.
+	 */
+	let checking = null
+	let checkAgain = false
+	const announced = new Set()
+	/**
+	 * One check at a time (timer, tab shown again...): no message announced
+	 * twice; a check asked for meanwhile runs right after.
+	 */
+	function checkNewMessages() {
+		if (checking) {
+			checkAgain = true
+			return checking
+		}
+		checking = (async () => {
+			do {
+				checkAgain = false
+				await runNewMessagesCheck()
+			} while (checkAgain)
+		})().finally(() => { checking = null })
+		return checking
+	}
+
+	async function runNewMessagesCheck() {
+		for (const account of state.accounts) {
+			let r
+			try {
+				r = await api('/accounts/' + account.id + '/new', { query: { since: notifySince[account.id] || '' } })
+			} catch (e) { continue }
+			const first = !notifySince[account.id]
+			notifySince[account.id] = r.latest
+			if (account.id === state.accountId) {
+				setUnreadTitle(r.unread)
+				const inbox = state.folders.find((f) => f.role === 'inbox')
+				if (inbox && inbox.unread !== r.unread && state.module === 'mail') {
+					inbox.unread = r.unread
+					renderNav()
+				}
+			}
+			const fresh = r.items.filter((m) => !announced.has(m.id))
+			fresh.forEach((m) => announced.add(m.id))
+			if (!first && fresh.length) announce(account, fresh)
+		}
+	}
+
+	function announce(account, items) {
+		const many = state.accounts.length > 1 ? ' (' + account.email + ')' : ''
+		const sender = (m) => (m.from && (m.from.name || m.from.email)) || 'Nouveau message'
+		const inFront = !document.hidden && document.hasFocus()
+		if (account.id === state.accountId && state.module === 'mail' && folderRole() === 'inbox' && !isSearching()) refresh()
+		if (inFront || !notificationsOn()) {
+			if (inFront) {
+				toast(items.length > 1
+					? items.length + ' nouveaux messages' + many
+					: '✉️ Nouveau message de ' + sender(items[0]) + many + ' : ' + (items[0].subject || '(sans objet)'))
+			}
+			return
+		}
+		const open = (id) => async () => {
+			window.focus()
+			if (state.accountId !== account.id) await selectAccount(account.id)
+			if (state.module !== 'mail') selectModule('mail')
+			const inbox = state.folders.find((f) => f.role === 'inbox')
+			if (inbox && state.folderId !== inbox.id) selectFolder(inbox.id)
+			if (id) openMessage(id)
+		}
+		const icon = OC.imagePath('webmail', 'app-dark')
+		if (items.length > 3) {
+			const n = new window.Notification(items.length + ' nouveaux messages' + many, { body: items.slice(0, 3).map((m) => sender(m) + ' : ' + m.subject).join('\n'), icon, tag: 'webmail-' + account.id })
+			n.onclick = open(null)
+			return
+		}
+		items.forEach((m) => {
+			const n = new window.Notification(sender(m) + many, { body: m.subject || '(sans objet)', icon, tag: 'webmail-' + m.id })
+			n.onclick = open(m.id)
+		})
 	}
 
 	// ------------------------------------------------------------------
@@ -398,13 +546,50 @@
 		}
 		top.forEach((f) => addFolder(f, 0))
 		navEl.appendChild(ul)
+		const usage = usageGauge()
+		if (usage) navEl.appendChild(usage)
 		navEl.appendChild(navFooter())
+	}
+
+	// ------------------------------------------------------------------
+	// mailbox size
+	// ------------------------------------------------------------------
+
+	function formatBytes(n) {
+		if (n >= 1024 ** 3) return (n / 1024 ** 3).toLocaleString('fr-FR', { maximumFractionDigits: n >= 10 * 1024 ** 3 ? 0 : 1 }) + ' Go'
+		if (n >= 1024 ** 2) return Math.round(n / 1024 ** 2) + ' Mo'
+		return Math.max(1, Math.round(n / 1024)) + ' Ko'
+	}
+
+	/** Space used by the mailbox, against its limit when Exchange gives it. */
+	function usageGauge() {
+		const u = state.usage
+		if (!u || typeof u.used !== 'number') return null
+		if (!u.limit) {
+			return h('div', { class: 'wm-quota', title: 'Espace utilisé par la boîte aux lettres' }, h('span', { class: 'wm-muted' }, formatBytes(u.used) + ' utilisés'))
+		}
+		const pct = Math.min(100, Math.round((u.used / u.limit) * 100))
+		const level = pct >= 90 ? 'full' : (pct >= 75 ? 'high' : 'ok')
+		return h('div', { class: 'wm-quota wm-quota-' + level, title: 'Espace utilisé par la boîte aux lettres' },
+			h('div', { class: 'wm-quota-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': 'Espace utilisé' },
+				h('div', { class: 'wm-quota-fill', style: 'width:' + pct + '%' })),
+			h('span', { class: 'wm-quota-text' }, formatBytes(u.used) + ' sur ' + formatBytes(u.limit) + ' (' + pct + ' %)'))
+	}
+
+	const warnedFull = new Set()
+	function warnIfFull() {
+		const u = state.usage
+		if (!u || !u.limit || u.used / u.limit < 0.9 || warnedFull.has(state.accountId)) return
+		warnedFull.add(state.accountId)
+		toast('Votre boîte aux lettres est presque pleine (' + Math.round((u.used / u.limit) * 100) + ' %) : videz les éléments supprimés ou archivez des messages, sinon l\'envoi sera bloqué.', true)
 	}
 
 	async function loadFolders() {
 		try {
 			const data = await api('/accounts/' + state.accountId + '/folders')
 			state.folders = data.folders
+			state.usage = data.usage || null
+			warnIfFull()
 			// switch from the "inbox" alias to the real id so the active state works
 			const inbox = state.folders.find((f) => f.role === 'inbox')
 			if (state.folderId === 'inbox' && inbox) state.folderId = inbox.id
@@ -420,7 +605,7 @@
 		state.accountId = id
 		state.folderId = 'inbox'
 		state.folders = []
-		state.query = ''
+		resetSearch()
 		try { localStorage.setItem('webmail.account', String(id)) } catch (e) { /* ignore */ }
 		if (currentModule()) {
 			activateModule()
@@ -434,7 +619,7 @@
 	function selectFolder(id) {
 		saveListCache()
 		state.folderId = id
-		state.query = ''
+		resetSearch()
 		state.selectedId = null
 		renderNav()
 		renderEmptyDetail()
@@ -458,7 +643,7 @@
 		let limit = PAGE_SIZE
 		state.loadingList = true
 		if (reset) {
-			const cached = !state.query && listCache.get(listKey())
+			const cached = !isSearching() && listCache.get(listKey())
 			if (cached) {
 				state.messages = cached.messages.slice()
 				state.total = cached.total
@@ -474,7 +659,7 @@
 		}
 		try {
 			const data = await api('/accounts/' + state.accountId + '/messages', {
-				query: { folder: state.folderId, offset: reset ? 0 : state.messages.length, limit, q: state.query },
+				query: listQuery(reset ? 0 : state.messages.length, limit),
 			})
 			// a newer load (another folder, a search) replaced this one; the folder id
 			// itself may change meanwhile ("inbox" becomes its real id)
@@ -502,7 +687,7 @@
 			const seq = listSeq
 			try {
 				const data = await api('/accounts/' + state.accountId + '/messages', {
-					query: { folder: state.folderId, offset: 0, limit: Math.max(PAGE_SIZE, state.messages.length), q: state.query },
+					query: listQuery(0, Math.max(PAGE_SIZE, state.messages.length)),
 				})
 				if (seq !== listSeq || state.module !== 'mail') return
 				state.messages = data.items
@@ -529,7 +714,7 @@
 		const searchInput = h('input', {
 			type: 'search',
 			class: 'wm-search',
-			placeholder: 'Rechercher dans ' + (f ? f.name : 'le dossier'),
+			placeholder: state.filters.all ? 'Rechercher dans tous les dossiers' : 'Rechercher dans ' + (f ? f.name : 'le dossier'),
 			value: typing ? typing.value : state.query,
 			'aria-label': 'Rechercher',
 		})
@@ -539,19 +724,30 @@
 		},
 		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': 'Dossiers', onclick: () => setView('nav') }, '☰'),
 		searchInput,
+		h('button', {
+			type: 'button',
+			class: 'wm-icon-btn wm-filter-toggle' + (state.showFilters || filtersOn() ? ' active' : ''),
+			title: 'Filtres',
+			'aria-label': 'Filtres',
+			'aria-expanded': state.showFilters ? 'true' : 'false',
+			onclick: () => { state.showFilters = !state.showFilters; renderList(state.loadingList && !state.messages.length) },
+		}, '⏷' + (filtersOn() ? ' ' + filtersOn() : '')),
 		h('button', { type: 'button', class: 'wm-icon-btn', title: 'Actualiser', 'aria-label': 'Actualiser', onclick: () => { loadFolders(); loadMessages(true) } }, '⟳'),
 		)
 		listEl.appendChild(form)
+		if (state.showFilters || filtersOn()) listEl.appendChild(filterBar(searchInput))
 		if (typing) {
 			const caret = typing.selectionStart
 			searchInput.focus()
 			try { searchInput.setSelectionRange(caret, caret) } catch (e) { /* ignore */ }
 		}
 
-		if (state.query) {
+		if (isSearching()) {
+			const where = state.filters.all ? 'dans tous les dossiers' : 'dans ' + (f ? f.name : 'le dossier')
 			listEl.appendChild(h('div', { class: 'wm-search-info' },
-				'Résultats pour « ' + state.query + ' » ',
-				h('a', { href: '#', onclick: (e) => { e.preventDefault(); state.query = ''; loadMessages(true) } }, 'effacer')))
+				(state.query ? 'Résultats pour « ' + state.query + ' » ' : 'Messages filtrés ') + where
+				+ (state.loadingList ? '' : ' (' + state.total + ') '),
+				h('a', { href: '#', onclick: (e) => { e.preventDefault(); resetSearch(); loadMessages(true) } }, 'effacer')))
 		}
 
 		if (loading) {
@@ -559,7 +755,7 @@
 			return
 		}
 		if (state.messages.length === 0) {
-			listEl.appendChild(h('div', { class: 'wm-empty' }, state.query ? 'Aucun résultat' : 'Aucun message'))
+			listEl.appendChild(h('div', { class: 'wm-empty' }, isSearching() ? 'Aucun résultat' : 'Aucun message'))
 			return
 		}
 
@@ -579,6 +775,7 @@
 			},
 			h('div', { class: 'wm-message-line1' },
 				h('span', { class: 'wm-message-from' }, who),
+				m.folderId && state.filters.all ? h('span', { class: 'wm-message-folder' }, folderName(m.folderId)) : null,
 				h('span', { class: 'wm-message-date' }, formatDate(m.date))),
 			h('div', { class: 'wm-message-line2' },
 				m.importance === 'High' ? h('span', { class: 'wm-important', title: 'Importance haute' }, '❗') : null,
@@ -609,6 +806,36 @@
 			}
 		}
 		listEl.scrollTop = keepScroll
+	}
+
+	function folderName(id) {
+		const f = state.folders.find((x) => x.id === id)
+		return f ? f.name : ''
+	}
+
+	/** Filters under the search field: unread, attachments, flagged, period, all folders. */
+	function filterBar(searchInput) {
+		const f = state.filters
+		const apply = () => {
+			// keep the words typed but not yet searched
+			state.query = searchInput.value.trim()
+			loadMessages(true)
+		}
+		const chip = (key, label) => h('button', {
+			type: 'button',
+			class: 'wm-chip' + (f[key] ? ' on' : ''),
+			'aria-pressed': f[key] ? 'true' : 'false',
+			dataset: { filter: key },
+			onclick: () => { f[key] = !f[key]; apply() },
+		}, label)
+		const period = h('select', { class: 'wm-chip-select', name: 'since', 'aria-label': 'Période', onchange: (e) => { f.since = e.target.value; apply() } },
+			[['', 'Toute période'], ['7', '7 derniers jours'], ['30', '30 derniers jours'], ['365', '12 derniers mois']]
+				.map(([v, l]) => h('option', { value: v, selected: f.since === v }, l)))
+		const all = h('label', { class: 'wm-chip-check' },
+			h('input', { type: 'checkbox', name: 'allFolders', checked: f.all, onchange: (e) => { f.all = e.target.checked; if (isSearching() || searchInput.value.trim()) apply() } }),
+			' Tous les dossiers')
+		return h('div', { class: 'wm-filters', role: 'group', 'aria-label': 'Filtres' },
+			chip('unread', 'Non lus'), chip('attachments', '📎 Pièces jointes'), chip('flagged', '⚑ Suivis'), period, all)
 	}
 
 	function listItemEl(id) {
@@ -735,6 +962,13 @@
 			api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: [id], flag: 'read', value: true } })
 				.catch((e) => toast(e.message, true))
 		}
+		const own = state.folders.find((f) => f.id === msg.folderId)
+		if ((own ? own.role : folderRole()) === 'drafts') {
+			// a draft opens in the editor, to be finished and sent
+			state.current = null
+			openCompose('draft', msg)
+			return
+		}
 		msg.isRead = true
 		state.current = Object.assign({}, msg, { remoteAllowed: !!remote })
 		markReadLocally(id)
@@ -759,7 +993,8 @@
 		const m = state.current
 		if (!m) return
 		clear(detailEl)
-		const role = folderRole()
+		const own = state.folders.find((f) => f.id === m.folderId)
+		const role = own ? own.role : folderRole()
 
 		const moveSelect = h('select', {
 			class: 'wm-move',
@@ -806,14 +1041,25 @@
 
 		if (m.attachments && m.attachments.length) {
 			const list = h('ul', { class: 'wm-attachments' })
+			const previewable = m.attachments.filter((a) => previewKind(a))
 			m.attachments.forEach((a) => {
-				const dl = OC.generateUrl(BASE + '/accounts/' + state.accountId + '/attachment') + '?attachmentId=' + encodeURIComponent(a.id)
-				list.appendChild(h('li', { class: 'wm-attachment' },
-					h('a', { href: dl, class: 'wm-attachment-name', title: 'Télécharger', download: a.name }, '📎 ' + a.name),
+				const kind = previewKind(a)
+				const open = kind ? () => openPreview(previewable, previewable.indexOf(a)) : null
+				list.appendChild(h('li', { class: 'wm-attachment' + (kind === 'image' ? ' wm-attachment-image' : '') },
+					kind === 'image'
+						? h('button', { type: 'button', class: 'wm-attachment-thumb', title: 'Aperçu de ' + a.name, onclick: open },
+							h('img', { src: attachmentUrl(a, true), alt: '', loading: 'lazy' }))
+						: null,
+					h('a', { href: attachmentUrl(a), class: 'wm-attachment-name', title: 'Télécharger', download: a.name }, '📎 ' + a.name),
 					h('span', { class: 'wm-muted' }, ' ' + formatSize(a.size) + ' '),
+					kind ? h('button', { class: 'wm-small wm-preview-btn', onclick: open }, '👁 Aperçu') : null,
 					h('button', { class: 'wm-small', onclick: () => saveAttachment(a) }, 'Enregistrer dans Fichiers')))
 			})
 			detailEl.appendChild(list)
+			if (m.attachments.filter((a) => !a.isItem).length > 1) {
+				detailEl.appendChild(h('div', { class: 'wm-attachments-all' },
+					h('button', { class: 'wm-small', onclick: () => saveAllAttachments(m.attachments.filter((a) => !a.isItem)) }, '💾 Tout enregistrer dans Fichiers')))
+			}
 		}
 
 		const frame = h('iframe', {
@@ -976,6 +1222,108 @@
 		}
 	}
 
+	function attachmentUrl(a, inline) {
+		return OC.generateUrl(BASE + '/accounts/' + state.accountId + '/attachment') + '?attachmentId=' + encodeURIComponent(a.id) + (inline ? '&inline=1' : '')
+	}
+
+	const PREVIEW_TEXT_MAX = 1024 * 1024
+	/** image | pdf | text, or null when the browser cannot show it safely */
+	function previewKind(a) {
+		if (a.isItem) return null
+		const type = (a.contentType || '').toLowerCase()
+		const ext = (a.name || '').toLowerCase().split('.').pop()
+		if (['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/bmp'].includes(type)) return 'image'
+		if (type === 'application/pdf' || ext === 'pdf') return 'pdf'
+		if ((type.startsWith('text/plain') || type === 'text/csv' || ['txt', 'csv', 'log'].includes(ext)) && a.size <= PREVIEW_TEXT_MAX) return 'text'
+		return null
+	}
+
+	/**
+	 * Full-screen preview of the attachments that can be shown (images, PDF,
+	 * plain text), with ← / → to go from one to the next.
+	 */
+	function openPreview(items, index) {
+		let i = index
+		const overlay = h('div', { class: 'wm-overlay wm-preview' })
+		const title = h('h2', { class: 'wm-preview-title' })
+		const counter = h('span', { class: 'wm-muted' })
+		const body = h('div', { class: 'wm-preview-body' })
+		const download = h('a', { class: 'button', download: '' }, '⬇ Télécharger')
+		const save = h('button', { type: 'button', onclick: () => saveAttachment(items[i]) }, 'Enregistrer dans Fichiers')
+		const prev = h('button', { type: 'button', class: 'wm-preview-nav', 'aria-label': 'Pièce jointe précédente', onclick: () => go(-1) }, '‹')
+		const next = h('button', { type: 'button', class: 'wm-preview-nav', 'aria-label': 'Pièce jointe suivante', onclick: () => go(1) }, '›')
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true) }
+		const onKey = (e) => {
+			if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close() } else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); go(-1) } else if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); go(1) }
+		}
+		const go = (step) => {
+			if (items.length < 2) return
+			i = (i + step + items.length) % items.length
+			show()
+		}
+		let seq = 0
+		const show = async () => {
+			const a = items[i]
+			const mine = ++seq
+			title.textContent = a.name
+			counter.textContent = items.length > 1 ? (i + 1) + ' / ' + items.length : ''
+			download.href = attachmentUrl(a)
+			download.setAttribute('download', a.name)
+			prev.hidden = next.hidden = items.length < 2
+			clear(body)
+			const kind = previewKind(a)
+			if (kind === 'image') {
+				body.appendChild(h('img', { class: 'wm-preview-image', src: attachmentUrl(a, true), alt: a.name }))
+			} else if (kind === 'pdf') {
+				body.appendChild(h('iframe', { class: 'wm-preview-pdf', src: attachmentUrl(a, true), title: a.name }))
+			} else {
+				body.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
+				try {
+					const res = await fetch(attachmentUrl(a), { headers: { requesttoken: OC.requestToken } })
+					if (!res.ok) throw new Error('Erreur ' + res.status)
+					const text = await res.text()
+					if (mine !== seq) return
+					clear(body)
+					// shown as text only: nothing in the file is interpreted
+					body.appendChild(h('pre', { class: 'wm-preview-text' }, text))
+				} catch (e) {
+					if (mine !== seq) return
+					clear(body)
+					body.appendChild(h('div', { class: 'wm-empty' }, 'Aperçu impossible : ' + e.message))
+				}
+			}
+		}
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay || e.target === body) close() })
+		document.addEventListener('keydown', onKey, true)
+		overlay.appendChild(h('div', { class: 'wm-preview-frame', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Aperçu de la pièce jointe' },
+			h('div', { class: 'wm-preview-header' }, h('div', { class: 'wm-preview-names' }, title, counter),
+				download, save, h('button', { type: 'button', class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
+			h('div', { class: 'wm-preview-stage' }, prev, body, next)))
+		document.body.appendChild(overlay)
+		show()
+	}
+
+	/** Save several attachments in one Files folder chosen once. */
+	function saveAllAttachments(list) {
+		const doSave = async (dir) => {
+			let done = 0
+			let lastPath = ''
+			for (const a of list) {
+				try {
+					const res = await api('/accounts/' + state.accountId + '/attachment/save', { method: 'POST', body: { attachmentId: a.id, path: dir } })
+					done++
+					lastPath = res.path
+				} catch (e) { toast(a.name + ' : ' + e.message, true) }
+			}
+			if (done) toast(done + ' pièce' + (done > 1 ? 's jointes enregistrées' : ' jointe enregistrée') + ' dans ' + lastPath.replace(/\/[^/]*$/, '/'))
+		}
+		if (OC.dialogs && typeof OC.dialogs.filepicker === 'function') {
+			OC.dialogs.filepicker('Choisir le dossier de destination', (dir) => doSave(dir || '/'), false, 'httpd/unix-directory', true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
+		} else {
+			doSave('/Pièces jointes')
+		}
+	}
+
 	function saveAttachment(a) {
 		const doSave = async (dir) => {
 			try {
@@ -1072,14 +1420,24 @@
 		const account = state.accounts.find((a) => a.id === state.accountId)
 		const ncFiles = [] // paths from Nextcloud Files
 
-		const titles = { new: 'Nouveau message', reply: 'Répondre', replyAll: 'Répondre à tous', forward: 'Transférer' }
+		const titles = { new: 'Nouveau message', reply: 'Répondre', replyAll: 'Répondre à tous', forward: 'Transférer', draft: 'Brouillon' }
 		const isResponse = mode === 'reply' || mode === 'replyAll'
+		// a draft opened from « Brouillons »: original is the draft itself
+		const isDraft = mode === 'draft'
+		let draftId = isDraft ? original.id : null
 
 		const to = h('input', { type: 'text', name: 'to', placeholder: 'adresse@exemple.fr, …', autocomplete: 'email', multiple: true })
 		const cc = h('input', { type: 'text', name: 'cc', placeholder: '' })
 		const bcc = h('input', { type: 'text', name: 'bcc', placeholder: '' })
 		const subject = h('input', { type: 'text', name: 'subject' })
-		const body = h('textarea', { name: 'body', rows: '16' })
+		const body = h('div', {
+			class: 'wm-editor',
+			contenteditable: 'true',
+			role: 'textbox',
+			'aria-multiline': 'true',
+			'aria-label': 'Message',
+			spellcheck: 'true',
+		})
 		const files = h('input', { type: 'file', multiple: true, class: 'wm-file-input', 'aria-label': 'Joindre des fichiers' })
 		const attachList = h('ul', { class: 'wm-compose-attachments' })
 		const importance = h('select', { name: 'importance', 'aria-label': 'Importance' },
@@ -1087,19 +1445,60 @@
 			h('option', { value: 'High' }, 'Importance haute'),
 			h('option', { value: 'Low' }, 'Importance faible'))
 
-		if (original) {
-			const prefix = mode === 'forward' ? 'TR : ' : 'RE : '
-			subject.value = /^(re|tr|fw|fwd)\s?:/i.test(original.subject || '') ? original.subject : prefix + (original.subject || '')
-			subject.disabled = true
+		const textHtml = (t) => escapeHtml(t).replace(/\n/g, '<br>')
+		const addresses = (list) => (list || []).map((p) => (p.name && p.name !== p.email ? p.name + ' <' + p.email + '>' : p.email)).join(', ')
+		if (isDraft) {
+			to.value = addresses(original.to)
+			cc.value = addresses(original.cc)
+			bcc.value = addresses(original.bcc)
+			subject.value = original.subject || ''
+			importance.value = original.importance || 'Normal'
+			body.innerHTML = original.body || ''
+		} else {
+			if (original) {
+				const prefix = mode === 'forward' ? 'TR : ' : 'RE : '
+				subject.value = /^(re|tr|fw|fwd)\s?:/i.test(original.subject || '') ? original.subject : prefix + (original.subject || '')
+				subject.disabled = true
+			}
+			body.innerHTML = '<div><br></div>' + (account && account.signature ? '<div><br></div><div>-- <br>' + textHtml(account.signature) + '</div>' : '')
+			if (prefill) {
+				if (prefill.to) to.value = prefill.to
+				if (prefill.subject) subject.value = prefill.subject
+				if (prefill.body) body.innerHTML = '<div>' + textHtml(prefill.body) + '</div>' + body.innerHTML
+			}
 		}
-		if (account && account.signature) {
-			body.value = '\n\n-- \n' + account.signature
-		}
-		if (prefill) {
-			if (prefill.to) to.value = prefill.to
-			if (prefill.subject) subject.value = prefill.subject
-			if (prefill.body) body.value = prefill.body + body.value
-		}
+
+		// ---- formatting toolbar (bold, italic, underline, lists, link, quote, clear)
+		const exec = (cmd, value) => { body.focus(); document.execCommand(cmd, false, value) }
+		const tool = (label, title, action) => h('button', {
+			type: 'button',
+			class: 'wm-editor-btn',
+			title,
+			'aria-label': title,
+			onmousedown: (e) => e.preventDefault(), // keep the selection in the text
+			onclick: action,
+		}, label)
+		const editorBar = h('div', { class: 'wm-editor-bar', role: 'toolbar', 'aria-label': 'Mise en forme' },
+			tool('G', 'Gras (Ctrl+B)', () => exec('bold')),
+			tool('I', 'Italique (Ctrl+I)', () => exec('italic')),
+			tool('S', 'Souligné (Ctrl+U)', () => exec('underline')),
+			tool('•', 'Liste à puces', () => exec('insertUnorderedList')),
+			tool('1.', 'Liste numérotée', () => exec('insertOrderedList')),
+			tool('🔗', 'Insérer un lien', () => {
+				const sel = window.getSelection()
+				const range = sel && sel.rangeCount ? sel.getRangeAt(0) : null
+				const url = (window.prompt('Adresse du lien (https://…)', 'https://') || '').trim()
+				if (!/^(https?:\/\/|mailto:)\S+$/i.test(url)) return
+				body.focus()
+				if (range) { sel.removeAllRanges(); sel.addRange(range) }
+				if (range && !range.collapsed) exec('createLink', url)
+				else exec('insertHTML', '<a href="' + escapeHtml(url) + '">' + escapeHtml(url) + '</a>')
+			}),
+			tool('❝', 'Citation', () => exec('formatBlock', 'blockquote')),
+			tool('⌫', 'Effacer la mise en forme', () => { exec('removeFormat'); exec('unlink') }))
+		body.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit() }
+		})
 
 		const renderAttachList = () => {
 			clear(attachList)
@@ -1117,30 +1516,105 @@
 			}, true, null, true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
 		}
 
-		const sendBtn = h('button', { type: 'submit', class: 'primary' }, 'Envoyer')
+		// ---- drafts: saved a few seconds after the last change, and when leaving
+		const draftStatus = h('span', { class: 'wm-draft-status wm-muted', 'aria-live': 'polite' })
+		const deleteDraftBtn = h('button', { type: 'button', class: 'wm-danger', hidden: !draftId, onclick: () => discardDraft() }, '🗑 Supprimer le brouillon')
+		const DRAFT_DELAY = 3000
+		let draftTimer = null
+		let dirty = false
+		let closed = false
+		let saving = null
+		const fields = () => ({
+			mode,
+			to: to.value,
+			cc: cc.value,
+			bcc: bcc.value,
+			subject: subject.value,
+			bodyHtml: body.innerHTML,
+			importance: importance.value,
+			referenceId: original && !isDraft ? original.id : '',
+			draftId: draftId || '',
+		})
+		const saveDraft = () => {
+			clearTimeout(draftTimer)
+			if (!dirty) return saving || Promise.resolve()
+			dirty = false
+			const run = async () => {
+				draftStatus.textContent = 'Enregistrement du brouillon…'
+				try {
+					const r = await api('/accounts/' + state.accountId + '/draft', { method: 'POST', body: fields() })
+					draftId = r.draftId
+					deleteDraftBtn.hidden = false
+					draftStatus.textContent = 'Brouillon enregistré à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+					const drafts = state.folders.find((f) => f.role === 'drafts')
+					if (drafts) listCache.delete(state.accountId + '|' + drafts.id)
+				} catch (err) {
+					dirty = true
+					draftStatus.textContent = 'Brouillon non enregistré : ' + err.message
+				}
+			}
+			// one save at a time, in order
+			saving = (saving || Promise.resolve()).then(run).finally(() => { saving = null })
+			return saving
+		}
+		const changed = () => {
+			if (closed) return
+			dirty = true
+			clearTimeout(draftTimer)
+			draftTimer = setTimeout(saveDraft, DRAFT_DELAY)
+		}
+		;[to, cc, bcc, subject, body].forEach((el) => el.addEventListener('input', changed))
+		importance.addEventListener('change', changed)
+		const leave = () => {
+			closed = true
+			clearTimeout(draftTimer)
+			if (folderRole() === 'drafts') loadMessages(true)
+			if (state.current && !isDraft) renderMessage(); else renderEmptyDetail()
+			setView(state.current && !isDraft ? 'detail' : 'list')
+		}
+		const cancel = async () => {
+			if (dirty || saving) {
+				await saveDraft()
+				if (draftId && !dirty) toast('Brouillon enregistré dans « Brouillons »')
+			}
+			leave()
+		}
+		const discardDraft = async () => {
+			if (!window.confirm('Supprimer ce brouillon ?')) return
+			closed = true
+			clearTimeout(draftTimer)
+			await saving
+			try {
+				if (draftId) await api('/accounts/' + state.accountId + '/draft/delete', { method: 'POST', body: { draftId } })
+				toast('Brouillon supprimé')
+				if (isDraft) { state.selectedId = null; removeFromList([draftId]) }
+			} catch (err) { toast(err.message, true) }
+			leave()
+		}
+
+		const sendBtn = h('button', { type: 'submit', class: 'primary', title: 'Envoyer (Ctrl+Entrée)' }, 'Envoyer')
 		const form = h('form', {
 			class: 'wm-compose',
 			onsubmit: async (e) => {
 				e.preventDefault()
+				// a save in progress must end first: the draft it creates is deleted after sending
+				clearTimeout(draftTimer)
+				await saving
 				const fd = new FormData()
-				fd.append('mode', mode)
-				fd.append('to', to.value)
-				fd.append('cc', cc.value)
-				fd.append('bcc', bcc.value)
-				fd.append('subject', subject.value)
-				fd.append('body', body.value)
-				fd.append('importance', importance.value)
-				if (original) fd.append('referenceId', original.id)
+				Object.entries(fields()).forEach(([k, v]) => fd.append(k, v))
 				Array.from(files.files).forEach((f) => fd.append('files[]', f, f.name))
 				ncFiles.forEach((p) => fd.append('filePaths[]', p))
 				sendBtn.disabled = true
 				sendBtn.textContent = 'Envoi…'
+				closed = true
 				try {
 					await api('/accounts/' + state.accountId + '/send', { method: 'POST', body: fd })
 					toast('Message envoyé')
-					if (state.current) renderMessage(); else renderEmptyDetail()
+					if (isDraft) { state.selectedId = null; removeFromList([draftId]) }
+					if (state.current && !isDraft) renderMessage(); else renderEmptyDetail()
 					if (folderRole() === 'sentitems') setTimeout(() => loadMessages(true), 1500)
 				} catch (err) {
+					closed = false
 					toast(err.message, true)
 					sendBtn.disabled = false
 					sendBtn.textContent = 'Envoyer'
@@ -1148,9 +1622,10 @@
 			},
 		},
 		h('div', { class: 'wm-compose-title' },
-			h('button', { type: 'button', class: 'wm-back wm-mobile-only', onclick: () => setView('list'), 'aria-label': 'Retour' }, '←'),
+			h('button', { type: 'button', class: 'wm-back wm-mobile-only', onclick: cancel, 'aria-label': 'Retour' }, '←'),
 			h('h2', {}, titles[mode]),
-			h('span', { class: 'wm-muted' }, 'De : ' + (account ? account.email : ''))),
+			h('span', { class: 'wm-muted' }, 'De : ' + (account ? account.email : '')),
+			draftStatus),
 		isResponse
 			? h('div', { class: 'wm-info' }, mode === 'reply'
 				? 'Réponse à : ' + personLabel((original.replyTo && original.replyTo[0]) || original.from)
@@ -1159,8 +1634,11 @@
 		h('label', { class: 'wm-field' }, h('span', {}, isResponse ? 'Ajouter en Cc' : 'Cc'), attachAutocomplete(cc)),
 		h('label', { class: 'wm-field' }, h('span', {}, 'Cci'), attachAutocomplete(bcc)),
 		h('label', { class: 'wm-field' }, h('span', {}, 'Objet'), subject),
-		body,
-		original ? h('div', { class: 'wm-info wm-muted' }, mode === 'forward'
+		h('div', { class: 'wm-editor-wrap' }, editorBar, body),
+		isDraft && original.attachments && original.attachments.length
+			? h('div', { class: 'wm-info wm-muted' }, 'Déjà joint : ' + original.attachments.map((a) => a.name).join(', '))
+			: null,
+		original && !isDraft ? h('div', { class: 'wm-info wm-muted' }, mode === 'forward'
 			? 'Le message d\'origine et ses pièces jointes seront ajoutés automatiquement sous votre texte.'
 			: 'Le message d\'origine sera cité automatiquement sous votre réponse.') : null,
 		attachList,
@@ -1169,11 +1647,26 @@
 			h('label', { class: 'wm-file-label button' }, '📎 Joindre', files),
 			h('button', { type: 'button', onclick: pickFromFiles }, '☁️ Depuis Fichiers'),
 			importance,
-			h('button', { type: 'button', onclick: () => { if (state.current) renderMessage(); else renderEmptyDetail(); setView(state.current ? 'detail' : 'list') } }, 'Annuler')),
+			h('button', { type: 'button', onclick: cancel, title: 'Fermer (le brouillon est gardé)' }, 'Annuler'),
+			deleteDraftBtn),
 		)
 		detailEl.appendChild(form)
-		;(mode === 'new' || mode === 'forward' ? to : body).focus()
-		if (isResponse) body.setSelectionRange(0, 0)
+		if (mode === 'new' || mode === 'forward' || (isDraft && !to.value)) {
+			to.focus()
+		} else {
+			// caret at the start of the text, above the signature / quote
+			body.focus()
+			const range = document.createRange()
+			range.setStart(body, 0)
+			range.collapse(true)
+			const sel = window.getSelection()
+			sel.removeAllRanges()
+			sel.addRange(range)
+		}
+	}
+
+	function escapeHtml(t) {
+		return String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 	}
 
 	// ------------------------------------------------------------------
@@ -1360,7 +1853,10 @@
 
 		clearInterval(refreshTimer)
 		refreshTimer = setInterval(refresh, REFRESH_MS)
-		document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh() })
+		document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); checkNewMessages() } })
+		clearInterval(notifyTimer)
+		notifyTimer = setInterval(checkNewMessages, NOTIFY_MS)
+		checkNewMessages()
 		document.addEventListener('keydown', onShortcut)
 	}
 

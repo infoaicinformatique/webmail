@@ -76,6 +76,11 @@ async function main() {
 		const count = await page.$$eval('.wm-message', (els) => els.length)
 		assert.strictEqual(count, 50)
 		assert.strictEqual(await page.textContent('.wm-folder.active .wm-badge'), '3')
+		// space used by the mailbox, against the limit set in Exchange
+		await page.waitForSelector('.wm-quota-text')
+		assert.strictEqual(await page.textContent('.wm-quota-text'), '1,2 Go sur 2 Go (60 %)')
+		assert.strictEqual(await page.getAttribute('.wm-quota-bar', 'aria-valuenow'), '60')
+		assert(await page.$('.wm-quota.wm-quota-ok'))
 	})
 
 	await step('pagination: load more', async () => {
@@ -136,6 +141,46 @@ async function main() {
 		await page.waitForSelector(`.wm-message.unread[data-id="${id}"]`)
 	})
 
+	await step('attachment previews and save all', async () => {
+		await page.click('.wm-folder:has-text("Clients")')
+		await page.click('.wm-message:has-text("Photos du chantier")')
+		await page.waitForSelector('.wm-attachment-thumb img')
+		assert.strictEqual(await page.$$eval('.wm-attachment-thumb', (els) => els.length), 2, 'thumbnails for the pictures')
+		assert.strictEqual(await page.$$eval('.wm-preview-btn', (els) => els.length), 4, 'no preview for the zip')
+		await page.waitForFunction(() => [...document.querySelectorAll('.wm-attachment-thumb img')].every((i) => i.complete && i.naturalWidth === 320))
+
+		await page.click('.wm-attachment-thumb >> nth=0')
+		await page.waitForSelector('.wm-preview-title:has-text("facade.png")')
+		await page.waitForFunction(() => { const i = document.querySelector('.wm-preview-image'); return i && i.complete && i.naturalWidth === 320 })
+		assert.strictEqual(await page.textContent('.wm-preview-names .wm-muted'), '1 / 4')
+		await shot('33-attachment-preview')
+		await page.keyboard.press('ArrowRight')
+		await page.waitForSelector('.wm-preview-title:has-text("toiture.png")')
+		await page.keyboard.press('ArrowRight')
+		await page.waitForSelector('.wm-preview-text')
+		// plain text is shown as text: the <b> is not interpreted
+		assert((await page.textContent('.wm-preview-text')).includes('Toiture : <b>58 m²</b>'))
+		assert(!(await page.$('.wm-preview-text b')))
+		await page.click('.wm-preview-nav[aria-label="Pièce jointe suivante"]')
+		await page.waitForSelector('.wm-preview-pdf')
+		const pdf = await page.evaluate(async () => {
+			const r = await fetch(document.querySelector('.wm-preview-pdf').src)
+			return [r.headers.get('content-type'), r.headers.get('content-disposition').split(';')[0]]
+		})
+		assert.deepStrictEqual(pdf, ['application/pdf', 'inline'])
+		await page.keyboard.press('ArrowRight')
+		await page.waitForSelector('.wm-preview-title:has-text("facade.png")')
+		await page.keyboard.press('Escape')
+		await page.waitForSelector('.wm-preview', { state: 'detached' })
+		assert(await page.$('.wm-message-header'), 'Escape only closed the preview')
+
+		await page.evaluate(() => { OC.dialogs.filepicker = (t, cb) => cb('/Documents') })
+		await page.click('button:has-text("Tout enregistrer dans Fichiers")')
+		await page.waitForSelector('.wm-toast:has-text("5 pièces jointes enregistrées dans /Documents/")')
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector('.wm-message:has-text("Réunion de lundi")')
+	})
+
 	await step('search', async () => {
 		await page.fill('.wm-search', 'réunion')
 		await page.press('.wm-search', 'Enter')
@@ -144,6 +189,54 @@ async function main() {
 		await page.click('.wm-search-info a')
 		// back to the folder as it was, with the page loaded before
 		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 62)
+	})
+
+	await step('search filters and search in all folders', async () => {
+		const subjects = () => page.$$eval('.wm-message-subject', (els) => els.map((e) => e.textContent))
+		const settle = () => page.waitForFunction(() => !document.querySelector('.wm-list .icon-loading') && document.querySelector('.wm-search-info, .wm-message'))
+		await page.click('.wm-filter-toggle')
+		await page.waitForSelector('.wm-filters')
+		// unread only: as many as the folder's badge
+		await page.click('.wm-chip[data-filter="unread"]')
+		await page.waitForSelector('.wm-search-info:has-text("Messages filtrés dans Boîte de réception")')
+		await settle()
+		const badge = parseInt(await page.textContent('.wm-folder.active .wm-badge'), 10)
+		await page.waitForFunction((n) => document.querySelectorAll('.wm-message.unread').length === n && document.querySelectorAll('.wm-message').length === n, badge)
+		// and with attachments
+		await page.click('.wm-chip[data-filter="attachments"]')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 1)
+		assert.deepStrictEqual(await subjects(), ['Devis pour la maintenance annuelle'])
+		assert.strictEqual(await page.textContent('.wm-filter-toggle'), '⏷ 2')
+
+		// all folders: attachments everywhere, with the folder of each result
+		await page.click('.wm-chip[data-filter="unread"]')
+		await page.check('.wm-filters input[name=allFolders]')
+		await page.waitForSelector('.wm-message:has-text("Photos du chantier") .wm-message-folder:has-text("Clients")')
+		await page.waitForSelector('.wm-message:has-text("Devis pour la maintenance") .wm-message-folder:has-text("Boîte de réception")')
+		await shot('34-search-filters')
+		// words + all folders
+		await page.click('.wm-chip[data-filter="attachments"]')
+		await page.fill('.wm-search', 'devis')
+		await page.press('.wm-search', 'Enter')
+		await page.waitForSelector('.wm-search-info:has-text("Résultats pour « devis » dans tous les dossiers (2)")')
+		assert.deepStrictEqual((await subjects()).sort(), ['Commande 4521', 'Devis pour la maintenance annuelle'])
+		// a result from another folder opens normally
+		await page.click('.wm-message:has-text("Commande 4521")')
+		await page.frameLocator('.wm-body-frame').locator('text=le devis est signé').waitFor()
+
+		// period: the old newsletters go
+		await page.fill('.wm-search', '')
+		await page.press('.wm-search', 'Enter')
+		await page.selectOption('.wm-filters select[name=since]', '30')
+		await page.waitForSelector('.wm-search-info:has-text("Messages filtrés dans tous les dossiers")')
+		await settle()
+		await page.waitForFunction(() => !document.querySelector('.wm-list .icon-loading'))
+		const recent = await subjects()
+		assert(recent.includes('Newsletter n°1') && !recent.includes('Newsletter n°40'), recent.join('|'))
+
+		// clear: back to the folder, filters gone
+		await page.click('.wm-search-info a')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 62 && !document.querySelector('.wm-filters'))
 	})
 
 	await step('fluid navigation: prefetch, keyboard, folder cache, instant delete, Back button', async () => {
@@ -234,7 +327,7 @@ async function main() {
 		await page.click('.wm-compose-btn')
 		await page.fill('input[name=to]', 'Client <client@exemple.fr>, autre@exemple.fr')
 		await page.fill('input[name=subject]', 'Test depuis Nextcloud')
-		await page.fill('textarea[name=body]', 'Bonjour,\nceci est un test.\nhttps://nextcloud.com')
+		await page.fill('.wm-editor', 'Bonjour,\nceci est un test.\nhttps://nextcloud.com')
 		await page.setInputFiles('.wm-file-input', { name: 'note.txt', mimeType: 'text/plain', buffer: Buffer.from('contenu') })
 		await page.waitForSelector('.wm-compose-attachments li:has-text("note.txt")')
 		await shot('04-compose')
@@ -260,7 +353,7 @@ async function main() {
 		assert.strictEqual(await page.inputValue('input[name=subject]'), 'RE : Réunion de lundi')
 		await page.evaluate(() => { OC.dialogs.filepicker = (t, cb) => cb(['/Documents/devis-2027.pdf']) })
 		await page.click('button:has-text("Depuis Fichiers")')
-		await page.fill('textarea[name=body]', 'Oui, 14h me va.')
+		await page.fill('.wm-editor', 'Oui, 14h me va.')
 		await page.click('.wm-compose button[type=submit]')
 		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
 	})
@@ -302,7 +395,59 @@ async function main() {
 		await page.click('.wm-account-card button:has-text("Enregistrer")')
 		await page.waitForSelector('.wm-toast:has-text("Compte mis à jour")')
 		await page.click('.wm-compose-btn')
-		assert((await page.inputValue('textarea[name=body]')).includes('-- \nUtilisateur\nSociété A'))
+		const signed = await page.innerText('.wm-editor')
+		assert(/--\s*\nUtilisateur\nSociété A/.test(signed), signed)
+	})
+
+	await step('rich text editor and drafts', async () => {
+		// a new message with formatting, saved as a draft while writing
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'client@exemple.fr')
+		await page.fill('input[name=subject]', 'Proposition commerciale')
+		await page.click('.wm-editor')
+		await page.keyboard.press('Control+Home')
+		await page.keyboard.type('Bonjour, notre prix : ')
+		await page.click('.wm-editor-btn[title^="Gras"]')
+		await page.keyboard.type('1 200 €')
+		await page.click('.wm-editor-btn[title^="Gras"]')
+		await page.keyboard.type(' HT.')
+		await page.waitForSelector('.wm-draft-status:has-text("Brouillon enregistré à")')
+		assert(await page.$('.wm-editor b:has-text("1 200 €")'), 'bold text')
+		await shot('36-editor')
+		await page.click('.wm-compose button:has-text("Annuler")')
+		await page.waitForSelector('.wm-compose', { state: 'detached' })
+
+		// it is in « Brouillons » and opens in the editor
+		await page.click('.wm-folder:has-text("Brouillons")')
+		await page.click('.wm-message:has-text("Proposition commerciale")')
+		await page.waitForSelector('.wm-compose h2:has-text("Brouillon")')
+		assert.strictEqual(await page.inputValue('input[name=to]'), 'client <client@exemple.fr>')
+		assert(await page.$('.wm-editor b:has-text("1 200 €")'), 'formatting kept in the draft')
+		await page.fill('input[name=subject]', 'Proposition commerciale (v2)')
+		await page.waitForSelector('.wm-draft-status:has-text("Brouillon enregistré à")')
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-message')].some((e) => e.textContent.includes('Proposition commerciale')))
+		// sent once, with its formatting
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.click('.wm-message:has-text("Proposition commerciale (v2)")')
+		await page.frameLocator('.wm-body-frame').locator('b:has-text("1 200 €")').waitFor()
+		assert.strictEqual(await page.$$eval('.wm-message', (els) => els.filter((e) => e.textContent.includes('Proposition commerciale')).length), 1)
+
+		// a reply draft, then thrown away
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.click('.wm-message:has-text("Votre facture OVH")')
+		await page.click('.wm-toolbar button:has-text("↩ Répondre")')
+		await page.keyboard.type('Merci, je regarde.')
+		await page.waitForSelector('.wm-draft-status:has-text("Brouillon enregistré à")')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-compose button:has-text("Supprimer le brouillon")')
+		await page.waitForSelector('.wm-toast:has-text("Brouillon supprimé")')
+		await page.click('.wm-folder:has-text("Brouillons")')
+		await page.waitForSelector('.wm-list .wm-search')
+		await page.waitForFunction(() => !document.querySelector('.wm-list .icon-loading'))
+		assert(!(await page.$('.wm-message:has-text("Votre facture OVH")')), 'reply draft deleted')
+		await page.click('.wm-folder:has-text("Boîte de réception")')
 	})
 
 	await step('second account on the other server', async () => {
@@ -1219,6 +1364,61 @@ async function main() {
 		await page.waitForSelector('.wm-agenda, .wm-month, .wm-week')
 		await page.click('.wm-tab[data-module="mail"]')
 		await page.waitForSelector('.wm-message')
+	})
+
+	await step('new messages: notification, tab title, toast', async () => {
+		await page.selectOption('.wm-account-select', { label: 'user@societe-a.fr' })
+		await page.waitForSelector('.wm-message')
+		// the browser's notifications, recorded
+		await page.evaluate(() => {
+			window.__notes = []
+			window.Notification = class {
+				constructor(title, opts) { this.title = title; this.body = opts.body; window.__notes.push(this) }
+				static get permission() { return 'granted' }
+				static requestPermission() { return Promise.resolve('granted') }
+			}
+		})
+		await page.click('.wm-notify-toggle')
+		await page.waitForSelector('.wm-notify-toggle:has-text("Notifications activées")')
+		const sendToMe = async (subject) => {
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'user@societe-a.fr')
+			await page.fill('input[name=subject]', subject)
+			await page.fill('.wm-editor', 'À ne pas oublier.')
+			await page.click('.wm-compose button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		}
+		const check = () => page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+
+		// window in the background: a notification
+		await sendToMe('Rappel : rapport mensuel')
+		await page.evaluate(() => { document.hasFocus = () => false })
+		await check()
+		await page.waitForFunction(() => window.__notes.length === 1)
+		// (both test accounts share the fake server's inbox: either may announce it first)
+		const [title, body] = await page.evaluate(() => [window.__notes[0].title, window.__notes[0].body])
+		assert(/^Utilisateur \((user@societe-a|compta@societe-b)\.fr\)$/.test(title), title)
+		assert.strictEqual(body, 'Rappel : rapport mensuel')
+		// unread count in the tab title
+		const badge = await page.textContent('.wm-folder:has-text("Boîte de réception") .wm-badge')
+		await page.waitForFunction((n) => document.title.startsWith('(' + n + ') '), badge)
+		// clicking it opens the message
+		await page.evaluate(() => window.__notes[0].onclick())
+		await page.waitForSelector('.wm-message-header h2:has-text("Rappel : rapport mensuel")')
+		await page.selectOption('.wm-account-select', { label: 'user@societe-a.fr' })
+		await page.waitForSelector('.wm-message')
+
+		// window in front: a message in the page, no notification
+		await page.evaluate(() => { document.hasFocus = () => true })
+		await sendToMe('Rappel 2')
+		await check()
+		await page.locator('.wm-toast', { hasText: /Nouveau message de Utilisateur \(.+\) : Rappel 2/ }).waitFor()
+		await page.waitForSelector('.wm-message:has-text("Rappel 2")')
+		assert.strictEqual(await page.evaluate(() => window.__notes.length), 1)
+		await shot('35-new-message')
+
+		await page.click('.wm-notify-toggle')
+		await page.waitForSelector('.wm-notify-toggle:has-text("Activer les notifications")')
 	})
 
 	await step('mobile layout', async () => {

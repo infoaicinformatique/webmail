@@ -120,7 +120,7 @@ class EwsClient {
 	 *
 	 * @return array<int, array{id: string, name: string, parentId: ?string, total: int, unread: int, role: ?string}>
 	 */
-	public function listFolders(): array {
+	public function listFolders(?int &$usedBytes = null): array {
 		$roles = $this->distinguishedFolderIds(['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'msgfolderroot']);
 		$rootId = $roles['msgfolderroot'] ?? null;
 		unset($roles['msgfolderroot']);
@@ -130,10 +130,16 @@ class EwsClient {
 			'<m:FindFolder Traversal="Deep">'
 			. '<m:FolderShape><t:BaseShape>Default</t:BaseShape><t:AdditionalProperties>'
 			. '<t:FieldURI FieldURI="folder:FolderClass"/><t:FieldURI FieldURI="folder:ParentFolderId"/>'
+			// size of each folder (PR_MESSAGE_SIZE_EXTENDED): their sum is the space used by the mailbox
+			. '<t:ExtendedFieldURI PropertyTag="0x0E08" PropertyType="Long"/>'
 			. '</t:AdditionalProperties></m:FolderShape>'
 			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="msgfolderroot"/></m:ParentFolderIds>'
 			. '</m:FindFolder>'
 		);
+		$usedBytes = 0;
+		foreach ($xp->query('//t:Folders/*/t:ExtendedProperty/t:Value') as $v) {
+			$usedBytes += max(0, (int)$v->textContent);
+		}
 
 		$folders = [];
 		foreach ($xp->query('//t:Folders/t:Folder') as $node) {
@@ -162,6 +168,37 @@ class EwsClient {
 	 * @param string[] $names
 	 * @return array<string, string> distinguished name => FolderId
 	 */
+	/**
+	 * Mailbox size limit set by the administrator (MAPI quota properties, in
+	 * KB, read on the top of the mailbox): the "prohibit send" quota, else the
+	 * storage limit, else the "prohibit receive" quota.
+	 * @return ?int bytes, null when Exchange does not tell
+	 */
+	public function mailboxQuota(): ?int {
+		$tags = ['0x666E', '0x3FF5', '0x666A'];
+		$props = '';
+		foreach ($tags as $tag) {
+			$props .= '<t:ExtendedFieldURI PropertyTag="' . $tag . '" PropertyType="Integer"/>';
+		}
+		$xp = $this->request(
+			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $props . '</t:AdditionalProperties></m:FolderShape>'
+			. '<m:FolderIds><t:DistinguishedFolderId Id="msgfolderroot"/><t:DistinguishedFolderId Id="root"/></m:FolderIds></m:GetFolder>',
+			false
+		);
+		foreach ($tags as $tag) {
+			foreach ($xp->query('//m:Folders/*/t:ExtendedProperty') as $p) {
+				$uri = $xp->query('t:ExtendedFieldURI', $p)->item(0);
+				if ($uri instanceof \DOMElement && hexdec($uri->getAttribute('PropertyTag')) === hexdec($tag)) {
+					$kb = (int)$this->text($xp, 't:Value', $p);
+					if ($kb > 0) {
+						return $kb * 1024;
+					}
+				}
+			}
+		}
+		return null;
+	}
+
 	public function distinguishedFolderIds(array $names): array {
 		$ids = '';
 		foreach ($names as $n) {
@@ -200,13 +237,174 @@ class EwsClient {
 	/**
 	 * @return array{items: array<int, array<string, mixed>>, total: int, hasMore: bool}
 	 */
-	public function findItems(string $folderId, int $offset = 0, int $limit = 50, ?string $query = null): array {
+	/**
+	 * Exchange search text (AQS) for the words typed and the filters ticked:
+	 * unread, with attachments, flagged, received since a date (Y-m-d).
+	 * @param array{unread?: bool, attachments?: bool, flagged?: bool, since?: string} $filters
+	 */
+	public static function searchQuery(?string $text, array $filters): ?string {
+		$parts = [];
+		$text = trim((string)$text);
+		if ($text !== '') {
+			$parts[] = $text;
+		}
+		if (!empty($filters['unread'])) {
+			$parts[] = 'isread:false';
+		}
+		if (!empty($filters['attachments'])) {
+			$parts[] = 'hasattachment:true';
+		}
+		if (!empty($filters['flagged'])) {
+			$parts[] = 'isflagged:true';
+		}
+		$since = (string)($filters['since'] ?? '');
+		if ($since !== '') {
+			$d = \DateTimeImmutable::createFromFormat('!Y-m-d', $since);
+			if ($d === false || $d->format('Y-m-d') !== $since) {
+				throw new MailException('Date de recherche invalide');
+			}
+			$parts[] = 'received>=' . $since;
+		}
+		return $parts !== [] ? implode(' ', $parts) : null;
+	}
+
+	/**
+	 * Search several folders at once (the whole mailbox): one FindItem over
+	 * all of them, results merged newest first. Paging goes up to 200 results.
+	 * @param string[] $folderIds
+	 */
+	public function searchFolders(array $folderIds, int $offset, int $limit, string $query): array {
+		$window = min(200, max(1, $offset + $limit));
+		$ids = '';
+		foreach ($folderIds as $id) {
+			$ids .= $this->folderIdXml($id);
+		}
+		$xp = $this->request(
+			'<m:FindItem Traversal="Shallow">'
+			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $this->summaryFields(true) . '</t:AdditionalProperties></m:ItemShape>'
+			. '<m:IndexedPageItemView MaxEntriesReturned="' . $window . '" Offset="0" BasePoint="Beginning"/>'
+			. '<m:SortOrder><t:FieldOrder Order="Descending"><t:FieldURI FieldURI="item:DateTimeReceived"/></t:FieldOrder></m:SortOrder>'
+			. '<m:ParentFolderIds>' . $ids . '</m:ParentFolderIds>'
+			. '<m:QueryString>' . $this->esc($query) . '</m:QueryString>'
+			. '</m:FindItem>',
+			false
+		);
+		$items = [];
+		$total = 0;
+		$more = false;
+		foreach ($xp->query('//m:RootFolder') as $root) {
+			if (!$root instanceof \DOMElement) {
+				continue;
+			}
+			$total += (int)$root->getAttribute('TotalItemsInView');
+			$more = $more || $root->getAttribute('IncludesLastItemInRange') === 'false';
+			foreach ($xp->query('t:Items/*', $root) as $node) {
+				$items[] = $this->summary($xp, $node);
+			}
+		}
+		if ($items === [] && $total === 0) {
+			// every folder refused: report the first error
+			$err = $xp->query('//m:ResponseMessages/*[@ResponseClass="Error"]')->item(0);
+			if ($err !== null) {
+				throw new MailException(self::translateError($this->text($xp, 'm:ResponseCode', $err), $this->text($xp, 'm:MessageText', $err)));
+			}
+		}
+		usort($items, fn ($a, $b) => strcmp((string)$b['date'], (string)$a['date']));
+		$page = array_slice($items, $offset, $limit);
+		return [
+			'items' => $page,
+			'total' => $total,
+			'hasMore' => $offset + $limit < 200 && ($more || count($items) > $offset + $limit),
+		];
+	}
+
+	private function summaryFields(bool $withFolder = false): string {
 		$props = ['item:Subject', 'message:From', 'item:DisplayTo', 'item:DateTimeReceived', 'message:IsRead',
 			'item:HasAttachments', 'item:Importance', 'item:Flag', 'item:Preview'];
+		if ($withFolder) {
+			$props[] = 'item:ParentFolderId';
+		}
 		$fields = '';
 		foreach ($props as $p) {
 			$fields .= '<t:FieldURI FieldURI="' . $p . '"/>';
 		}
+		return $fields;
+	}
+
+	/** @return array<string, mixed> one message of a list */
+	private function summary(\DOMXPath $xp, \DOMNode $node): array {
+		$item = [
+			'id' => $this->attr($xp, 't:ItemId', 'Id', $node),
+			'changeKey' => $this->attr($xp, 't:ItemId', 'ChangeKey', $node),
+			'subject' => (string)$this->text($xp, 't:Subject', $node),
+			'from' => $this->mailbox($xp, 't:From/t:Mailbox', $node),
+			'displayTo' => (string)$this->text($xp, 't:DisplayTo', $node),
+			'date' => $this->text($xp, 't:DateTimeReceived', $node),
+			'isRead' => $this->text($xp, 't:IsRead', $node) !== 'false',
+			'hasAttachments' => $this->text($xp, 't:HasAttachments', $node) === 'true',
+			'importance' => $this->text($xp, 't:Importance', $node) ?? 'Normal',
+			'flagged' => $this->text($xp, 't:Flag/t:FlagStatus', $node) === 'Flagged',
+			'preview' => mb_substr((string)$this->text($xp, 't:Preview', $node), 0, 200),
+			'isMeeting' => $node->localName !== 'Message',
+		];
+		$folder = $this->attr($xp, 't:ParentFolderId', 'Id', $node);
+		if ($folder !== null) {
+			$item['folderId'] = $folder;
+		}
+		return $item;
+	}
+
+	/**
+	 * Unread messages received in the inbox after $since (for notifications),
+	 * and the number of unread messages of the inbox. Without $since, only
+	 * gives the date to start from (the newest message).
+	 * @return array{items: array<int, array<string, mixed>>, latest: string, unread: int}
+	 */
+	public function newMessages(?string $since, int $max = 10): array {
+		$restriction = '';
+		if ($since !== null) {
+			$d = date_create_immutable($since);
+			if ($d === false) {
+				throw new MailException('Date invalide');
+			}
+			$since = $d->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
+			$restriction = '<m:Restriction><t:And>'
+				. '<t:IsGreaterThan><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURIOrConstant><t:Constant Value="' . $since . '"/></t:FieldURIOrConstant></t:IsGreaterThan>'
+				. '<t:IsEqualTo><t:FieldURI FieldURI="message:IsRead"/><t:FieldURIOrConstant><t:Constant Value="false"/></t:FieldURIOrConstant></t:IsEqualTo>'
+				. '</t:And></m:Restriction>';
+		}
+		$xp = $this->request(
+			'<m:FindItem Traversal="Shallow">'
+			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $this->summaryFields() . '</t:AdditionalProperties></m:ItemShape>'
+			. '<m:IndexedPageItemView MaxEntriesReturned="' . ($since !== null ? max(1, $max) : 1) . '" Offset="0" BasePoint="Beginning"/>'
+			. $restriction
+			. '<m:SortOrder><t:FieldOrder Order="Descending"><t:FieldURI FieldURI="item:DateTimeReceived"/></t:FieldOrder></m:SortOrder>'
+			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="inbox"/></m:ParentFolderIds>'
+			. '</m:FindItem>'
+		);
+		$items = [];
+		foreach ($xp->query('//m:RootFolder/t:Items/*') as $node) {
+			$items[] = $this->summary($xp, $node);
+		}
+		// next time, start from the newest message seen (ISO dates in UTC compare as text)
+		$dates = array_values(array_filter(array_map(fn ($i) => (string)$i['date'], $items)));
+		if ($since !== null) {
+			$dates[] = $since;
+		}
+		$latest = $dates !== [] ? max($dates) : gmdate('Y-m-d\TH:i:s\Z');
+		$folder = $this->request(
+			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties><t:FieldURI FieldURI="folder:UnreadCount"/></t:AdditionalProperties></m:FolderShape>'
+			. '<m:FolderIds><t:DistinguishedFolderId Id="inbox"/></m:FolderIds></m:GetFolder>'
+		);
+		return [
+			'items' => $since !== null ? $items : [],
+			'latest' => $latest,
+			'unread' => (int)$this->text($folder, '//m:Folders/*/t:UnreadCount'),
+		];
+	}
+
+	public function findItems(string $folderId, int $offset = 0, int $limit = 50, ?string $query = null): array {
+		$fields = $this->summaryFields();
 		$queryXml = '';
 		if ($query !== null && trim($query) !== '') {
 			$queryXml = '<m:QueryString>' . $this->esc(trim($query)) . '</m:QueryString>';
@@ -228,20 +426,7 @@ class EwsClient {
 
 		$items = [];
 		foreach ($xp->query('//m:RootFolder/t:Items/*') as $node) {
-			$items[] = [
-				'id' => $this->attr($xp, 't:ItemId', 'Id', $node),
-				'changeKey' => $this->attr($xp, 't:ItemId', 'ChangeKey', $node),
-				'subject' => (string)$this->text($xp, 't:Subject', $node),
-				'from' => $this->mailbox($xp, 't:From/t:Mailbox', $node),
-				'displayTo' => (string)$this->text($xp, 't:DisplayTo', $node),
-				'date' => $this->text($xp, 't:DateTimeReceived', $node),
-				'isRead' => $this->text($xp, 't:IsRead', $node) !== 'false',
-				'hasAttachments' => $this->text($xp, 't:HasAttachments', $node) === 'true',
-				'importance' => $this->text($xp, 't:Importance', $node) ?? 'Normal',
-				'flagged' => $this->text($xp, 't:Flag/t:FlagStatus', $node) === 'Flagged',
-				'preview' => mb_substr((string)$this->text($xp, 't:Preview', $node), 0, 200),
-				'isMeeting' => $node->localName !== 'Message',
-			];
+			$items[] = $this->summary($xp, $node);
 		}
 		return ['items' => $items, 'total' => $total, 'hasMore' => !$last];
 	}
@@ -442,23 +627,12 @@ class EwsClient {
 	 */
 	public function sendMessage(string $mode, string $subject, string $htmlBody, array $to, array $cc, array $bcc,
 		array $attachments = [], ?string $referenceId = null, string $importance = 'Normal'): void {
-		$recipients = $this->recipientsXml('ToRecipients', $to)
-			. $this->recipientsXml('CcRecipients', $cc)
-			. $this->recipientsXml('BccRecipients', $bcc);
-		$importance = in_array($importance, ['Low', 'Normal', 'High'], true) ? $importance : 'Normal';
-
 		if ($mode === 'new') {
 			$attXml = '';
 			foreach ($attachments as $a) {
 				$attXml .= $this->fileAttachmentXml($a);
 			}
-			$item = '<t:Message>'
-				. '<t:Subject>' . $this->esc($subject) . '</t:Subject>'
-				. '<t:Body BodyType="HTML">' . $this->esc($htmlBody) . '</t:Body>'
-				. ($attXml !== '' ? '<t:Attachments>' . $attXml . '</t:Attachments>' : '')
-				. '<t:Importance>' . $importance . '</t:Importance>'
-				. $recipients
-				. '</t:Message>';
+			$item = $this->composeItemXml('new', $subject, $htmlBody, $to, $cc, $bcc, null, $importance, $attXml);
 			if ($attachments === []) {
 				$this->createAndSend($item);
 				return;
@@ -468,6 +642,35 @@ class EwsClient {
 			return;
 		}
 
+		$item = $this->composeItemXml($mode, $subject, $htmlBody, $to, $cc, $bcc, $referenceId, $importance);
+		if ($attachments === []) {
+			$this->createAndSend($item);
+			return;
+		}
+		$draft = $this->createDraft($item);
+		$changeKey = $this->addAttachments($draft['id'], $attachments);
+		$this->sendDraft($draft['id'], $changeKey);
+	}
+
+	/**
+	 * The item to create: a new message, or a reply / forward of
+	 * $referenceId (Exchange then adds the quote and keeps the thread).
+	 */
+	private function composeItemXml(string $mode, string $subject, string $htmlBody, array $to, array $cc, array $bcc,
+		?string $referenceId, string $importance, string $attachmentsXml = ''): string {
+		$recipients = $this->recipientsXml('ToRecipients', $to)
+			. $this->recipientsXml('CcRecipients', $cc)
+			. $this->recipientsXml('BccRecipients', $bcc);
+		$importance = in_array($importance, ['Low', 'Normal', 'High'], true) ? $importance : 'Normal';
+		if ($mode === 'new') {
+			return '<t:Message>'
+				. '<t:Subject>' . $this->esc($subject) . '</t:Subject>'
+				. '<t:Body BodyType="HTML">' . $this->esc($htmlBody) . '</t:Body>'
+				. ($attachmentsXml !== '' ? '<t:Attachments>' . $attachmentsXml . '</t:Attachments>' : '')
+				. '<t:Importance>' . $importance . '</t:Importance>'
+				. $recipients
+				. '</t:Message>';
+		}
 		$element = match ($mode) {
 			'reply' => 'ReplyToItem',
 			'replyAll' => 'ReplyAllToItem',
@@ -478,19 +681,64 @@ class EwsClient {
 			throw new MailException('Message d\'origine manquant');
 		}
 		$ref = $this->itemRef($referenceId);
-		$item = '<t:' . $element . '>'
+		return '<t:' . $element . '>'
 			. $recipients
 			. '<t:ReferenceItemId Id="' . $this->esc($ref['id']) . '" ChangeKey="' . $this->esc($ref['changeKey']) . '"/>'
 			. '<t:NewBodyContent BodyType="HTML">' . $this->esc($htmlBody) . '</t:NewBodyContent>'
 			. '</t:' . $element . '>';
+	}
 
-		if ($attachments === []) {
-			$this->createAndSend($item);
-			return;
+	// ------------------------------------------------------------------
+	// Drafts
+	// ------------------------------------------------------------------
+
+	/**
+	 * Save what is being written as a draft in « Brouillons ». A reply or a
+	 * forward is created again at each save (Exchange adds the quote and
+	 * keeps the thread), the previous version ($replaceId) is then deleted.
+	 * @return string id of the draft
+	 */
+	public function saveDraft(?string $replaceId, string $mode, string $subject, string $htmlBody, array $to, array $cc, array $bcc,
+		?string $referenceId = null, string $importance = 'Normal'): string {
+		$draft = $this->createDraft($this->composeItemXml($mode, $subject, $htmlBody, $to, $cc, $bcc, $referenceId, $importance));
+		if ($replaceId !== null && $replaceId !== $draft['id']) {
+			try {
+				$this->deleteItems([$replaceId], true);
+			} catch (MailException) {
+				// already gone (sent or deleted elsewhere)
+			}
 		}
-		$draft = $this->createDraft($item);
-		$changeKey = $this->addAttachments($draft['id'], $attachments);
-		$this->sendDraft($draft['id'], $changeKey);
+		return $draft['id'];
+	}
+
+	/**
+	 * Change a draft opened from « Brouillons » (its quote and attachments stay).
+	 */
+	public function updateDraft(string $id, string $subject, string $htmlBody, array $to, array $cc, array $bcc, string $importance = 'Normal'): void {
+		$importance = in_array($importance, ['Low', 'Normal', 'High'], true) ? $importance : 'Normal';
+		$set = fn (string $uri, string $inner) => '<t:SetItemField><t:FieldURI FieldURI="' . $uri . '"/><t:Message>' . $inner . '</t:Message></t:SetItemField>';
+		$updates = $set('item:Subject', '<t:Subject>' . $this->esc($subject) . '</t:Subject>')
+			. $set('item:Body', '<t:Body BodyType="HTML">' . $this->esc($htmlBody) . '</t:Body>')
+			. $set('item:Importance', '<t:Importance>' . $importance . '</t:Importance>');
+		foreach (['ToRecipients' => $to, 'CcRecipients' => $cc, 'BccRecipients' => $bcc] as $field => $list) {
+			$updates .= $list !== []
+				? $set('message:' . $field, $this->recipientsXml($field, $list))
+				: '<t:DeleteItemField><t:FieldURI FieldURI="message:' . $field . '"/></t:DeleteItemField>';
+		}
+		$this->request(
+			'<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite">'
+			. '<m:ItemChanges><t:ItemChange><t:ItemId Id="' . $this->esc($id) . '"/><t:Updates>' . $updates . '</t:Updates></t:ItemChange></m:ItemChanges>'
+			. '</m:UpdateItem>'
+		);
+	}
+
+	/**
+	 * Send a draft as it is in Exchange (after updateDraft), with extra attachments.
+	 */
+	public function sendSavedDraft(string $id, array $attachments = []): void {
+		$ref = $this->itemRef($id);
+		$changeKey = $attachments !== [] ? $this->addAttachments($ref['id'], $attachments) : $ref['changeKey'];
+		$this->sendDraft($ref['id'], $changeKey);
 	}
 
 	private function createAndSend(string $itemXml): void {

@@ -50,13 +50,41 @@ class MailController extends Controller {
 
 	#[NoAdminRequired]
 	public function folders(int $id): Response {
-		return $this->handle(fn () => ['folders' => $this->client($id)->listFolders()]);
+		return $this->handle(function () use ($id) {
+			$account = $this->accounts->find((string)$this->userId, $id);
+			$client = $this->accounts->getClient($account);
+			$used = null;
+			$folders = $client->listFolders($used);
+			return ['folders' => $folders, 'usage' => ['used' => $used, 'limit' => $this->accounts->mailboxQuota($account, $client)]];
+		});
 	}
 
 	#[NoAdminRequired]
-	public function messages(int $id, string $folder = 'inbox', int $offset = 0, int $limit = 50, string $q = ''): Response {
+	/**
+	 * Messages of a folder, or search results. Filters: unread, with
+	 * attachments, flagged, received since a date (Y-m-d); scope "all"
+	 * searches every mail folder.
+	 */
+	public function messages(int $id, string $folder = 'inbox', int $offset = 0, int $limit = 50, string $q = '',
+		bool $unread = false, bool $attachments = false, bool $flagged = false, string $since = '', string $scope = 'folder'): Response {
 		$limit = max(1, min(100, $limit));
-		return $this->handle(fn () => $this->client($id)->findItems($folder, max(0, $offset), $limit, $q !== '' ? $q : null));
+		return $this->handle(function () use ($id, $folder, $offset, $limit, $q, $unread, $attachments, $flagged, $since, $scope) {
+			$client = $this->client($id);
+			$query = EwsClient::searchQuery($q, ['unread' => $unread, 'attachments' => $attachments, 'flagged' => $flagged, 'since' => $since]);
+			if ($scope === 'all' && $query !== null) {
+				$ids = array_column($client->listFolders(), 'id');
+				return $client->searchFolders($ids, max(0, $offset), $limit, $query);
+			}
+			return $client->findItems($folder, max(0, $offset), $limit, $query);
+		});
+	}
+
+	/**
+	 * New unread messages of the inbox since a date (polled for notifications).
+	 */
+	#[NoAdminRequired]
+	public function newMessages(int $id, string $since = ''): Response {
+		return $this->handle(fn () => $this->client($id)->newMessages($since !== '' ? $since : null));
 	}
 
 	#[NoAdminRequired]
@@ -186,8 +214,76 @@ class MailController extends Controller {
 	}
 
 	/**
-	 * Multipart form: mode, to, cc, bcc (comma separated), subject, body (plain text),
-	 * referenceId, importance, files[] (uploads), filePaths[] (Nextcloud files).
+	 * What the compose form sent: mode (new, reply, replyAll, forward, draft),
+	 * recipients, subject, body (HTML from the editor, cleaned, or plain text).
+	 * @return array{mode: string, to: string[], cc: string[], bcc: string[], subject: string, html: string, referenceId: ?string, importance: string}
+	 */
+	private function composed(bool $forSending): array {
+		$mode = (string)$this->request->getParam('mode', 'new');
+		if (!in_array($mode, ['new', 'reply', 'replyAll', 'forward', 'draft'], true)) {
+			throw new MailException('Type d\'envoi inconnu');
+		}
+		$to = self::splitAddresses((string)$this->request->getParam('to', ''));
+		$cc = self::splitAddresses((string)$this->request->getParam('cc', ''));
+		$bcc = self::splitAddresses((string)$this->request->getParam('bcc', ''));
+		foreach (array_merge($to, $cc, $bcc) as $addr) {
+			if (!filter_var($addr, FILTER_VALIDATE_EMAIL)) {
+				throw new MailException('Adresse invalide : ' . $addr);
+			}
+		}
+		if ($forSending && ($mode === 'new' || $mode === 'forward') && $to === [] && $cc === [] && $bcc === []) {
+			throw new MailException('Indiquez au moins un destinataire');
+		}
+		$bodyHtml = (string)$this->request->getParam('bodyHtml', '');
+		$html = $bodyHtml !== ''
+			// written in the editor: only harmless formatting is kept
+			? HtmlSanitizer::editorToHtml($this->sanitizer->sanitize($bodyHtml, [], true)['html'])
+			: HtmlSanitizer::textToHtml((string)$this->request->getParam('body', ''));
+		$referenceId = $this->request->getParam('referenceId');
+		return [
+			'mode' => $mode,
+			'to' => $to,
+			'cc' => $cc,
+			'bcc' => $bcc,
+			'subject' => (string)$this->request->getParam('subject', ''),
+			'html' => $html,
+			'referenceId' => is_string($referenceId) && $referenceId !== '' ? $referenceId : null,
+			'importance' => (string)$this->request->getParam('importance', 'Normal'),
+		];
+	}
+
+	/**
+	 * Save the message being written in « Brouillons ».
+	 */
+	#[NoAdminRequired]
+	#[\OCP\AppFramework\Http\Attribute\UserRateLimit(limit: 120, period: 300)]
+	public function saveDraft(int $id): Response {
+		return $this->handle(function () use ($id) {
+			$client = $this->client($id);
+			$m = $this->composed(false);
+			$draftId = (string)$this->request->getParam('draftId', '');
+			if ($m['mode'] === 'draft') {
+				$client->updateDraft($draftId, $m['subject'], $m['html'], $m['to'], $m['cc'], $m['bcc'], $m['importance']);
+				return ['draftId' => $draftId];
+			}
+			return ['draftId' => $client->saveDraft($draftId !== '' ? $draftId : null, $m['mode'], $m['subject'], $m['html'],
+				$m['to'], $m['cc'], $m['bcc'], $m['referenceId'], $m['importance'])];
+		});
+	}
+
+	#[NoAdminRequired]
+	public function deleteDraft(int $id, string $draftId): Response {
+		return $this->handle(function () use ($id, $draftId) {
+			$this->client($id)->deleteItems([$draftId], true);
+			return ['status' => 'ok'];
+		});
+	}
+
+	/**
+	 * Multipart form: mode (new, reply, replyAll, forward, or draft for a draft
+	 * opened from « Brouillons »), to, cc, bcc (comma separated), subject,
+	 * bodyHtml (editor) or body (plain text), referenceId, importance, draftId,
+	 * files[] (uploads), filePaths[] (Nextcloud files).
 	 */
 	#[NoAdminRequired]
 	public function send(int $id): Response {
@@ -195,31 +291,29 @@ class MailController extends Controller {
 			$account = $this->accounts->find((string)$this->userId, $id);
 			$client = $this->accounts->getClient($account);
 
-			$mode = (string)$this->request->getParam('mode', 'new');
-			$to = self::splitAddresses((string)$this->request->getParam('to', ''));
-			$cc = self::splitAddresses((string)$this->request->getParam('cc', ''));
-			$bcc = self::splitAddresses((string)$this->request->getParam('bcc', ''));
-			$subject = (string)$this->request->getParam('subject', '');
-			$text = (string)$this->request->getParam('body', '');
-			$referenceId = $this->request->getParam('referenceId');
-			$importance = (string)$this->request->getParam('importance', 'Normal');
+			$m = $this->composed(true);
+			$attachments = $this->collectAttachments();
+			$draftId = (string)$this->request->getParam('draftId', '');
 
-			foreach (array_merge($to, $cc, $bcc) as $addr) {
-				if (!filter_var($addr, FILTER_VALIDATE_EMAIL)) {
-					throw new MailException('Adresse invalide : ' . $addr);
-				}
-			}
-			if ($mode === 'new' || $mode === 'forward') {
-				if ($to === [] && $cc === [] && $bcc === []) {
+			if ($m['mode'] === 'draft') {
+				// a draft opened from « Brouillons »: sent as it is in Exchange, with the changes made here
+				if ($m['to'] === [] && $m['cc'] === [] && $m['bcc'] === []) {
 					throw new MailException('Indiquez au moins un destinataire');
 				}
+				$client->updateDraft($draftId, $m['subject'], $m['html'], $m['to'], $m['cc'], $m['bcc'], $m['importance']);
+				$client->sendSavedDraft($draftId, $attachments);
+				return ['status' => 'ok'];
 			}
-
-			$html = HtmlSanitizer::textToHtml($text);
-			$attachments = $this->collectAttachments();
-
-			$client->sendMessage($mode, $subject, $html, $to, $cc, $bcc, $attachments,
-				is_string($referenceId) && $referenceId !== '' ? $referenceId : null, $importance);
+			$client->sendMessage($m['mode'], $m['subject'], $m['html'], $m['to'], $m['cc'], $m['bcc'], $attachments,
+				$m['referenceId'], $m['importance']);
+			if ($draftId !== '') {
+				// the draft saved while writing is no longer needed
+				try {
+					$client->deleteItems([$draftId], true);
+				} catch (MailException $e) {
+					$this->logger->info('Webmail: draft not deleted after sending: ' . $e->getMessage());
+				}
+			}
 			return ['status' => 'ok'];
 		});
 	}

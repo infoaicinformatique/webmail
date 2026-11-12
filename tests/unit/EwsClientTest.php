@@ -23,20 +23,160 @@ class EwsClientTest extends EwsTestCase {
 			. '<m:GetFolderResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Folders><t:Folder><t:FolderId Id="ROOT-ID" ChangeKey="a"/></t:Folder></m:Folders></m:GetFolderResponseMessage>'
 			. '</m:ResponseMessages></m:GetFolderResponse>');
 		$this->queue(self::ok('FindFolder', '<m:RootFolder TotalItemsInView="4" IncludesLastItemInRange="true"><t:Folders>'
-			. '<t:Folder><t:FolderId Id="INBOX-ID"/><t:ParentFolderId Id="ROOT-ID"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Boîte de réception</t:DisplayName><t:TotalCount>12</t:TotalCount><t:ChildFolderCount>1</t:ChildFolderCount><t:UnreadCount>3</t:UnreadCount></t:Folder>'
+			. '<t:Folder><t:FolderId Id="INBOX-ID"/><t:ParentFolderId Id="ROOT-ID"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Boîte de réception</t:DisplayName><t:TotalCount>12</t:TotalCount><t:ChildFolderCount>1</t:ChildFolderCount><t:UnreadCount>3</t:UnreadCount><t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0xe08" PropertyType="Long"/><t:Value>1000000</t:Value></t:ExtendedProperty></t:Folder>'
 			. '<t:Folder><t:FolderId Id="SUB-ID"/><t:ParentFolderId Id="INBOX-ID"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Clients</t:DisplayName><t:TotalCount>2</t:TotalCount><t:ChildFolderCount>0</t:ChildFolderCount><t:UnreadCount>0</t:UnreadCount></t:Folder>'
-			. '<t:CalendarFolder><t:FolderId Id="CAL-ID"/><t:ParentFolderId Id="ROOT-ID"/><t:FolderClass>IPF.Appointment</t:FolderClass><t:DisplayName>Calendrier</t:DisplayName></t:CalendarFolder>'
+			. '<t:CalendarFolder><t:FolderId Id="CAL-ID"/><t:ParentFolderId Id="ROOT-ID"/><t:FolderClass>IPF.Appointment</t:FolderClass><t:DisplayName>Calendrier</t:DisplayName><t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0xe08" PropertyType="Long"/><t:Value>250000</t:Value></t:ExtendedProperty></t:CalendarFolder>'
 			. '<t:Folder><t:FolderId Id="SENT-ID"/><t:ParentFolderId Id="ROOT-ID"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Éléments envoyés</t:DisplayName><t:TotalCount>5</t:TotalCount><t:UnreadCount>0</t:UnreadCount></t:Folder>'
 			. '</t:Folders></m:RootFolder>'));
 
-		$folders = $this->client()->listFolders();
+		$used = null;
+		$folders = $this->client()->listFolders($used);
 
 		$this->assertCount(3, $folders);
+		$this->assertSame(1250000, $used, 'all folders count, calendars and contacts too');
+		$this->assertStringContainsString('<t:ExtendedFieldURI PropertyTag="0x0E08" PropertyType="Long"/>', $this->requests[1]);
 		$this->assertSame(['id' => 'INBOX-ID', 'name' => 'Boîte de réception', 'parentId' => null, 'total' => 12, 'unread' => 3, 'role' => 'inbox'], $folders[0]);
 		$this->assertSame('INBOX-ID', $folders[1]['parentId']);
 		$this->assertNull($folders[1]['role']);
 		$this->assertSame('sentitems', $folders[2]['role']);
 		$this->assertStringContainsString('Traversal="Deep"', $this->requests[1]);
+	}
+
+	public function testMailboxQuotaPrefersTheSendLimit(): void {
+		$prop = fn (string $tag, int $kb) => '<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="' . $tag . '" PropertyType="Integer"/><t:Value>' . $kb . '</t:Value></t:ExtendedProperty>';
+		$this->queue('<m:GetFolderResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>'
+			. '<m:GetFolderResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Folders><t:Folder><t:FolderId Id="TOP"/>'
+			. $prop('0x666a', 52428800) . $prop('0x666e', 51200000) . '</t:Folder></m:Folders></m:GetFolderResponseMessage>'
+			. '<m:GetFolderResponseMessage ResponseClass="Error"><m:MessageText>x</m:MessageText><m:ResponseCode>ErrorAccessDenied</m:ResponseCode></m:GetFolderResponseMessage>'
+			. '</m:ResponseMessages></m:GetFolderResponse>');
+		$this->assertSame(51200000 * 1024, $this->client()->mailboxQuota());
+		$this->assertStringContainsString('<m:FolderIds><t:DistinguishedFolderId Id="msgfolderroot"/><t:DistinguishedFolderId Id="root"/></m:FolderIds>', $this->requests[0]);
+	}
+
+	public function testMailboxQuotaUnknown(): void {
+		$this->queue(self::ok('GetFolder', '<m:Folders><t:Folder><t:FolderId Id="TOP"/></t:Folder></m:Folders>'));
+		$this->assertNull($this->client()->mailboxQuota());
+	}
+
+	public function testSearchQueryCombinesTextAndFilters(): void {
+		$this->assertNull(EwsClient::searchQuery('  ', []));
+		$this->assertSame('devis', EwsClient::searchQuery(' devis ', ['unread' => false]));
+		$this->assertSame('devis isread:false hasattachment:true isflagged:true received>=2026-10-01',
+			EwsClient::searchQuery('devis', ['unread' => true, 'attachments' => true, 'flagged' => true, 'since' => '2026-10-01']));
+		$this->assertSame('isread:false', EwsClient::searchQuery('', ['unread' => true]), 'a filter alone is a search');
+	}
+
+	public function testSearchQueryRejectsBadDates(): void {
+		$this->expectException(MailException::class);
+		EwsClient::searchQuery('', ['since' => '2026-13-45']);
+	}
+
+	public function testSearchAllFoldersMergesNewestFirst(): void {
+		$msg = fn (string $id, string $folder, string $date) => '<t:Message><t:ItemId Id="' . $id . '" ChangeKey="c"/><t:ParentFolderId Id="' . $folder . '"/>'
+			. '<t:Subject>S ' . $id . '</t:Subject><t:DateTimeReceived>' . $date . '</t:DateTimeReceived><t:IsRead>true</t:IsRead></t:Message>';
+		$found = fn (int $total, bool $last, string $items) => '<m:FindItemResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode>'
+			. '<m:RootFolder IndexedPagingOffset="0" TotalItemsInView="' . $total . '" IncludesLastItemInRange="' . ($last ? 'true' : 'false') . '"><t:Items>' . $items . '</t:Items></m:RootFolder></m:FindItemResponseMessage>';
+		$this->queue('<m:FindItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>'
+			. $found(2, true, $msg('A', 'INBOX', '2026-11-10T08:00:00Z') . $msg('B', 'INBOX', '2026-11-01T08:00:00Z'))
+			. $found(1, true, $msg('C', 'CLIENTS', '2026-11-05T08:00:00Z'))
+			. '</m:ResponseMessages></m:FindItemResponse>');
+		$r = $this->client()->searchFolders(['INBOX', 'CLIENTS'], 0, 2, 'devis');
+		$this->assertSame(['A', 'C'], array_column($r['items'], 'id'));
+		$this->assertSame(['INBOX', 'CLIENTS'], array_column($r['items'], 'folderId'));
+		$this->assertSame(3, $r['total']);
+		$this->assertTrue($r['hasMore']);
+		$req = $this->requests[0];
+		$this->assertStringContainsString('<m:ParentFolderIds><t:FolderId Id="INBOX"/><t:FolderId Id="CLIENTS"/></m:ParentFolderIds><m:QueryString>devis</m:QueryString>', $req);
+		$this->assertStringContainsString('<t:FieldURI FieldURI="item:ParentFolderId"/>', $req);
+		$this->assertStringContainsString('MaxEntriesReturned="2"', $req);
+	}
+
+	public function testSearchAllFoldersReportsAnError(): void {
+		$this->queue('<m:FindItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"><m:ResponseMessages>'
+			. '<m:FindItemResponseMessage ResponseClass="Error"><m:MessageText>x</m:MessageText><m:ResponseCode>ErrorAccessDenied</m:ResponseCode></m:FindItemResponseMessage>'
+			. '</m:ResponseMessages></m:FindItemResponse>');
+		$this->expectException(MailException::class);
+		$this->client()->searchFolders(['INBOX'], 0, 50, 'x');
+	}
+
+	private function inboxUnread(int $n): string {
+		return self::ok('GetFolder', '<m:Folders><t:Folder><t:FolderId Id="INBOX"/><t:UnreadCount>' . $n . '</t:UnreadCount></t:Folder></m:Folders>');
+	}
+
+	public function testNewMessagesWithoutDateGivesTheStartingPoint(): void {
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="60" IncludesLastItemInRange="false"><t:Items>'
+			. '<t:Message><t:ItemId Id="M1" ChangeKey="c"/><t:Subject>Old</t:Subject><t:DateTimeReceived>2026-11-12T08:00:00Z</t:DateTimeReceived><t:IsRead>false</t:IsRead></t:Message>'
+			. '</t:Items></m:RootFolder>'));
+		$this->queue($this->inboxUnread(4));
+		$r = $this->client()->newMessages(null);
+		$this->assertSame(['items' => [], 'latest' => '2026-11-12T08:00:00Z', 'unread' => 4], $r, 'nothing announced the first time');
+		$this->assertStringNotContainsString('Restriction', $this->requests[0]);
+		$this->assertStringContainsString('MaxEntriesReturned="1"', $this->requests[0]);
+	}
+
+	public function testNewMessagesSince(): void {
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="2" IncludesLastItemInRange="true"><t:Items>'
+			. '<t:Message><t:ItemId Id="N2" ChangeKey="c"/><t:Subject>Deux</t:Subject><t:DateTimeReceived>2026-11-12T09:05:00Z</t:DateTimeReceived><t:IsRead>false</t:IsRead></t:Message>'
+			. '<t:Message><t:ItemId Id="N1" ChangeKey="c"/><t:Subject>Un</t:Subject><t:DateTimeReceived>2026-11-12T09:01:00Z</t:DateTimeReceived><t:IsRead>false</t:IsRead></t:Message>'
+			. '</t:Items></m:RootFolder>'));
+		$this->queue($this->inboxUnread(6));
+		$r = $this->client()->newMessages('2026-11-12T10:00:00+01:00');
+		$this->assertSame(['N2', 'N1'], array_column($r['items'], 'id'));
+		$this->assertSame('2026-11-12T09:05:00Z', $r['latest']);
+		$this->assertSame(6, $r['unread']);
+		$this->assertStringContainsString('<t:IsGreaterThan><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURIOrConstant><t:Constant Value="2026-11-12T09:00:00Z"/></t:FieldURIOrConstant></t:IsGreaterThan>', $this->requests[0]);
+		$this->assertStringContainsString('<t:FieldURI FieldURI="message:IsRead"/><t:FieldURIOrConstant><t:Constant Value="false"/>', $this->requests[0]);
+	}
+
+	public function testNewMessagesNothingNew(): void {
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="0" IncludesLastItemInRange="true"><t:Items/></m:RootFolder>'));
+		$this->queue($this->inboxUnread(0));
+		$this->assertSame('2026-11-12T09:00:00Z', $this->client()->newMessages('2026-11-12T09:00:00Z')['latest']);
+	}
+
+	private function created(string $id): string {
+		return self::ok('CreateItem', '<m:Items><t:Message><t:ItemId Id="' . $id . '" ChangeKey="CK-' . $id . '"/></t:Message></m:Items>');
+	}
+
+	public function testSaveNewDraft(): void {
+		$this->queue($this->created('D1'));
+		$id = $this->client()->saveDraft(null, 'new', 'Devis', '<p>Bonjour</p>', ['a@x.fr'], [], ['b@x.fr'], null, 'High');
+		$this->assertSame('D1', $id);
+		$this->assertCount(1, $this->requests);
+		$req = $this->requests[0];
+		$this->assertStringContainsString('<m:CreateItem MessageDisposition="SaveOnly"><m:SavedItemFolderId><t:DistinguishedFolderId Id="drafts"/>', $req);
+		$this->assertStringContainsString('<t:Body BodyType="HTML">&lt;p&gt;Bonjour&lt;/p&gt;</t:Body>', $req);
+		$this->assertStringContainsString('<t:Importance>High</t:Importance>', $req);
+		$this->assertStringContainsString('<t:BccRecipients><t:Mailbox><t:EmailAddress>b@x.fr</t:EmailAddress></t:Mailbox></t:BccRecipients>', $req);
+	}
+
+	public function testSaveReplyDraftReplacesThePreviousOne(): void {
+		$this->queue(self::ok('GetItem', '<m:Items><t:Message><t:ItemId Id="ORIG" ChangeKey="CK-O"/></t:Message></m:Items>'));
+		$this->queue($this->created('D2'));
+		$this->queue(self::ok('DeleteItem'));
+		$id = $this->client()->saveDraft('D1', 'reply', '', '<p>Oui</p>', [], [], [], 'ORIG');
+		$this->assertSame('D2', $id);
+		$this->assertStringContainsString('<t:ReplyToItem><t:ReferenceItemId Id="ORIG" ChangeKey="CK-O"/><t:NewBodyContent BodyType="HTML">', $this->requests[1]);
+		$this->assertStringContainsString('MessageDisposition="SaveOnly"', $this->requests[1]);
+		$this->assertStringContainsString('<m:DeleteItem DeleteType="HardDelete"><m:ItemIds><t:ItemId Id="D1"/>', $this->requests[2]);
+	}
+
+	public function testUpdateDraft(): void {
+		$this->queue(self::ok('UpdateItem', '<m:Items><t:Message><t:ItemId Id="D1" ChangeKey="CK2"/></t:Message></m:Items>'));
+		$this->client()->updateDraft('D1', 'Objet', '<p>Texte</p>', ['a@x.fr'], [], [], 'Low');
+		$req = $this->requests[0];
+		$this->assertStringContainsString('<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite">', $req);
+		$this->assertStringContainsString('<t:SetItemField><t:FieldURI FieldURI="message:ToRecipients"/><t:Message><t:ToRecipients><t:Mailbox><t:EmailAddress>a@x.fr</t:EmailAddress>', $req);
+		$this->assertStringContainsString('<t:DeleteItemField><t:FieldURI FieldURI="message:CcRecipients"/></t:DeleteItemField>', $req);
+		$this->assertStringContainsString('<t:SetItemField><t:FieldURI FieldURI="item:Body"/><t:Message><t:Body BodyType="HTML">&lt;p&gt;Texte&lt;/p&gt;</t:Body></t:Message></t:SetItemField>', $req);
+		$this->assertStringContainsString('<t:Importance>Low</t:Importance>', $req);
+	}
+
+	public function testSendSavedDraft(): void {
+		$this->queue(self::ok('GetItem', '<m:Items><t:Message><t:ItemId Id="D1" ChangeKey="CK3"/></t:Message></m:Items>'));
+		$this->queue(self::ok('SendItem'));
+		$this->client()->sendSavedDraft('D1');
+		$this->assertStringContainsString('<m:SendItem SaveItemToFolder="true"><m:ItemIds><t:ItemId Id="D1" ChangeKey="CK3"/></m:ItemIds>', $this->requests[1]);
 	}
 
 	public function testFindItemsWithSearchAndPaging(): void {

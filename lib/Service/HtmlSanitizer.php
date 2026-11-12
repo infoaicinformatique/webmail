@@ -158,6 +158,46 @@ class HtmlSanitizer {
 	/**
 	 * Convert plain text typed by the user to simple HTML.
 	 */
+	/**
+	 * Message written in the editor (already sanitized): web addresses typed
+	 * as text become links, like in Outlook, and the usual font is applied.
+	 */
+	public static function editorToHtml(string $html): string {
+		$doc = new \DOMDocument();
+		$prev = libxml_use_internal_errors(true);
+		$doc->loadHTML('<?xml encoding="UTF-8"?><div id="wm-root">' . $html . '</div>', LIBXML_NONET | LIBXML_HTML_NODEFDTD | LIBXML_HTML_NOIMPLIED);
+		libxml_clear_errors();
+		libxml_use_internal_errors($prev);
+		$xp = new \DOMXPath($doc);
+		$root = $xp->query('//div[@id="wm-root"]')->item(0);
+		if (!$root instanceof \DOMElement) {
+			return '<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">' . $html . '</div>';
+		}
+		foreach (iterator_to_array($xp->query('.//text()[not(ancestor::a)]', $root)) as $text) {
+			$parts = preg_split('#(https?://[^\s<>"\']+)#i', $text->nodeValue ?? '', -1, PREG_SPLIT_DELIM_CAPTURE);
+			if ($parts === false || count($parts) < 2) {
+				continue;
+			}
+			$frag = $doc->createDocumentFragment();
+			foreach ($parts as $i => $part) {
+				if ($i % 2 === 1) {
+					$a = $doc->createElement('a');
+					$a->setAttribute('href', $part);
+					$a->appendChild($doc->createTextNode($part));
+					$frag->appendChild($a);
+				} elseif ($part !== '') {
+					$frag->appendChild($doc->createTextNode($part));
+				}
+			}
+			$text->parentNode?->replaceChild($frag, $text);
+		}
+		$inner = '';
+		foreach ($root->childNodes as $child) {
+			$inner .= $doc->saveHTML($child);
+		}
+		return '<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">' . $inner . '</div>';
+	}
+
 	public static function textToHtml(string $text): string {
 		$escaped = htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 		$linked = (string)preg_replace('#(https?://[^\s<>"\']+)#i', '<a href="$1">$1</a>', $escaped);

@@ -16,7 +16,9 @@ import html
 import itertools
 import os
 import ssl
+import struct
 import threading
+import zlib
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -52,6 +54,17 @@ FOLDERS = [
     ('F-FACTURES', 'Factures', 'F-ROOT', None),
 ]
 ROLE_TO_ID = {f[3]: f[0] for f in FOLDERS if f[3]}
+
+def make_png(w, h, top, bottom):
+    """A small vertical gradient, as a real PNG (for attachment previews)."""
+    rows = b''
+    for y in range(h):
+        c = bytes(int(top[i] + (bottom[i] - top[i]) * y / max(1, h - 1)) for i in range(3))
+        rows += b'\x00' + c * w
+    chunk = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
+            + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
+
 
 PNG_1PX = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==')
 
@@ -89,7 +102,15 @@ def seed():
     for i in range(1, 58):
         add_message('F-INBOX', 'Newsletter n°%d' % i, ('Lettre d\'info', 'news@exemple.org'),
                     '<p>Contenu %d</p>' % i, 60 * 24 * (2 + i), is_read=True)
-    add_message('F-CLIENTS', 'Commande 4521', ('Client B', 'contact@client-b.fr'), '<p>Merci pour la livraison.</p>', 60 * 50, is_read=True)
+    add_message('F-CLIENTS', 'Photos du chantier', ('Client B', 'contact@client-b.fr'),
+                '<p>Bonjour, voici les photos et le relevé.</p>', 60 * 30, is_read=True, attachments=[
+                    dict(name='facade.png', content_type='image/png', content=make_png(320, 200, (70, 130, 180), (230, 240, 250)), inline=False),
+                    dict(name='toiture.png', content_type='image/png', content=make_png(320, 200, (160, 82, 45), (250, 235, 215)), inline=False),
+                    dict(name='releve.txt', content_type='text/plain', content='Relevé du 12/11\nFaçade : 42 m²\nToiture : <b>58 m²</b>\n'.encode('utf-8'), inline=False),
+                    dict(name='plan.pdf', content_type='application/pdf', content=b'%PDF-1.4\n% plan\n', inline=False),
+                    dict(name='archive.zip', content_type='application/zip', content=b'PK\x05\x06' + b'\x00' * 18, inline=False),
+                ])
+    add_message('F-CLIENTS', 'Commande 4521', ('Client B', 'contact@client-b.fr'), '<p>Merci pour la livraison, le devis est signé.</p>', 60 * 50, is_read=True)
     add_message('F-SENT', 'Re: Planning', ('Utilisateur', 'user@societe-a.fr'), '<p>OK pour moi.</p>', 300, is_read=True,
                 to=(('Marie Martin', 'marie.martin@societe-a.fr'),))
 
@@ -144,16 +165,32 @@ def counts(fid):
     return len(msgs), sum(1 for m in msgs if not m['is_read'])
 
 
-def folder_xml(f):
+# mailbox size: the inbox holds 1.2 GB of old mail, each message adds 60 KB; limit 2 GB (KB)
+OLD_MAIL_BYTES = 1288490188
+QUOTA_KB = 2097152
+
+
+def size_xml(nbytes):
+    return '<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0xe08" PropertyType="Long"/><t:Value>%d</t:Value></t:ExtendedProperty>' % nbytes
+
+
+def folder_xml(f, with_size=False):
     fid, name, parent, _ = f
     total, unread = counts(fid)
     children = sum(1 for x in FOLDERS if x[2] == fid)
+    size = size_xml(total * 61440 + (OLD_MAIL_BYTES if fid == 'F-INBOX' else 0)) if with_size else ''
     return ('<t:Folder><t:FolderId Id="%s" ChangeKey="AQ"/>%s<t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>%s</t:DisplayName>'
-            '<t:TotalCount>%d</t:TotalCount><t:ChildFolderCount>%d</t:ChildFolderCount><t:UnreadCount>%d</t:UnreadCount></t:Folder>'
-            % (fid, '<t:ParentFolderId Id="%s" ChangeKey="AQ"/>' % parent if parent else '', esc(name), total, children, unread))
+            '<t:TotalCount>%d</t:TotalCount><t:ChildFolderCount>%d</t:ChildFolderCount><t:UnreadCount>%d</t:UnreadCount>%s</t:Folder>'
+            % (fid, '<t:ParentFolderId Id="%s" ChangeKey="AQ"/>' % parent if parent else '', esc(name), total, children, unread, size))
 
 
-def item_summary_xml(m):
+def deliver_to_self(m, user):
+    """A message sent to oneself also arrives in the inbox (unread)."""
+    if any(email.lower() == user.lower() for _, email in m['to'] + m['cc']):
+        add_message('F-INBOX', m['subject'], ('Utilisateur', user), m['body'], 0, to=m['to'], cc=m['cc'])
+
+
+def item_summary_xml(m, with_folder=False):
     import re
     text = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', m['body'], flags=re.S)
     text = html.unescape(re.sub(r'<[^>]+>', ' ', text))
@@ -162,6 +199,7 @@ def item_summary_xml(m):
     return (('<t:Message><t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject><t:DateTimeReceived>%s</t:DateTimeReceived>'
             '<t:HasAttachments>%s</t:HasAttachments><t:Importance>%s</t:Importance><t:DisplayTo>%s</t:DisplayTo><t:Preview>%s</t:Preview>'
             '<t:Flag><t:FlagStatus>%s</t:FlagStatus></t:Flag><t:IsRead>%s</t:IsRead><t:From>%s</t:From></t:Message>').replace('Message>', m.get('kind', 'Message') + '>')
+            .replace('<t:Subject>', ('<t:ParentFolderId Id="%s" ChangeKey="AQ"/>' % m['folder'] if with_folder else '') + '<t:Subject>', 1)
             % (m['id'], m['ck'], esc(m['subject']), m['date'],
                'true' if any(not ATTACHMENTS[a].get('inline') for a in m['attachments']) else 'false',
                m['importance'], esc(display_to), esc(text),
@@ -186,6 +224,7 @@ def _item_full_xml(m):
                     len(a['content']), 'true' if a.get('inline') else 'false'))
     to = ''.join(mailbox(n, e) for n, e in m['to'])
     cc = ''.join(mailbox(n, e) for n, e in m['cc'])
+    bcc = ''.join(mailbox(n, e) for n, e in m.get('bcc', []))
     return ('<t:Message><t:ItemId Id="%s" ChangeKey="%s"/><t:ParentFolderId Id="%s" ChangeKey="AQ"/><t:Subject>%s</t:Subject>'
             '<t:Body BodyType="HTML" IsTruncated="false">%s</t:Body>%s<t:DateTimeReceived>%s</t:DateTimeReceived>'
             '<t:HasAttachments>%s</t:HasAttachments><t:Importance>%s</t:Importance><t:DateTimeSent>%s</t:DateTimeSent>'
@@ -195,7 +234,8 @@ def _item_full_xml(m):
                '<t:Attachments>%s</t:Attachments>' % atts if atts else '', m['date'],
                'true' if m['attachments'] else 'false', m['importance'], m['date'],
                'Flagged' if m['flagged'] else 'NotFlagged', mailbox(*m['sender']),
-               '<t:ToRecipients>%s</t:ToRecipients>' % to if to else '', '<t:CcRecipients>%s</t:CcRecipients>' % cc if cc else '',
+               '<t:ToRecipients>%s</t:ToRecipients>' % to if to else '',
+               ('<t:CcRecipients>%s</t:CcRecipients>' % cc if cc else '') + ('<t:BccRecipients>%s</t:BccRecipients>' % bcc if bcc else ''),
                'true' if m['is_read'] else 'false', mailbox(*m['sender']), m['id']))
 
 
@@ -228,7 +268,13 @@ def handle(op, el, user):
             if fid is None:
                 msgs.append(err(op, 'ErrorFolderNotFound', 'The specified folder could not be found in the store.'))
             else:
-                msgs.append(ok(op, '<m:Folders><t:Folder><t:FolderId Id="%s" ChangeKey="AQ"/></t:Folder></m:Folders>' % fid))
+                quota = ''
+                if fid == 'F-ROOT' and any(u.get('PropertyTag', '').lower() == '0x666e' for u in el.iter(T + 'ExtendedFieldURI')):
+                    quota = ('<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0x666e" PropertyType="Integer"/><t:Value>%d</t:Value></t:ExtendedProperty>'
+                             % QUOTA_KB)
+                if any(u.get('FieldURI') == 'folder:UnreadCount' for u in el.iter(T + 'FieldURI')):
+                    quota += '<t:UnreadCount>%d</t:UnreadCount>' % counts(fid)[1]
+                msgs.append(ok(op, '<m:Folders><t:Folder><t:FolderId Id="%s" ChangeKey="AQ"/>%s</t:Folder></m:Folders>' % (fid, quota)))
         return wrap(op, msgs)
 
     if op == 'FindFolder':
@@ -247,25 +293,53 @@ def handle(op, el, user):
                '<t:ContactsFolder><t:FolderId Id="F-RCACHE" ChangeKey="AQ"/><t:ParentFolderId Id="F-CONTACTS" ChangeKey="AQ"/>'
                '<t:FolderClass>IPF.Contact.RecipientCache</t:FolderClass><t:DisplayName>Recipient Cache</t:DisplayName><t:TotalCount>0</t:TotalCount>'
                '<t:ChildFolderCount>0</t:ChildFolderCount></t:ContactsFolder>')
-        folders = ''.join(folder_xml(f) for f in FOLDERS if f[3] != 'msgfolderroot') + cal
+        with_size = any(u.get('PropertyTag') == '0x0E08' for u in el.iter(T + 'ExtendedFieldURI'))
+        folders = ''.join(folder_xml(f, with_size) for f in FOLDERS if f[3] != 'msgfolderroot') + cal
         return wrap(op, [ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Folders>%s</t:Folders></m:RootFolder>'
                             % (len(FOLDERS), folders))])
 
     if op == 'FindItem':
-        fid = folder_id(el.find('m:ParentFolderIds', NS)[0])
-        if fid is None or fid not in {f[0] for f in FOLDERS}:
-            return wrap(op, [err(op, 'ErrorFolderNotFound', 'Folder not found')])
         view = el.find('m:IndexedPageItemView', NS)
         offset, limit = int(view.get('Offset', 0)), int(view.get('MaxEntriesReturned', 50))
         q = (el.findtext('m:QueryString', default='', namespaces=NS) or '').lower()
-        msgs = [m for m in MESSAGES.values() if m['folder'] == fid]
-        if q:
-            msgs = [m for m in msgs if q in m['subject'].lower() or q in m['body'].lower() or q in m['sender'][0].lower()]
-        msgs.sort(key=lambda m: m['date'], reverse=True)
-        page = msgs[offset:offset + limit]
-        last = offset + limit >= len(msgs)
-        return wrap(op, [ok(op, '<m:RootFolder IndexedPagingOffset="%d" TotalItemsInView="%d" IncludesLastItemInRange="%s"><t:Items>%s</t:Items></m:RootFolder>'
-                            % (offset + len(page), len(msgs), 'true' if last else 'false', ''.join(item_summary_xml(m) for m in page)))])
+        with_folder = any(u.get('FieldURI') == 'item:ParentFolderId' for u in el.iter(T + 'FieldURI'))
+        # the AQS keywords the webmail uses; the other words are searched in the text
+        conds, words = [], []
+        for tok in q.split():
+            if tok == 'isread:false':
+                conds.append(lambda m: not m['is_read'])
+            elif tok == 'hasattachment:true':
+                conds.append(lambda m: any(not ATTACHMENTS[a].get('inline') for a in m['attachments']))
+            elif tok == 'isflagged:true':
+                conds.append(lambda m: m['flagged'])
+            elif tok.startswith('received>='):
+                since = tok[len('received>='):]
+                conds.append(lambda m, since=since: m['date'][:10] >= since)
+            else:
+                words.append(tok)
+        text = ' '.join(words)
+        # Restriction used for notifications: received after a date, unread
+        after = el.find('m:Restriction//t:IsGreaterThan/t:FieldURIOrConstant/t:Constant', NS)
+        if after is not None:
+            conds.append(lambda m, d=after.get('Value'): m['date'] > d)
+        unread = el.find('m:Restriction//t:IsEqualTo[t:FieldURI]', NS)
+        if unread is not None and unread.find('t:FieldURI', NS).get('FieldURI') == 'message:IsRead':
+            conds.append(lambda m: not m['is_read'])
+        out = []
+        for parent in el.find('m:ParentFolderIds', NS):
+            fid = folder_id(parent)
+            if fid is None or fid not in {f[0] for f in FOLDERS}:
+                out.append(err(op, 'ErrorFolderNotFound', 'Folder not found'))
+                continue
+            msgs = [m for m in MESSAGES.values() if m['folder'] == fid and all(c(m) for c in conds)]
+            if text:
+                msgs = [m for m in msgs if text in m['subject'].lower() or text in m['body'].lower() or text in m['sender'][0].lower()]
+            msgs.sort(key=lambda m: m['date'], reverse=True)
+            page = msgs[offset:offset + limit]
+            last = offset + limit >= len(msgs)
+            out.append(ok(op, '<m:RootFolder IndexedPagingOffset="%d" TotalItemsInView="%d" IncludesLastItemInRange="%s"><t:Items>%s</t:Items></m:RootFolder>'
+                          % (offset + len(page), len(msgs), 'true' if last else 'false', ''.join(item_summary_xml(m, with_folder) for m in page))))
+        return wrap(op, out)
 
     if op == 'GetItem':
         shape = el.findtext('m:ItemShape/t:BaseShape', default='', namespaces=NS)
@@ -300,6 +374,22 @@ def handle(op, el, user):
                 msgs.append(err(op, 'ErrorItemNotFound', 'not found'))
                 continue
             for upd in ch.find('t:Updates', NS):
+                # drafts: subject, body, importance, recipients
+                uri = (upd.find('t:FieldURI', NS) if upd.find('t:FieldURI', NS) is not None else ET.Element('x')).get('FieldURI', '')
+                rcpt = {'message:ToRecipients': 'to', 'message:CcRecipients': 'cc', 'message:BccRecipients': 'bcc'}
+                if upd.tag == T + 'DeleteItemField' and uri in rcpt:
+                    m[rcpt[uri]] = []
+                    continue
+                item = upd.find('t:Message', NS)
+                if item is not None:
+                    if uri == 'item:Subject':
+                        m['subject'] = item.findtext('t:Subject', default='', namespaces=NS)
+                    elif uri == 'item:Body':
+                        m['body'] = item.findtext('t:Body', default='', namespaces=NS)
+                    elif uri == 'item:Importance':
+                        m['importance'] = item.findtext('t:Importance', default='Normal', namespaces=NS)
+                    elif uri in rcpt:
+                        m[rcpt[uri]] = recipients(item, uri[8:])
                 r = upd.findtext('.//t:IsRead', default=None, namespaces=NS)
                 if r is not None:
                     m['is_read'] = r == 'true'
@@ -357,8 +447,12 @@ def handle(op, el, user):
             if tag == 'ForwardItem':
                 atts += list(ref['attachments'])
             folder = 'F-SENT' if disposition == 'SendAndSaveCopy' else 'F-DRAFTS'
-            mid = add_message(folder, subject, ('Utilisateur', user), body, 0, is_read=True, to=to, cc=recipients(it, 'CcRecipients'))
+            mid = add_message(folder, subject, ('Utilisateur', user), body, 0, is_read=True, to=to, cc=recipients(it, 'CcRecipients'),
+                              importance=it.findtext('t:Importance', default='Normal', namespaces=NS))
             MESSAGES[mid]['attachments'] = atts
+            MESSAGES[mid]['bcc'] = recipients(it, 'BccRecipients')
+            if disposition == 'SendAndSaveCopy':
+                deliver_to_self(MESSAGES[mid], user)
             items = '<m:Items/>' if disposition == 'SendAndSaveCopy' else '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/></t:Message></m:Items>' % (mid, MESSAGES[mid]['ck'])
             msgs.append(ok(op, items))
         return wrap(op, msgs)
@@ -388,6 +482,7 @@ def handle(op, el, user):
                 msgs.append(err(op, 'ErrorIrresolvableConflict', 'The send or update operation could not be performed because the change key passed in the request does not match the current change key for the item.'))
             else:
                 m['folder'] = 'F-SENT'
+                deliver_to_self(m, user)
                 msgs.append(ok(op))
         return wrap(op, msgs)
 

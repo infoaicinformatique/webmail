@@ -22,20 +22,31 @@ et sur les téléphones, et inversement.
 | | |
 |---|---|
 | Dossiers | Arborescence Exchange (Boîte de réception, Envoyés, Brouillons, Indésirables, Supprimés, dossiers personnels) avec le nombre de non-lus |
+| Espace utilisé | Sous les dossiers : espace occupé par la boîte et limite fixée dans Exchange (« 1,2 Go sur 2 Go (60 %) »), en orange à 75 %, en rouge à 90 % avec un avertissement : au-delà de la limite, Exchange bloque l'envoi. Sans limite connue, seul l'espace occupé est affiché |
 | Liste | Défilement continu (50 messages à la fois), aperçu, pièce jointe, importance, suivi (drapeau), actualisation toutes les 2 minutes |
 | Fluidité | Un dossier déjà ouvert s'affiche **immédiatement**, à la même position, puis se met à jour. Les messages voisins de celui que vous lisez (et celui que survole la souris) sont chargés à l'avance, **sans être marqués comme lus**. Supprimer, déplacer, marquer ou suivre un message est **instantané** (annulé si Exchange refuse) ; après une suppression, le message suivant s'ouvre. L'agenda charge aussi à l'avance la semaine ou le mois précédent et suivant, et les carnets d'adresses déjà vus s'affichent tout de suite. Côté serveur, une seule connexion HTTPS vers Exchange par requête, réponses compressées |
 | Clavier | `j`/`k` (ou ↓/↑) message suivant/précédent, `r` répondre, `a` répondre à tous, `f` transférer, `n` nouveau message, `Suppr` supprimer, `u` non lu, `s` suivi, `/` rechercher, `Échap` revenir à la liste, `?` aide (aussi dans « Raccourcis clavier » en bas à gauche) |
-| Recherche | Recherche Exchange (AQS) dans le dossier courant |
+| Recherche | Recherche Exchange (AQS) dans le dossier courant **ou dans tous les dossiers** (le dossier de chaque résultat est indiqué, 200 résultats au plus). Bouton ⏷ : filtres **Non lus**, **Pièces jointes**, **Suivis** et **période** (7 jours, 30 jours, 12 mois), seuls ou avec des mots |
 | Lecture | Le HTML est nettoyé côté serveur et affiché dans une iframe isolée, sans aucun script. Les images intégrées (`cid:`) s'affichent. Les images distantes sont bloquées tant que l'utilisateur ne clique pas sur « Afficher les images » |
 | Actions | Marquer comme lu ou non lu, suivi, déplacer, supprimer (vers « Éléments supprimés », puis suppression définitive) |
-| Envoi | Nouveau message, Répondre, Répondre à tous, Transférer (Exchange cite le message d'origine et garde ses pièces jointes), Cc/Cci, importance, signature |
-| Pièces jointes | Téléchargement, **enregistrement dans Fichiers**, ajout depuis l'ordinateur ou **depuis Fichiers** (25 Mo au total) |
+| Envoi | Nouveau message, Répondre, Répondre à tous, Transférer (Exchange cite le message d'origine et garde ses pièces jointes), Cc/Cci, importance, signature ; `Ctrl+Entrée` envoie |
+| Éditeur | Texte **mis en forme** : gras, italique, souligné, listes à puces et numérotées, liens, citations ; les adresses web tapées deviennent des liens. Le contenu est nettoyé sur le serveur avant l'envoi (aucun script ne peut passer) |
+| Brouillons | Le message en cours est **enregistré automatiquement** dans « Brouillons » quelques secondes après chaque modification (« Brouillon enregistré à 15:42 ») et en fermant avec « Annuler ». Dans « Brouillons », un clic **rouvre le brouillon** pour le terminer et l'envoyer (y compris une réponse ou un transfert, avec sa citation et ses pièces jointes). « Supprimer le brouillon » le jette. Les pièces jointes ajoutées depuis l'ordinateur ou Fichiers ne sont envoyées à Exchange qu'au moment de l'envoi |
+| Pièces jointes | Téléchargement, **enregistrement dans Fichiers** (une par une ou **toutes d'un coup**), ajout depuis l'ordinateur ou **depuis Fichiers** (25 Mo au total) |
+| Aperçu | Miniatures des photos ; **aperçu plein écran** des images, des PDF et des fichiers texte (← / → pour passer de l'une à l'autre, Échap pour fermer). Le texte est affiché tel quel, rien n'y est interprété ; les autres types (Word, zip…) se téléchargent |
 | Destinataires | Complétion automatique des adresses à partir des contacts Exchange **et de l'annuaire de l'entreprise** |
 | Invitations | Une invitation reçue par e-mail affiche la date et le lieu, avec les boutons **Accepter / Provisoire / Refuser** |
 | Délégation | Si vous êtes **délégué** d'un collègue dans Outlook, Exchange vous transmet une copie de ses invitations : le bandeau indique « Invitation reçue pour Marie Martin (vous êtes son délégué) » et la réponse est envoyée **en son nom** (après confirmation) |
+| Nouveaux messages | Le nombre de non-lus de la boîte de réception s'affiche dans le **titre de l'onglet** (« (3) Webmail »). Avec « 🔔 Activer les notifications » (en bas à gauche), chaque nouveau message de chaque compte déclenche une **notification du navigateur** quand la fenêtre n'est pas au premier plan (un clic ouvre le message), ou un message dans la page sinon. Vérification chaque minute, tant que Nextcloud est ouvert dans un onglet |
 | Mobile | Affichage adapté aux téléphones ; le bouton **Retour** du téléphone ferme le message (ou le menu) au lieu de quitter le webmail |
 
 ![Raccourcis clavier](docs/capture-raccourcis.png)
+
+![Éditeur et brouillons](docs/capture-editeur.png)
+
+![Aperçu des pièces jointes](docs/capture-apercu.png)
+
+![Recherche avec filtres](docs/capture-recherche.png)
 
 Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés ». Ils apparaissent donc aussi dans Outlook et sur les téléphones.
 
@@ -120,7 +131,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.13.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.18.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -142,7 +153,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.13 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.18 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -226,14 +237,12 @@ templates/          page principale et page d'administration
 ## Évolutions possibles
 
 **Courrier**
-- Brouillons enregistrés automatiquement et modifiables, éditeur HTML (gras, listes, liens, images collées) et signature HTML
+- Images collées dans l'éditeur, signature mise en forme, pièces jointes enregistrées avec le brouillon
 - Affichage par conversation (fil de discussion)
 - Sélection multiple (cases à cocher, Maj+clic) et glisser-déposer des messages vers un dossier
 - Gestion des dossiers : créer, renommer, déplacer, supprimer
-- Recherche dans tous les dossiers, avec filtres (non lus, pièces jointes, expéditeur, période)
 - Réponse automatique d'absence et règles de la boîte de réception
 - Catégories Outlook (couleurs), « Ce n'est pas du courrier indésirable », bloquer un expéditeur
-- Aperçu des pièces jointes (PDF, images) avec la visionneuse Nextcloud, « Tout enregistrer dans Fichiers »
 - Lien de partage Nextcloud à la place d'une pièce jointe trop lourde
 - Boîtes partagées (contact@…) et boîtes des collègues dont on est délégué
 - Envoi différé, accusé de lecture, impression
@@ -250,8 +259,7 @@ templates/          page principale et page d'administration
 
 **Nextcloud et serveur**
 - Widget du tableau de bord (non lus, prochains rendez-vous) et recherche unifiée Nextcloud
-- Notifications de nouveaux messages (navigateur et Nextcloud), et notifications Exchange en direct à la place de l'actualisation toutes les 2 minutes
+- Notifications Nextcloud (cloche) même quand aucun onglet n'est ouvert, et notifications Exchange en direct à la place de la vérification chaque minute
 - Tâches Exchange
-- Espace utilisé de la boîte (quota)
 - Découverte automatique (Autodiscover) à la place de la table domaine/serveur
 - Traduction (anglais)
