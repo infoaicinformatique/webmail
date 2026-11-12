@@ -910,7 +910,13 @@
 				h('label', { class: 'wm-field' }, h('span', {}, 'Nom'), name),
 				h('label', { class: 'wm-field' }, h('span', {}, 'Mot de passe'), pwd),
 				h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Signature'), sig),
-				h('div', { class: 'wm-compose-actions' }, save, del)))
+				h('div', { class: 'wm-compose-actions' }, save,
+					h('button', {
+						type: 'button',
+						class: 'wm-delegates-btn',
+						onclick: () => (window.WebmailDelegates ? window.WebmailDelegates.open(core, a) : toast('Module indisponible', true)),
+					}, '👥 Délégués'),
+					del)))
 		})
 
 		wrap.appendChild(buildAddAccountForm())
@@ -992,6 +998,7 @@
 		personShort,
 		attachAutocomplete,
 		openCompose,
+		openAccountSettings,
 		renderNav,
 		navFooter,
 		accountSelector,

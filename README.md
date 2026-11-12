@@ -76,6 +76,22 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Actions | Créer (dans le carnet choisi), modifier, supprimer, **écrire** (ouvre un nouveau message), appeler (lien `tel:`) |
 | Groupes | Les listes de distribution sont affichées, leur gestion reste dans Outlook |
 
+### Délégués
+
+![Délégués](docs/capture-delegues.png)
+
+« Comptes et signature » → **👥 Délégués** : les mêmes réglages que l'« Accès délégué » d'Outlook, pour chaque boîte.
+
+| | |
+|---|---|
+| Liste | Vos délégués actuels, avec leurs droits |
+| Droits | Pour l'**agenda**, la **boîte de réception**, les **contacts** et les **tâches** : aucun accès, lecture, lecture et création, ou modification |
+| Invitations | « Reçoit une copie de mes invitations et peut y répondre en mon nom » (nécessite l'agenda en modification) ; « Peut voir mes éléments privés » |
+| Envoi des invitations | Vos invitations vont à vos délégués et à vous, à vos délégués seulement avec une copie pour information, ou à vos délégués seulement |
+| Ajout / retrait | Ajout par adresse (avec complétion), modification des droits, retrait (les droits sont alors retirés par Exchange) |
+
+Côté délégué, l'agenda et les contacts partagés s'ajoutent dans l'onglet correspondant. Les invitations reçues en délégation permettent de répondre au nom de la personne.
+
 ## Prérequis
 
 - Nextcloud 28 à 32, PHP 8.1 ou plus récent, avec les extensions `curl` et `dom`
@@ -89,7 +105,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.7.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.8.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -111,7 +127,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.7 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.8 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -195,7 +211,7 @@ templates/          page principale et page d'administration
 ## Évolutions possibles
 
 - Contacts des dossiers publics Exchange
-- Gérer la liste des délégués depuis Nextcloud (aujourd'hui dans Outlook)
+- Partager son agenda ou ses contacts sans délégation (autorisations de dossier)
 - Règles « le 2e mardi du mois » (aujourd'hui conservées, mais pas modifiables ici)
 - Brouillons modifiables et éditeur HTML
 - Découverte automatique (Autodiscover) à la place de la table domaine/serveur

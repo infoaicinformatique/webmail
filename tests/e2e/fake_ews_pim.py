@@ -692,6 +692,9 @@ def handle(op, el, user, tz, messages, move_message):
             return wrap(op, [ok(op) for _ in targets])
         return None
 
+    if op in ('GetDelegate', 'AddDelegate', 'UpdateDelegate', 'RemoveDelegate'):
+        return handle_delegates(op, el, user)
+
     if op == 'ResolveNames':
         q = text(el, 'm:UnresolvedEntry').lower()
         scope = el.get('SearchScope', 'ActiveDirectoryContacts')
@@ -726,6 +729,82 @@ def handle(op, el, user, tz, messages, move_message):
                          '<m:ResolutionSet TotalItemsInView="%d" IncludesLastItemInRange="true">%s</m:ResolutionSet></m:ResolveNamesResponseMessage>'
                          % (cls, code, len(found), res)])
     return None
+
+
+# ----------------------------------------------------------------------------
+# delegates of the user's mailbox
+# ----------------------------------------------------------------------------
+DELEGATES = {'configured': False, 'deliver': 'DelegatesAndMe', 'users': {}}
+PERM_FIELDS = ['CalendarFolderPermissionLevel', 'TasksFolderPermissionLevel', 'InboxFolderPermissionLevel', 'ContactsFolderPermissionLevel']
+
+
+def delegate_response(op, users_xml='', root_error=None):
+    head = ('<m:%s ResponseClass="%s" xmlns:m="%s" xmlns:t="%s"><m:ResponseCode>%s</m:ResponseCode>'
+            % (op, 'Error' if root_error else 'Success', NS['m'], NS['t'], root_error or 'NoError'))
+    body = '<m:ResponseMessages>%s</m:ResponseMessages>' % users_xml if users_xml else ''
+    tail = '<m:DeliverMeetingRequests>%s</m:DeliverMeetingRequests>' % DELEGATES['deliver'] if op == 'GetDelegateResponse' and not root_error else ''
+    return head + body + tail + '</m:%s>' % op
+
+
+def delegate_user_xml(email):
+    u = DELEGATES['users'][email]
+    name = next((n for n, e in DIRECTORY if e == email), email)
+    perms = ''.join('<t:%s>%s</t:%s>' % (f, u['perms'].get(f, 'None'), f) for f in PERM_FIELDS)
+    return ('<m:DelegateUserResponseMessageType ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:DelegateUser>'
+            '<t:UserId><t:SID>S-1-5-%d</t:SID><t:PrimarySmtpAddress>%s</t:PrimarySmtpAddress><t:DisplayName>%s</t:DisplayName></t:UserId>'
+            '<t:DelegatePermissions>%s</t:DelegatePermissions><t:ReceiveCopiesOfMeetingMessages>%s</t:ReceiveCopiesOfMeetingMessages>'
+            '<t:ViewPrivateItems>%s</t:ViewPrivateItems></m:DelegateUser></m:DelegateUserResponseMessageType>'
+            % (abs(hash(email)) % 100000, esc(email), esc(name), perms, 'true' if u['copies'] else 'false', 'true' if u['private'] else 'false'))
+
+
+def delegate_error(code, text):
+    return ('<m:DelegateUserResponseMessageType ResponseClass="Error"><m:MessageText>%s</m:MessageText><m:ResponseCode>%s</m:ResponseCode>'
+            '</m:DelegateUserResponseMessageType>' % (esc(text), code))
+
+
+def handle_delegates(op, el, user):
+    resp = op + 'Response'
+    mailbox = text(el, 'm:Mailbox/t:EmailAddress').lower()
+    if mailbox != user.lower():
+        return delegate_response(resp, root_error='ErrorAccessDenied')
+    if op == 'GetDelegate':
+        if not DELEGATES['configured']:
+            return delegate_response(resp, root_error='ErrorDelegateMissingConfiguration')
+        return delegate_response(resp, ''.join(delegate_user_xml(e) for e in DELEGATES['users']))
+    if op == 'RemoveDelegate':
+        out = ''
+        for uid in el.findall('m:UserIds/t:UserId', NS):
+            email = text(uid, 't:PrimarySmtpAddress').lower()
+            if email not in DELEGATES['users']:
+                out += delegate_error('ErrorNotDelegate', 'not a delegate')
+            else:
+                del DELEGATES['users'][email]
+                out += '<m:DelegateUserResponseMessageType ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode></m:DelegateUserResponseMessageType>'
+        return delegate_response(resp, out)
+    deliver = text(el, 'm:DeliverMeetingRequests')
+    if deliver:
+        DELEGATES['deliver'] = deliver
+    out = ''
+    for du in el.findall('m:DelegateUsers/t:DelegateUser', NS):
+        email = text(du, 't:UserId/t:PrimarySmtpAddress').lower()
+        perms = {f: text(du, 't:DelegatePermissions/t:' + f, 'None') for f in PERM_FIELDS}
+        copies = text(du, 't:ReceiveCopiesOfMeetingMessages') == 'true'
+        if email not in [e for _, e in DIRECTORY]:
+            out += delegate_error('ErrorDelegateNoUser', 'The user could not be found.')
+            continue
+        if op == 'AddDelegate' and email in DELEGATES['users']:
+            out += delegate_error('ErrorDelegateAlreadyExists', 'already a delegate')
+            continue
+        if op == 'UpdateDelegate' and email not in DELEGATES['users']:
+            out += delegate_error('ErrorNotDelegate', 'not a delegate')
+            continue
+        if copies and perms['CalendarFolderPermissionLevel'] != 'Editor':
+            out += delegate_error('ErrorDelegateValidationFailed', 'meeting copies need calendar editor')
+            continue
+        DELEGATES['users'][email] = dict(perms=perms, copies=copies, private=text(du, 't:ViewPrivateItems') == 'true')
+        DELEGATES['configured'] = True
+        out += delegate_user_xml(email)
+    return delegate_response(resp, out)
 
 
 def seed_delegate_request(add_message):
