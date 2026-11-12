@@ -70,12 +70,46 @@ def at(days, hour, minute=0):
 
 
 def add_event(subject, start, end, all_day=False, location='', body='', organizer=ME, response='Organizer',
-              attendees=(), optional=(), free_busy='Busy', ev_type='Single', series=None, reminder=15, cancelled=False):
+              attendees=(), optional=(), free_busy='Busy', ev_type='Single', series=None, reminder=15, cancelled=False, folder='F-CAL'):
     eid = new_id('EV')
     EVENTS[eid] = dict(id=eid, ck=new_id('CK'), subject=subject, start=start, end=end, all_day=all_day, location=location,
                        body=body, organizer=organizer, response=response, attendees=list(attendees), optional=list(optional),
-                       free_busy=free_busy, type=ev_type, series=series, reminder=reminder, cancelled=cancelled)
+                       free_busy=free_busy, type=ev_type, series=series, reminder=reminder, cancelled=cancelled, folder=folder)
     return eid
+
+
+# ----------------------------------------------------------------------------
+# other mailboxes' calendars
+# ----------------------------------------------------------------------------
+# email -> access: 'edit' (Editor), 'read' (Reviewer), 'freebusy' (default sharing)
+SHARED_ACCESS = {
+    'marie.martin@societe-a.fr': 'edit',
+    'martine.leroy@societe-b.fr': 'read',
+    'paul.durand@societe-a.fr': 'freebusy',
+}
+# busy blocks published by people who only share availability
+FREEBUSY = {}
+
+
+def calendar_folder(ref):
+    """Resolve a calendar folder reference -> (folder key, error code or None)."""
+    if ref.tag == T + 'FolderId':
+        return ref.get('Id'), None
+    mb = ref.findtext('t:Mailbox/t:EmailAddress', default=None, namespaces=NS)
+    if ref.get('Id') != 'calendar':
+        return None, 'ErrorFolderNotFound'
+    if mb is None or mb.lower() == ME[1]:
+        return 'F-CAL', None
+    access = SHARED_ACCESS.get(mb.lower())
+    if access is None:
+        return None, 'ErrorNonExistentMailbox'
+    if access == 'freebusy':
+        return None, 'ErrorAccessDenied'
+    return 'shared:' + mb.lower(), None
+
+
+def can_write(folder):
+    return not folder.startswith('shared:') or SHARED_ACCESS.get(folder[7:]) == 'edit'
 
 
 # ----------------------------------------------------------------------------
@@ -185,6 +219,12 @@ def seed():
     add_event('Salon Informatique', at(3, 0), at(5, 0), all_day=True, location='Nice Acropolis', reminder=-1)
     add_event('Revue budget', at(2, 15), at(2, 16), organizer=('Marie Martin', 'marie.martin@societe-a.fr'), response='NoResponseReceived',
               attendees=[(ME[0], ME[1], 'NoResponseReceived')])
+    add_event('Congés Lucas', at(2, 0), at(4, 0), all_day=True, folder='F-CAL2', reminder=-1)
+    add_event('Visite client Antibes', at(1, 10), at(1, 12), folder='shared:marie.martin@societe-a.fr',
+              organizer=('Marie Martin', 'marie.martin@societe-a.fr'), location='Antibes')
+    add_event('Inventaire', at(0, 14), at(0, 17), folder='shared:martine.leroy@societe-b.fr',
+              organizer=('Martine Leroy', 'martine.leroy@societe-b.fr'))
+    FREEBUSY['paul.durand@societe-a.fr'] = [(at(0, 11), at(0, 12), 'Busy', 'Rendez-vous fournisseur'), (at(1, 15), at(1, 16, 30), 'Tentative', None)]
     first = at(4, 18)
     create_series('Sport', first, at(4, 19), dict(pattern='WeeklyRecurrence', interval=1, days=[WEEKDAYS[first.weekday()]], until=None, count=6),
                   free_busy='Free', reminder=-1)
@@ -345,13 +385,57 @@ def delete_contact_field(c, path):
 def handle(op, el, user, tz, messages, move_message):
     """messages / move_message give access to the mail store of fake_ews.py (meeting requests)."""
 
+    if op == 'GetFolder':
+        refs = list(el.find('m:FolderIds', NS))
+        if not any(r.get('Id') == 'calendar' for r in refs):
+            return None
+        out = []
+        for r in refs:
+            if r.get('Id') != 'calendar':
+                return None  # mixed request: let the mail handler answer
+            folder, code = calendar_folder(r)
+            if code:
+                out.append(err(op, code, code))
+                continue
+            write = 'true' if can_write(folder) else 'false'
+            rights = ('<t:EffectiveRights><t:CreateAssociated>false</t:CreateAssociated><t:CreateContents>%s</t:CreateContents>'
+                      '<t:CreateHierarchy>false</t:CreateHierarchy><t:Delete>%s</t:Delete><t:Modify>%s</t:Modify><t:Read>true</t:Read></t:EffectiveRights>'
+                      % (write, write, write))
+            out.append(ok(op, '<m:Folders><t:CalendarFolder><t:FolderId Id="%s" ChangeKey="AQ"/>%s</t:CalendarFolder></m:Folders>'
+                          % ('F-CAL' if folder == 'F-CAL' else 'CAL-' + folder, rights)))
+        return wrap(op, out)
+
+    if op == 'GetUserAvailabilityRequest':
+        email = text(el, 'm:MailboxDataArray/t:MailboxData/t:Email/t:Address').lower()
+        win = el.find('t:FreeBusyViewOptions/t:TimeWindow', NS)
+        start = parse_dt(text(win, 't:StartTime')[:19] + 'Z', 'UTC')
+        end = parse_dt(text(win, 't:EndTime')[:19] + 'Z', 'UTC')
+        if email not in SHARED_ACCESS:
+            msg = '<ResponseMessage ResponseClass="Error"><MessageText>Not found</MessageText><ResponseCode>ErrorMailRecipientNotFound</ResponseCode></ResponseMessage>'
+            events = ''
+        else:
+            msg = '<ResponseMessage ResponseClass="Success"><ResponseCode>NoError</ResponseCode></ResponseMessage>'
+            blocks = list(FREEBUSY.get(email, []))
+            folder = 'shared:' + email
+            blocks += [(e['start'], e['end'], e['free_busy'], e['subject']) for e in EVENTS.values() if e['folder'] == folder]
+            fmt = lambda d: d.astimezone(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+            events = ''.join('<CalendarEvent><StartTime>%s</StartTime><EndTime>%s</EndTime><BusyType>%s</BusyType>%s</CalendarEvent>'
+                             % (fmt(s_), fmt(e_), b, '<CalendarEventDetails><Subject>%s</Subject></CalendarEventDetails>' % esc(subj) if subj else '')
+                             for s_, e_, b, subj in blocks if s_ < end and e_ > start)
+        return ('<GetUserAvailabilityResponse xmlns="%s"><FreeBusyResponseArray><FreeBusyResponse>%s<FreeBusyView>'
+                '<FreeBusyViewType xmlns="%s">Detailed</FreeBusyViewType><CalendarEventArray xmlns="%s">%s</CalendarEventArray>'
+                '</FreeBusyView></FreeBusyResponse></FreeBusyResponseArray></GetUserAvailabilityResponse>' % (NS['m'], msg, NS['t'], NS['t'], events))
+
     if op == 'FindItem':
         parent = el.find('m:ParentFolderIds', NS)[0]
         pid = parent.get('Id')
-        if pid == 'calendar':
+        if pid in ('calendar', 'F-CAL', 'F-CAL2') or (el.find('m:CalendarView', NS) is not None):
+            folder, code = calendar_folder(parent)
+            if code:
+                return wrap(op, [err(op, code, code)])
             view = el.find('m:CalendarView', NS)
             start, end = parse_dt(view.get('StartDate'), tz), parse_dt(view.get('EndDate'), tz)
-            evs = sorted((e for e in EVENTS.values() if e['start'] < end and e['end'] > start), key=lambda e: e['start'])
+            evs = sorted((e for e in EVENTS.values() if e['folder'] == folder and e['start'] < end and e['end'] > start), key=lambda e: e['start'])
             return wrap(op, [ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Items>%s</t:Items></m:RootFolder>'
                                 % (len(evs), ''.join(event_xml(e, False) for e in evs)))])
         if pid == 'contacts':
@@ -394,6 +478,10 @@ def handle(op, el, user, tz, messages, move_message):
         tag = items[0].tag.replace(T, '') if items else ''
         if tag == 'CalendarItem':
             out = []
+            target = el.find('m:SavedItemFolderId', NS)
+            folder, code = calendar_folder(target[0]) if target is not None else ('F-CAL', None)
+            if code or not can_write(folder):
+                return wrap(op, [err(op, code or 'ErrorAccessDenied', 'Access is denied.')])
             for it in items:
                 start, end = parse_dt(text(it, 't:Start'), tz), parse_dt(text(it, 't:End'), tz)
                 if end < start:
@@ -405,10 +493,10 @@ def handle(op, el, user, tz, messages, move_message):
                               reminder=int(text(it, 't:ReminderMinutesBeforeStart', '-1')) if text(it, 't:ReminderIsSet') == 'true' else -1)
                 rec = it.find('t:Recurrence', NS)
                 if rec is not None:
-                    first = create_series(text(it, 't:Subject'), start, end, parse_rule(rec), **common)
+                    first = create_series(text(it, 't:Subject'), start, end, parse_rule(rec), folder=folder, **common)
                     out.append(ok(op, '<m:Items><t:CalendarItem><t:ItemId Id="%s" ChangeKey="CK"/></t:CalendarItem></m:Items>' % first))
                 else:
-                    eid = add_event(text(it, 't:Subject'), start, end, **common)
+                    eid = add_event(text(it, 't:Subject'), start, end, folder=folder, **common)
                     out.append(ok(op, '<m:Items><t:CalendarItem><t:ItemId Id="%s" ChangeKey="%s"/></t:CalendarItem></m:Items>' % (eid, EVENTS[eid]['ck'])))
             return wrap(op, out)
         if tag == 'Contact':
@@ -448,6 +536,8 @@ def handle(op, el, user, tz, messages, move_message):
     if op == 'UpdateItem':
         changes = list(el.find('m:ItemChanges', NS))
         ids = [ch.find('t:ItemId', NS).get('Id') for ch in changes]
+        if any(i in EVENTS and not can_write(EVENTS[i]['folder']) for i in ids):
+            return wrap(op, [err(op, 'ErrorAccessDenied', 'Access is denied.')])
         if ids and all(i in EVENTS or i in MASTERS for i in ids):
             if el.get('SendMeetingInvitationsOrCancellations') is None:
                 return wrap(op, [err(op, 'ErrorSendMeetingInvitationsOrCancellationsRequired', 'required for calendar items')])
@@ -500,7 +590,8 @@ def handle(op, el, user, tz, messages, move_message):
                     for k in [k for k, x in EVENTS.items() if x['series'] == sid]:
                         del EVENTS[k]
                     fields = dict(location=e['location'], body=e['body'], all_day=e['all_day'], organizer=e['organizer'], response=e['response'],
-                                  attendees=e['attendees'], optional=e['optional'], free_busy=e['free_busy'], reminder=e['reminder'])
+                                  attendees=e['attendees'], optional=e['optional'], free_busy=e['free_busy'], reminder=e['reminder'],
+                                  folder=e['folder'])
                     if rule_change == 'delete':
                         del SERIES[sid], MASTERS[iid]
                         add_event(e['subject'], e['start'], e['end'], **fields)
@@ -522,6 +613,8 @@ def handle(op, el, user, tz, messages, move_message):
 
     if op == 'DeleteItem':
         targets = list(el.find('m:ItemIds', NS))
+        if any(t.get('Id') in EVENTS and not can_write(EVENTS[t.get('Id')]['folder']) for t in targets):
+            return wrap(op, [err(op, 'ErrorAccessDenied', 'Access is denied.')])
         if targets and all((t.tag == T + 'RecurringMasterItemId' and t.get('OccurrenceId') in EVENTS) or t.get('Id') in EVENTS for t in targets):
             if el.get('SendMeetingCancellations') is None:
                 return wrap(op, [err(op, 'ErrorSendMeetingCancellationsRequired', 'required for calendar items')])

@@ -14,6 +14,9 @@
 		view: null, // month | week | list
 		cursor: startOfDay(new Date()), // reference day: its month, its week, or the first day of the list
 		weekScroll: null, // remembered vertical scroll of the week grid
+		calendars: [], // own and shared calendars of the current account
+		calendarsFor: null, // account id the list belongs to
+		hidden: new Set(), // keys of calendars the user unticked
 		events: [],
 		loading: false,
 		seq: 0,
@@ -81,17 +84,63 @@
 	// data
 	// ------------------------------------------------------------------
 
+	const PALETTE = ['#c0392b', '#27ae60', '#8e44ad', '#d35400', '#16a085', '#2c3e50', '#c71585', '#7f8c00', '#1f6fb2', '#a0522d']
+
+	function hiddenKey() { return 'webmail.calhidden.' + core.accountId }
+
+	async function loadCalendars(force) {
+		if (!force && cal.calendarsFor === core.accountId && cal.calendars.length) return
+		const accountId = core.accountId
+		let list = [{ key: 'calendar', name: 'Calendrier', kind: 'own', canEdit: true, mode: 'full' }]
+		try {
+			list = (await core.api('/accounts/' + accountId + '/calendar/calendars')).calendars
+		} catch (e) {
+			core.toast(e.message, true)
+		}
+		if (accountId !== core.accountId) return
+		// the default calendar keeps the theme colour, the others get a palette colour
+		let i = 0
+		list.forEach((c) => { c.color = c.key === 'calendar' ? null : PALETTE[i++ % PALETTE.length] })
+		cal.calendars = list
+		cal.calendarsFor = accountId
+		try {
+			cal.hidden = new Set(JSON.parse(localStorage.getItem(hiddenKey()) || '[]'))
+		} catch (e) { cal.hidden = new Set() }
+		core.renderNav()
+	}
+
+	function calendarOf(ev) {
+		return cal.calendars.find((c) => c.key === ev.calendar) || cal.calendars[0]
+	}
+
 	async function load() {
 		const [start, end] = visibleRange()
 		const mine = ++cal.seq
 		cal.loading = true
 		render()
 		try {
-			const data = await core.api('/accounts/' + core.accountId + '/calendar/events', {
-				query: { start: start.toISOString(), end: end.toISOString(), tz: core.TZ },
-			})
+			await loadCalendars(false)
 			if (mine !== cal.seq) return
-			cal.events = data.events
+			const visible = cal.calendars.filter((c) => !cal.hidden.has(c.key))
+			const results = await Promise.all(visible.map((c) => core.api('/accounts/' + core.accountId + '/calendar/events', {
+				query: { start: start.toISOString(), end: end.toISOString(), tz: core.TZ, calendar: c.key },
+			}).then((data) => ({ c, events: data.events }), (e) => ({ c, error: e }))))
+			if (mine !== cal.seq) return
+			const events = []
+			results.forEach(({ c, events: evs, error }) => {
+				if (error) {
+					core.toast(c.name + ' : ' + error.message, true)
+					return
+				}
+				evs.forEach((ev) => {
+					ev.calendar = c.key
+					ev.color = c.color
+					ev.readOnly = !c.canEdit
+					ev.shared = c.kind === 'shared'
+					events.push(ev)
+				})
+			})
+			cal.events = events
 		} catch (e) {
 			core.toast(e.message, true)
 			cal.events = []
@@ -113,9 +162,95 @@
 		const sel = core.accountSelector()
 		if (sel) navEl.appendChild(sel)
 		navEl.appendChild(miniMonth())
-		navEl.appendChild(h('p', { class: 'wm-muted wm-cal-hint' }, 'Agenda Exchange principal. Les modifications sont visibles immédiatement dans Outlook et sur les téléphones.'))
+		navEl.appendChild(calendarList())
 		navEl.appendChild(h('div', { style: 'flex:1' }))
 		navEl.appendChild(core.navFooter())
+	}
+
+	const MODE_LABEL = { freebusy: 'disponibilités', read: 'lecture', edit: 'modification' }
+
+	function calendarList() {
+		const h = core.h
+		const row = (c) => {
+			const box = h('input', {
+				type: 'checkbox',
+				checked: !cal.hidden.has(c.key),
+				'aria-label': 'Afficher ' + c.name,
+				onchange: () => {
+					box.checked ? cal.hidden.delete(c.key) : cal.hidden.add(c.key)
+					try { localStorage.setItem(hiddenKey(), JSON.stringify([...cal.hidden])) } catch (e) { /* ignore */ }
+					load()
+				},
+			})
+			const mode = c.kind !== 'shared' ? null : (c.mode === 'freebusy' ? 'freebusy' : (c.canEdit ? 'edit' : 'read'))
+			return h('li', { class: 'wm-cal-row', dataset: { key: c.key } },
+				h('label', { class: 'wm-cal-label', title: c.email || c.name },
+					box,
+					h('span', { class: 'wm-cal-dot', style: c.color ? 'background:' + c.color : '' }),
+					h('span', { class: 'wm-cal-name' }, c.name)),
+				mode ? h('span', { class: 'wm-cal-mode wm-cal-mode-' + mode }, MODE_LABEL[mode]) : null,
+				c.kind === 'shared' ? h('button', {
+					type: 'button',
+					class: 'wm-cal-remove',
+					title: 'Retirer cet agenda',
+					'aria-label': 'Retirer l\'agenda de ' + c.name,
+					onclick: () => removeShared(c),
+				}, '✕') : null)
+		}
+		const own = cal.calendars.filter((c) => c.kind !== 'shared')
+		const shared = cal.calendars.filter((c) => c.kind === 'shared')
+		return h('div', { class: 'wm-cal-list' },
+			h('div', { class: 'wm-cal-section' }, 'Mes agendas'),
+			h('ul', {}, own.map(row)),
+			h('div', { class: 'wm-cal-section' }, 'Agendas partagés'),
+			shared.length ? h('ul', {}, shared.map(row)) : h('p', { class: 'wm-muted wm-cal-hint' }, 'Ajoutez l\'agenda d\'un collègue qui vous l\'a partagé dans Outlook.'),
+			h('button', { type: 'button', class: 'wm-cal-add', onclick: openAddShared }, '＋ Ajouter un agenda partagé'))
+	}
+
+	function openAddShared() {
+		const h = core.h
+		const email = h('input', { type: 'text', name: 'sharedEmail', required: true, placeholder: 'prenom.nom@exemple.fr' })
+		const err = h('div', { class: 'wm-form-error', role: 'alert' })
+		const btn = h('button', { type: 'submit', class: 'primary' }, 'Ajouter')
+		const form = h('form', {
+			class: 'wm-event-form',
+			onsubmit: async (e) => {
+				e.preventDefault()
+				err.textContent = ''
+				btn.disabled = true
+				btn.textContent = 'Vérification de l\'accès…'
+				try {
+					const c = await core.api('/accounts/' + core.accountId + '/calendar/shared', { method: 'POST', body: { email: email.value } })
+					cal.hidden.delete(c.key)
+					close()
+					core.toast(c.mode === 'freebusy'
+						? 'Agenda de ' + c.name + ' ajouté (disponibilités seulement)'
+						: 'Agenda de ' + c.name + ' ajouté (' + (c.canEdit ? 'modification' : 'lecture') + ')')
+					await loadCalendars(true)
+					load()
+				} catch (ex) {
+					err.textContent = ex.message
+					btn.disabled = false
+					btn.textContent = 'Ajouter'
+				}
+			},
+		},
+		h('p', { class: 'wm-muted' }, 'Indiquez l\'adresse d\'un collègue. Le niveau d\'accès est détecté automatiquement : '
+			+ 'modification ou lecture si l\'agenda vous a été partagé dans Outlook, sinon ses seules disponibilités (occupé / libre).'),
+		h('label', { class: 'wm-field' }, h('span', {}, 'Adresse'), core.attachAutocomplete(email)),
+		err,
+		h('div', { class: 'wm-compose-actions' }, btn, h('button', { type: 'button', onclick: () => close() }, 'Annuler')))
+		const close = modal('Ajouter un agenda partagé', form)
+	}
+
+	async function removeShared(c) {
+		if (!window.confirm('Retirer l\'agenda de ' + c.name + ' de la liste ? (rien n\'est supprimé dans Exchange)')) return
+		try {
+			await core.api('/accounts/' + core.accountId + '/calendar/shared/delete', { method: 'POST', body: { email: c.email } })
+			core.toast('Agenda retiré')
+			await loadCalendars(true)
+			load()
+		} catch (e) { core.toast(e.message, true) }
 	}
 
 	function miniMonth() {
@@ -197,6 +332,13 @@
 	}
 
 	function chip(ev, day) {
+		const el = chipBase(ev, day)
+		if (ev.color) el.style.setProperty('--ev-color', ev.color)
+		if (ev.freeBusyOnly) el.classList.add('freebusy')
+		return el
+	}
+
+	function chipBase(ev, day) {
 		const h = core.h
 		const start = new Date(ev.start)
 		const continued = !ev.allDay && !sameDay(start, day)
@@ -396,7 +538,7 @@
 	const SNAP_MIN = 15
 
 	function canMove(ev) {
-		return ev.isOrganizer && !ev.isCancelled
+		return ev.isOrganizer && !ev.isCancelled && !ev.readOnly && !ev.freeBusyOnly
 	}
 
 	function daysBetween(a, b) {
@@ -698,6 +840,19 @@
 
 	async function openEvent(summary) {
 		const h = core.h
+		const calendar = calendarOf(summary)
+		const calendarLine = calendar && calendar.key !== 'calendar'
+			? h('div', { class: 'wm-muted' }, h('span', { class: 'wm-cal-dot', style: calendar.color ? 'background:' + calendar.color : '' }), ' ' + (calendar.kind === 'shared' ? 'Agenda de ' : 'Agenda ') + calendar.name)
+			: null
+		if (summary.freeBusyOnly) {
+			// only availability is shared: nothing more to fetch
+			modal(summary.subject, h('div', { class: 'wm-event-detail' },
+				h('div', { class: 'wm-event-when' }, '🕑 ' + ucfirst(core.formatRange(summary.start, summary.end, summary.allDay))),
+				summary.location ? h('div', {}, '📍 ' + summary.location) : null,
+				calendarLine,
+				h('p', { class: 'wm-muted' }, 'Cette personne ne partage que ses disponibilités : le détail de ses rendez-vous n\'est pas accessible.')))
+			return
+		}
 		const body = h('div', { class: 'wm-event-detail' }, h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
 		const close = modal(summary.subject || '(sans titre)', body)
 		let ev
@@ -716,6 +871,7 @@
 			ev.isCancelled ? h('div', { class: 'wm-warning' }, 'Cet événement a été annulé.') : null,
 			h('div', { class: 'wm-event-when' }, '🕑 ' + ucfirst(core.formatRange(ev.start, ev.end, ev.allDay))),
 			ev.isRecurring ? h('div', { class: 'wm-muted wm-event-rule' }, '🔁 Événement périodique') : null,
+			calendarLine,
 			ev.location ? h('div', {}, '📍 ' + ev.location) : null,
 			ev.isMeeting && ev.organizer ? h('div', {}, '👤 Organisateur : ' + core.personLabel(ev.organizer)) : null,
 			ev.attendees.length ? h('div', {}, h('strong', {}, 'Participants'), h('ul', { class: 'wm-attendees' }, people(ev.attendees))) : null,
@@ -724,7 +880,10 @@
 		].filter(Boolean))
 
 		const actions = h('div', { class: 'wm-compose-actions' })
-		if (ev.isMeeting && !ev.isOrganizer && !ev.isCancelled) {
+		const readOnly = !!summary.readOnly
+		const shared = !!summary.shared
+		const canEdit = ev.isOrganizer && !readOnly
+		if (ev.isMeeting && !ev.isOrganizer && !ev.isCancelled && !shared) {
 			const answer = async (response, label) => {
 				try {
 					await core.api('/accounts/' + core.accountId + '/calendar/respond', { method: 'POST', body: { eventId: ev.id, response } })
@@ -740,14 +899,17 @@
 				h('button', { class: 'wm-danger', onclick: () => answer('decline', 'refusé') }, '✗ Refuser'))
 		}
 		const isOccurrence = ev.type === 'Occurrence' || ev.type === 'Exception'
-		if (ev.isOrganizer) {
+		if (canEdit) {
 			actions.appendChild(h('button', { class: 'primary', onclick: () => { close(); openForm(ev) } }, isOccurrence ? '✏️ Modifier cette occurrence' : '✏️ Modifier'))
+		}
+		if (readOnly) {
+			actions.appendChild(h('span', { class: 'wm-muted' }, '🔒 Agenda partagé en lecture seule'))
 		}
 		if (isOccurrence) {
 			// describe the rule, and allow editing the whole series
 			const ruleLine = body.querySelector('.wm-event-rule')
 			const editSeries = h('button', { disabled: true, onclick: () => { close(); openForm(editSeries.series, null, false, { series: true }) } }, '🔁 Modifier la série')
-			if (ev.isOrganizer) actions.appendChild(editSeries)
+			if (canEdit) actions.appendChild(editSeries)
 			core.api('/accounts/' + core.accountId + '/calendar/series', { query: { eventId: ev.id, tz: core.TZ } }).then((series) => {
 				editSeries.series = series
 				editSeries.disabled = false
@@ -770,8 +932,8 @@
 				load()
 			} catch (e) { core.toast(e.message, true) }
 		}
-		actions.appendChild(h('button', { class: 'wm-danger', onclick: () => del(false) }, ev.type === 'Occurrence' || ev.type === 'Exception' ? '🗑 Supprimer cette occurrence' : '🗑 Supprimer'))
-		if (ev.type === 'Occurrence' || ev.type === 'Exception') {
+		if (!readOnly) actions.appendChild(h('button', { class: 'wm-danger', onclick: () => del(false) }, ev.type === 'Occurrence' || ev.type === 'Exception' ? '🗑 Supprimer cette occurrence' : '🗑 Supprimer'))
+		if (!readOnly && (ev.type === 'Occurrence' || ev.type === 'Exception')) {
 			actions.appendChild(h('button', { class: 'wm-danger', onclick: () => del(true) }, 'Supprimer la série'))
 		}
 		body.appendChild(actions)
@@ -807,6 +969,13 @@
 		}
 
 		const subject = h('input', { type: 'text', name: 'subject', required: true, value: ev ? ev.subject : '', placeholder: 'Titre' })
+		const writable = cal.calendars.filter((c) => c.canEdit)
+		let lastCalendar = 'calendar'
+		try { lastCalendar = localStorage.getItem('webmail.lastcal.' + core.accountId) || 'calendar' } catch (e) { /* ignore */ }
+		const calendarSelect = isNew && writable.length > 1
+			? h('select', { name: 'calendar', 'aria-label': 'Agenda' }, writable.map((c) => h('option', { value: c.key, selected: c.key === lastCalendar },
+				c.kind === 'shared' ? 'Agenda de ' + c.name : c.name)))
+			: null
 		const allDay = h('input', { type: 'checkbox', name: 'allDay', checked: ev ? ev.allDay : false })
 		const startDate = h('input', { type: 'date', name: 'startDate', required: true, value: ymd(start) })
 		const startTime = h('input', { type: 'time', name: 'startTime', value: hm(start), step: '300' })
@@ -877,7 +1046,10 @@
 				save.disabled = true
 				try {
 					if (isNew) {
-						await core.api('/accounts/' + core.accountId + '/calendar/events', { method: 'POST', body: { event: data, tz: core.TZ } })
+						const target = calendarSelect ? calendarSelect.value : 'calendar'
+					try { localStorage.setItem('webmail.lastcal.' + core.accountId, target) } catch (e) { /* ignore */ }
+					await core.api('/accounts/' + core.accountId + '/calendar/events', { method: 'POST', body: { event: data, tz: core.TZ, calendar: target } })
+					cal.hidden.delete(target)
 					} else {
 						await core.api('/accounts/' + core.accountId + '/calendar/update', { method: 'POST', body: { eventId: ev.id, event: data, tz: core.TZ, series: isSeries } })
 					}
@@ -902,6 +1074,7 @@
 			},
 		},
 		field('Titre', subject),
+		calendarSelect ? field('Agenda', calendarSelect) : null,
 		h('label', { class: 'wm-inline' }, allDay, ' Journée entière'),
 		field('Début', startDate, startTime),
 		field('Fin', endDate, endTime),
@@ -937,6 +1110,10 @@
 				let saved = null
 				try { saved = localStorage.getItem('webmail.calview') } catch (e) { /* ignore */ }
 				cal.view = ['list', 'month', 'week'].includes(saved) ? saved : (window.matchMedia('(max-width: 800px)').matches ? 'list' : 'month')
+			}
+			if (cal.calendarsFor !== core.accountId) {
+				cal.calendars = []
+				cal.events = []
 			}
 			core.setView('detail')
 			core.renderNav()

@@ -550,3 +550,30 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 	cursor: ns-resize;
 }
 .wm-week-event:hover .wm-resize { border-bottom: 2px solid var(--color-primary-element); }
+
+/* ---------- calendars list (own + shared) ---------- */
+.wm-cal-list { padding: 0 4px; }
+.wm-cal-list ul { list-style: none; margin: 0 0 4px; padding: 0; }
+.wm-cal-section { font-size: 12px; font-weight: bold; color: var(--color-text-maxcontrast); margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .03em; }
+.wm-cal-row { display: flex; align-items: center; gap: 4px; min-height: 30px; }
+.wm-cal-label { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; cursor: pointer; }
+.wm-cal-label input { margin: 0; }
+.wm-cal-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-cal-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: var(--color-primary-element); vertical-align: middle; }
+.wm-cal-mode { font-size: 10px; padding: 0 6px; border-radius: 999px; background: var(--color-background-dark); color: var(--color-text-maxcontrast); white-space: nowrap; }
+.wm-cal-mode-edit { background: var(--color-primary-element-light); color: var(--color-primary-element-light-text, var(--color-main-text)); }
+.wm-cal-remove { margin: 0 !important; min-height: 24px !important; min-width: 24px; padding: 0 !important; border: none !important; background: none !important; color: var(--color-text-maxcontrast); opacity: .6; }
+.wm-cal-remove:hover { opacity: 1; color: var(--color-error); }
+.wm-cal-add { width: 100%; margin: 4px 0 0 !important; font-size: 13px; }
+
+/* events of another calendar take its colour */
+.wm-event[style*="--ev-color"] {
+	background: color-mix(in srgb, var(--ev-color) 16%, var(--color-main-background)) !important;
+	border-inline-start-color: var(--ev-color) !important;
+	color: var(--color-main-text) !important;
+}
+.wm-event.allday[style*="--ev-color"] { background: var(--ev-color) !important; color: #fff !important; }
+.wm-event.freebusy {
+	font-style: italic;
+	background-image: repeating-linear-gradient(135deg, transparent, transparent 5px, color-mix(in srgb, var(--ev-color, var(--color-primary-element)) 22%, transparent) 5px, color-mix(in srgb, var(--ev-color, var(--color-primary-element)) 22%, transparent) 10px) !important;
+}

@@ -283,6 +283,105 @@ class EwsCalendarTest extends EwsTestCase {
 		$this->calendar()->moveEvent('E1', '2026-11-19T10:00', '2026-11-19T09:00', false, false);
 	}
 
+	public function testListOwnCalendars(): void {
+		$this->queue('<m:GetFolderResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>'
+			. '<m:GetFolderResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Folders><t:CalendarFolder><t:FolderId Id="CAL-DEF"/></t:CalendarFolder></m:Folders></m:GetFolderResponseMessage>'
+			. '</m:ResponseMessages></m:GetFolderResponse>');
+		$this->queue(self::ok('FindFolder', '<m:RootFolder TotalItemsInView="4" IncludesLastItemInRange="true"><t:Folders>'
+			. '<t:Folder><t:FolderId Id="INBOX"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Boîte de réception</t:DisplayName></t:Folder>'
+			. '<t:CalendarFolder><t:FolderId Id="CAL-DEF"/><t:FolderClass>IPF.Appointment</t:FolderClass><t:DisplayName>Calendrier</t:DisplayName></t:CalendarFolder>'
+			. '<t:CalendarFolder><t:FolderId Id="CAL-2"/><t:FolderClass>IPF.Appointment</t:FolderClass><t:DisplayName>Congés équipe</t:DisplayName></t:CalendarFolder>'
+			. '<t:CalendarFolder><t:FolderId Id="CAL-3"/><t:FolderClass>IPF.Appointment.Birthday</t:FolderClass><t:DisplayName>Anniversaires</t:DisplayName></t:CalendarFolder>'
+			. '<t:ContactsFolder><t:FolderId Id="CONTACTS"/><t:FolderClass>IPF.Contact</t:FolderClass><t:DisplayName>Contacts</t:DisplayName></t:ContactsFolder>'
+			. '</t:Folders></m:RootFolder>'));
+		$cals = $this->calendar()->listOwnCalendars();
+		$this->assertSame(['calendar', 'CAL-3', 'CAL-2'], array_column($cals, 'key'));
+		$this->assertSame(['Calendrier', 'Anniversaires', 'Congés équipe'], array_column($cals, 'name'));
+		$this->assertTrue($cals[1]['canEdit']);
+	}
+
+	public function testSharedCalendarFolderUsesTheOtherMailbox(): void {
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="0" IncludesLastItemInRange="true"><t:Items/></m:RootFolder>'));
+		$this->calendar()->findEvents(new \DateTimeImmutable('2026-11-01T00:00:00Z'), new \DateTimeImmutable('2026-12-01T00:00:00Z'), 'shared:marie@x.fr');
+		$this->assertStringContainsString('<m:ParentFolderIds><t:DistinguishedFolderId Id="calendar"><t:Mailbox><t:EmailAddress>marie@x.fr</t:EmailAddress></t:Mailbox></t:DistinguishedFolderId></m:ParentFolderIds>', $this->lastRequest());
+	}
+
+	public function testCreateInSecondaryCalendar(): void {
+		$this->queue(self::ok('CreateItem', '<m:Items><t:CalendarItem><t:ItemId Id="N"/></t:CalendarItem></m:Items>'));
+		$this->calendar()->createEvent(['subject' => 'x', 'start' => '2026-11-20T10:00', 'end' => '2026-11-20T11:00'], 'CAL-2');
+		$this->assertStringContainsString('<m:SavedItemFolderId><t:FolderId Id="CAL-2"/></m:SavedItemFolderId>', $this->lastRequest());
+	}
+
+	public function testInvalidSharedKey(): void {
+		$this->expectException(MailException::class);
+		$this->calendar()->folderXml('shared:pas-une-adresse');
+	}
+
+	public function testProbeSharedCalendarWithEditRights(): void {
+		$this->queue(self::ok('GetFolder', '<m:Folders><t:CalendarFolder><t:FolderId Id="MARIE-CAL"/>'
+			. '<t:EffectiveRights><t:CreateAssociated>false</t:CreateAssociated><t:CreateContents>true</t:CreateContents><t:CreateHierarchy>false</t:CreateHierarchy>'
+			. '<t:Delete>true</t:Delete><t:Modify>true</t:Modify><t:Read>true</t:Read></t:EffectiveRights></t:CalendarFolder></m:Folders>'));
+		$this->assertSame(['mode' => 'full', 'canEdit' => true], $this->calendar()->probeSharedCalendar('marie@x.fr'));
+		$this->assertStringContainsString('<t:FieldURI FieldURI="folder:EffectiveRights"/>', $this->lastRequest());
+	}
+
+	public function testProbeFallsBackToFreeBusy(): void {
+		$this->queue('<m:GetFolderResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"><m:ResponseMessages>'
+			. '<m:GetFolderResponseMessage ResponseClass="Error"><m:MessageText>Access is denied.</m:MessageText><m:ResponseCode>ErrorAccessDenied</m:ResponseCode></m:GetFolderResponseMessage>'
+			. '</m:ResponseMessages></m:GetFolderResponse>');
+		$this->queue(self::freeBusyResponse(''));
+		$this->assertSame(['mode' => 'freebusy', 'canEdit' => false], $this->calendar()->probeSharedCalendar('paul@x.fr'));
+		$this->assertStringContainsString('<m:GetUserAvailabilityRequest>', $this->lastRequest());
+	}
+
+	public function testProbeUnknownMailbox(): void {
+		$this->queue('<m:GetFolderResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"><m:ResponseMessages>'
+			. '<m:GetFolderResponseMessage ResponseClass="Error"><m:MessageText>No mailbox.</m:MessageText><m:ResponseCode>ErrorNonExistentMailbox</m:ResponseCode></m:GetFolderResponseMessage>'
+			. '</m:ResponseMessages></m:GetFolderResponse>');
+		$this->expectException(MailException::class);
+		$this->expectExceptionMessage('Aucune boîte Exchange ne correspond à inconnu@x.fr');
+		$this->calendar()->probeSharedCalendar('inconnu@x.fr');
+	}
+
+	private static function freeBusyResponse(string $events, string $class = 'Success', string $code = 'NoError'): string {
+		return '<GetUserAvailabilityResponse xmlns="http://schemas.microsoft.com/exchange/services/2006/messages"><FreeBusyResponseArray><FreeBusyResponse>'
+			. '<ResponseMessage ResponseClass="' . $class . '"><ResponseCode>' . $code . '</ResponseCode></ResponseMessage>'
+			. '<FreeBusyView><FreeBusyViewType xmlns="http://schemas.microsoft.com/exchange/services/2006/types">Detailed</FreeBusyViewType>'
+			. '<CalendarEventArray xmlns="http://schemas.microsoft.com/exchange/services/2006/types">' . $events . '</CalendarEventArray>'
+			. '</FreeBusyView></FreeBusyResponse></FreeBusyResponseArray></GetUserAvailabilityResponse>';
+	}
+
+	public function testFreeBusy(): void {
+		$this->queue(self::freeBusyResponse(
+			'<CalendarEvent><StartTime>2026-11-16T08:00:00</StartTime><EndTime>2026-11-16T09:30:00</EndTime><BusyType>Busy</BusyType>'
+			. '<CalendarEventDetails><ID>X</ID><Subject>Comité</Subject><Location>Salle A</Location><IsMeeting>true</IsMeeting><IsRecurring>false</IsRecurring>'
+			. '<IsException>false</IsException><IsReminderSet>true</IsReminderSet><IsPrivate>false</IsPrivate></CalendarEventDetails></CalendarEvent>'
+			. '<CalendarEvent><StartTime>2026-11-17T13:00:00</StartTime><EndTime>2026-11-17T14:00:00</EndTime><BusyType>Tentative</BusyType></CalendarEvent>'
+			. '<CalendarEvent><StartTime>2026-11-18T13:00:00</StartTime><EndTime>2026-11-18T14:00:00</EndTime><BusyType>Free</BusyType></CalendarEvent>'));
+		$events = $this->calendar()->freeBusy('paul@x.fr', new \DateTimeImmutable('2026-11-16T00:00:00Z'), new \DateTimeImmutable('2026-11-23T00:00:00Z'));
+		$this->assertCount(2, $events);
+		$this->assertSame('Comité', $events[0]['subject']);
+		$this->assertSame('2026-11-16T08:00:00Z', $events[0]['start']);
+		$this->assertSame('Salle A', $events[0]['location']);
+		$this->assertTrue($events[0]['freeBusyOnly']);
+		$this->assertSame('Provisoire', $events[1]['subject']);
+		$req = $this->lastRequest();
+		$this->assertStringContainsString('<t:Address>paul@x.fr</t:Address>', $req);
+		$this->assertStringContainsString('<t:StartTime>2026-11-16T00:00:00</t:StartTime><t:EndTime>2026-11-23T00:00:00</t:EndTime>', $req);
+	}
+
+	public function testFreeBusyNotShared(): void {
+		$this->queue(self::freeBusyResponse('', 'Error', 'ErrorNoFreeBusyAccess'));
+		$this->expectException(MailException::class);
+		$this->expectExceptionMessage('pas partagé');
+		$this->calendar()->freeBusy('x@x.fr', new \DateTimeImmutable('2026-11-16'), new \DateTimeImmutable('2026-11-17'));
+	}
+
+	public function testFreeBusyRangeLimit(): void {
+		$this->expectException(MailException::class);
+		$this->calendar()->freeBusy('x@x.fr', new \DateTimeImmutable('2026-01-01'), new \DateTimeImmutable('2026-06-01'));
+	}
+
 	public function testTimeZoneMapping(): void {
 		$this->assertSame('Romance Standard Time', TimeZones::toWindows('Europe/Paris'));
 		$this->assertSame('Mauritius Standard Time', TimeZones::toWindows('Indian/Reunion'));

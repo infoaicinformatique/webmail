@@ -6,9 +6,11 @@ namespace OCA\Webmail\Controller;
 
 use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Ews\EwsCalendar;
+use OCA\Webmail\Ews\EwsContacts;
 use OCA\Webmail\Ews\TimeZones;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
+use OCA\Webmail\Service\SharedCalendarService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Response;
@@ -25,6 +27,7 @@ class CalendarController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private AccountService $accounts,
+		private SharedCalendarService $shared,
 		private LoggerInterface $logger,
 		private ?string $userId,
 	) {
@@ -49,9 +52,88 @@ class CalendarController extends Controller {
 		}
 	}
 
+	/**
+	 * The account's own calendars and the shared calendars added to it.
+	 */
 	#[NoAdminRequired]
-	public function events(int $id, string $start, string $end, string $tz = 'UTC'): Response {
-		return $this->handle(fn () => ['events' => $this->calendar($id, $tz)->findEvents(self::date($start), self::date($end))]);
+	public function calendars(int $id): Response {
+		return $this->handle(function () use ($id) {
+			$own = $this->calendar($id, 'UTC')->listOwnCalendars();
+			$shared = array_map(fn ($c) => [
+				'key' => 'shared:' . $c['email'],
+				'name' => $c['name'],
+				'email' => $c['email'],
+				'kind' => 'shared',
+				'canEdit' => $c['canEdit'],
+				'mode' => $c['mode'],
+			], $this->shared->list((string)$this->userId, $id));
+			return ['calendars' => array_merge($own, $shared)];
+		});
+	}
+
+	/**
+	 * Add another person's calendar; the access level is detected.
+	 */
+	#[NoAdminRequired]
+	public function addShared(int $id, string $email): Response {
+		return $this->handle(function () use ($id, $email) {
+			$email = strtolower(trim($email));
+			if (preg_match('/<([^>]+)>/', $email, $m)) {
+				$email = trim($m[1]);
+			}
+			if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+				throw new MailException('Adresse e-mail invalide');
+			}
+			$account = $this->accounts->find((string)$this->userId, $id);
+			if ($account->getEmail() === $email) {
+				throw new MailException('C\'est votre propre agenda');
+			}
+			$client = $this->accounts->getClient($account);
+			$access = (new EwsCalendar($client))->probeSharedCalendar($email);
+			$name = $email;
+			try {
+				foreach ((new EwsContacts($client))->resolve($email) as $r) {
+					if (strtolower($r['email']) === $email && $r['name'] !== '') {
+						$name = $r['name'];
+						break;
+					}
+				}
+			} catch (MailException) {
+				// the address is enough
+			}
+			$entry = ['email' => $email, 'name' => $name, 'mode' => $access['mode'], 'canEdit' => $access['canEdit']];
+			$this->shared->save((string)$this->userId, $id, $entry);
+			return ['key' => 'shared:' . $email, 'kind' => 'shared'] + $entry;
+		});
+	}
+
+	#[NoAdminRequired]
+	public function removeShared(int $id, string $email): Response {
+		return $this->handle(function () use ($id, $email) {
+			$this->accounts->find((string)$this->userId, $id); // ownership check
+			$this->shared->remove((string)$this->userId, $id, $email);
+			return ['status' => 'ok'];
+		});
+	}
+
+	/**
+	 * @param string $calendar calendar key ("calendar", a folder id, or "shared:<email>")
+	 */
+	#[NoAdminRequired]
+	public function events(int $id, string $start, string $end, string $tz = 'UTC', string $calendar = 'calendar'): Response {
+		return $this->handle(function () use ($id, $start, $end, $tz, $calendar) {
+			$cal = $this->calendar($id, $tz);
+			if (str_starts_with($calendar, 'shared:')) {
+				$entry = $this->shared->find((string)$this->userId, $id, substr($calendar, 7));
+				if ($entry === null) {
+					throw new MailException('Agenda partagé inconnu');
+				}
+				if ($entry['mode'] === 'freebusy') {
+					return ['events' => $cal->freeBusy($entry['email'], self::date($start), self::date($end))];
+				}
+			}
+			return ['events' => $cal->findEvents(self::date($start), self::date($end), $calendar)];
+		});
 	}
 
 	#[NoAdminRequired]
@@ -63,8 +145,16 @@ class CalendarController extends Controller {
 	 * @param array<string, mixed> $event
 	 */
 	#[NoAdminRequired]
-	public function create(int $id, array $event, string $tz = 'UTC'): Response {
-		return $this->handle(fn () => ['id' => $this->calendar($id, $tz)->createEvent($event)]);
+	public function create(int $id, array $event, string $tz = 'UTC', string $calendar = 'calendar'): Response {
+		return $this->handle(function () use ($id, $event, $tz, $calendar) {
+			if (str_starts_with($calendar, 'shared:')) {
+				$entry = $this->shared->find((string)$this->userId, $id, substr($calendar, 7));
+				if ($entry === null || !$entry['canEdit']) {
+					throw new MailException('Vous ne pouvez pas ajouter d\'événement dans cet agenda');
+				}
+			}
+			return ['id' => $this->calendar($id, $tz)->createEvent($event, $calendar)];
+		});
 	}
 
 	/**

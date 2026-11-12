@@ -596,7 +596,7 @@ class EwsClient {
 		return match ($code) {
 			'ErrorItemNotFound' => 'Ce message n\'existe plus (déplacé ou supprimé)',
 			'ErrorFolderNotFound' => 'Dossier introuvable',
-			'ErrorAccessDenied' => 'Accès refusé par Exchange',
+			'ErrorAccessDenied' => 'Accès refusé par Exchange (élément non partagé ou droits insuffisants)',
 			'ErrorQuotaExceeded' => 'Boîte aux lettres pleine',
 			'ErrorMessageSizeExceeded' => 'Message trop volumineux',
 			'ErrorInvalidRecipients', 'ErrorInvalidSmtpAddress' => 'Adresse de destinataire invalide',
@@ -604,6 +604,7 @@ class EwsClient {
 			'ErrorCalendarDurationIsTooLong' => 'Événement trop long',
 			'ErrorCalendarIsOrganizerForAccept', 'ErrorCalendarIsOrganizerForDecline', 'ErrorCalendarIsOrganizerForTentative' => 'Vous êtes l\'organisateur de cette réunion',
 			'ErrorOccurrenceCrossingBoundary' => 'Une occurrence ne peut pas être déplacée au-delà de l\'occurrence précédente ou suivante de la série',
+			'ErrorNonExistentMailbox' => 'Aucune boîte Exchange ne correspond à cette adresse',
 			'ErrorIrresolvableConflict' => 'L\'élément a été modifié entre-temps, rechargez la page',
 			'ErrorTimeZone' => 'Fuseau horaire non reconnu par Exchange',
 			default => 'Erreur Exchange' . ($code ? ' (' . $code . ')' : '') . ($text ? ' : ' . $text : ''),

@@ -580,6 +580,90 @@ async function main() {
 		await page.click('.wm-modal-close')
 	})
 
+	// ------------------------------------------------------------------ shared calendars
+	await step('calendar: own calendars, colours and visibility', async () => {
+		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
+		const own = await page.$$eval('.wm-cal-row .wm-cal-name', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(own, ['Calendrier', 'Congés équipe'])
+		await page.waitForSelector('.wm-agenda-item:has-text("Congés Lucas")')
+		await page.click('.wm-segmented button:has-text("Mois")')
+		const chip = page.locator('.wm-month .wm-event:has-text("Congés Lucas")').first()
+		await chip.waitFor()
+		assert((await chip.getAttribute('style')).includes('--ev-color'), 'secondary calendar has its own colour')
+		await page.uncheck('.wm-cal-row:has-text("Congés équipe") input')
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-month .wm-event')].some((e) => e.textContent.includes('Congés Lucas')))
+		await page.check('.wm-cal-row:has-text("Congés équipe") input')
+		await page.waitForSelector('.wm-month .wm-event:has-text("Congés Lucas")')
+	})
+
+	await step('calendar: add shared calendars (edit, read, availability only)', async () => {
+		const add = async (email) => {
+			await page.click('.wm-cal-add')
+			await page.fill('.wm-modal input[name=sharedEmail]', email)
+			await page.click('.wm-modal button[type=submit]')
+		}
+		await add('inconnu@societe-a.fr')
+		await page.waitForSelector('.wm-modal .wm-form-error:has-text("Aucune boîte Exchange ne correspond")')
+		await page.click('.wm-modal-close')
+		await add('marie.martin@societe-a.fr')
+		await page.waitForSelector('.wm-toast:has-text("Agenda de Marie Martin ajouté (modification)")')
+		await add('martine.leroy@societe-b.fr')
+		await page.waitForSelector('.wm-toast:has-text("Agenda de Martine Leroy ajouté (lecture)")')
+		await add('paul.durand@societe-a.fr')
+		await page.waitForSelector('.wm-toast:has-text("Agenda de Paul Durand ajouté (disponibilités seulement)")')
+		const rows = await page.$$eval('.wm-cal-row', (els) => els.map((e) => e.textContent.replace('✕', '').trim()))
+		assert.deepStrictEqual(rows, ['Calendrier', 'Congés équipe', 'Marie Martinmodification', 'Martine Leroylecture', 'Paul Duranddisponibilités'])
+		await page.click('.wm-segmented button:has-text("Semaine")')
+		await page.waitForSelector('.wm-week-event:has-text("Inventaire")')
+		await page.waitForSelector('.wm-week-event.freebusy:has-text("Rendez-vous fournisseur")')
+		assert(!(await page.$('.wm-week-event.wm-movable:has-text("Inventaire")')), 'read-only calendar: not draggable')
+		assert(!(await page.$('.wm-week-event.wm-movable:has-text("Rendez-vous fournisseur")')))
+		await shot('22-shared-week')
+	})
+
+	await step('calendar: permissions of each shared calendar', async () => {
+		await page.click('.wm-week-event:has-text("Inventaire")')
+		await page.waitForSelector('.wm-modal:has-text("Agenda de Martine Leroy")')
+		await page.waitForSelector('.wm-modal:has-text("lecture seule")')
+		assert(!(await page.$('.wm-modal button:has-text("Modifier")')))
+		assert(!(await page.$('.wm-modal button:has-text("Supprimer")')))
+		await page.click('.wm-modal-close')
+
+		await page.click('.wm-week-event:has-text("Rendez-vous fournisseur")')
+		await page.waitForSelector('.wm-modal:has-text("ne partage que ses disponibilités")')
+		await page.click('.wm-modal-close')
+
+		await page.click('.wm-segmented button:has-text("Liste")')
+		await page.click('.wm-agenda-item:has-text("Visite client Antibes")')
+		await page.waitForSelector('.wm-modal:has-text("Agenda de Marie Martin")')
+		await page.click('.wm-modal button:has-text("Modifier")')
+		await page.fill('.wm-modal input[name=location]', 'Antibes, agence port')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement modifié")')
+		await page.waitForSelector('.wm-agenda-item:has-text("Antibes, agence port")')
+	})
+
+	await step('calendar: create an event in a shared calendar', async () => {
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		const options = await page.$$eval('.wm-modal select[name=calendar] option', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(options, ['Calendrier', 'Congés équipe', 'Agenda de Marie Martin'], 'read-only calendars are not offered')
+		await page.selectOption('.wm-modal select[name=calendar]', { label: 'Agenda de Marie Martin' })
+		await page.fill('.wm-modal input[name=subject]', 'Préparer le salon (pour Marie)')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
+		await page.click('.wm-agenda-item:has-text("Préparer le salon")')
+		await page.waitForSelector('.wm-modal:has-text("Agenda de Marie Martin")')
+		await page.click('.wm-modal-close')
+	})
+
+	await step('calendar: remove a shared calendar', async () => {
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-cal-row:has-text("Paul Durand") .wm-cal-remove')
+		await page.waitForSelector('.wm-toast:has-text("Agenda retiré")')
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-cal-row')].some((e) => e.textContent.includes('Paul Durand')))
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-agenda-item')].some((e) => e.textContent.includes('Rendez-vous fournisseur')))
+	})
+
 	// ------------------------------------------------------------------ contacts
 	await step('contacts: list, search, details', async () => {
 		await page.click('.wm-tab[data-module="contacts"]')
