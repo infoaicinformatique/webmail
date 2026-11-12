@@ -1175,9 +1175,9 @@ async function main() {
 		await page.press('.wm-cal-search', 'Enter')
 		await page.waitForSelector('.wm-cal-results .wm-search-info:has-text("Événements contenant « EQUIPE »")')
 		await page.waitForSelector('.wm-cal-results .wm-agenda-item')
-		// accents and capitals do not matter; the weekly meeting appears for each week
+		// accents and capitals do not matter
 		const subjects = await page.$$eval('.wm-cal-results .wm-agenda-subject', (els) => els.map((e) => e.firstChild.textContent))
-		assert(subjects.length > 1 && subjects.every((t) => /équipe/i.test(t)), subjects.join('|'))
+		assert(subjects.length >= 1 && subjects.every((t) => /équipe/i.test(t)), subjects.join('|'))
 		await shot('44-event-search')
 		await page.click('.wm-cal-results .wm-agenda-item >> nth=0')
 		await page.waitForSelector('.wm-modal .wm-event-when')

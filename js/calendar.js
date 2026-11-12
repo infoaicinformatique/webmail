@@ -446,9 +446,16 @@
 	// searching events
 	// ------------------------------------------------------------------
 
+	// the same field across renders: a refresh must not wipe what is being typed
+	let searchInput = null
+
 	function searchField() {
 		const h = core.h
-		const input = h('input', {
+		if (searchInput) {
+			if (document.activeElement !== searchInput) searchInput.value = cal.search ? cal.search.q : ''
+			return searchInput
+		}
+		const input = searchInput = h('input', {
 			type: 'search',
 			class: 'wm-cal-search',
 			name: 'calSearch',
@@ -467,6 +474,7 @@
 
 	function endSearch() {
 		cal.search = null
+		if (searchInput) searchInput.value = ''
 		render()
 	}
 
