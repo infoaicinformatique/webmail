@@ -410,11 +410,16 @@ class EwsCalendar {
 		$freq = match ($pattern?->localName) {
 			'DailyRecurrence' => 'daily',
 			'WeeklyRecurrence' => 'weekly',
-			'AbsoluteMonthlyRecurrence' => 'monthly',
-			'AbsoluteYearlyRecurrence' => 'yearly',
+			'AbsoluteMonthlyRecurrence', 'RelativeMonthlyRecurrence' => 'monthly',
+			'AbsoluteYearlyRecurrence', 'RelativeYearlyRecurrence' => 'yearly',
 			default => 'other',
 		};
 		$days = trim((string)$value('DaysOfWeek', $pattern));
+		$relative = in_array($pattern?->localName, ['RelativeMonthlyRecurrence', 'RelativeYearlyRecurrence'], true);
+		// "the 2nd weekday", "the last weekend day": not one day of the week, kept as is
+		if ($relative && !in_array($days, self::WEEKDAYS, true)) {
+			$freq = 'other';
+		}
 		$endDate = $value('EndDate', $range);
 		$count = $value('NumberOfOccurrences', $range);
 		return [
@@ -423,6 +428,9 @@ class EwsCalendar {
 			'interval' => max(1, (int)($value('Interval', $pattern) ?? 1)),
 			'days' => $days === '' ? [] : preg_split('/\s+/', $days),
 			'dayOfMonth' => $value('DayOfMonth', $pattern) !== null ? (int)$value('DayOfMonth', $pattern) : null,
+			// monthly / yearly: on a date ("le 12") or on a weekday ("le 2e mardi", "le dernier vendredi")
+			'by' => $relative ? (($value('DayOfWeekIndex', $pattern) === 'Last') ? 'last' : 'weekday') : 'date',
+			'weekIndex' => $relative ? $value('DayOfWeekIndex', $pattern) : null,
 			'until' => $endDate !== null ? substr($endDate, 0, 10) : null,
 			'count' => $count !== null ? (int)$count : null,
 		];
@@ -627,7 +635,30 @@ class EwsCalendar {
 		if ($count !== null && ($count < 1 || $count > 999)) {
 			throw new MailException('Le nombre d\'occurrences doit être compris entre 1 et 999');
 		}
-		return ['freq' => $freq, 'interval' => $interval, 'days' => $days, 'until' => $until, 'count' => $until === null ? $count : null];
+		$by = 'date';
+		if ($freq === 'monthly' || $freq === 'yearly') {
+			$by = (string)($r['by'] ?? 'date');
+			if (!in_array($by, ['date', 'weekday', 'last'], true)) {
+				throw new MailException('Répétition inconnue');
+			}
+			if ($by === 'last' && !self::inLastWeek(new \DateTimeImmutable($startDate))) {
+				throw new MailException('Le premier événement n\'est pas le dernier de ce jour dans le mois');
+			}
+		}
+		return ['freq' => $freq, 'interval' => $interval, 'days' => $days, 'by' => $by, 'until' => $until, 'count' => $until === null ? $count : null];
+	}
+
+	private const WEEK_INDEX = [1 => 'First', 2 => 'Second', 3 => 'Third', 4 => 'Fourth'];
+
+	/** The date is one of the last 7 days of its month. */
+	public static function inLastWeek(\DateTimeImmutable $d): bool {
+		return (int)$d->format('j') + 7 > (int)$d->format('t');
+	}
+
+	/** "Second" for the 2nd Tuesday… ; a 5th one is the last. */
+	public static function weekIndex(\DateTimeImmutable $d, string $by): string {
+		$n = intdiv((int)$d->format('j') - 1, 7) + 1;
+		return $by === 'last' || $n > 4 ? 'Last' : self::WEEK_INDEX[$n];
 	}
 
 	/**
@@ -707,11 +738,15 @@ class EwsCalendar {
 		}
 		$start = new \DateTimeImmutable(substr($e['start'], 0, 10));
 		$interval = '<t:Interval>' . $r['interval'] . '</t:Interval>';
-		$pattern = match ($r['freq']) {
-			'daily' => '<t:DailyRecurrence>' . $interval . '</t:DailyRecurrence>',
-			'weekly' => '<t:WeeklyRecurrence>' . $interval . '<t:DaysOfWeek>' . implode(' ', $r['days']) . '</t:DaysOfWeek></t:WeeklyRecurrence>',
-			'monthly' => '<t:AbsoluteMonthlyRecurrence>' . $interval . '<t:DayOfMonth>' . $start->format('j') . '</t:DayOfMonth></t:AbsoluteMonthlyRecurrence>',
-			'yearly' => '<t:AbsoluteYearlyRecurrence><t:DayOfMonth>' . $start->format('j') . '</t:DayOfMonth><t:Month>' . $start->format('F') . '</t:Month></t:AbsoluteYearlyRecurrence>',
+		$by = $r['by'] ?? 'date';
+		$relative = '<t:DaysOfWeek>' . $start->format('l') . '</t:DaysOfWeek><t:DayOfWeekIndex>' . self::weekIndex($start, $by) . '</t:DayOfWeekIndex>';
+		$pattern = match (true) {
+			$r['freq'] === 'daily' => '<t:DailyRecurrence>' . $interval . '</t:DailyRecurrence>',
+			$r['freq'] === 'weekly' => '<t:WeeklyRecurrence>' . $interval . '<t:DaysOfWeek>' . implode(' ', $r['days']) . '</t:DaysOfWeek></t:WeeklyRecurrence>',
+			$r['freq'] === 'monthly' && $by !== 'date' => '<t:RelativeMonthlyRecurrence>' . $interval . $relative . '</t:RelativeMonthlyRecurrence>',
+			$r['freq'] === 'monthly' => '<t:AbsoluteMonthlyRecurrence>' . $interval . '<t:DayOfMonth>' . $start->format('j') . '</t:DayOfMonth></t:AbsoluteMonthlyRecurrence>',
+			$by !== 'date' => '<t:RelativeYearlyRecurrence>' . $relative . '<t:Month>' . $start->format('F') . '</t:Month></t:RelativeYearlyRecurrence>',
+			default => '<t:AbsoluteYearlyRecurrence><t:DayOfMonth>' . $start->format('j') . '</t:DayOfMonth><t:Month>' . $start->format('F') . '</t:Month></t:AbsoluteYearlyRecurrence>',
 		};
 		$startDate = '<t:StartDate>' . $start->format('Y-m-d') . '</t:StartDate>';
 		$range = match (true) {

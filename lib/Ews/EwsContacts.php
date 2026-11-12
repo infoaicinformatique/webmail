@@ -372,15 +372,92 @@ class EwsContacts {
 		];
 	}
 
+	/** at most this many contacts in one export or import */
+	public const MAX_TRANSFER = 5000;
+
 	/**
-	 * @return array<string, mixed>
+	 * Every contact of a book with its details (groups are left out), for
+	 * a vCard export.
+	 * @return list<array<string, mixed>>
 	 */
-	public function getContact(string $id): array {
+	public function exportContacts(string $book = 'contacts'): array {
+		$ids = [];
+		for ($offset = 0; $offset < self::MAX_TRANSFER; $offset += 500) {
+			$xp = $this->client->request(
+				'<m:FindItem Traversal="Shallow">'
+				. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape></m:ItemShape>'
+				. '<m:IndexedPageItemView MaxEntriesReturned="500" Offset="' . $offset . '" BasePoint="Beginning"/>'
+				. '<m:SortOrder><t:FieldOrder Order="Ascending"><t:FieldURI FieldURI="contacts:DisplayName"/></t:FieldOrder></m:SortOrder>'
+				. '<m:ParentFolderIds>' . $this->folderXml($book) . '</m:ParentFolderIds>'
+				. '</m:FindItem>'
+			);
+			foreach ($xp->query('//m:RootFolder/t:Items/t:Contact/t:ItemId') as $n) {
+				$ids[] = $n->getAttribute('Id');
+			}
+			$root = $xp->query('//m:RootFolder')->item(0);
+			if (!$root instanceof \DOMElement || $root->getAttribute('IncludesLastItemInRange') !== 'false') {
+				break;
+			}
+		}
+		$contacts = [];
+		foreach (array_chunk($ids, 100) as $chunk) {
+			$xp = $this->client->request(
+				'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:BodyType>Text</t:BodyType>'
+				. '<t:AdditionalProperties>' . self::detailFields() . '</t:AdditionalProperties></m:ItemShape>'
+				. '<m:ItemIds>' . implode('', array_map(fn ($id) => '<t:ItemId Id="' . $this->client->esc($id) . '"/>', $chunk)) . '</m:ItemIds></m:GetItem>',
+				false
+			);
+			foreach ($xp->query('//m:Items/t:Contact') as $node) {
+				$contacts[] = $this->parseContact($xp, $node);
+			}
+		}
+		return $contacts;
+	}
+
+	/**
+	 * The e-mail addresses already in a book (lower case), to leave out the
+	 * cards of people already there when importing.
+	 * @return array<string, true>
+	 */
+	public function knownEmails(string $book = 'contacts'): array {
+		$known = [];
+		for ($offset = 0; $offset < self::MAX_TRANSFER; $offset += 500) {
+			$xp = $this->client->request(
+				'<m:FindItem Traversal="Shallow">'
+				. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+				. '<t:IndexedFieldURI FieldURI="contacts:EmailAddress" FieldIndex="EmailAddress1"/>'
+				. '<t:IndexedFieldURI FieldURI="contacts:EmailAddress" FieldIndex="EmailAddress2"/>'
+				. '<t:IndexedFieldURI FieldURI="contacts:EmailAddress" FieldIndex="EmailAddress3"/>'
+				. '</t:AdditionalProperties></m:ItemShape>'
+				. '<m:IndexedPageItemView MaxEntriesReturned="500" Offset="' . $offset . '" BasePoint="Beginning"/>'
+				. '<m:ParentFolderIds>' . $this->folderXml($book) . '</m:ParentFolderIds>'
+				. '</m:FindItem>'
+			);
+			foreach ($xp->query('//m:RootFolder/t:Items/t:Contact/t:EmailAddresses/t:Entry') as $n) {
+				$known[mb_strtolower(preg_replace('/^smtp:/i', '', trim($n->textContent)) ?? '')] = true;
+			}
+			$root = $xp->query('//m:RootFolder')->item(0);
+			if (!$root instanceof \DOMElement || $root->getAttribute('IncludesLastItemInRange') !== 'false') {
+				break;
+			}
+		}
+		return $known;
+	}
+
+	private static function detailFields(): string {
 		$fields = '';
 		foreach (['contacts:DisplayName', 'contacts:GivenName', 'contacts:Surname', 'contacts:CompanyName', 'contacts:Department',
 			'contacts:JobTitle', 'contacts:EmailAddresses', 'contacts:PhoneNumbers', 'contacts:PhysicalAddresses', 'item:Body'] as $f) {
 			$fields .= '<t:FieldURI FieldURI="' . $f . '"/>';
 		}
+		return $fields;
+	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	public function getContact(string $id): array {
+		$fields = self::detailFields();
 		$xp = $this->client->request(
 			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:BodyType>Text</t:BodyType>'
 			. '<t:AdditionalProperties>' . $fields . '</t:AdditionalProperties></m:ItemShape>'

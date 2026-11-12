@@ -407,6 +407,31 @@ async function main() {
 		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
 	})
 
+	await step('conversation: the replies sent shown with the message', async () => {
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.click('.wm-message:has-text("Réunion de lundi")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Réunion de lundi")')
+		await page.waitForSelector('.wm-thread-toggle:has-text("Conversation : 2 messages")')
+		if (await page.isHidden('.wm-thread-list')) await page.click('.wm-thread-toggle')
+		const rows = await page.$$eval('.wm-thread-item', (els) => els.map((e) => e.textContent))
+		assert.strictEqual(rows.length, 2, rows.join(' | '))
+		assert(rows[0].includes('Marie Martin') && rows[0].includes('ce message'), rows[0])
+		assert(rows[1].includes('Éléments envoyés') && rows[1].includes('Oui, 14h me va.'), rows[1])
+		// the reply opens in place
+		await page.click('.wm-thread-item:has-text("Éléments envoyés") .wm-thread-head')
+		await page.waitForSelector('.wm-thread-item:has-text("Éléments envoyés") .wm-thread-body .wm-body-frame')
+		const frame = await (await page.$('.wm-thread-item:has-text("Éléments envoyés") .wm-body-frame')).contentFrame()
+		await frame.waitForSelector('text=Oui, 14h me va.')
+		await shot('53-conversation')
+		// a message alone has no conversation part
+		await page.click('.wm-message:has-text("Newsletter n°1")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°1")')
+		await page.waitForTimeout(800)
+		assert(await page.isHidden('.wm-thread'))
+		await page.click('.wm-message:has-text("Réunion de lundi")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Réunion de lundi")')
+	})
+
 	await step('forward', async () => {
 		await page.click('.wm-toolbar button:has-text("Transférer")')
 		await page.click('.wm-compose button[type=submit]')
@@ -1295,6 +1320,100 @@ async function main() {
 		assert.strictEqual(await page.$$eval('.wm-agenda-item', (els) => els.filter((e) => e.textContent.includes('Sport collectif')).length), 4)
 	})
 
+	await step('calendar: every 2nd Tuesday of the month', async () => {
+		// the 2nd Tuesday of next month
+		const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1)
+		while (d.getDay() !== 2) d.setDate(d.getDate() + 1)
+		d.setDate(d.getDate() + 7)
+		const ymd = (x) => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0')
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		await page.fill('.wm-modal input[name=subject]', 'Comité de direction')
+		await page.fill('.wm-modal input[name=startDate]', ymd(d))
+		await page.dispatchEvent('.wm-modal input[name=startDate]', 'change')
+		await page.selectOption('.wm-modal select[name=repeat]', 'monthly')
+		// on the date, or on the weekday
+		const choices = await page.$$eval('.wm-modal select[name=repeatBy] option', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(choices.slice(0, 2), ['le ' + d.getDate(), 'le 2e mardi'])
+		await page.selectOption('.wm-modal select[name=repeatBy]', 'weekday')
+		await page.selectOption('.wm-modal select[name=ends]', 'count')
+		await page.fill('.wm-modal input[name=count]', '3')
+		await page.dispatchEvent('.wm-modal input[name=count]', 'change')
+		assert.strictEqual(await page.textContent('.wm-rule-summary'), 'Tous les mois le 2e mardi, 3 fois')
+		await shot('51-second-tuesday')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
+		// three meetings, each on the 2nd Tuesday of its month
+		const found = await page.evaluate(async (from) => {
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const end = new Date(from); end.setMonth(end.getMonth() + 4)
+			const r = await (await fetch('/apps/webmail/api/accounts/' + id + '/calendar/events?tz=Europe/Paris&start=' + from + 'T00:00&end=' + end.toISOString().slice(0, 10) + 'T00:00', { headers: { requesttoken: OC.requestToken } })).json()
+			return { id, events: r.events.filter((e) => e.subject === 'Comité de direction').map((e) => ({ id: e.id, start: e.start })) }
+		}, ymd(d))
+		assert.strictEqual(found.events.length, 3, JSON.stringify(found.events))
+		found.events.forEach((e) => {
+			const s = new Date(e.start)
+			assert(s.getDay() === 2 && s.getDate() > 7 && s.getDate() <= 14, e.start)
+		})
+		// shown as such, and kept when the series is edited
+		await page.goto(NC + '/apps/webmail/?' + new URLSearchParams({ account: found.id, module: 'calendar', event: found.events[1].id }))
+		await page.waitForSelector('.wm-modal .wm-event-rule:has-text("Tous les mois le 2e mardi, 3 fois")')
+		await page.click('.wm-modal button:has-text("Modifier la série")')
+		await page.waitForSelector('.wm-modal h2:has-text("Modifier la série")')
+		assert.strictEqual(await page.inputValue('.wm-modal select[name=repeat]'), 'monthly')
+		assert.strictEqual(await page.inputValue('.wm-modal select[name=repeatBy]'), 'weekday')
+		await page.click('.wm-modal-close')
+		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
+	})
+
+	await step('calendar: a Nextcloud Talk video room for a meeting', async () => {
+		// Talk is not installed in the test Nextcloud: its API (create a public conversation) is answered here
+		let asked = null
+		await page.route('**/ocs/v2.php/apps/spreed/api/v4/room**', async (route) => {
+			asked = { method: route.request().method(), body: JSON.parse(route.request().postData() || '{}'), ocs: route.request().headers()['ocs-apirequest'] }
+			await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ ocs: { meta: { status: 'ok', statuscode: 201 }, data: { token: 'k3tq7wzp', type: 3 } } }) })
+		})
+		await page.evaluate(() => { document.getElementById('webmail-app').dataset.talk = '1' })
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		await page.fill('.wm-modal input[name=subject]', 'Point visio client')
+		await page.click('.wm-modal .wm-talk-btn')
+		await page.waitForSelector('.wm-toast:has-text("Salle de visio créée")')
+		assert.deepStrictEqual(asked, { method: 'POST', body: { roomType: 3, roomName: 'Point visio client' }, ocs: 'true' })
+		const url = await page.inputValue('.wm-modal input[name=location]')
+		assert(/^http:\/\/localhost:8080\/(index\.php\/)?call\/k3tq7wzp$/.test(url), url)
+		assert.strictEqual(await page.inputValue('.wm-modal textarea[name=body]'), 'Rejoindre la visio Nextcloud Talk : ' + url)
+		assert(await page.isHidden('.wm-modal .wm-talk-btn'), 'one room per event')
+		await shot('54-talk')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
+		// the event: a button to join
+		const created = await page.evaluate(async () => {
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const from = new Date(Date.now() - 86400000).toISOString().slice(0, 16)
+			const to = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 16)
+			const r = await (await fetch('/apps/webmail/api/accounts/' + id + '/calendar/events?tz=UTC&start=' + from + '&end=' + to, { headers: { requesttoken: OC.requestToken } })).json()
+			return { account: id, event: r.events.find((e) => e.subject === 'Point visio client').id }
+		})
+		await page.goto(NC + '/apps/webmail/?' + new URLSearchParams({ account: created.account, module: 'calendar', event: created.event }))
+		await page.waitForSelector('.wm-modal .wm-join-btn:has-text("Rejoindre la visio Nextcloud Talk")')
+		assert.strictEqual(await page.getAttribute('.wm-modal .wm-join-btn', 'href'), url)
+		await page.click('.wm-modal-close')
+		// without Talk: no button
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		assert(!(await page.$('.wm-modal .wm-talk-btn')), 'Talk not installed')
+		await page.click('.wm-modal-close')
+		await page.unroute('**/ocs/v2.php/apps/spreed/api/v4/room**')
+		await page.evaluate(async (c) => {
+			await fetch('/apps/webmail/api/accounts/' + c.account + '/calendar/delete', {
+				method: 'POST',
+				headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ eventId: c.event }),
+			})
+		}, created)
+		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
+	})
+
 	await step('calendar: a series can become a single event', async () => {
 		await page.click('.wm-agenda-item:has-text("Sport collectif") >> nth=0')
 		await page.click('.wm-modal button:has-text("Modifier la série")')
@@ -1584,6 +1703,40 @@ async function main() {
 		await page.click('.wm-toolbar button:has-text("Supprimer")')
 		await page.waitForSelector('.wm-toast:has-text("Contact supprimé")')
 		assert(!(await page.$('.wm-contact:has-text("Zoé Garnier")')))
+	})
+
+	await step('contacts: export and import vCard files', async () => {
+		await page.click('.wm-tab[data-module="contacts"]')
+		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
+		// the whole book in a .vcf file (the group is left out)
+		const [download] = await Promise.all([page.waitForEvent('download'), page.click('.wm-vcf-export')])
+		assert.strictEqual(download.suggestedFilename(), 'Contacts.vcf')
+		const vcf = fs.readFileSync(await download.path(), 'utf8')
+		// as many cards as people in the list (groups excepted); Jean Dupont as edited above
+		const people = await page.$$eval('.wm-contact', (els) => els.filter((e) => !e.textContent.includes('· groupe')).length)
+		assert.strictEqual((vcf.match(/BEGIN:VCARD/g) || []).length, people, vcf.slice(0, 300))
+		assert(vcf.includes('FN:Jean Dupont\r\nN:Dupont;Jean;;;\r\nORG:Client Exemple SA\r\nTITLE:Président\r\nEMAIL;TYPE=INTERNET,PREF:jean.dupont@client-exemple.fr\r\nEMAIL;TYPE=INTERNET:jean@perso.example'), vcf.slice(0, 400))
+		assert(vcf.includes('ADR;TYPE=WORK:;;12 promenade des Anglais;Nice;;06000;France'))
+		assert(!vcf.includes('Équipe projet'))
+		// a file from another program: one new person, one already there, one from an old Outlook
+		const cards = 'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Sophie Lambert\r\nN:Lambert;Sophie;;;\r\nORG:Lambert Conseil\r\nEMAIL;TYPE=INTERNET:sophie@lambert-conseil.example\r\nTEL;TYPE=CELL:06 98 76 54 32\r\nEND:VCARD\r\n'
+			+ 'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Jean Dupont\r\nEMAIL:JEAN.DUPONT@client-exemple.fr\r\nEND:VCARD\r\n'
+			+ 'BEGIN:VCARD\r\nVERSION:2.1\r\nN:Faure;Hugo\r\nFN:Hugo Faure\r\nORG;ENCODING=QUOTED-PRINTABLE;CHARSET=utf-8:Menuiserie Fa=C3=BBre\r\nTEL;WORK;VOICE:04 93 12 12 12\r\nEND:VCARD\r\n'
+		const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('.wm-vcf-import')])
+		await chooser.setFiles({ name: 'clients.vcf', mimeType: 'text/vcard', buffer: Buffer.from(cards) })
+		await page.waitForSelector('.wm-toast:has-text("2 contacts importés dans « Contacts » ; 1 déjà présent (même adresse e-mail)")')
+		await page.waitForSelector('.wm-contact:has-text("Sophie Lambert")')
+		await shot('52-vcard-import')
+		await page.click('.wm-contact:has-text("Hugo Faure")')
+		await page.waitForSelector('.wm-contact-card:has-text("Menuiserie Faûre")')
+		assert((await page.textContent('.wm-contact-card')).includes('04 93 12 12 12'))
+		// the next steps count the contacts of the book: as they were
+		for (const name of ['Sophie Lambert', 'Hugo Faure']) {
+			await page.click('.wm-contact:has-text("' + name + '")')
+			page.once('dialog', (d) => d.accept())
+			await page.click('.wm-toolbar button:has-text("Supprimer")')
+			await page.waitForSelector('.wm-contact:has-text("' + name + '")', { state: 'detached' })
+		}
 	})
 
 	// ------------------------------------------------------------------ shared contacts

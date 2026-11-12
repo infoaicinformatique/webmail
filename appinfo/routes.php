@@ -14,6 +14,7 @@ return [
 		['name' => 'mail#folders', 'url' => '/api/accounts/{id}/folders', 'verb' => 'GET'],
 		['name' => 'mail#messages', 'url' => '/api/accounts/{id}/messages', 'verb' => 'GET'],
 		['name' => 'mail#message', 'url' => '/api/accounts/{id}/message', 'verb' => 'GET'],
+		['name' => 'mail#conversation', 'url' => '/api/accounts/{id}/conversation', 'verb' => 'GET'],
 		['name' => 'mail#junk', 'url' => '/api/accounts/{id}/junk', 'verb' => 'POST'],
 		['name' => 'mail#createFolder', 'url' => '/api/accounts/{id}/folders', 'verb' => 'POST'],
 		['name' => 'mail#renameFolder', 'url' => '/api/accounts/{id}/folders/rename', 'verb' => 'POST'],
@@ -57,6 +58,8 @@ return [
 		['name' => 'contact#create', 'url' => '/api/accounts/{id}/contacts', 'verb' => 'POST'],
 		['name' => 'contact#update', 'url' => '/api/accounts/{id}/contacts/update', 'verb' => 'POST'],
 		['name' => 'contact#delete', 'url' => '/api/accounts/{id}/contacts/delete', 'verb' => 'POST'],
+		['name' => 'contact#export', 'url' => '/api/accounts/{id}/contacts/export', 'verb' => 'GET'],
+		['name' => 'contact#import', 'url' => '/api/accounts/{id}/contacts/import', 'verb' => 'POST'],
 		['name' => 'contact#resolve', 'url' => '/api/accounts/{id}/contacts/resolve', 'verb' => 'GET'],
 
 		['name' => 'oof#show', 'url' => '/api/accounts/{id}/oof', 'verb' => 'GET'],

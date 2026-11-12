@@ -41,6 +41,7 @@ et sur les téléphones, et inversement.
 | Invitations | Une invitation reçue par e-mail affiche la date et le lieu, avec les boutons **Accepter / Provisoire / Refuser** |
 | Réponse automatique | « 🌴 Réponse automatique » (dans « Comptes et signature ») : comme dans Outlook, activée tout de suite ou **pendant une période**, avec un message pour vos collègues et, au choix, aucune réponse, une réponse à vos contacts extérieurs ou à tout le monde à l'extérieur (même message ou un autre). Tant qu'elle est active, un rappel avec « Modifier » et « Désactiver » s'affiche au-dessus des dossiers |
 | Liens Nextcloud | « 🔗 Lien Nextcloud » dans la rédaction : un fichier ou un dossier de Fichiers devient un **lien de téléchargement** dans le texte du message (nom, taille, date de fin si l'administrateur en impose une), au lieu d'une pièce jointe. Un fichier déjà joint depuis Fichiers passe en lien avec « 🔗 en lien ». Un fichier lourd de l'ordinateur (15 Mo et plus) est signalé, et « 🔗 Envoyer en lien » le dépose dans Fichiers (dossier « Pièces jointes envoyées ») puis met son lien dans le message. Un lien en lecture seule déjà existant est réutilisé |
+| Conversations | Sous l'en-tête d'un message : « ▸ Conversation : 3 messages » quand il fait partie d'un échange. Tous les messages de la conversation, **dans tous les dossiers** (vos réponses dans « Éléments envoyés » comprises, sauf brouillons et éléments supprimés), du plus ancien au plus récent, avec l'expéditeur, la date, le dossier et le début du texte. Un clic déplie un message sur place (avec « Ouvrir ce message » et « Répondre ») ; la conversation reste dépliée ou repliée d'un message à l'autre |
 | Catégories | Les **catégories Outlook** s'affichent en pastilles de couleur dans la liste et sur le message (mêmes noms et couleurs qu'Outlook, lus dans la boîte). Bouton « 🏷 » sur un message, ou « 🏷 Catégoriser » pour plusieurs messages cochés : cocher / décocher une catégorie, ou en **créer une** avec sa couleur (25 couleurs d'Outlook), ajoutée à la liste de la boîte. Un clic sur une pastille du message affiche tous les messages de cette catégorie, dans tous les dossiers |
 | Règles | « 📋 Règles » (dans « Comptes et signature ») ou « 📋 Règle… » sur un message (son expéditeur est déjà rempli) : les règles qu'Exchange applique à chaque message reçu, **même webmail fermé**. Conditions : expéditeur, mots dans l'expéditeur, l'objet ou le texte, destinataire, pièce jointe, envoyé à moi seul, importance. Actions : déplacer, copier, mettre à la corbeille, marquer comme lu, importance, catégorie, transférer, ne pas appliquer les règles suivantes. Activer / désactiver, changer l'ordre, supprimer. Les règles faites dans Outlook avec d'autres réglages sont affichées (« créée dans Outlook ») et peuvent être activées, désactivées, déplacées ou supprimées sans être abîmées. Comme dans Outlook sur le web, la première modification remplace la copie des règles gardée par Outlook pour Windows : ses règles « côté client uniquement » (qui ne fonctionnent qu'Outlook ouvert) sont alors à refaire |
 | Délégation | Si vous êtes **délégué** d'un collègue dans Outlook, Exchange vous transmet une copie de ses invitations : le bandeau indique « Invitation reçue pour Marie Martin (vous êtes son délégué) » et la réponse est envoyée **en son nom** (après confirmation) |
@@ -59,6 +60,8 @@ et sur les téléphones, et inversement.
 ![Règles](docs/capture-regles.png)
 
 ![Catégories](docs/capture-categories.png)
+
+![Conversation](docs/capture-conversation.png)
 
 ![Lien Nextcloud](docs/capture-lien-partage.png)
 
@@ -88,6 +91,10 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Recherche d'événements](docs/capture-recherche-agenda.png)
 
+![Le 2e mardi du mois](docs/capture-2e-mardi.png)
+
+![Visio Talk](docs/capture-talk.png)
+
 | | |
 |---|---|
 | Vues | **Jour**, **semaine**, **mois** et **liste** des 30 prochains jours. Mini-calendrier à gauche : un point sous les jours qui ont des rendez-vous (dans la période affichée), ses propres flèches pour parcourir les mois sans changer l'affichage principal, un clic va au jour, un double-clic l'affiche seul (vue jour). Les événements périodiques sont dépliés |
@@ -95,13 +102,14 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Semaine | Grille horaire sur 7 jours. Une ligne « Journée » regroupe les événements sur la journée entière. Les événements qui se chevauchent sont placés côte à côte, et un trait rouge marque l'heure actuelle. Un clic sur un créneau libre crée un événement à cette heure. Un clic sur un jour du mini-calendrier affiche sa semaine |
 | Détail | Horaire, lieu, organisateur, participants et leur réponse, description |
 | Création / modification | Titre, journée entière, début et fin, lieu, participants et facultatifs (avec complétion), rappel, disponibilité |
-| Répétition | Chaque jour, semaine, mois ou année, **tous les N** jours, semaines ou mois, **plusieurs jours de la semaine** (par ex. lundi et jeudi). Fin : jamais, à une date ou après N occurrences. Un résumé en clair s'affiche, par ex. « Toutes les 2 semaines le lundi et le jeudi, 10 fois » |
+| Répétition | Chaque jour, semaine, mois ou année, **tous les N** jours, semaines ou mois, **plusieurs jours de la semaine** (par ex. lundi et jeudi). Fin : jamais, à une date ou après N occurrences. Chaque mois ou chaque année **à une date** (« le 12 ») **ou un jour de la semaine** (« le 2e mardi », « le dernier vendredi », « le 4e jeudi de novembre »), proposés d'après la date du premier événement. Un résumé en clair s'affiche, par ex. « Toutes les 2 semaines le lundi et le jeudi, 10 fois » |
 | Plusieurs agendas | **Vos autres agendas** Exchange (par ex. « Congés équipe ») apparaissent automatiquement. Chaque agenda a sa couleur et une case pour l'afficher ou le masquer. À la création d'un événement, on choisit l'agenda |
 | Agendas partagés | « Ajouter un agenda partagé » : saisissez l'adresse d'un collègue (avec complétion). Le niveau d'accès est **détecté automatiquement** : **modification** ou **lecture** si l'agenda vous a été partagé dans Outlook, sinon **disponibilités** seulement (le partage par défaut d'Exchange : créneaux occupés, hachurés, avec l'objet s'il est partagé). En lecture, rien n'est modifiable ; en modification, on peut créer, modifier, déplacer et supprimer. La liste est propre à chaque utilisateur et à chaque compte ; retirer un agenda ne supprime rien dans Exchange |
 | Partager mon agenda | Bouton 🔗 à côté de chacun de vos agendas : choisissez ce que **toute l'organisation** et **chaque personne** peuvent voir ou faire (aucun accès, disponibilités seulement, disponibilités avec objet et lieu, lecture, lecture et ajout, modification), **sans en faire un délégué**. C'est le réglage « Autorisations » d'Outlook ; les niveaux personnalisés créés dans Outlook sont affichés et conservés tels quels. Vos collègues ajoutent ensuite votre agenda avec « Ajouter un agenda partagé » |
 | Glisser-déposer | À la souris, dans la vue **semaine**, glisser un événement le déplace à une autre heure ou un autre jour, par pas de 15 minutes. Tirer son **bord inférieur** change l'heure de fin. Dans la vue **mois** et la ligne « Journée », glisser un événement le déplace sur un autre jour en gardant ses horaires. **Échap** annule. Pour une réunion, une confirmation est demandée et les participants reçoivent la mise à jour. Seuls les événements dont vous êtes l'organisateur peuvent être déplacés. Sur écran tactile, un appui ouvre l'événement, et on le modifie avec « Modifier » |
-| Séries | Depuis une occurrence : **« Modifier cette occurrence »** ou **« Modifier la série »**. Les deux modifient titre, horaires, lieu, participants, rappel et disponibilité ; seule la série permet de changer la règle de répétition ou de la supprimer (la série devient alors un événement unique). Les participants reçoivent la mise à jour. Pour une règle créée dans Outlook que l'application ne sait pas modifier (par ex. « le 2e mardi du mois »), la règle est conservée et seuls les horaires sont modifiables |
+| Séries | Depuis une occurrence : **« Modifier cette occurrence »** ou **« Modifier la série »**. Les deux modifient titre, horaires, lieu, participants, rappel et disponibilité ; seule la série permet de changer la règle de répétition ou de la supprimer (la série devient alors un événement unique). Les participants reçoivent la mise à jour. Pour une règle créée dans Outlook que l'application ne sait pas modifier (par ex. « le 2e jour ouvré du mois »), la règle est conservée et seuls les horaires sont modifiables |
 | Réunions | Les participants reçoivent l'invitation, puis les mises à jour et les annulations (envoyées par Exchange) |
+| Visio | Avec **Nextcloud Talk** installé, « 🎥 Visio Talk » dans le formulaire crée une salle de visio publique pour l'événement : son lien va dans le lieu et dans la description, donc dans l'invitation ; les invités extérieurs y entrent sans compte. Dans le détail d'un événement, « 🎥 Rejoindre la visio » ouvre la salle (ou le lien Teams, Zoom… donné comme lieu) |
 | Invitations reçues | Accepter, provisoire ou refuser depuis l'agenda ou depuis l'e-mail |
 | Réponse au nom d'un collègue | Dans l'agenda d'un collègue partagé en **modification** (délégué ou éditeur), ses invitations affichent « Réponse de Marie Martin » et les boutons pour répondre **en son nom**, après confirmation. Impossible en lecture seule |
 | Suppression | D'un événement, d'une occurrence ou de toute la série |
@@ -114,6 +122,8 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 ### Contacts
 
 ![Contacts](docs/capture-contacts.png)
+
+![Import vCard](docs/capture-vcard.png)
 
 ![Contacts partagés](docs/capture-contacts-partages.png)
 
@@ -133,6 +143,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Annuaire de l'entreprise | Toutes les personnes et listes de diffusion de l'organisation Exchange, avec service, fonction, téléphone et site. Exchange ne permet que la **recherche**, à partir de 2 lettres et dans la limite de 100 résultats. Lecture seule, avec « Écrire » et « Ajouter à mes contacts » |
 | Fiche | Société, fonction, jusqu'à 3 e-mails, mobile, téléphone du bureau et du domicile, adresse (lien vers la carte), notes |
 | Actions | Créer (dans le carnet choisi), modifier, supprimer, **écrire** (ouvre un nouveau message), appeler (lien `tel:`) |
+| Import / export | « ⬇ » au-dessus de la liste : tout le carnet affiché dans un fichier **vCard** (.vcf) pour Outlook, un téléphone, Nextcloud Contacts… « ⬆ » : les contacts d'un fichier vCard (2.1, 3.0 ou 4.0, celui d'Outlook ou d'un téléphone) sont ajoutés au carnet ; ceux déjà présents (même adresse e-mail) sont ignorés, et le bilan s'affiche |
 | Groupes | Les listes de distribution sont affichées, leur gestion reste dans Outlook |
 
 ### Délégués
@@ -177,7 +188,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.32.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.36.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -199,7 +210,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.32 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.36 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -284,17 +295,15 @@ templates/          page principale et page d'administration
 
 **Courrier**
 - Images collées dans l'éditeur, signature mise en forme, pièces jointes enregistrées avec le brouillon
-- Affichage par conversation (fil de discussion)
+- Liste des messages regroupée par conversation
 - Boîtes partagées (contact@…) et boîtes des collègues dont on est délégué
 
 **Agenda**
-- Règles « le 2e mardi du mois » (aujourd'hui conservées, mais pas modifiables ici)
 - Assistant de planification (disponibilités des participants, salles de réunion)
-- Lien de visio Nextcloud Talk dans les invitations
 - Agendas des dossiers publics
 
 **Contacts**
-- Groupes de contacts modifiables, photos, import et export vCard
+- Groupes de contacts modifiables, photos
 
 **Nextcloud et serveur**
 - Notifications Exchange en direct (abonnement « streaming ») à la place de la vérification régulière

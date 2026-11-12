@@ -501,13 +501,43 @@ class EwsClient {
 	}
 
 	/**
+	 * Every message of a conversation, in every folder (the replies sent are
+	 * in « Éléments envoyés »), oldest first. Deleted items and drafts are
+	 * left out.
+	 * @return list<array<string, mixed>>
+	 */
+	public function conversation(string $conversationId): array {
+		$xp = $this->request(
+			'<m:GetConversationItems>'
+			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $this->summaryFields(true) . '</t:AdditionalProperties></m:ItemShape>'
+			. '<m:FoldersToIgnore><t:DistinguishedFolderId Id="deleteditems"/><t:DistinguishedFolderId Id="drafts"/></m:FoldersToIgnore>'
+			. '<m:MaxItemsToReturn>100</m:MaxItemsToReturn>'
+			. '<m:SortOrder>DateOrderAscending</m:SortOrder>'
+			. '<m:Conversations><t:Conversation><t:ConversationId Id="' . $this->esc($conversationId) . '"/></t:Conversation></m:Conversations>'
+			. '</m:GetConversationItems>'
+		);
+		$items = [];
+		$seen = [];
+		foreach ($xp->query('//m:Conversation/t:ConversationNodes/t:ConversationNode/t:Items/*') as $node) {
+			$item = $this->summary($xp, $node);
+			if ($item['id'] === null || isset($seen[$item['id']])) {
+				continue;
+			}
+			$seen[$item['id']] = true;
+			$items[] = $item;
+		}
+		usort($items, fn ($a, $b) => strcmp((string)$a['date'], (string)$b['date']));
+		return $items;
+	}
+
+	/**
 	 * @return array<string, mixed>
 	 */
 	public function getItem(string $itemId): array {
 		$props = ['item:Subject', 'item:Body', 'message:From', 'message:Sender', 'message:ToRecipients', 'message:CcRecipients',
 			'message:BccRecipients', 'message:ReplyTo', 'item:DateTimeReceived', 'item:DateTimeSent', 'message:IsRead',
 			'item:Attachments', 'item:HasAttachments', 'item:Importance', 'item:Flag', 'message:InternetMessageId', 'item:ParentFolderId',
-			'item:Categories'];
+			'item:Categories', 'item:ConversationId'];
 		$fields = '';
 		foreach ($props as $p) {
 			$fields .= '<t:FieldURI FieldURI="' . $p . '"/>';
@@ -552,6 +582,7 @@ class EwsClient {
 			'importance' => $this->text($xp, 't:Importance', $node) ?? 'Normal',
 			'flagged' => $this->text($xp, 't:Flag/t:FlagStatus', $node) === 'Flagged',
 			'categories' => $this->strings($xp, 't:Categories/t:String', $node),
+			'conversationId' => $this->attr($xp, 't:ConversationId', 'Id', $node),
 			'messageId' => $this->text($xp, 't:InternetMessageId', $node),
 			'attachments' => $attachments,
 			'isMeeting' => $node->localName !== 'Message',
