@@ -176,6 +176,89 @@ class EwsCalendarTest extends EwsTestCase {
 		return [['accept', 'AcceptItem'], ['tentative', 'TentativelyAcceptItem'], ['decline', 'DeclineItem']];
 	}
 
+	public function testGetSeries(): void {
+		$this->queue(self::ok('GetItem', '<m:Items><t:CalendarItem><t:ItemId Id="MASTER1" ChangeKey="MK"/><t:Subject>Sport</t:Subject>'
+			. '<t:Body BodyType="Text"></t:Body><t:ReminderIsSet>false</t:ReminderIsSet>'
+			. '<t:Start>2026-11-16T17:00:00Z</t:Start><t:End>2026-11-16T18:00:00Z</t:End><t:IsAllDayEvent>false</t:IsAllDayEvent>'
+			. '<t:IsMeeting>false</t:IsMeeting><t:IsRecurring>true</t:IsRecurring><t:CalendarItemType>RecurringMaster</t:CalendarItemType><t:MyResponseType>Organizer</t:MyResponseType>'
+			. '<t:Recurrence><t:WeeklyRecurrence><t:Interval>2</t:Interval><t:DaysOfWeek>Monday Thursday</t:DaysOfWeek><t:FirstDayOfWeek>Monday</t:FirstDayOfWeek></t:WeeklyRecurrence>'
+			. '<t:EndDateRecurrence><t:StartDate>2026-11-16+01:00</t:StartDate><t:EndDate>2027-03-31+01:00</t:EndDate></t:EndDateRecurrence></t:Recurrence>'
+			. '</t:CalendarItem></m:Items>'));
+		$series = $this->calendar()->getSeries('OCC1');
+		$this->assertStringContainsString('<m:ItemIds><t:RecurringMasterItemId OccurrenceId="OCC1"/></m:ItemIds>', $this->lastRequest());
+		$this->assertStringContainsString('<t:FieldURI FieldURI="calendar:Recurrence"/>', $this->lastRequest());
+		$this->assertSame('MASTER1', $series['id']);
+		$this->assertSame('RecurringMaster', $series['type']);
+		$this->assertSame(['freq' => 'weekly', 'pattern' => 'WeeklyRecurrence', 'interval' => 2, 'days' => ['Monday', 'Thursday'],
+			'dayOfMonth' => null, 'until' => '2027-03-31', 'count' => null], $series['recurrence']);
+	}
+
+	public function testUnsupportedPatternIsReportedAsOther(): void {
+		$this->queue(self::ok('GetItem', '<m:Items><t:CalendarItem><t:ItemId Id="M2"/><t:Subject>Comité</t:Subject>'
+			. '<t:Start>2026-11-10T09:00:00Z</t:Start><t:End>2026-11-10T10:00:00Z</t:End>'
+			. '<t:Recurrence><t:RelativeMonthlyRecurrence><t:Interval>1</t:Interval><t:DaysOfWeek>Tuesday</t:DaysOfWeek><t:DayOfWeekIndex>Second</t:DayOfWeekIndex></t:RelativeMonthlyRecurrence>'
+			. '<t:NumberedRecurrence><t:StartDate>2026-11-10</t:StartDate><t:NumberOfOccurrences>12</t:NumberOfOccurrences></t:NumberedRecurrence></t:Recurrence>'
+			. '</t:CalendarItem></m:Items>'));
+		$r = $this->calendar()->getSeries('OCC2')['recurrence'];
+		$this->assertSame('other', $r['freq']);
+		$this->assertSame('RelativeMonthlyRecurrence', $r['pattern']);
+		$this->assertSame(12, $r['count']);
+	}
+
+	public function testUpdateSeriesWithNewRule(): void {
+		$this->queue(self::ok('UpdateItem', '<m:Items/>'));
+		$this->calendar()->updateEvent('MASTER1', ['subject' => 'Sport collectif', 'start' => '2026-11-16T18:30', 'end' => '2026-11-16T19:30',
+			'recurrence' => ['freq' => 'weekly', 'interval' => 2, 'days' => ['Thursday', 'Monday'], 'count' => 10]], true);
+		$req = $this->lastRequest();
+		$this->assertStringContainsString('<t:ItemId Id="MASTER1"/>', $req);
+		$this->assertStringContainsString('<t:SetItemField><t:FieldURI FieldURI="calendar:Recurrence"/><t:CalendarItem><t:Recurrence>'
+			. '<t:WeeklyRecurrence><t:Interval>2</t:Interval><t:DaysOfWeek>Monday Thursday</t:DaysOfWeek></t:WeeklyRecurrence>'
+			. '<t:NumberedRecurrence><t:StartDate>2026-11-16</t:StartDate><t:NumberOfOccurrences>10</t:NumberOfOccurrences></t:NumberedRecurrence>'
+			. '</t:Recurrence></t:CalendarItem></t:SetItemField>', $req);
+		$this->assertStringContainsString('<t:Start>2026-11-16T18:30:00</t:Start>', $req);
+	}
+
+	public function testUpdateSeriesKeepsOrRemovesRule(): void {
+		$this->queue(self::ok('UpdateItem', '<m:Items/>'));
+		$this->queue(self::ok('UpdateItem', '<m:Items/>'));
+		$this->queue(self::ok('UpdateItem', '<m:Items/>'));
+		$cal = $this->calendar();
+		$cal->updateEvent('M', ['subject' => 'x', 'start' => '2026-11-16T10:00', 'end' => '2026-11-16T11:00', 'recurrence' => ['freq' => 'keep']], true);
+		$this->assertStringNotContainsString('calendar:Recurrence', $this->lastRequest());
+		$cal->updateEvent('M', ['subject' => 'x', 'start' => '2026-11-16T10:00', 'end' => '2026-11-16T11:00', 'recurrence' => ['freq' => 'none']], true);
+		$this->assertStringContainsString('<t:DeleteItemField><t:FieldURI FieldURI="calendar:Recurrence"/></t:DeleteItemField>', $this->lastRequest());
+		// a single occurrence never touches the rule
+		$cal->updateEvent('OCC', ['subject' => 'x', 'start' => '2026-11-16T10:00', 'end' => '2026-11-16T11:00', 'recurrence' => ['freq' => 'daily']]);
+		$this->assertStringNotContainsString('calendar:Recurrence', $this->lastRequest());
+	}
+
+	public function testCreateWithIntervalAndDailyUntil(): void {
+		$this->queue(self::ok('CreateItem', '<m:Items><t:CalendarItem><t:ItemId Id="N"/></t:CalendarItem></m:Items>'));
+		$this->calendar()->createEvent(['subject' => 'x', 'start' => '2026-11-30T10:00', 'end' => '2026-11-30T11:00',
+			'recurrence' => ['freq' => 'monthly', 'interval' => '3', 'until' => '2027-12-31']]);
+		$this->assertStringContainsString('<t:AbsoluteMonthlyRecurrence><t:Interval>3</t:Interval><t:DayOfMonth>30</t:DayOfMonth></t:AbsoluteMonthlyRecurrence>'
+			. '<t:EndDateRecurrence><t:StartDate>2026-11-30</t:StartDate><t:EndDate>2027-12-31</t:EndDate></t:EndDateRecurrence>', $this->lastRequest());
+	}
+
+	/**
+	 * @dataProvider badRecurrences
+	 */
+	public function testInvalidRecurrence(array $rec, string $message): void {
+		$this->expectException(MailException::class);
+		$this->expectExceptionMessage($message);
+		EwsCalendar::normalize(['start' => '2026-11-17T14:00', 'end' => '2026-11-17T15:00', 'recurrence' => $rec]);
+	}
+
+	public static function badRecurrences(): array {
+		return [
+			[['freq' => 'hourly'], 'Répétition inconnue'],
+			[['freq' => 'weekly', 'days' => ['Lundi']], 'Jour de la semaine inconnu'],
+			[['freq' => 'daily', 'interval' => 0], 'intervalle'],
+			[['freq' => 'daily', 'until' => '2026-11-01'], 'avant le début'],
+			[['freq' => 'daily', 'count' => 5000], 'nombre d\'occurrences'],
+		];
+	}
+
 	public function testTimeZoneMapping(): void {
 		$this->assertSame('Romance Standard Time', TimeZones::toWindows('Europe/Paris'));
 		$this->assertSame('Mauritius Standard Time', TimeZones::toWindows('Indian/Reunion'));

@@ -106,10 +106,78 @@ class EwsCalendar {
 	}
 
 	/**
-	 * Update a single event or occurrence (recurrence rules are not changed).
+	 * The recurring series an occurrence belongs to (its "master"), with its
+	 * recurrence rule. Start and end are those of the first occurrence.
+	 * @return array<string, mixed>
+	 */
+	public function getSeries(string $occurrenceId): array {
+		$xp = $this->client->request(
+			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:BodyType>Text</t:BodyType>'
+			. '<t:AdditionalProperties>' . self::fields(array_merge(self::DETAIL_FIELDS, ['calendar:Recurrence'])) . '</t:AdditionalProperties></m:ItemShape>'
+			. '<m:ItemIds><t:RecurringMasterItemId OccurrenceId="' . $this->client->esc($occurrenceId) . '"/></m:ItemIds></m:GetItem>'
+		);
+		$node = $xp->query('//m:Items/t:CalendarItem')->item(0);
+		if ($node === null) {
+			throw new MailException('Série introuvable');
+		}
+		$series = $this->parseEvent($xp, $node, true);
+		$series['recurrence'] = self::parseRecurrence($xp, $node);
+		return $series;
+	}
+
+	/**
+	 * Read the t:Recurrence element of a recurring master.
+	 * freq is daily | weekly | monthly | yearly, or "other" for patterns this
+	 * UI cannot edit (e.g. "the 2nd Tuesday of the month"): those are kept as is.
+	 * @return ?array<string, mixed>
+	 */
+	public static function parseRecurrence(\DOMXPath $xp, \DOMNode $node): ?array {
+		$rec = $xp->query('t:Recurrence', $node)->item(0);
+		if ($rec === null) {
+			return null;
+		}
+		$pattern = null;
+		$range = null;
+		foreach ($rec->childNodes as $child) {
+			if (!$child instanceof \DOMElement) {
+				continue;
+			}
+			if (str_ends_with($child->localName, 'Recurrence') && in_array($child->localName, ['NoEndRecurrence', 'EndDateRecurrence', 'NumberedRecurrence'], true)) {
+				$range = $child;
+			} elseif ($pattern === null) {
+				$pattern = $child;
+			}
+		}
+		$value = fn (string $name, ?\DOMNode $ctx) => $ctx === null ? null : ($xp->query('t:' . $name, $ctx)->item(0)?->textContent);
+
+		$freq = match ($pattern?->localName) {
+			'DailyRecurrence' => 'daily',
+			'WeeklyRecurrence' => 'weekly',
+			'AbsoluteMonthlyRecurrence' => 'monthly',
+			'AbsoluteYearlyRecurrence' => 'yearly',
+			default => 'other',
+		};
+		$days = trim((string)$value('DaysOfWeek', $pattern));
+		$endDate = $value('EndDate', $range);
+		$count = $value('NumberOfOccurrences', $range);
+		return [
+			'freq' => $freq,
+			'pattern' => $pattern?->localName,
+			'interval' => max(1, (int)($value('Interval', $pattern) ?? 1)),
+			'days' => $days === '' ? [] : preg_split('/\s+/', $days),
+			'dayOfMonth' => $value('DayOfMonth', $pattern) !== null ? (int)$value('DayOfMonth', $pattern) : null,
+			'until' => $endDate !== null ? substr($endDate, 0, 10) : null,
+			'count' => $count !== null ? (int)$count : null,
+		];
+	}
+
+	/**
+	 * Update an event, an occurrence, or — with $series = true and the id of
+	 * the series master (see getSeries) — the whole recurring series,
+	 * including its recurrence rule.
 	 * @param array<string, mixed> $data
 	 */
-	public function updateEvent(string $id, array $data): void {
+	public function updateEvent(string $id, array $data, bool $series = false): void {
 		$e = self::normalize($data);
 		$c = $this->client;
 		$set = fn (string $field, string $inner) => '<t:SetItemField><t:FieldURI FieldURI="' . $field . '"/><t:CalendarItem>' . $inner . '</t:CalendarItem></t:SetItemField>';
@@ -126,6 +194,16 @@ class EwsCalendar {
 			. ($e['location'] !== '' ? $set('calendar:Location', '<t:Location>' . $c->esc($e['location']) . '</t:Location>') : $del('calendar:Location'))
 			. ($e['attendees'] !== [] ? $set('calendar:RequiredAttendees', $this->attendeesXml('RequiredAttendees', $e['attendees'])) : $del('calendar:RequiredAttendees'))
 			. ($e['optionalAttendees'] !== [] ? $set('calendar:OptionalAttendees', $this->attendeesXml('OptionalAttendees', $e['optionalAttendees'])) : $del('calendar:OptionalAttendees'));
+
+		if ($series) {
+			$rec = $e['recurrence'];
+			if ($rec === null) {
+				// "does not repeat": the series becomes a single event
+				$updates .= $del('calendar:Recurrence');
+			} elseif ($rec['freq'] !== 'keep') {
+				$updates .= $set('calendar:Recurrence', $this->recurrenceXml($e));
+			}
+		}
 
 		$notify = ($e['attendees'] !== [] || $e['optionalAttendees'] !== []) ? 'SendToAllAndSaveCopy' : 'SendToNone';
 		$this->client->request(
@@ -176,7 +254,8 @@ class EwsCalendar {
 	 * Validate and normalise event data coming from the UI.
 	 *
 	 * @param array<string, mixed> $data subject, start, end, allDay, location, body, attendees[], optionalAttendees[],
-	 *                                   reminder (minutes, -1 = none), freeBusy, recurrence {freq, until}
+	 *                                   reminder (minutes, -1 = none), freeBusy,
+	 *                                   recurrence {freq, interval, days[], until, count} (see normalizeRecurrence)
 	 * @return array<string, mixed>
 	 */
 	public static function normalize(array $data): array {
@@ -212,15 +291,7 @@ class EwsCalendar {
 		$reminder = isset($data['reminder']) && $data['reminder'] !== '' ? (int)$data['reminder'] : 15;
 		$reminder = max(-1, min(40320, $reminder));
 
-		$recurrence = null;
-		if (!empty($data['recurrence']) && is_array($data['recurrence']) && !empty($data['recurrence']['freq'])) {
-			$freq = (string)$data['recurrence']['freq'];
-			if (!in_array($freq, ['daily', 'weekly', 'monthly', 'yearly'], true)) {
-				throw new MailException('Répétition inconnue');
-			}
-			$until = !empty($data['recurrence']['until']) ? self::parseDate((string)$data['recurrence']['until'])->format('Y-m-d') : null;
-			$recurrence = ['freq' => $freq, 'until' => $until];
-		}
+		$recurrence = self::normalizeRecurrence($data['recurrence'] ?? null, substr($start, 0, 10));
 
 		return [
 			'subject' => $subject,
@@ -235,6 +306,52 @@ class EwsCalendar {
 			'freeBusy' => $freeBusy,
 			'recurrence' => $recurrence,
 		];
+	}
+
+	private const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+	/**
+	 * @param mixed $r {freq: daily|weekly|monthly|yearly|keep|none, interval, days[], until (Y-m-d), count}
+	 * @return ?array<string, mixed> null = no recurrence
+	 */
+	private static function normalizeRecurrence($r, string $startDate): ?array {
+		if (!is_array($r) || empty($r['freq']) || $r['freq'] === 'none') {
+			return null;
+		}
+		$freq = (string)$r['freq'];
+		if ($freq === 'keep') {
+			return ['freq' => 'keep'];
+		}
+		if (!in_array($freq, ['daily', 'weekly', 'monthly', 'yearly'], true)) {
+			throw new MailException('Répétition inconnue');
+		}
+		$interval = isset($r['interval']) && $r['interval'] !== '' ? (int)$r['interval'] : 1;
+		if ($interval < 1 || $interval > 99) {
+			throw new MailException('L\'intervalle de répétition doit être compris entre 1 et 99');
+		}
+		$days = [];
+		if ($freq === 'weekly') {
+			foreach ((array)($r['days'] ?? []) as $d) {
+				if (!in_array($d, self::WEEKDAYS, true)) {
+					throw new MailException('Jour de la semaine inconnu : ' . $d);
+				}
+				$days[] = $d;
+			}
+			if ($days === []) {
+				$days[] = (new \DateTimeImmutable($startDate))->format('l');
+			}
+			// Exchange expects the days in week order
+			$days = array_values(array_intersect(self::WEEKDAYS, $days));
+		}
+		$until = !empty($r['until']) ? self::parseDate((string)$r['until'])->format('Y-m-d') : null;
+		if ($until !== null && $until < $startDate) {
+			throw new MailException('La fin de la répétition est avant le début de l\'événement');
+		}
+		$count = !empty($r['count']) ? (int)$r['count'] : null;
+		if ($count !== null && ($count < 1 || $count > 999)) {
+			throw new MailException('Le nombre d\'occurrences doit être compris entre 1 et 999');
+		}
+		return ['freq' => $freq, 'interval' => $interval, 'days' => $days, 'until' => $until, 'count' => $until === null ? $count : null];
 	}
 
 	/**
@@ -308,20 +425,24 @@ class EwsCalendar {
 
 	/** @param array<string, mixed> $e */
 	private function recurrenceXml(array $e): string {
-		if ($e['recurrence'] === null) {
+		$r = $e['recurrence'];
+		if ($r === null || $r['freq'] === 'keep') {
 			return '';
 		}
 		$start = new \DateTimeImmutable(substr($e['start'], 0, 10));
-		$pattern = match ($e['recurrence']['freq']) {
-			'daily' => '<t:DailyRecurrence><t:Interval>1</t:Interval></t:DailyRecurrence>',
-			'weekly' => '<t:WeeklyRecurrence><t:Interval>1</t:Interval><t:DaysOfWeek>' . $start->format('l') . '</t:DaysOfWeek></t:WeeklyRecurrence>',
-			'monthly' => '<t:AbsoluteMonthlyRecurrence><t:Interval>1</t:Interval><t:DayOfMonth>' . $start->format('j') . '</t:DayOfMonth></t:AbsoluteMonthlyRecurrence>',
+		$interval = '<t:Interval>' . $r['interval'] . '</t:Interval>';
+		$pattern = match ($r['freq']) {
+			'daily' => '<t:DailyRecurrence>' . $interval . '</t:DailyRecurrence>',
+			'weekly' => '<t:WeeklyRecurrence>' . $interval . '<t:DaysOfWeek>' . implode(' ', $r['days']) . '</t:DaysOfWeek></t:WeeklyRecurrence>',
+			'monthly' => '<t:AbsoluteMonthlyRecurrence>' . $interval . '<t:DayOfMonth>' . $start->format('j') . '</t:DayOfMonth></t:AbsoluteMonthlyRecurrence>',
 			'yearly' => '<t:AbsoluteYearlyRecurrence><t:DayOfMonth>' . $start->format('j') . '</t:DayOfMonth><t:Month>' . $start->format('F') . '</t:Month></t:AbsoluteYearlyRecurrence>',
 		};
-		$until = $e['recurrence']['until'];
-		$range = $until !== null
-			? '<t:EndDateRecurrence><t:StartDate>' . $start->format('Y-m-d') . '</t:StartDate><t:EndDate>' . $until . '</t:EndDate></t:EndDateRecurrence>'
-			: '<t:NoEndRecurrence><t:StartDate>' . $start->format('Y-m-d') . '</t:StartDate></t:NoEndRecurrence>';
+		$startDate = '<t:StartDate>' . $start->format('Y-m-d') . '</t:StartDate>';
+		$range = match (true) {
+			$r['until'] !== null => '<t:EndDateRecurrence>' . $startDate . '<t:EndDate>' . $r['until'] . '</t:EndDate></t:EndDateRecurrence>',
+			$r['count'] !== null => '<t:NumberedRecurrence>' . $startDate . '<t:NumberOfOccurrences>' . $r['count'] . '</t:NumberOfOccurrences></t:NumberedRecurrence>',
+			default => '<t:NoEndRecurrence>' . $startDate . '</t:NoEndRecurrence>',
+		};
 		return '<t:Recurrence>' . $pattern . $range . '</t:Recurrence>';
 	}
 
