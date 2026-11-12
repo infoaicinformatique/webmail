@@ -121,7 +121,7 @@ class EwsClient {
 	 * @return array<int, array{id: string, name: string, parentId: ?string, total: int, unread: int, role: ?string}>
 	 */
 	public function listFolders(?int &$usedBytes = null): array {
-		$roles = $this->distinguishedFolderIds(['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'msgfolderroot']);
+		$roles = $this->distinguishedFolderIds(['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'outbox', 'msgfolderroot']);
 		$rootId = $roles['msgfolderroot'] ?? null;
 		unset($roles['msgfolderroot']);
 		$roleById = array_flip($roles);
@@ -710,7 +710,14 @@ class EwsClient {
 	 * @param ?string $referenceId item replied to / forwarded (required unless mode = new)
 	 */
 	public function sendMessage(string $mode, string $subject, string $htmlBody, array $to, array $cc, array $bcc,
-		array $attachments = [], ?string $referenceId = null, string $importance = 'Normal'): void {
+		array $attachments = [], ?string $referenceId = null, string $importance = 'Normal', array $options = []): void {
+		if (!empty($options['readReceipt']) || !empty($options['sendAt'])) {
+			// options are set on a draft, then the draft is sent (also for replies and forwards)
+			$draft = $this->createDraft($this->composeItemXml($mode, $subject, $htmlBody, $to, $cc, $bcc, $referenceId, $importance));
+			$this->setSendOptions($draft['id'], $options);
+			$this->sendSavedDraft($draft['id'], $attachments);
+			return;
+		}
 		if ($mode === 'new') {
 			$attXml = '';
 			foreach ($attachments as $a) {
@@ -812,6 +819,38 @@ class EwsClient {
 		$this->request(
 			'<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite">'
 			. '<m:ItemChanges><t:ItemChange><t:ItemId Id="' . $this->esc($id) . '"/><t:Updates>' . $updates . '</t:Updates></t:ItemChange></m:ItemChanges>'
+			. '</m:UpdateItem>'
+		);
+	}
+
+	/**
+	 * Send options of a draft: read receipt, and delivery at a later time
+	 * (PR_DEFERRED_SEND_TIME: Exchange keeps the message in the Outbox until then).
+	 * @param array{readReceipt?: bool, sendAt?: ?string} $options sendAt: ISO 8601
+	 */
+	public function setSendOptions(string $draftId, array $options): void {
+		$updates = '';
+		if (!empty($options['sendAt'])) {
+			$at = date_create_immutable((string)$options['sendAt']);
+			if ($at === false) {
+				throw new MailException('Date d\'envoi invalide');
+			}
+			if ($at <= new \DateTimeImmutable('+1 minute')) {
+				throw new MailException('L\'heure d\'envoi doit être dans le futur');
+			}
+			$updates .= '<t:SetItemField><t:ExtendedFieldURI PropertyTag="0x3FEF" PropertyType="SystemTime"/><t:Message>'
+				. '<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0x3FEF" PropertyType="SystemTime"/><t:Value>'
+				. $at->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z') . '</t:Value></t:ExtendedProperty></t:Message></t:SetItemField>';
+		}
+		if (!empty($options['readReceipt'])) {
+			$updates .= '<t:SetItemField><t:FieldURI FieldURI="message:IsReadReceiptRequested"/><t:Message><t:IsReadReceiptRequested>true</t:IsReadReceiptRequested></t:Message></t:SetItemField>';
+		}
+		if ($updates === '') {
+			return;
+		}
+		$this->request(
+			'<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite">'
+			. '<m:ItemChanges><t:ItemChange><t:ItemId Id="' . $this->esc($draftId) . '"/><t:Updates>' . $updates . '</t:Updates></t:ItemChange></m:ItemChanges>'
 			. '</m:UpdateItem>'
 		);
 	}

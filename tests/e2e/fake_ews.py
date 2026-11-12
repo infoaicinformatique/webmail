@@ -50,6 +50,7 @@ FOLDERS = [
     ('F-SENT', 'Éléments envoyés', 'F-ROOT', 'sentitems'),
     ('F-DELETED', 'Éléments supprimés', 'F-ROOT', 'deleteditems'),
     ('F-JUNK', 'Courrier indésirable', 'F-ROOT', 'junkemail'),
+    ('F-OUTBOX', 'Boîte d\'envoi', 'F-ROOT', 'outbox'),
     ('F-CLIENTS', 'Clients', 'F-INBOX', None),
     ('F-FACTURES', 'Factures', 'F-ROOT', None),
 ]
@@ -452,6 +453,10 @@ def handle(op, el, user):
                         m['importance'] = item.findtext('t:Importance', default='Normal', namespaces=NS)
                     elif uri in rcpt:
                         m[rcpt[uri]] = recipients(item, uri[8:])
+                if item is not None and item.find('t:ExtendedProperty', NS) is not None:
+                    m['send_at'] = item.findtext('t:ExtendedProperty/t:Value', default='', namespaces=NS)
+                if item is not None and item.find('t:IsReadReceiptRequested', NS) is not None:
+                    m['read_receipt'] = item.findtext('t:IsReadReceiptRequested', namespaces=NS) == 'true'
                 r = upd.findtext('.//t:IsRead', default=None, namespaces=NS)
                 if r is not None:
                     m['is_read'] = r == 'true'
@@ -558,6 +563,9 @@ def handle(op, el, user):
                 msgs.append(err(op, 'ErrorItemNotFound', 'not found'))
             elif i.get('ChangeKey') != m['ck']:
                 msgs.append(err(op, 'ErrorIrresolvableConflict', 'The send or update operation could not be performed because the change key passed in the request does not match the current change key for the item.'))
+            elif m.get('send_at') and m['send_at'] > now():
+                m['folder'] = 'F-OUTBOX'  # Exchange keeps it there until the time comes
+                msgs.append(ok(op))
             else:
                 m['folder'] = 'F-SENT'
                 deliver_to_self(m, user)

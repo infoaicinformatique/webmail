@@ -524,6 +524,39 @@ async function main() {
 		await page.waitForSelector(msg(12))
 	})
 
+	await step('send options: later delivery, read receipt; printing', async () => {
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'client@exemple.fr')
+		await page.fill('input[name=subject]', 'Rapport trimestriel')
+		await page.fill('.wm-editor', 'Bonjour, voici le rapport.')
+		await page.check('.wm-send-options input[name=readReceipt]')
+		await page.check('.wm-send-options input[name=sendLater]')
+		// tomorrow 8:00 is proposed
+		assert(/T08:00$/.test(await page.inputValue('.wm-send-options input[name=sendAt]')))
+		await page.waitForSelector('.wm-compose button[type=submit]:has-text("Programmer l\'envoi")')
+		await shot('43-send-later')
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Envoi programmé le")')
+		// waiting in the Outbox, not in Sent Items
+		await page.click('.wm-folder:has-text("Boîte d\'envoi")')
+		await page.waitForSelector('.wm-message:has-text("Rapport trimestriel")')
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.waitForSelector('.wm-message')
+		assert(!(await page.$('.wm-message:has-text("Rapport trimestriel")')))
+
+		// print a message: its own page with the headers
+		await page.click('.wm-message:has-text("Test depuis Nextcloud")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Test depuis Nextcloud")')
+		const [popup] = await Promise.all([page.context().waitForEvent('page'), page.click('.wm-print-btn')])
+		await popup.waitForLoadState()
+		assert.strictEqual(await popup.title(), 'Test depuis Nextcloud')
+		const printed = await popup.textContent('body')
+		assert(printed.includes('De') && printed.includes('client@exemple.fr') && printed.includes('note.txt'), printed.slice(0, 200))
+		await popup.close()
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('account settings: signature', async () => {
 		await page.click('text=Comptes et signature')
 		await page.fill('.wm-account-card textarea', 'Utilisateur\nSociété A')

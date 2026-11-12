@@ -337,17 +337,23 @@ class MailController extends Controller {
 			$attachments = $this->collectAttachments();
 			$draftId = (string)$this->request->getParam('draftId', '');
 
+			$receipt = $this->request->getParam('readReceipt', '');
+			$options = [
+				'readReceipt' => $receipt === true || $receipt === '1' || $receipt === 'true',
+				'sendAt' => (string)$this->request->getParam('sendAt', ''),
+			];
 			if ($m['mode'] === 'draft') {
 				// a draft opened from « Brouillons »: sent as it is in Exchange, with the changes made here
 				if ($m['to'] === [] && $m['cc'] === [] && $m['bcc'] === []) {
 					throw new MailException('Indiquez au moins un destinataire');
 				}
 				$client->updateDraft($draftId, $m['subject'], $m['html'], $m['to'], $m['cc'], $m['bcc'], $m['importance']);
+				$client->setSendOptions($draftId, $options);
 				$client->sendSavedDraft($draftId, $attachments);
 				return ['status' => 'ok'];
 			}
 			$client->sendMessage($m['mode'], $m['subject'], $m['html'], $m['to'], $m['cc'], $m['bcc'], $attachments,
-				$m['referenceId'], $m['importance']);
+				$m['referenceId'], $m['importance'], $options);
 			if ($draftId !== '') {
 				// the draft saved while writing is no longer needed
 				try {
@@ -356,7 +362,7 @@ class MailController extends Controller {
 					$this->logger->info('Webmail: draft not deleted after sending: ' . $e->getMessage());
 				}
 			}
-			return ['status' => 'ok'];
+			return ['status' => 'ok', 'sendAt' => $options['sendAt'] !== '' ? $options['sendAt'] : null];
 		});
 	}
 

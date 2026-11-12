@@ -5,8 +5,8 @@
 	const BASE = '/apps/webmail/api'
 	const PAGE_SIZE = 50
 	const REFRESH_MS = 120000
-	const ROLE_ORDER = ['inbox', 'drafts', 'sentitems', 'junkemail', 'deleteditems']
-	const ROLE_ICON = { inbox: '📥', drafts: '📝', sentitems: '📤', junkemail: '⚠️', deleteditems: '🗑️' }
+	const ROLE_ORDER = ['inbox', 'drafts', 'sentitems', 'junkemail', 'deleteditems', 'outbox']
+	const ROLE_ICON = { inbox: '📥', drafts: '📝', sentitems: '📤', junkemail: '⚠️', deleteditems: '🗑️', outbox: '📮' }
 
 	const state = {
 		accounts: [],
@@ -1126,7 +1126,7 @@
 	// managing folders: create, rename, move, delete
 	// ------------------------------------------------------------------
 
-	const FIXED_ROLES = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail']
+	const FIXED_ROLES = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'outbox']
 
 	function openFolderMenu(anchor, f) {
 		document.querySelectorAll('.wm-folder-menu').forEach((m) => m.remove())
@@ -1435,6 +1435,7 @@
 			moveSelect,
 			h('button', { class: 'wm-danger', onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? 'Supprimer définitivement' : '🗑 Supprimer'),
 			junkButton([m.id], role),
+			h('button', { class: 'wm-print-btn', title: 'Imprimer', 'aria-label': 'Imprimer', onclick: () => printMessage(m) }, '🖨'),
 		)
 		detailEl.appendChild(toolbar)
 
@@ -1512,6 +1513,25 @@
 			setTimeout(resize, 500)
 		})
 		detailEl.appendChild(h('div', { class: 'wm-body' }, frame))
+	}
+
+	/** Print a message: its headers and its (already cleaned) content, in a page of its own. */
+	function printMessage(m) {
+		const w = window.open('', '_blank')
+		if (!w) { toast('Le navigateur a bloqué la fenêtre d\'impression', true); return }
+		const line = (label, value) => value ? '<tr><th>' + escapeHtml(label) + '</th><td>' + escapeHtml(value) + '</td></tr>' : ''
+		const people = (list) => (list || []).map(personLabel).join(', ')
+		w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + escapeHtml(m.subject || 'Message') + '</title>'
+			+ '<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;margin:24px;color:#000}h1{font-size:16pt;margin:0 0 8px}'
+			+ 'table{border-collapse:collapse;margin-bottom:12px}th{text-align:left;padding:2px 12px 2px 0;color:#555;font-weight:normal;vertical-align:top}'
+			+ 'hr{border:0;border-top:1px solid #999;margin:12px 0}img{max-width:100%}</style></head><body>'
+			+ '<h1>' + escapeHtml(m.subject || '(sans objet)') + '</h1><table>'
+			+ line('De', personLabel(m.from)) + line('À', people(m.to)) + line('Cc', people(m.cc)) + line('Date', formatDate(m.date, true))
+			+ line('Pièces jointes', (m.attachments || []).map((a) => a.name).join(', '))
+			+ '</table><hr>' + (m.body || '') + '</body></html>')
+		w.document.close()
+		w.focus()
+		setTimeout(() => w.print(), 300)
 	}
 
 	function formatRange(start, end, allDay) {
@@ -2050,6 +2070,23 @@
 			leave()
 		}
 
+		// send options: read receipt, later delivery
+		const receipt = h('input', { type: 'checkbox', name: 'readReceipt' })
+		const later = h('input', { type: 'checkbox', name: 'sendLater' })
+		const laterAt = h('input', { type: 'datetime-local', name: 'sendAt', hidden: true })
+		later.addEventListener('change', () => {
+			laterAt.hidden = !later.checked
+			if (later.checked && !laterAt.value) {
+				const d = new Date(Date.now() + 86400000)
+				d.setHours(8, 0, 0, 0)
+				const p = (n) => String(n).padStart(2, '0')
+				laterAt.value = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T08:00'
+			}
+			sendBtn.textContent = later.checked ? 'Programmer l\'envoi' : 'Envoyer'
+		})
+		const sendOptions = h('div', { class: 'wm-send-options' },
+			h('label', { class: 'wm-radio' }, receipt, ' Demander un accusé de lecture'),
+			h('label', { class: 'wm-radio' }, later, ' Envoyer plus tard'), laterAt)
 		const sendBtn = h('button', { type: 'submit', class: 'primary', title: 'Envoyer (Ctrl+Entrée)' }, 'Envoyer')
 		const form = h('form', {
 			class: 'wm-compose',
@@ -2060,14 +2097,22 @@
 				await saving
 				const fd = new FormData()
 				Object.entries(fields()).forEach(([k, v]) => fd.append(k, v))
+				if (receipt.checked) fd.append('readReceipt', '1')
+				if (later.checked) {
+					const at = new Date(laterAt.value)
+					if (!laterAt.value || isNaN(at) || at <= new Date()) { toast('Choisissez une date et une heure d\'envoi à venir', true); return }
+					fd.append('sendAt', at.toISOString())
+				}
 				Array.from(files.files).forEach((f) => fd.append('files[]', f, f.name))
 				ncFiles.forEach((p) => fd.append('filePaths[]', p))
 				sendBtn.disabled = true
 				sendBtn.textContent = 'Envoi…'
 				closed = true
 				try {
-					await api('/accounts/' + state.accountId + '/send', { method: 'POST', body: fd })
-					toast('Message envoyé')
+					const sent = await api('/accounts/' + state.accountId + '/send', { method: 'POST', body: fd })
+					toast(sent && sent.sendAt
+						? 'Envoi programmé le ' + new Date(sent.sendAt).toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) + ' (dans « Boîte d\'envoi » d\'ici là)'
+						: 'Message envoyé')
 					if (isDraft) { state.selectedId = null; removeFromList([draftId]) }
 					if (state.current && !isDraft) renderMessage(); else renderEmptyDetail()
 					if (folderRole() === 'sentitems') setTimeout(() => loadMessages(true), 1500)
@@ -2100,6 +2145,7 @@
 			? 'Le message d\'origine et ses pièces jointes seront ajoutés automatiquement sous votre texte.'
 			: 'Le message d\'origine sera cité automatiquement sous votre réponse.') : null,
 		attachList,
+		sendOptions,
 		h('div', { class: 'wm-compose-actions' },
 			sendBtn,
 			h('label', { class: 'wm-file-label button' }, '📎 Joindre', files),

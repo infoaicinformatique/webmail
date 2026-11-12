@@ -732,3 +732,8 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-mini-day { position: relative; }
 .wm-mini-day.has-events::after { content: ''; position: absolute; bottom: 2px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--color-primary-element, #0082c9); }
 .wm-mini-day.today.has-events::after { background: var(--color-primary-element-text, #fff); }
+
+/* send options */
+.wm-send-options { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 4px 0; font-size: 0.9em; }
+.wm-send-options input[type="datetime-local"] { width: auto; min-width: 220px; margin: 0; }
+.wm-send-options input[hidden] { display: none; }
