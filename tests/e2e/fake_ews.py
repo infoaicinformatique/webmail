@@ -231,6 +231,9 @@ def handle(op, el, user):
     if op == 'FindFolder':
         cal = ('<t:CalendarFolder><t:FolderId Id="F-CAL" ChangeKey="AQ"/><t:ParentFolderId Id="F-ROOT" ChangeKey="AQ"/>'
                '<t:FolderClass>IPF.Appointment</t:FolderClass><t:DisplayName>Calendrier</t:DisplayName><t:TotalCount>0</t:TotalCount>'
+               '<t:ChildFolderCount>1</t:ChildFolderCount></t:CalendarFolder>'
+               '<t:CalendarFolder><t:FolderId Id="F-CAL2" ChangeKey="AQ"/><t:ParentFolderId Id="F-CAL" ChangeKey="AQ"/>'
+               '<t:FolderClass>IPF.Appointment</t:FolderClass><t:DisplayName>Congés équipe</t:DisplayName><t:TotalCount>0</t:TotalCount>'
                '<t:ChildFolderCount>0</t:ChildFolderCount></t:CalendarFolder>')
         folders = ''.join(folder_xml(f) for f in FOLDERS if f[3] != 'msgfolderroot') + cal
         return wrap(op, [ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Folders>%s</t:Folders></m:RootFolder>'

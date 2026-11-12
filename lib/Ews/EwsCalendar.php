@@ -30,11 +30,169 @@ class EwsCalendar {
 	) {
 	}
 
+	// ------------------------------------------------------------------
+	// Calendars: the mailbox's own calendars, and other people's calendars
+	// ------------------------------------------------------------------
+
 	/**
-	 * Events (recurrences expanded) overlapping [$start, $end[.
+	 * Folder reference for a calendar key:
+	 *  - "calendar"        the default calendar of the mailbox
+	 *  - "shared:<email>"  the default calendar of another mailbox (shared with us)
+	 *  - anything else     a FolderId of the mailbox (secondary calendar)
+	 */
+	public function folderXml(string $calendar): string {
+		if ($calendar === '' || $calendar === 'calendar') {
+			return '<t:DistinguishedFolderId Id="calendar"/>';
+		}
+		if (str_starts_with($calendar, 'shared:')) {
+			$email = substr($calendar, 7);
+			if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+				throw new MailException('Agenda partagé invalide');
+			}
+			return '<t:DistinguishedFolderId Id="calendar"><t:Mailbox><t:EmailAddress>' . $this->client->esc($email)
+				. '</t:EmailAddress></t:Mailbox></t:DistinguishedFolderId>';
+		}
+		return '<t:FolderId Id="' . $this->client->esc($calendar) . '"/>';
+	}
+
+	/**
+	 * Calendars of the mailbox: the default one first, then secondary ones.
+	 * @return array<int, array{key: string, name: string, kind: string, canEdit: bool, mode: string}>
+	 */
+	public function listOwnCalendars(): array {
+		$defaultId = $this->client->distinguishedFolderIds(['calendar'])['calendar'] ?? null;
+		$xp = $this->client->request(
+			'<m:FindFolder Traversal="Deep">'
+			. '<m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:FieldURI FieldURI="folder:DisplayName"/><t:FieldURI FieldURI="folder:FolderClass"/>'
+			. '</t:AdditionalProperties></m:FolderShape>'
+			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="msgfolderroot"/></m:ParentFolderIds>'
+			. '</m:FindFolder>'
+		);
+		$default = ['key' => 'calendar', 'name' => 'Calendrier', 'kind' => 'own', 'canEdit' => true, 'mode' => 'full'];
+		$others = [];
+		foreach ($xp->query('//t:Folders/*') as $node) {
+			$class = (string)$this->client->text($xp, 't:FolderClass', $node);
+			if (!str_starts_with($class, 'IPF.Appointment')) {
+				continue;
+			}
+			$id = (string)$this->client->attr($xp, 't:FolderId', 'Id', $node);
+			$name = (string)$this->client->text($xp, 't:DisplayName', $node);
+			if ($id === $defaultId) {
+				$default['name'] = $name !== '' ? $name : $default['name'];
+				continue;
+			}
+			$others[] = ['key' => $id, 'name' => $name, 'kind' => 'own', 'canEdit' => true, 'mode' => 'full'];
+		}
+		usort($others, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+		return array_merge([$default], $others);
+	}
+
+	/**
+	 * What we may do with another person's calendar:
+	 *  - mode "full": items are readable (canEdit if we may create items)
+	 *  - mode "freebusy": only availability can be read (Exchange default)
+	 * @return array{mode: string, canEdit: bool}
+	 * @throws MailException when the mailbox does not exist or shares nothing
+	 */
+	public function probeSharedCalendar(string $email): array {
+		$xp = $this->client->request(
+			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:FieldURI FieldURI="folder:EffectiveRights"/></t:AdditionalProperties></m:FolderShape>'
+			. '<m:FolderIds>' . $this->folderXml('shared:' . $email) . '</m:FolderIds></m:GetFolder>',
+			false
+		);
+		$msg = $xp->query('//m:ResponseMessages/*')->item(0);
+		if ($msg instanceof \DOMElement && $msg->getAttribute('ResponseClass') !== 'Error') {
+			$canEdit = $this->client->text($xp, './/t:EffectiveRights/t:CreateContents', $msg) === 'true';
+			$canRead = $this->client->text($xp, './/t:EffectiveRights/t:Read', $msg) !== 'false';
+			if ($canRead) {
+				return ['mode' => 'full', 'canEdit' => $canEdit];
+			}
+		} else {
+			$code = $msg !== null ? $this->client->text($xp, 'm:ResponseCode', $msg) : null;
+			if ($code === 'ErrorNonExistentMailbox' || $code === 'ErrorInvalidSmtpAddress') {
+				throw new MailException('Aucune boîte Exchange ne correspond à ' . $email);
+			}
+		}
+		// no access to the items: availability is usually still visible
+		$now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+		$this->freeBusy($email, $now, $now->modify('+1 day'));
+		return ['mode' => 'freebusy', 'canEdit' => false];
+	}
+
+	/**
+	 * Availability of another mailbox (GetUserAvailability): busy blocks,
+	 * with subject and location when the owner shares them.
+	 * Times are requested and returned in UTC.
 	 * @return array<int, array<string, mixed>>
 	 */
-	public function findEvents(\DateTimeInterface $start, \DateTimeInterface $end): array {
+	public function freeBusy(string $email, \DateTimeInterface $start, \DateTimeInterface $end): array {
+		if ($end->getTimestamp() - $start->getTimestamp() > 62 * 86400) {
+			throw new MailException('Période trop longue pour les disponibilités (maximum 62 jours)');
+		}
+		$utc = '<t:Bias>0</t:Bias><t:Time>00:00:00</t:Time><t:DayOrder>1</t:DayOrder>';
+		$xp = $this->client->request(
+			'<m:GetUserAvailabilityRequest>'
+			. '<t:TimeZone><t:Bias>0</t:Bias>'
+			. '<t:StandardTime>' . $utc . '<t:Month>1</t:Month><t:DayOfWeek>Sunday</t:DayOfWeek></t:StandardTime>'
+			. '<t:DaylightTime>' . $utc . '<t:Month>1</t:Month><t:DayOfWeek>Sunday</t:DayOfWeek></t:DaylightTime>'
+			. '</t:TimeZone>'
+			. '<m:MailboxDataArray><t:MailboxData><t:Email><t:Address>' . $this->client->esc($email) . '</t:Address></t:Email>'
+			. '<t:AttendeeType>Required</t:AttendeeType></t:MailboxData></m:MailboxDataArray>'
+			. '<t:FreeBusyViewOptions><t:TimeWindow><t:StartTime>' . self::utcNoZone($start) . '</t:StartTime>'
+			. '<t:EndTime>' . self::utcNoZone($end) . '</t:EndTime></t:TimeWindow>'
+			. '<t:RequestedView>Detailed</t:RequestedView></t:FreeBusyViewOptions>'
+			. '</m:GetUserAvailabilityRequest>',
+			false
+		);
+		$msg = $xp->query('//m:FreeBusyResponse/m:ResponseMessage')->item(0);
+		if (!$msg instanceof \DOMElement || $msg->getAttribute('ResponseClass') === 'Error') {
+			$code = $msg !== null ? $this->client->text($xp, 'm:ResponseCode', $msg) : null;
+			throw new MailException(match ($code) {
+				'ErrorMailRecipientNotFound', 'ErrorNonExistentMailbox' => 'Aucune boîte Exchange ne correspond à ' . $email,
+				default => 'Cet agenda n\'est pas partagé avec vous (pas même les disponibilités)',
+			});
+		}
+		$labels = ['Busy' => 'Occupé', 'Tentative' => 'Provisoire', 'OOF' => 'Absent', 'WorkingElsewhere' => 'Ailleurs'];
+		$events = [];
+		foreach ($xp->query('//m:FreeBusyView/t:CalendarEventArray/t:CalendarEvent') as $i => $node) {
+			$busy = (string)$this->client->text($xp, 't:BusyType', $node);
+			if ($busy === 'Free' || $busy === 'NoData') {
+				continue;
+			}
+			$subject = $this->client->text($xp, 't:CalendarEventDetails/t:Subject', $node);
+			$events[] = [
+				'id' => 'fb:' . $email . ':' . $i,
+				'subject' => $subject !== null && $subject !== '' ? $subject : ($labels[$busy] ?? 'Occupé'),
+				'start' => substr((string)$this->client->text($xp, 't:StartTime', $node), 0, 19) . 'Z',
+				'end' => substr((string)$this->client->text($xp, 't:EndTime', $node), 0, 19) . 'Z',
+				'allDay' => false,
+				'location' => (string)$this->client->text($xp, 't:CalendarEventDetails/t:Location', $node),
+				'freeBusy' => $busy,
+				'freeBusyOnly' => true,
+				'isOrganizer' => false,
+				'isMeeting' => $this->client->text($xp, 't:CalendarEventDetails/t:IsMeeting', $node) === 'true',
+				'isRecurring' => $this->client->text($xp, 't:CalendarEventDetails/t:IsRecurring', $node) === 'true',
+				'isCancelled' => false,
+				'response' => 'Unknown',
+				'type' => 'Single',
+				'organizer' => null,
+			];
+		}
+		return $events;
+	}
+
+	private static function utcNoZone(\DateTimeInterface $d): string {
+		return (new \DateTimeImmutable('@' . $d->getTimestamp()))->format('Y-m-d\TH:i:s');
+	}
+
+	/**
+	 * Events (recurrences expanded) overlapping [$start, $end[.
+	 * @param string $calendar calendar key, see folderXml()
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function findEvents(\DateTimeInterface $start, \DateTimeInterface $end, string $calendar = 'calendar'): array {
 		if ($end <= $start) {
 			throw new MailException('Période invalide');
 		}
@@ -45,7 +203,7 @@ class EwsCalendar {
 			'<m:FindItem Traversal="Shallow">'
 			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . self::fields(self::LIST_FIELDS) . '</t:AdditionalProperties></m:ItemShape>'
 			. '<m:CalendarView MaxEntriesReturned="1000" StartDate="' . self::utc($start) . '" EndDate="' . self::utc($end) . '"/>'
-			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="calendar"/></m:ParentFolderIds>'
+			. '<m:ParentFolderIds>' . $this->folderXml($calendar) . '</m:ParentFolderIds>'
 			. '</m:FindItem>'
 		);
 		$events = [];
@@ -73,9 +231,10 @@ class EwsCalendar {
 
 	/**
 	 * @param array<string, mixed> $data see normalize()
+	 * @param string $calendar calendar key, see folderXml()
 	 * @return string id of the new event
 	 */
-	public function createEvent(array $data): string {
+	public function createEvent(array $data, string $calendar = 'calendar'): string {
 		$e = self::normalize($data);
 		$tz = $this->client->getTimeZone() ?? 'UTC';
 		$hasAttendees = $e['attendees'] !== [] || $e['optionalAttendees'] !== [];
@@ -99,7 +258,7 @@ class EwsCalendar {
 
 		$xp = $this->client->request(
 			'<m:CreateItem SendMeetingInvitations="' . ($hasAttendees ? 'SendToAllAndSaveCopy' : 'SendToNone') . '">'
-			. '<m:SavedItemFolderId><t:DistinguishedFolderId Id="calendar"/></m:SavedItemFolderId>'
+			. '<m:SavedItemFolderId>' . $this->folderXml($calendar) . '</m:SavedItemFolderId>'
 			. '<m:Items>' . $item . '</m:Items></m:CreateItem>'
 		);
 		return (string)$this->client->attr($xp, '//m:Items/t:CalendarItem/t:ItemId', 'Id');
