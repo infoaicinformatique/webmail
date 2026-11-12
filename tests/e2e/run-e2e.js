@@ -389,6 +389,47 @@ async function main() {
 		assert(!(await page.$('.wm-message:has-text("Réunion de lundi")')))
 	})
 
+	await step('several messages: ticks, grouped actions, drag and drop', async () => {
+		const msg = (n) => '.wm-message:has(.wm-message-subject:text-is("Newsletter n°' + n + '"))'
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector(msg(7))
+		// tick 7, then Shift+click 9: 7, 8 and 9
+		await page.click(msg(7) + ' .wm-check')
+		await page.waitForSelector('.wm-bulk:has-text("1 sélectionné")')
+		await page.click(msg(9) + ' .wm-check', { modifiers: ['Shift'] })
+		await page.waitForSelector('.wm-bulk:has-text("3 sélectionnés")')
+		assert.strictEqual(await page.$$eval('.wm-message.checked', (els) => els.length), 3)
+		await shot('38-several-messages')
+		await page.click('.wm-bulk button:has-text("Non lu")')
+		await page.waitForSelector('.wm-toast:has-text("3 messages marqués comme non lus")')
+		for (const n of [7, 8, 9]) await page.waitForSelector(msg(n) + '.unread')
+		assert(!(await page.$('.wm-bulk')), 'ticks cleared after the action')
+
+		// Ctrl+click ticks without opening, then move them all
+		await page.click(msg(7), { modifiers: ['Control'] })
+		await page.click(msg(8), { modifiers: ['Control'] })
+		await page.click(msg(9), { modifiers: ['Control'] })
+		await page.waitForSelector('.wm-bulk:has-text("3 sélectionnés")')
+		await page.selectOption('.wm-bulk select[name=bulkMove]', { label: 'Factures' })
+		await page.waitForSelector('.wm-toast:has-text("3 messages déplacés vers « Factures »")')
+		for (const n of [7, 8, 9]) assert(!(await page.$(msg(n))))
+
+		// Escape drops the ticks
+		await page.click(msg(11) + ' .wm-check')
+		await page.waitForSelector('.wm-bulk')
+		await page.keyboard.press('Escape')
+		await page.waitForSelector('.wm-bulk', { state: 'detached' })
+
+		// drag a message onto a folder
+		await page.dragAndDrop(msg(10), '.wm-folder:has-text("Factures")')
+		await page.waitForSelector('.wm-toast:has-text("Message déplacé vers « Factures »")')
+		assert(!(await page.$(msg(10))))
+		await page.click('.wm-folder:has-text("Factures")')
+		for (const n of [7, 8, 9, 10]) await page.waitForSelector(msg(n))
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector(msg(11))
+	})
+
 	await step('account settings: signature', async () => {
 		await page.click('text=Comptes et signature')
 		await page.fill('.wm-account-card textarea', 'Utilisateur\nSociété A')

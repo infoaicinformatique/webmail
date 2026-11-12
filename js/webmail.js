@@ -21,6 +21,7 @@
 		filters: { unread: false, attachments: false, flagged: false, since: '', all: false },
 		showFilters: false,
 		selectedId: null,
+		checked: new Set(), // messages ticked for a grouped action
 		current: null, // opened message
 		view: 'list', // mobile: list | detail
 		loadingList: false,
@@ -416,6 +417,7 @@
 		['n', 'Nouveau message'],
 		['Suppr', 'Supprimer (Maj+Suppr : définitivement)'],
 		['u', 'Marquer comme non lu'],
+		['x', 'Sélectionner le message (Ctrl+clic, Maj+clic dans la liste)'],
 		['s', 'Assurer un suivi / le retirer'],
 		['/', 'Rechercher dans le dossier'],
 		['Échap', 'Revenir à la liste'],
@@ -439,7 +441,8 @@
 	function onShortcut(e) {
 		if (state.module !== 'mail' || !root || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
 		const t = e.target
-		if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"]')) return
+		// (a message's tick box is not a field one types in)
+		if (t && t.closest && t.closest('input:not(.wm-check), textarea, select, [contenteditable="true"]')) return
 		if (document.querySelector('.wm-overlay') || detailEl.querySelector('.wm-compose')) return
 		const m = state.current
 		const role = folderRole()
@@ -451,7 +454,8 @@
 			n: () => openCompose('new'),
 			'/': () => { const s = listEl.querySelector('.wm-search'); if (s) { setView('list'); s.focus() } },
 			'?': () => showShortcuts(),
-			Escape: () => { if (state.view !== 'list') setView('list') },
+			x: () => { if (state.selectedId) toggleChecked(state.selectedId) },
+			Escape: () => { if (state.checked.size) clearChecked(); else if (state.view !== 'list') setView('list') },
 		}
 		if (m) {
 			Object.assign(actions, {
@@ -530,8 +534,7 @@
 
 		const addFolder = (f, depth) => {
 			const active = f.id === state.folderId || f.role === state.folderId
-			const li = h('li', {},
-				h('a', {
+			const link = h('a', {
 					href: '#',
 					class: 'wm-folder' + (active ? ' active' : '') + (f.unread ? ' has-unread' : ''),
 					style: 'padding-inline-start:' + (12 + depth * 16) + 'px',
@@ -540,9 +543,9 @@
 				},
 				h('span', { class: 'wm-folder-icon', 'aria-hidden': 'true' }, ROLE_ICON[f.role] || '📁'),
 				h('span', { class: 'wm-folder-name' }, f.name),
-				f.unread && f.role !== 'sentitems' && f.role !== 'deleteditems' ? h('span', { class: 'wm-badge' }, String(f.unread)) : null),
-			)
-			ul.appendChild(li)
+				f.unread && f.role !== 'sentitems' && f.role !== 'deleteditems' ? h('span', { class: 'wm-badge' }, String(f.unread)) : null)
+			folderDropTarget(link, f)
+			ul.appendChild(h('li', {}, link))
 			const children = (byParent[f.id] || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'))
 			children.forEach((c) => addFolder(c, depth + 1))
 		}
@@ -757,6 +760,7 @@
 		saveListCache()
 		state.folderId = id
 		resetSearch()
+		state.checked.clear()
 		state.selectedId = null
 		renderNav()
 		renderEmptyDetail()
@@ -873,6 +877,9 @@
 		)
 		listEl.appendChild(form)
 		if (state.showFilters || filtersOn()) listEl.appendChild(filterBar(searchInput))
+		bulkBarEl = h('div', { class: 'wm-bulk-slot' })
+		listEl.appendChild(bulkBarEl)
+		renderBulkBar()
 		if (typing) {
 			const caret = typing.selectionStart
 			searchInput.focus()
@@ -901,15 +908,39 @@
 		state.messages.forEach((m) => {
 			const who = showRecipients ? ('À : ' + (m.displayTo || '')) : (personShort(m.from) || '(expéditeur inconnu)')
 			const li = h('li', {
-				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : ''),
+				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : '') + (state.checked.has(m.id) ? ' checked' : ''),
 				tabindex: '0',
+				draggable: 'true',
 				dataset: { id: m.id },
-				onclick: () => openMessage(m.id),
+				onclick: (e) => {
+					// Ctrl/Cmd+click: tick; Shift+click: tick a range; click: open
+					if (e.ctrlKey || e.metaKey) toggleChecked(m.id)
+					else if (e.shiftKey) checkRange(m.id)
+					else openMessage(m.id)
+				},
+				ondragstart: (e) => {
+					const ids = state.checked.has(m.id) ? [...state.checked] : [m.id]
+					e.dataTransfer.setData('application/x-webmail-ids', JSON.stringify(ids))
+					e.dataTransfer.effectAllowed = 'move'
+					const ghost = h('div', { class: 'wm-drag-ghost' }, ids.length > 1 ? ids.length + ' messages' : (m.subject || '(sans objet)'))
+					document.body.appendChild(ghost)
+					e.dataTransfer.setDragImage(ghost, 10, 10)
+					setTimeout(() => ghost.remove(), 0)
+					root.classList.add('wm-dragging')
+				},
+				ondragend: () => root.classList.remove('wm-dragging'),
 				onkeydown: (e) => { if (e.key === 'Enter') openMessage(m.id) },
 				// hovering a message for a moment loads it in advance
 				onmouseenter: () => { clearTimeout(hoverTimer); hoverTimer = setTimeout(() => prefetchMessage(m.id), 150) },
 				onmouseleave: () => clearTimeout(hoverTimer),
 			},
+			h('input', {
+				type: 'checkbox',
+				class: 'wm-check',
+				checked: state.checked.has(m.id),
+				'aria-label': 'Sélectionner « ' + (m.subject || '(sans objet)') + ' »',
+				onclick: (e) => { e.stopPropagation(); if (e.shiftKey) { e.preventDefault(); checkRange(m.id) } else toggleChecked(m.id) },
+			}),
 			h('div', { class: 'wm-message-line1' },
 				h('span', { class: 'wm-message-from' }, who),
 				m.folderId && state.filters.all ? h('span', { class: 'wm-message-folder' }, folderName(m.folderId)) : null,
@@ -943,6 +974,138 @@
 			}
 		}
 		listEl.scrollTop = keepScroll
+	}
+
+	// ------------------------------------------------------------------
+	// several messages at once: ticks, grouped actions, drag and drop
+	// ------------------------------------------------------------------
+
+	let bulkBarEl = null
+	let checkAnchor = null
+
+	function toggleChecked(id) {
+		if (state.checked.has(id)) state.checked.delete(id); else state.checked.add(id)
+		checkAnchor = id
+		refreshChecks()
+	}
+
+	/** Shift+click: everything between the last ticked message and this one. */
+	function checkRange(id) {
+		const ids = state.messages.map((m) => m.id)
+		const a = ids.indexOf(checkAnchor !== null ? checkAnchor : (state.selectedId || id))
+		const b = ids.indexOf(id)
+		if (a < 0 || b < 0) { toggleChecked(id); return }
+		ids.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((x) => state.checked.add(x))
+		checkAnchor = id
+		refreshChecks()
+	}
+
+	function clearChecked() {
+		state.checked.clear()
+		checkAnchor = null
+		refreshChecks()
+	}
+
+	/** Ticks and the action bar, without redrawing the list. */
+	function refreshChecks() {
+		listEl.querySelectorAll('.wm-message').forEach((li) => {
+			const on = state.checked.has(li.dataset.id)
+			li.classList.toggle('checked', on)
+			const box = li.querySelector('.wm-check')
+			if (box) box.checked = on
+		})
+		listEl.classList.toggle('wm-has-checked', state.checked.size > 0)
+		renderBulkBar()
+	}
+
+	function renderBulkBar() {
+		if (!bulkBarEl) return
+		clear(bulkBarEl)
+		// ticks of messages no longer listed are dropped
+		const listed = new Set(state.messages.map((m) => m.id))
+		;[...state.checked].forEach((id) => { if (!listed.has(id)) state.checked.delete(id) })
+		listEl.classList.toggle('wm-has-checked', state.checked.size > 0)
+		if (!state.checked.size) return
+		const ids = () => [...state.checked]
+		const role = folderRole()
+		const move = h('select', {
+			class: 'wm-move',
+			name: 'bulkMove',
+			'aria-label': 'Déplacer les messages sélectionnés vers',
+			onchange: (e) => { if (e.target.value) moveMessages(ids(), e.target.value) },
+		}, h('option', { value: '' }, 'Déplacer vers…'),
+		state.folders.filter((f) => f.id !== state.folderId).map((f) => h('option', { value: f.id }, f.name)))
+		const allTicked = state.checked.size === state.messages.length
+		bulkBarEl.appendChild(h('div', { class: 'wm-bulk', role: 'toolbar', 'aria-label': 'Messages sélectionnés' },
+			h('strong', {}, state.checked.size + ' sélectionné' + (state.checked.size > 1 ? 's' : '')),
+			h('button', {
+				type: 'button',
+				class: 'wm-small',
+				onclick: () => {
+					if (allTicked) state.checked.clear(); else state.messages.forEach((m) => state.checked.add(m.id))
+					refreshChecks()
+				},
+			}, allTicked ? 'Tout désélectionner' : 'Tout sélectionner'),
+			h('button', { type: 'button', class: 'wm-small', onclick: () => setReadMany(ids(), true) }, 'Lu'),
+			h('button', { type: 'button', class: 'wm-small', onclick: () => setReadMany(ids(), false) }, 'Non lu'),
+			h('button', { type: 'button', class: 'wm-small', onclick: () => setFlagMany(ids()) }, '⚑ Suivi'),
+			move,
+			h('button', { type: 'button', class: 'wm-small wm-danger', onclick: () => deleteMessages(ids(), role === 'deleteditems') },
+				role === 'deleteditems' ? 'Supprimer définitivement' : '🗑 Supprimer'),
+			h('button', { type: 'button', class: 'wm-small wm-icon-btn', 'aria-label': 'Annuler la sélection', title: 'Annuler la sélection (Échap)', onclick: clearChecked }, '✕')))
+	}
+
+	/** Read / unread for several messages, at once on screen. */
+	async function setReadMany(ids, value) {
+		const changed = state.messages.filter((m) => ids.includes(m.id) && m.isRead !== value)
+		changed.forEach((m) => updateListItem(m.id, { isRead: value }))
+		const f = currentFolder()
+		if (f) { f.unread = Math.max(0, f.unread + (value ? -changed.length : changed.length)); renderNav() }
+		clearChecked()
+		try {
+			await api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: ids, flag: 'read', value } })
+			toast(ids.length + ' message' + (ids.length > 1 ? 's marqués' : ' marqué') + (value ? ' comme lu' : ' comme non lu') + (ids.length > 1 ? 's' : ''))
+		} catch (e) {
+			changed.forEach((m) => updateListItem(m.id, { isRead: !value }))
+			toast(e.message, true)
+		}
+		loadFolders()
+	}
+
+	/** Follow-up flag: on for all, or off if all already have it. */
+	async function setFlagMany(ids) {
+		const items = state.messages.filter((m) => ids.includes(m.id))
+		const value = !items.every((m) => m.flagged)
+		const before = items.map((m) => [m.id, m.flagged])
+		items.forEach((m) => updateListItem(m.id, { flagged: value }))
+		clearChecked()
+		try {
+			await api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: ids, flag: 'flagged', value } })
+		} catch (e) {
+			before.forEach(([id, v]) => updateListItem(id, { flagged: v }))
+			toast(e.message, true)
+		}
+	}
+
+	/** Folders accept messages dropped on them. */
+	function folderDropTarget(el, folder) {
+		el.addEventListener('dragover', (e) => {
+			if (folder.id === state.folderId || !e.dataTransfer.types.includes('application/x-webmail-ids')) return
+			e.preventDefault()
+			e.dataTransfer.dropEffect = 'move'
+			el.classList.add('wm-drop-target')
+		})
+		el.addEventListener('dragleave', () => el.classList.remove('wm-drop-target'))
+		el.addEventListener('drop', (e) => {
+			el.classList.remove('wm-drop-target')
+			root.classList.remove('wm-dragging')
+			let ids = []
+			try { ids = JSON.parse(e.dataTransfer.getData('application/x-webmail-ids')) } catch (err) { return }
+			if (!Array.isArray(ids) || !ids.length || folder.id === state.folderId) return
+			e.preventDefault()
+			ids.forEach((id) => state.checked.delete(id))
+			moveMessages(ids, folder.id, folder.name)
+		})
 	}
 
 	function folderName(id) {
@@ -1331,11 +1494,12 @@
 		}
 	}
 
-	async function moveMessages(ids, target) {
+	async function moveMessages(ids, target, targetName) {
 		const undo = removeFromList(ids)
 		try {
 			await api('/accounts/' + state.accountId + '/move', { method: 'POST', body: { itemIds: ids, target } })
-			toast('Message déplacé')
+			const name = targetName || folderName(target)
+			toast((ids.length > 1 ? ids.length + ' messages déplacés' : 'Message déplacé') + (name ? ' vers « ' + name + ' »' : ''))
 			listCache.delete(state.accountId + '|' + target)
 			loadFolders()
 		} catch (e) {
@@ -1345,11 +1509,14 @@
 	}
 
 	async function deleteMessages(ids, permanent) {
-		if (permanent && !window.confirm('Supprimer définitivement ce message ?')) return
+		if (permanent && !window.confirm(ids.length > 1 ? 'Supprimer définitivement ces ' + ids.length + ' messages ?' : 'Supprimer définitivement ce message ?')) return
+		ids.forEach((id) => state.checked.delete(id))
 		const undo = removeFromList(ids)
 		try {
 			await api('/accounts/' + state.accountId + '/delete', { method: 'POST', body: { itemIds: ids, permanent: !!permanent } })
-			toast(permanent ? 'Message supprimé définitivement' : 'Message placé dans les éléments supprimés')
+			const n = ids.length > 1 ? ids.length + ' messages ' : 'Message '
+			toast(permanent ? n + (ids.length > 1 ? 'supprimés définitivement' : 'supprimé définitivement')
+				: n + (ids.length > 1 ? 'placés' : 'placé') + ' dans les éléments supprimés')
 			const trash = state.folders.find((f) => f.role === 'deleteditems')
 			if (trash) listCache.delete(state.accountId + '|' + trash.id)
 			loadFolders()

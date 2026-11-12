@@ -697,3 +697,17 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-oof-period[hidden], .wm-oof-states + div[hidden] { display: none; }
 .wm-event-form [hidden] { display: none !important; }
 .wm-oof-period input[type="datetime-local"] { width: auto; min-width: 240px; margin: 0; }
+
+/* several messages at once */
+.wm-message { padding-inline-start: 34px; }
+.wm-message.unread::before { inset-inline-start: 26px; }
+.wm-check { position: absolute; inset-inline-start: 8px; top: 12px; margin: 0 !important; min-height: 0 !important; width: 16px; height: 16px; cursor: pointer; opacity: 0; }
+.wm-message:hover .wm-check, .wm-message:focus-within .wm-check, .wm-has-checked .wm-check, .wm-check:checked { opacity: 1; }
+.wm-message.checked { background: var(--color-primary-element-light); }
+.wm-message.unread.checked::before, .wm-has-checked .wm-message.unread::before { inset-inline-start: 26px; }
+.wm-bulk { position: sticky; top: 49px; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; background: var(--color-primary-element-light); border-bottom: 1px solid var(--color-border); }
+.wm-bulk .wm-move { height: 28px; min-height: 28px; margin: 0; font-size: 12px; width: auto; }
+.wm-drag-ghost { position: fixed; top: -100px; left: -100px; padding: 6px 12px; border-radius: 8px; background: var(--color-primary-element, #0082c9); color: #fff; font-weight: bold; }
+.wm-dragging .wm-folder { outline: 1px dashed transparent; }
+.wm-folder.wm-drop-target { background: var(--color-primary-element-light); outline: 2px dashed var(--color-primary-element, #0082c9); outline-offset: -2px; }
+@media (max-width: 800px) { .wm-check { opacity: 1; } }

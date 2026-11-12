@@ -29,6 +29,7 @@ et sur les téléphones, et inversement.
 | Recherche | Recherche Exchange (AQS) dans le dossier courant **ou dans tous les dossiers** (le dossier de chaque résultat est indiqué, 200 résultats au plus). Bouton ⏷ : filtres **Non lus**, **Pièces jointes**, **Suivis** et **période** (7 jours, 30 jours, 12 mois), seuls ou avec des mots |
 | Lecture | Le HTML est nettoyé côté serveur et affiché dans une iframe isolée, sans aucun script. Les images intégrées (`cid:`) s'affichent. Les images distantes sont bloquées tant que l'utilisateur ne clique pas sur « Afficher les images » |
 | Actions | Marquer comme lu ou non lu, suivi, déplacer, supprimer (vers « Éléments supprimés », puis suppression définitive) |
+| Plusieurs messages | Case à cocher devant chaque message (au survol), **Ctrl+clic** pour en ajouter, **Maj+clic** pour une plage, `x` au clavier ; une barre propose alors Tout sélectionner, Lu, Non lu, Suivi, Déplacer vers… et Supprimer, pour tous d'un coup. Échap annule la sélection. **Glisser-déposer** un message (ou la sélection) sur un dossier le déplace |
 | Envoi | Nouveau message, Répondre, Répondre à tous, Transférer (Exchange cite le message d'origine et garde ses pièces jointes), Cc/Cci, importance, signature ; `Ctrl+Entrée` envoie |
 | Éditeur | Texte **mis en forme** : gras, italique, souligné, listes à puces et numérotées, liens, citations ; les adresses web tapées deviennent des liens. Le contenu est nettoyé sur le serveur avant l'envoi (aucun script ne peut passer) |
 | Brouillons | Le message en cours est **enregistré automatiquement** dans « Brouillons » quelques secondes après chaque modification (« Brouillon enregistré à 15:42 ») et en fermant avec « Annuler ». Dans « Brouillons », un clic **rouvre le brouillon** pour le terminer et l'envoyer (y compris une réponse ou un transfert, avec sa citation et ses pièces jointes). « Supprimer le brouillon » le jette. Les pièces jointes ajoutées depuis l'ordinateur ou Fichiers ne sont envoyées à Exchange qu'au moment de l'envoi |
@@ -46,6 +47,8 @@ et sur les téléphones, et inversement.
 ![Éditeur et brouillons](docs/capture-editeur.png)
 
 ![Réponse automatique](docs/capture-absence.png)
+
+![Plusieurs messages](docs/capture-selection.png)
 
 ![Aperçu des pièces jointes](docs/capture-apercu.png)
 
@@ -134,7 +137,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.19.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.20.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -156,7 +159,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.19 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.20 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -242,7 +245,6 @@ templates/          page principale et page d'administration
 **Courrier**
 - Images collées dans l'éditeur, signature mise en forme, pièces jointes enregistrées avec le brouillon
 - Affichage par conversation (fil de discussion)
-- Sélection multiple (cases à cocher, Maj+clic) et glisser-déposer des messages vers un dossier
 - Gestion des dossiers : créer, renommer, déplacer, supprimer
 - Règles de la boîte de réception
 - Catégories Outlook (couleurs), « Ce n'est pas du courrier indésirable », bloquer un expéditeur
