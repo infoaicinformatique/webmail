@@ -1604,10 +1604,13 @@ async function main() {
 		await page.waitForSelector('text=Courrier non lu')
 		await page.waitForSelector('a:has-text("Rappel 2")')
 		await shot('40-dashboard')
-		// an item opens the message in the webmail
-		await page.click('a:has-text("Rappel 2")')
-		await page.waitForSelector('.wm-message-header h2:has-text("Rappel 2")')
-		assert(!page.url().includes('message='), 'the link is not kept in the address')
+		// an item opens the message in the webmail (the dashboard opens links in a new tab)
+		const [tab] = await Promise.all([page.context().waitForEvent('page'), page.click('a:has-text("Rappel 2")')])
+		await tab.waitForSelector('.wm-message-header h2:has-text("Rappel 2")')
+		assert(!tab.url().includes('message='), 'the link is not kept in the address')
+		await tab.close()
+		await page.goto(NC + '/apps/webmail/')
+		await page.waitForSelector('.wm-message')
 	})
 
 	await step('mobile layout', async () => {
