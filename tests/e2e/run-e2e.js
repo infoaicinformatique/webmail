@@ -2207,7 +2207,7 @@ async function main() {
 		// done: it leaves « À faire » and is in « Terminées »
 		await page.check(devis + ' .wm-task-done')
 		await page.waitForSelector('.wm-toast:has-text("Tâche terminée")')
-		await page.waitForFunction((sel) => !document.querySelector(sel), devis)
+		await page.locator(devis).waitFor({ state: 'detached' })
 		await page.click('.wm-task-filter[data-filter="done"]')
 		await page.waitForSelector('.wm-task.done:has-text("Préparer le devis Dupont")')
 		await page.waitForSelector('.wm-task.done:has-text("Envoyer les vœux")')
@@ -2218,7 +2218,7 @@ async function main() {
 		page.once('dialog', (d) => d.accept())
 		await page.click('.wm-task-form button:has-text("Supprimer")')
 		await page.waitForSelector('.wm-toast:has-text("Tâche supprimée")')
-		await page.waitForFunction((sel) => !document.querySelector(sel), devis)
+		await page.locator(devis).waitFor({ state: 'detached' })
 		await page.click('.wm-task-filter[data-filter="todo"]')
 		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
 	})
