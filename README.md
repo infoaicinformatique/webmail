@@ -50,6 +50,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Répétition | Chaque jour, semaine, mois ou année, **tous les N** jours, semaines ou mois, **plusieurs jours de la semaine** (par ex. lundi et jeudi). Fin : jamais, à une date ou après N occurrences. Un résumé en clair s'affiche, par ex. « Toutes les 2 semaines le lundi et le jeudi, 10 fois » |
 | Plusieurs agendas | **Vos autres agendas** Exchange (par ex. « Congés équipe ») apparaissent automatiquement. Chaque agenda a sa couleur et une case pour l'afficher ou le masquer. À la création d'un événement, on choisit l'agenda |
 | Agendas partagés | « Ajouter un agenda partagé » : saisissez l'adresse d'un collègue (avec complétion). Le niveau d'accès est **détecté automatiquement** : **modification** ou **lecture** si l'agenda vous a été partagé dans Outlook, sinon **disponibilités** seulement (le partage par défaut d'Exchange : créneaux occupés, hachurés, avec l'objet s'il est partagé). En lecture, rien n'est modifiable ; en modification, on peut créer, modifier, déplacer et supprimer. La liste est propre à chaque utilisateur et à chaque compte ; retirer un agenda ne supprime rien dans Exchange |
+| Partager mon agenda | Bouton 🔗 à côté de chacun de vos agendas : choisissez ce que **toute l'organisation** et **chaque personne** peuvent voir ou faire (aucun accès, disponibilités seulement, disponibilités avec objet et lieu, lecture, lecture et ajout, modification), **sans en faire un délégué**. C'est le réglage « Autorisations » d'Outlook ; les niveaux personnalisés créés dans Outlook sont affichés et conservés tels quels. Vos collègues ajoutent ensuite votre agenda avec « Ajouter un agenda partagé » |
 | Glisser-déposer | À la souris, dans la vue **semaine**, glisser un événement le déplace à une autre heure ou un autre jour, par pas de 15 minutes. Tirer son **bord inférieur** change l'heure de fin. Dans la vue **mois** et la ligne « Journée », glisser un événement le déplace sur un autre jour en gardant ses horaires. **Échap** annule. Pour une réunion, une confirmation est demandée et les participants reçoivent la mise à jour. Seuls les événements dont vous êtes l'organisateur peuvent être déplacés. Sur écran tactile, un appui ouvre l'événement, et on le modifie avec « Modifier » |
 | Séries | Depuis une occurrence : **« Modifier cette occurrence »** ou **« Modifier la série »**. Les deux modifient titre, horaires, lieu, participants, rappel et disponibilité ; seule la série permet de changer la règle de répétition ou de la supprimer (la série devient alors un événement unique). Les participants reçoivent la mise à jour. Pour une règle créée dans Outlook que l'application ne sait pas modifier (par ex. « le 2e mardi du mois »), la règle est conservée et seuls les horaires sont modifiables |
 | Réunions | Les participants reçoivent l'invitation, puis les mises à jour et les annulations (envoyées par Exchange) |
@@ -59,6 +60,8 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Fuseau horaire | Celui du navigateur, transmis à Exchange (Europe, DOM-TOM et principales zones) |
 
 ![Agendas partagés](docs/capture-agendas-partages.png)
+
+![Partager mon agenda](docs/capture-partage-agenda.png)
 
 ### Contacts
 
@@ -105,7 +108,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.8.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.9.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -127,7 +130,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.8 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.9 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -211,7 +214,7 @@ templates/          page principale et page d'administration
 ## Évolutions possibles
 
 - Contacts des dossiers publics Exchange
-- Partager son agenda ou ses contacts sans délégation (autorisations de dossier)
+- Partager ses contacts sans délégation (autorisations du dossier Contacts)
 - Règles « le 2e mardi du mois » (aujourd'hui conservées, mais pas modifiables ici)
 - Brouillons modifiables et éditeur HTML
 - Découverte automatique (Autodiscover) à la place de la table domaine/serveur

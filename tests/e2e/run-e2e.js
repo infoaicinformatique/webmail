@@ -434,7 +434,11 @@ async function main() {
 
 	// ------------------------------------------------------------------ drag and drop
 	const dragBy = async (selector, dx, dy) => {
-		const box = await (await page.$(selector)).boundingBox()
+		// the calendar re-renders when loading ends: measure a settled element
+		await page.waitForSelector('.wm-cal-toolbar .icon-loading-small', { state: 'detached' })
+		const target = page.locator(selector).first()
+		await target.waitFor({ state: 'visible' })
+		const box = await target.boundingBox()
 		const x = box.x + box.width / 2
 		const y = box.y + Math.min(12, box.height / 2)
 		await page.mouse.move(x, y)
@@ -509,6 +513,7 @@ async function main() {
 	await step('calendar: invitations from others cannot be dragged; month view drag', async () => {
 		await page.click('.wm-segmented button:has-text("Mois")')
 		await page.waitForSelector('.wm-month .wm-event:has-text("Revue budget")')
+		await page.waitForSelector('.wm-cal-toolbar .icon-loading-small', { state: 'detached' })
 		assert(!(await page.$('.wm-month .wm-event.wm-movable:has-text("Revue budget")')), 'attendee cannot move')
 		const chipSel = '.wm-month .wm-event:has-text("Salon Informatique")'
 		const firstCell = await page.$eval(chipSel, (e) => e.closest('.wm-month-cell').dataset.date)
@@ -624,7 +629,7 @@ async function main() {
 		await page.waitForSelector('.wm-toast:has-text("Agenda de Martine Leroy ajouté (lecture)")')
 		await add('paul.durand@societe-a.fr')
 		await page.waitForSelector('.wm-toast:has-text("Agenda de Paul Durand ajouté (disponibilités seulement)")')
-		const rows = await page.$$eval('.wm-cal-row', (els) => els.map((e) => e.textContent.replace('✕', '').trim()))
+		const rows = await page.$$eval('.wm-cal-row', (els) => els.map((e) => e.textContent.replace('✕', '').replace('🔗', '').trim()))
 		assert.deepStrictEqual(rows, ['Calendrier', 'Congés équipe', 'Marie Martinmodification', 'Martine Leroylecture', 'Paul Duranddisponibilités'])
 		await page.click('.wm-segmented button:has-text("Semaine")')
 		await page.waitForSelector('.wm-week-event:has-text("Inventaire")')
@@ -697,6 +702,60 @@ async function main() {
 		await page.waitForSelector('.wm-toast:has-text("Agenda retiré")')
 		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-cal-row')].some((e) => e.textContent.includes('Paul Durand')))
 		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-agenda-item')].some((e) => e.textContent.includes('Rendez-vous fournisseur')))
+	})
+
+	await step('calendar: share my calendar without delegation', async () => {
+		const openShare = async (name) => {
+			await page.click('.wm-cal-row:has-text("' + name + '") .wm-cal-share')
+			await page.waitForSelector('.wm-modal h2:has-text("Partager « ' + name + ' »")')
+			await page.waitForSelector('.wm-share-row')
+		}
+		const row = (user) => '.wm-share-row[data-user="' + user + '"]'
+		await openShare('Calendrier')
+		assert.strictEqual(await page.inputValue(row('Default') + ' select'), 'FreeBusyTimeOnly')
+		// a custom level set in Outlook is shown and kept as it is
+		assert.strictEqual(await page.inputValue(row('paul.durand@societe-a.fr') + ' select'), 'keep')
+		assert((await page.textContent(row('paul.durand@societe-a.fr'))).includes('Autre (défini dans Outlook)'))
+
+		await page.selectOption(row('Default') + ' select', 'FreeBusyTimeAndSubjectAndLocation')
+		await page.type('.wm-modal input[name=shareEmail]', 'marie')
+		await page.click('.wm-ac-item:has-text("Marie Martin")')
+		await page.click('.wm-share-add button:has-text("Ajouter")')
+		await page.waitForSelector(row('marie.martin@societe-a.fr'))
+		assert.strictEqual(await page.inputValue(row('marie.martin@societe-a.fr') + ' select'), 'Reviewer')
+
+		// unknown person: refused by Exchange, the dialog stays open
+		await page.fill('.wm-modal input[name=shareEmail]', 'inconnu@societe-a.fr')
+		await page.selectOption('.wm-modal select[name=newLevel]', 'Editor')
+		await page.click('.wm-share-add button:has-text("Ajouter")')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-modal .wm-form-error:has-text("n\'a pas de boîte Exchange")')
+		await page.click(row('inconnu@societe-a.fr') + ' .wm-cal-remove')
+		await shot('28-share-calendar')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Partage de « Calendrier » enregistré")')
+		await page.waitForSelector('.wm-modal', { state: 'detached' })
+
+		await openShare('Calendrier')
+		assert.strictEqual(await page.inputValue(row('Default') + ' select'), 'FreeBusyTimeAndSubjectAndLocation')
+		assert.strictEqual(await page.inputValue(row('marie.martin@societe-a.fr') + ' select'), 'Reviewer')
+		assert.strictEqual(await page.inputValue(row('paul.durand@societe-a.fr') + ' select'), 'keep', 'custom level untouched')
+		// stop sharing with Marie
+		await page.click(row('marie.martin@societe-a.fr') + ' .wm-cal-remove')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Partage de « Calendrier » enregistré")')
+		await openShare('Calendrier')
+		assert(!(await page.$(row('marie.martin@societe-a.fr'))))
+		await page.click('.wm-modal-close')
+
+		// a secondary calendar can be shared too
+		await openShare('Congés équipe')
+		assert.strictEqual(await page.inputValue(row('Default') + ' select'), 'None')
+		await page.selectOption(row('Default') + ' select', 'Reviewer')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Partage de « Congés équipe » enregistré")')
+		// shared calendars of colleagues have no share button
+		assert(!(await page.$('.wm-cal-row:has-text("Marie Martin") .wm-cal-share')))
 	})
 
 	// ------------------------------------------------------------------ contacts

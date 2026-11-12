@@ -183,6 +183,145 @@ class EwsCalendar {
 		return $events;
 	}
 
+	// ------------------------------------------------------------------
+	// Sharing one of my calendars (folder permissions, without delegation)
+	// ------------------------------------------------------------------
+
+	/** Levels offered in the UI; others (Owner, Custom...) are kept as they are. */
+	public const SHARE_LEVELS = ['None', 'FreeBusyTimeOnly', 'FreeBusyTimeAndSubjectAndLocation', 'Reviewer', 'Author', 'Editor'];
+
+	/**
+	 * Who my calendar is shared with, as in Outlook's "Permissions" tab.
+	 * user is "Default" (everyone in the organisation), "Anonymous" or an e-mail address.
+	 * @return array<int, array{user: string, name: string, level: string}>
+	 */
+	public function getPermissions(string $calendar): array {
+		$out = [];
+		foreach ($this->permissionNodes($calendar)[1] as [$user, $name, $level]) {
+			$out[] = ['user' => $user, 'name' => $name, 'level' => $level];
+		}
+		return $out;
+	}
+
+	/**
+	 * Replace the permissions of my calendar.
+	 * @param array<int, array{user: string, level: string}> $entries level "keep" = leave as it is
+	 *        (for levels set in Outlook that the UI does not offer, e.g. Custom)
+	 */
+	public function setPermissions(string $calendar, array $entries, string $ownEmail): void {
+		if (str_starts_with($calendar, 'shared:')) {
+			throw new MailException('Seul le propriétaire d\'un agenda peut le partager');
+		}
+		[$xp, $current] = $this->permissionNodes($calendar);
+		$byUser = [];
+		foreach ($current as [$user, , , $node]) {
+			$byUser[strtolower($user)] = $node;
+		}
+
+		$xml = '';
+		$seen = [];
+		$hasDefault = false;
+		foreach ($entries as $e) {
+			$user = trim((string)($e['user'] ?? ''));
+			$level = (string)($e['level'] ?? '');
+			$distinguished = in_array($user, ['Default', 'Anonymous'], true);
+			if (!$distinguished) {
+				$user = strtolower($user);
+				if (preg_match('/<([^>]+)>/', $user, $m)) {
+					$user = trim($m[1]);
+				}
+				if (!filter_var($user, FILTER_VALIDATE_EMAIL)) {
+					throw new MailException('Adresse invalide : ' . $user);
+				}
+				if (strcasecmp($user, $ownEmail) === 0) {
+					throw new MailException('Vous êtes déjà propriétaire de votre agenda');
+				}
+			}
+			$key = strtolower($user);
+			if (isset($seen[$key])) {
+				throw new MailException('Personne en double : ' . $user);
+			}
+			$seen[$key] = true;
+			$hasDefault = $hasDefault || $user === 'Default';
+
+			if ($level === 'keep') {
+				if (!isset($byUser[$key])) {
+					throw new MailException('Autorisation introuvable pour ' . $user);
+				}
+				$xml .= $this->rebuild($byUser[$key]);
+				continue;
+			}
+			if (!in_array($level, self::SHARE_LEVELS, true)) {
+				throw new MailException('Niveau de partage inconnu : ' . $level);
+			}
+			$userXml = $distinguished
+				? '<t:DistinguishedUser>' . $user . '</t:DistinguishedUser>'
+				: '<t:PrimarySmtpAddress>' . $this->client->esc($user) . '</t:PrimarySmtpAddress>';
+			$xml .= '<t:CalendarPermission><t:UserId>' . $userXml . '</t:UserId>'
+				. '<t:CalendarPermissionLevel>' . $level . '</t:CalendarPermissionLevel></t:CalendarPermission>';
+		}
+		// Exchange expects the Default and Anonymous entries to stay present
+		foreach (['default' => 'Default', 'anonymous' => 'Anonymous'] as $key => $name) {
+			if (!isset($seen[$key])) {
+				$xml .= isset($byUser[$key]) ? $this->rebuild($byUser[$key])
+					: '<t:CalendarPermission><t:UserId><t:DistinguishedUser>' . $name . '</t:DistinguishedUser></t:UserId>'
+						. '<t:CalendarPermissionLevel>None</t:CalendarPermissionLevel></t:CalendarPermission>';
+			}
+		}
+
+		$this->client->request(
+			'<m:UpdateFolder><m:FolderChanges><t:FolderChange>' . $this->folderXml($calendar)
+			. '<t:Updates><t:SetFolderField><t:FieldURI FieldURI="folder:PermissionSet"/>'
+			. '<t:CalendarFolder><t:PermissionSet><t:CalendarPermissions>' . $xml . '</t:CalendarPermissions></t:PermissionSet></t:CalendarFolder>'
+			. '</t:SetFolderField></t:Updates></t:FolderChange></m:FolderChanges></m:UpdateFolder>'
+		);
+	}
+
+	/**
+	 * @return array{0: \DOMXPath, 1: array<int, array{0: string, 1: string, 2: string, 3: \DOMElement}>}
+	 */
+	private function permissionNodes(string $calendar): array {
+		if (str_starts_with($calendar, 'shared:')) {
+			throw new MailException('Seul le propriétaire d\'un agenda peut voir ses autorisations');
+		}
+		$xp = $this->client->request(
+			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:FieldURI FieldURI="folder:PermissionSet"/></t:AdditionalProperties></m:FolderShape>'
+			. '<m:FolderIds>' . $this->folderXml($calendar) . '</m:FolderIds></m:GetFolder>'
+		);
+		$out = [];
+		foreach ($xp->query('//t:PermissionSet/t:CalendarPermissions/t:CalendarPermission') as $node) {
+			$distinguished = $this->client->text($xp, 't:UserId/t:DistinguishedUser', $node);
+			$user = $distinguished ?? strtolower((string)$this->client->text($xp, 't:UserId/t:PrimarySmtpAddress', $node));
+			if ($user === '') {
+				continue; // e.g. an external or deleted user: kept by Exchange in UnknownEntries
+			}
+			$out[] = [$user, (string)$this->client->text($xp, 't:UserId/t:DisplayName', $node),
+				(string)$this->client->text($xp, 't:CalendarPermissionLevel', $node), $node];
+		}
+		return [$xp, $out];
+	}
+
+	/**
+	 * Rebuild a permission returned by Exchange with our own prefixes and
+	 * escaping (never copied verbatim into the request).
+	 */
+	private function rebuild(\DOMElement $el): string {
+		$inner = '';
+		$hasChildren = false;
+		foreach ($el->childNodes as $child) {
+			if ($child instanceof \DOMElement) {
+				$hasChildren = true;
+				if ($child->localName === 'SID') {
+					continue; // the SMTP address identifies the user
+				}
+				$inner .= $this->rebuild($child);
+			}
+		}
+		$name = preg_replace('/[^A-Za-z]/', '', $el->localName);
+		return '<t:' . $name . '>' . ($hasChildren ? $inner : $this->client->esc($el->textContent)) . '</t:' . $name . '>';
+	}
+
 	private static function utcNoZone(\DateTimeInterface $d): string {
 		return (new \DateTimeImmutable('@' . $d->getTimestamp()))->format('Y-m-d\TH:i:s');
 	}

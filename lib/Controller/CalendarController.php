@@ -72,6 +72,29 @@ class CalendarController extends Controller {
 	}
 
 	/**
+	 * Who one of my calendars is shared with (folder permissions).
+	 */
+	#[NoAdminRequired]
+	public function permissions(int $id, string $calendar = 'calendar'): Response {
+		return $this->handle(fn () => ['permissions' => $this->calendar($id, 'UTC')->getPermissions($calendar)]);
+	}
+
+	/**
+	 * Share one of my calendars without delegation.
+	 * @param array<int, array{user: string, level: string}> $permissions
+	 */
+	#[NoAdminRequired]
+	#[\OCP\AppFramework\Http\Attribute\UserRateLimit(limit: 30, period: 300)]
+	public function setPermissions(int $id, array $permissions, string $calendar = 'calendar'): Response {
+		return $this->handle(function () use ($id, $permissions, $calendar) {
+			$account = $this->accounts->find((string)$this->userId, $id);
+			$cal = $this->calendar($id, 'UTC');
+			$cal->setPermissions($calendar, $permissions, $account->getEmail());
+			return ['permissions' => $cal->getPermissions($calendar)];
+		});
+	}
+
+	/**
 	 * Add another person's calendar; the access level is detected.
 	 */
 	#[NoAdminRequired]
