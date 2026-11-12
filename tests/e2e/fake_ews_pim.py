@@ -197,7 +197,8 @@ def touches_public(el):
     """Does the request address the public folders (folders or items in them)?"""
     for node in el.iter():
         i = node.get('Id')
-        if i and (i == 'publicfoldersroot' or i in PUBLIC_FOLDERS or (i in CONTACTS and CONTACTS[i]['folder'] in PUBLIC_FOLDERS)):
+        if i and (i == 'publicfoldersroot' or i in PUBLIC_FOLDERS or (i in CONTACTS and CONTACTS[i]['folder'] in PUBLIC_FOLDERS)
+                  or (i in EVENTS and EVENTS[i]['folder'] in PUBLIC_FOLDERS)):
             return True
     return False
 
@@ -235,6 +236,8 @@ def handle_public(op, el):
         return wrap(op, out)
     if op == 'FindItem':
         folder = el.find('m:ParentFolderIds', NS)[0].get('Id')
+        if el.find('m:CalendarView', NS) is not None:
+            return None  # a calendar of the public folders: the calendar handler
         if el.find('m:QueryString', NS) is not None:
             return wrap(op, [err(op, 'ErrorInvalidOperation', 'QueryString is not supported for public folders')])
         q = ''
@@ -423,6 +426,8 @@ def seed():
               body='Ordre du jour :\n- planning\n- clients')
     add_event('Déjeuner client Dupont', at(1, 12, 30), at(1, 14), location='Restaurant Le Port')
     add_event('Salon Informatique', at(3, 0), at(5, 0), all_day=True, location='Nice Acropolis', reminder=-1)
+    add_event('Inventaire annuel', at(2, 8), at(2, 12), location='Entrepôt', folder='PF-AGENDA', organizer=('Direction', 'direction@societe-a.fr'), response='Unknown')
+    add_event('Fermeture de l\'entreprise', at(4, 0), at(5, 0), all_day=True, folder='PF-AGENDA', organizer=('Direction', 'direction@societe-a.fr'), response='Unknown')
     add_event('Revue budget', at(2, 15), at(2, 16), organizer=('Marie Martin', 'marie.martin@societe-a.fr'), response='NoResponseReceived',
               attendees=[(ME[0], ME[1], 'NoResponseReceived')])
     add_event('Congés Lucas', at(2, 0), at(4, 0), all_day=True, folder='F-CAL2', reminder=-1)

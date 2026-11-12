@@ -100,6 +100,8 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Disponibilités](docs/capture-disponibilites.png)
 
+![Agenda des dossiers publics](docs/capture-agenda-public.png)
+
 | | |
 |---|---|
 | Vues | **Jour**, **semaine**, **mois** et **liste** des 30 prochains jours. Mini-calendrier à gauche : un point sous les jours qui ont des rendez-vous (dans la période affichée), ses propres flèches pour parcourir les mois sans changer l'affichage principal, un clic va au jour, un double-clic l'affiche seul (vue jour). Les événements périodiques sont dépliés |
@@ -114,6 +116,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Glisser-déposer | À la souris, dans la vue **semaine**, glisser un événement le déplace à une autre heure ou un autre jour, par pas de 15 minutes. Tirer son **bord inférieur** change l'heure de fin. Dans la vue **mois** et la ligne « Journée », glisser un événement le déplace sur un autre jour en gardant ses horaires. **Échap** annule. Pour une réunion, une confirmation est demandée et les participants reçoivent la mise à jour. Seuls les événements dont vous êtes l'organisateur peuvent être déplacés. Sur écran tactile, un appui ouvre l'événement, et on le modifie avec « Modifier » |
 | Séries | Depuis une occurrence : **« Modifier cette occurrence »** ou **« Modifier la série »**. Les deux modifient titre, horaires, lieu, participants, rappel et disponibilité ; seule la série permet de changer la règle de répétition ou de la supprimer (la série devient alors un événement unique). Les participants reçoivent la mise à jour. Pour une règle créée dans Outlook que l'application ne sait pas modifier (par ex. « le 2e jour ouvré du mois »), la règle est conservée et seuls les horaires sont modifiables |
 | Réunions | Les participants reçoivent l'invitation, puis les mises à jour et les annulations (envoyées par Exchange) |
+| Dossiers publics | « ＋ Ajouter un agenda des dossiers publics » : parcourez les dossiers publics Exchange et ajoutez un agenda commun (planning de l'équipe, réservations, fermetures…). Il s'affiche avec vos agendas ; lecture ou modification selon les droits donnés par l'administrateur Exchange (création, modification, déplacement, suppression d'événements — définitive, les dossiers publics n'ayant pas d'« Éléments supprimés »). Retirer l'agenda de la liste ne supprime rien |
 | Disponibilités | « 📅 Disponibilités » dans le formulaire : une ligne par participant (et vous), sur la journée de 7 h à 20 h : occupé, provisoire, absent, et la réunion telle qu'elle est placée ; ‹ › pour changer de jour. « **Premier créneau libre pour tous** » place la réunion (même durée) au premier moment où tout le monde est libre, jours ouvrés de 8 h à 18 h, dans les deux semaines. Les personnes extérieures sont signalées « disponibilités inconnues » et ne bloquent pas la recherche |
 | Visio | Avec **Nextcloud Talk** installé, « 🎥 Visio Talk » dans le formulaire crée une salle de visio publique pour l'événement : son lien va dans le lieu et dans la description, donc dans l'invitation ; les invités extérieurs y entrent sans compte. Dans le détail d'un événement, « 🎥 Rejoindre la visio » ouvre la salle (ou le lien Teams, Zoom… donné comme lieu) |
 | Invitations reçues | Accepter, provisoire ou refuser depuis l'agenda ou depuis l'e-mail |
@@ -194,7 +197,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.38.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.39.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -216,7 +219,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.38 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.39 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -306,7 +309,6 @@ templates/          page principale et page d'administration
 
 **Agenda**
 - Salles de réunion (listes de salles Exchange) dans l'assistant de planification
-- Agendas des dossiers publics
 
 **Contacts**
 - Groupes de contacts modifiables, photos

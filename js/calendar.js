@@ -249,14 +249,14 @@
 					load()
 				},
 			})
-			const mode = c.kind !== 'shared' ? null : (c.mode === 'freebusy' ? 'freebusy' : (c.canEdit ? 'edit' : 'read'))
+			const mode = c.kind !== 'shared' && c.kind !== 'public' ? null : (c.mode === 'freebusy' ? 'freebusy' : (c.canEdit ? 'edit' : 'read'))
 			return h('li', { class: 'wm-cal-row', dataset: { key: c.key } },
-				h('label', { class: 'wm-cal-label', title: c.email || c.name },
+				h('label', { class: 'wm-cal-label', title: c.email || c.path || c.name },
 					box,
 					h('span', { class: 'wm-cal-dot', style: c.color ? 'background:' + c.color : '' }),
 					h('span', { class: 'wm-cal-name' }, c.name)),
 				mode ? h('span', { class: 'wm-cal-mode wm-cal-mode-' + mode }, MODE_LABEL[mode]) : null,
-				c.kind !== 'shared' ? h('button', {
+				c.kind !== 'shared' && c.kind !== 'public' ? h('button', {
 					type: 'button',
 					class: 'wm-cal-share',
 					title: 'Partager cet agenda',
@@ -269,16 +269,53 @@
 					title: 'Retirer cet agenda',
 					'aria-label': 'Retirer l\'agenda de ' + c.name,
 					onclick: () => removeShared(c),
+				}, '✕') : null,
+				c.kind === 'public' ? h('button', {
+					type: 'button',
+					class: 'wm-cal-remove',
+					title: 'Retirer cet agenda (rien n\'est supprimé dans Exchange)',
+					'aria-label': 'Retirer ' + c.name,
+					onclick: () => removePublic(c),
 				}, '✕') : null)
 		}
-		const own = cal.calendars.filter((c) => c.kind !== 'shared')
+		const own = cal.calendars.filter((c) => c.kind !== 'shared' && c.kind !== 'public')
 		const shared = cal.calendars.filter((c) => c.kind === 'shared')
+		const publicCals = cal.calendars.filter((c) => c.kind === 'public')
 		return h('div', { class: 'wm-cal-list' },
 			h('div', { class: 'wm-cal-section' }, 'Mes agendas'),
 			h('ul', {}, own.map(row)),
 			h('div', { class: 'wm-cal-section' }, 'Agendas partagés'),
 			shared.length ? h('ul', {}, shared.map(row)) : h('p', { class: 'wm-muted wm-cal-hint' }, 'Ajoutez l\'agenda d\'un collègue qui vous l\'a partagé dans Outlook.'),
-			h('button', { type: 'button', class: 'wm-cal-add', onclick: openAddShared }, '＋ Ajouter un agenda partagé'))
+			h('button', { type: 'button', class: 'wm-cal-add', onclick: openAddShared }, '＋ Ajouter un agenda partagé'),
+			h('div', { class: 'wm-cal-section' }, 'Dossiers publics'),
+			publicCals.length ? h('ul', {}, publicCals.map(row)) : null,
+			h('button', { type: 'button', class: 'wm-cal-add wm-public-cal-add', onclick: openAddPublic }, '＋ Ajouter un agenda des dossiers publics'))
+	}
+
+	function isPublicCal(ev) { return String((ev && ev.calendar) || '').startsWith('public:') }
+
+	/** Browse the public folders for a calendar (the picker of contacts.js). */
+	function openAddPublic() {
+		if (!window.WebmailPublicPicker) { core.toast('Module indisponible', true); return }
+		window.WebmailPublicPicker(core, {
+			base: '/accounts/' + core.accountId + '/calendar/public',
+			title: 'Ajouter un agenda des dossiers publics',
+			intro: 'Les dossiers publics sont partagés par toute l\'organisation (planning commun, réservations…). Ouvrez les dossiers pour trouver les agendas ; '
+				+ 'le niveau d\'accès, lecture ou modification, est celui défini par l\'administrateur Exchange.',
+			icon: '📅',
+			empty: 'Aucun agenda ici.',
+			onAdded: async () => { await loadCalendars(true); refreshAll() },
+		})
+	}
+
+	async function removePublic(c) {
+		if (!window.confirm('Retirer « ' + c.name + ' » de la liste ? (rien n\'est supprimé dans Exchange)')) return
+		try {
+			await api('/accounts/' + core.accountId + '/calendar/public/delete', { method: 'POST', body: { folder: c.key.slice(7) } })
+			core.toast('Agenda retiré')
+			await loadCalendars(true)
+			refreshAll()
+		} catch (e) { core.toast(e.message, true) }
 	}
 
 	/**
@@ -749,7 +786,7 @@
 					h('span', { class: 'wm-agenda-time' }, ev.allDay ? 'Journée' : (sameDay(s, d) ? timeLabel(s) : '…') + ' – ' + (sameDay(e, d) ? timeLabel(e) : '…')),
 					h('span', { class: 'wm-agenda-subject' + (ev.isCancelled ? ' cancelled' : '') }, ev.subject || '(sans titre)',
 						ev.location ? h('span', { class: 'wm-muted' }, ' · ' + ev.location) : null,
-						ev.isMeeting && !ev.isOrganizer && RESPONSES[ev.response] ? h('span', { class: 'wm-muted' }, ' · ' + RESPONSES[ev.response]) : null)))
+						ev.isMeeting && !ev.isOrganizer && !isPublicCal(ev) && RESPONSES[ev.response] ? h('span', { class: 'wm-muted' }, ' · ' + RESPONSES[ev.response]) : null)))
 			})
 		}
 		if (!any) wrap.appendChild(h('div', { class: 'wm-empty' }, cal.loading ? 'Chargement…' : 'Aucun événement dans les 30 prochains jours'))
@@ -896,6 +933,7 @@
 			await api('/accounts/' + core.accountId + '/calendar/move', {
 				method: 'POST',
 				body: {
+					calendar: ev.calendar || '',
 					eventId: ev.id,
 					start: ev.allDay ? ymd(r.start) : local(r.start),
 					end: ev.allDay ? ymd(addDays(r.end, -1)) : local(r.end), // all-day: inclusive last day
@@ -1154,7 +1192,8 @@
 		const close = modal(summary.subject || '(sans titre)', body)
 		let ev
 		try {
-			ev = await api('/accounts/' + core.accountId + '/calendar/event', { query: { eventId: summary.id, tz: core.TZ } })
+			ev = await api('/accounts/' + core.accountId + '/calendar/event', { query: { eventId: summary.id, tz: core.TZ, calendar: summary.calendar || '' } })
+			ev.calendar = summary.calendar
 		} catch (e) {
 			core.clear(body)
 			body.appendChild(h('div', { class: 'wm-form-error' }, e.message))
@@ -1187,7 +1226,8 @@
 		const canEdit = ev.isOrganizer && !readOnly
 		// in a colleague's calendar shared with edit rights, answer on their behalf
 		const principal = shared ? calendar.name : null
-		if (ev.isMeeting && !ev.isOrganizer && !ev.isCancelled && (!shared || !readOnly)) {
+		// an event of a common calendar (public folders) is not an invitation to answer
+		if (ev.isMeeting && !ev.isOrganizer && !ev.isCancelled && !isPublicCal(summary) && (!shared || !readOnly)) {
 			const answer = async (response, label) => {
 				if (principal && !window.confirm('Répondre « ' + label + ' » au nom de ' + principal + ' ? L\'organisateur recevra la réponse de votre part, au nom de ' + principal + '.')) return
 				try {
@@ -1218,7 +1258,8 @@
 			const ruleLine = body.querySelector('.wm-event-rule')
 			const editSeries = h('button', { disabled: true, onclick: () => { close(); openForm(editSeries.series, null, false, { series: true }) } }, '🔁 Modifier la série')
 			if (canEdit) actions.appendChild(editSeries)
-			api('/accounts/' + core.accountId + '/calendar/series', { query: { eventId: ev.id, tz: core.TZ } }).then((series) => {
+			api('/accounts/' + core.accountId + '/calendar/series', { query: { eventId: ev.id, tz: core.TZ, calendar: summary.calendar || '' } }).then((series) => {
+				series.calendar = summary.calendar
 				editSeries.series = series
 				editSeries.disabled = false
 				if (ruleLine) ruleLine.textContent = '🔁 ' + describeRule(series.recurrence, new Date(series.start))
@@ -1234,7 +1275,7 @@
 			const notify = ev.isMeeting && ev.isOrganizer ? ' Les participants recevront une annulation.' : ''
 			if (!window.confirm('Supprimer ' + what + ' ?' + notify)) return
 			try {
-				await api('/accounts/' + core.accountId + '/calendar/delete', { method: 'POST', body: { eventId: ev.id, series } })
+				await api('/accounts/' + core.accountId + '/calendar/delete', { method: 'POST', body: { eventId: ev.id, series, calendar: summary.calendar || '' } })
 				core.toast('Événement supprimé')
 				close()
 				load()
@@ -1483,7 +1524,7 @@
 					await api('/accounts/' + core.accountId + '/calendar/events', { method: 'POST', body: { event: data, tz: core.TZ, calendar: target } })
 					cal.hidden.delete(target)
 					} else {
-						await api('/accounts/' + core.accountId + '/calendar/update', { method: 'POST', body: { eventId: ev.id, event: data, tz: core.TZ, series: isSeries } })
+						await api('/accounts/' + core.accountId + '/calendar/update', { method: 'POST', body: { eventId: ev.id, event: data, tz: core.TZ, series: isSeries, calendar: ev.calendar || '' } })
 					}
 					const invited = (attendees.value + optional.value).trim() !== ''
 					core.toast(isNew ? (invited ? 'Événement créé, invitations envoyées' : 'Événement créé')

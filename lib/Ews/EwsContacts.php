@@ -189,7 +189,7 @@ class EwsContacts {
 	 * @return array<int, array{id: string, name: string, isContacts: bool, hasChildren: bool, canEdit: bool}>
 	 * @throws MailException when the public folders cannot be read
 	 */
-	public function listPublicFolders(?string $parent = null): array {
+	public function listPublicFolders(?string $parent = null, string $class = 'IPF.Contact'): array {
 		$parentXml = $parent === null || $parent === ''
 			? '<t:DistinguishedFolderId Id="publicfoldersroot"/>'
 			: '<t:FolderId Id="' . $this->client->esc($parent) . '"/>';
@@ -211,7 +211,8 @@ class EwsContacts {
 		$out = [];
 		foreach ($xp->query('.//t:Folders/*', $msg) as $node) {
 			$readable = $this->client->text($xp, 't:EffectiveRights/t:Read', $node) !== 'false';
-			$isContacts = $readable && $this->client->text($xp, 't:FolderClass', $node) === 'IPF.Contact';
+			// address books, or calendars (IPF.Appointment) for the calendar module
+			$isContacts = $readable && $this->client->text($xp, 't:FolderClass', $node) === $class;
 			$hasChildren = (int)$this->client->text($xp, 't:ChildFolderCount', $node) > 0;
 			if (!$isContacts && !$hasChildren) {
 				continue; // nothing to add or to open
@@ -232,7 +233,7 @@ class EwsContacts {
 	 * One public contact folder, checked before it is added.
 	 * @return array{name: string, canEdit: bool}
 	 */
-	public function getPublicBook(string $folderId): array {
+	public function getPublicBook(string $folderId, string $class = 'IPF.Contact'): array {
 		$xp = $this->client->request(
 			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
 			. '<t:FieldURI FieldURI="folder:DisplayName"/><t:FieldURI FieldURI="folder:FolderClass"/><t:FieldURI FieldURI="folder:EffectiveRights"/>'
@@ -240,9 +241,9 @@ class EwsContacts {
 			. '<m:FolderIds>' . $this->folderXml('public:' . $folderId) . '</m:FolderIds></m:GetFolder>'
 		);
 		$node = $xp->query('//m:Folders/*')->item(0);
-		if ($node === null || $this->client->text($xp, 't:FolderClass', $node) !== 'IPF.Contact'
+		if ($node === null || $this->client->text($xp, 't:FolderClass', $node) !== $class
 			|| $this->client->text($xp, 't:EffectiveRights/t:Read', $node) === 'false') {
-			throw new MailException('Ce dossier public n\'est pas un carnet d\'adresses lisible');
+			throw new MailException($class === 'IPF.Appointment' ? 'Ce dossier public n\'est pas un agenda lisible' : 'Ce dossier public n\'est pas un carnet d\'adresses lisible');
 		}
 		return [
 			'name' => (string)$this->client->text($xp, 't:DisplayName', $node),

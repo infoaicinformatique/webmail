@@ -1497,6 +1497,48 @@ async function main() {
 		await page.click('.wm-modal button:has-text("Annuler")')
 	})
 
+	await step('calendar: a calendar of the public folders', async () => {
+		const ymd = (x) => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0')
+		await page.click('.wm-public-cal-add')
+		await page.waitForSelector('.wm-modal h2:has-text("Ajouter un agenda des dossiers publics")')
+		await page.click('.wm-modal .wm-pf-open:has-text("Société A")')
+		const row = '.wm-modal .wm-pf-folder[data-name="Agenda commun"]'
+		await page.waitForSelector(row + ' .wm-cal-mode:has-text("modification")')
+		// only calendars are offered there
+		assert(!(await page.$('.wm-modal .wm-pf-folder[data-name="Clients communs"] button')), 'an address book is not a calendar')
+		await page.click(row + ' button:has-text("Ajouter")')
+		await page.waitForSelector('.wm-toast:has-text("« Agenda commun » ajouté (modification)")')
+		await page.waitForSelector('.wm-cal-row:has-text("Agenda commun") .wm-cal-mode:has-text("modification")')
+		await page.click('.wm-segmented button:has-text("Liste")')
+		await page.waitForSelector('.wm-agenda-item:has-text("Inventaire annuel")')
+		// an event added to it
+		const d = new Date(); d.setDate(d.getDate() + 3)
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		await page.fill('.wm-modal input[name=subject]', 'Journée portes ouvertes')
+		await page.selectOption('.wm-modal select[name=calendar]', { label: 'Agenda commun' })
+		await page.fill('.wm-modal input[name=startDate]', ymd(d))
+		await page.dispatchEvent('.wm-modal input[name=startDate]', 'change')
+		await page.fill('.wm-modal input[name=startTime]', '10:00')
+		await page.dispatchEvent('.wm-modal input[name=startTime]', 'change')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
+		await page.waitForSelector('.wm-agenda-item:has-text("Journée portes ouvertes")')
+		await shot('57-public-calendar')
+		// opened and deleted there (for good: public folders have no « Éléments supprimés »)
+		await page.click('.wm-agenda-item:has-text("Journée portes ouvertes")')
+		await page.waitForSelector('.wm-modal .wm-event-when')
+		assert((await page.textContent('.wm-modal')).includes('Agenda commun'))
+		page.once('dialog', (dlg) => dlg.accept())
+		await page.click('.wm-modal button:has-text("🗑 Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Événement supprimé")')
+		await page.waitForSelector('.wm-agenda-item:has-text("Journée portes ouvertes")', { state: 'detached' })
+		// removed from the list: its events go away, nothing is deleted
+		page.once('dialog', (dlg) => dlg.accept())
+		await page.click('.wm-cal-row:has-text("Agenda commun") .wm-cal-remove')
+		await page.waitForSelector('.wm-toast:has-text("Agenda retiré")')
+		await page.waitForSelector('.wm-agenda-item:has-text("Inventaire annuel")', { state: 'detached' })
+	})
+
 	await step('calendar: a series can become a single event', async () => {
 		await page.click('.wm-agenda-item:has-text("Sport collectif") >> nth=0')
 		await page.click('.wm-modal button:has-text("Modifier la série")')

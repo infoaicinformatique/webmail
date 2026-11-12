@@ -44,6 +44,10 @@ class EwsCalendar {
 		if ($calendar === '' || $calendar === 'calendar') {
 			return '<t:DistinguishedFolderId Id="calendar"/>';
 		}
+		if (str_starts_with($calendar, 'public:')) {
+			// a calendar of the public folders (the client then talks to the public folder mailbox)
+			return '<t:FolderId Id="' . $this->client->esc(substr($calendar, 7)) . '"/>';
+		}
 		if (str_starts_with($calendar, 'shared:')) {
 			$email = substr($calendar, 7);
 			if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -622,12 +626,16 @@ class EwsCalendar {
 	 * Delete an event. For an occurrence, $series = true deletes the whole series.
 	 * Attendees of a meeting you organise receive a cancellation.
 	 */
-	public function deleteEvent(string $id, bool $series = false): void {
+	/**
+	 * @param bool $public in a calendar of the public folders: they have no
+	 *        « Éléments supprimés », the event is deleted for good
+	 */
+	public function deleteEvent(string $id, bool $series = false, bool $public = false): void {
 		$ids = $series
 			? '<t:RecurringMasterItemId OccurrenceId="' . $this->client->esc($id) . '"/>'
 			: '<t:ItemId Id="' . $this->client->esc($id) . '"/>';
 		$this->client->request(
-			'<m:DeleteItem DeleteType="MoveToDeletedItems" SendMeetingCancellations="SendToAllAndSaveCopy">'
+			'<m:DeleteItem DeleteType="' . ($public ? 'HardDelete' : 'MoveToDeletedItems') . '" SendMeetingCancellations="SendToAllAndSaveCopy">'
 			. '<m:ItemIds>' . $ids . '</m:ItemIds></m:DeleteItem>'
 		);
 	}
