@@ -80,7 +80,7 @@ async function main() {
 
 	await step('pagination: load more', async () => {
 		await page.click('text=Charger plus')
-		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 61)
+		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 62)
 	})
 
 	await step('open message: sanitised body, inline image, attachments, remote images blocked', async () => {
@@ -243,6 +243,19 @@ async function main() {
 		await page.click('.wm-meeting button:has-text("Accepter")')
 		await page.waitForSelector('.wm-toast:has-text("Réponse envoyée : accepté")')
 		await page.waitForFunction(() => !document.querySelector('.wm-message[data-id] .wm-message-subject') || ![...document.querySelectorAll('.wm-message-subject')].some((e) => e.textContent.includes('Comité de pilotage')))
+	})
+
+	await step('invitation received as a delegate: answer on behalf of a colleague', async () => {
+		await page.click('.wm-message:has-text("Invitation : Revue trimestrielle")')
+		await page.waitForSelector('.wm-meeting.delegate:has-text("Invitation reçue pour Marie Martin (vous êtes son délégué)")')
+		assert((await page.textContent('.wm-meeting')).includes('Répondre au nom de Marie Martin'))
+		await shot('25-delegate-invitation')
+		let confirmText = ''
+		page.once('dialog', (d) => { confirmText = d.message(); d.accept() })
+		await page.click('.wm-meeting button:has-text("Accepter")')
+		await page.waitForSelector('.wm-toast:has-text("Réponse envoyée au nom de Marie Martin : accepté")')
+		assert(confirmText.includes('au nom de Marie Martin'), confirmText)
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-message-subject')].some((e) => e.textContent.includes('Revue trimestrielle')))
 	})
 
 	await step('compose: address autocompletion from contacts and directory', async () => {
@@ -653,6 +666,28 @@ async function main() {
 		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
 		await page.click('.wm-agenda-item:has-text("Préparer le salon")')
 		await page.waitForSelector('.wm-modal:has-text("Agenda de Marie Martin")')
+		await page.click('.wm-modal-close')
+	})
+
+	await step('calendar: answer on behalf of a colleague (edit rights only)', async () => {
+		// the invitation accepted from the inbox shows up in Marie's calendar
+		await page.waitForSelector('.wm-agenda-item:has-text("Revue trimestrielle")')
+		assert((await page.textContent('.wm-agenda-item:has-text("Revue trimestrielle")')).includes('Accepté'))
+
+		await page.click('.wm-agenda-item:has-text("Revue fournisseurs")')
+		await page.waitForSelector('.wm-modal:has-text("Réponse de Marie Martin : Pas de réponse")')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-modal button:has-text("Provisoire")')
+		await page.waitForSelector('.wm-toast:has-text("Réponse envoyée au nom de Marie Martin : provisoire")')
+		await page.click('.wm-agenda-item:has-text("Revue fournisseurs")')
+		await page.waitForSelector('.wm-modal:has-text("Réponse de Marie Martin : Provisoire")')
+		await shot('26-delegate-calendar')
+		await page.click('.wm-modal-close')
+
+		// read-only calendar: no answer possible
+		await page.click('.wm-agenda-item:has-text("Point transport")')
+		await page.waitForSelector('.wm-modal:has-text("lecture seule")')
+		assert(!(await page.$('.wm-modal button:has-text("Accepter")')), 'no answer on behalf with read-only access')
 		await page.click('.wm-modal-close')
 	})
 

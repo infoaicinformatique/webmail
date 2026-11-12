@@ -250,7 +250,8 @@ class EwsClient {
 	 */
 	private function meetingInfo(string $itemId): ?array {
 		$fields = '';
-		foreach (['calendar:Start', 'calendar:End', 'calendar:IsAllDayEvent', 'calendar:Location', 'calendar:MyResponseType', 'calendar:IsCancelled'] as $p) {
+		foreach (['message:ReceivedRepresenting', 'calendar:Start', 'calendar:End', 'calendar:IsAllDayEvent', 'calendar:Location',
+			'calendar:MyResponseType', 'calendar:IsCancelled'] as $p) {
 			$fields .= '<t:FieldURI FieldURI="' . $p . '"/>';
 		}
 		try {
@@ -265,6 +266,12 @@ class EwsClient {
 		if ($node === null) {
 			return null;
 		}
+		// a copy of a colleague's invitation received as their delegate:
+		// answering it answers on their behalf
+		$representing = $this->mailbox($xp, 't:ReceivedRepresenting/t:Mailbox', $node);
+		if ($representing !== null && strcasecmp($representing['email'], $this->username) === 0) {
+			$representing = null;
+		}
 		return [
 			'start' => $this->text($xp, 't:Start', $node),
 			'end' => $this->text($xp, 't:End', $node),
@@ -272,6 +279,7 @@ class EwsClient {
 			'location' => (string)$this->text($xp, 't:Location', $node),
 			'response' => $this->text($xp, 't:MyResponseType', $node) ?? 'Unknown',
 			'cancelled' => $node->localName === 'MeetingCancellation' || $this->text($xp, 't:IsCancelled', $node) === 'true',
+			'onBehalfOf' => $representing,
 		];
 	}
 
@@ -605,6 +613,7 @@ class EwsClient {
 			'ErrorCalendarIsOrganizerForAccept', 'ErrorCalendarIsOrganizerForDecline', 'ErrorCalendarIsOrganizerForTentative' => 'Vous êtes l\'organisateur de cette réunion',
 			'ErrorOccurrenceCrossingBoundary' => 'Une occurrence ne peut pas être déplacée au-delà de l\'occurrence précédente ou suivante de la série',
 			'ErrorNonExistentMailbox' => 'Aucune boîte Exchange ne correspond à cette adresse',
+			'ErrorDelegateNoUser', 'ErrorDelegateValidationFailed' => 'Vous n\'êtes pas délégué de cette personne dans Exchange',
 			'ErrorIrresolvableConflict' => 'L\'élément a été modifié entre-temps, rechargez la page',
 			'ErrorTimeZone' => 'Fuseau horaire non reconnu par Exchange',
 			default => 'Erreur Exchange' . ($code ? ' (' . $code . ')' : '') . ($text ? ' : ' . $text : ''),

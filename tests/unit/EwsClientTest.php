@@ -107,6 +107,27 @@ class EwsClientTest extends EwsTestCase {
 		$this->assertStringContainsString('<t:BodyType>HTML</t:BodyType>', $this->lastRequest());
 	}
 
+	public function testMeetingRequestReceivedAsDelegate(): void {
+		$this->queue(self::ok('GetItem', '<m:Items><t:MeetingRequest><t:ItemId Id="MR1"/><t:Subject>Revue trimestrielle</t:Subject>'
+			. '<t:Body BodyType="HTML">x</t:Body><t:DateTimeReceived>2026-11-10T08:15:00Z</t:DateTimeReceived><t:IsRead>false</t:IsRead>'
+			. '<t:From><t:Mailbox><t:Name>Paul</t:Name><t:EmailAddress>paul@x.fr</t:EmailAddress></t:Mailbox></t:From></t:MeetingRequest></m:Items>'));
+		$this->queue(self::ok('GetItem', '<m:Items><t:MeetingRequest><t:ItemId Id="MR1"/>'
+			. '<t:ReceivedRepresenting><t:Mailbox><t:Name>Marie Martin</t:Name><t:EmailAddress>marie@x.fr</t:EmailAddress></t:Mailbox></t:ReceivedRepresenting>'
+			. '<t:Start>2026-11-20T09:00:00Z</t:Start><t:End>2026-11-20T10:00:00Z</t:End><t:Location>Salle B</t:Location>'
+			. '<t:MyResponseType>NoResponseReceived</t:MyResponseType></t:MeetingRequest></m:Items>'));
+		$m = $this->client()->getItem('MR1');
+		$this->assertSame(['name' => 'Marie Martin', 'email' => 'marie@x.fr'], $m['meeting']['onBehalfOf']);
+		$this->assertStringContainsString('<t:FieldURI FieldURI="message:ReceivedRepresenting"/>', $this->lastRequest());
+	}
+
+	public function testMeetingRequestForMyselfHasNoDelegation(): void {
+		$this->queue(self::ok('GetItem', '<m:Items><t:MeetingRequest><t:ItemId Id="MR2"/><t:Subject>x</t:Subject></t:MeetingRequest></m:Items>'));
+		$this->queue(self::ok('GetItem', '<m:Items><t:MeetingRequest><t:ItemId Id="MR2"/>'
+			. '<t:ReceivedRepresenting><t:Mailbox><t:Name>Moi</t:Name><t:EmailAddress>USER@example.fr</t:EmailAddress></t:Mailbox></t:ReceivedRepresenting>'
+			. '<t:Start>2026-11-20T09:00:00Z</t:Start><t:End>2026-11-20T10:00:00Z</t:End></t:MeetingRequest></m:Items>'));
+		$this->assertNull($this->client()->getItem('MR2')['meeting']['onBehalfOf']);
+	}
+
 	public function testGetAttachment(): void {
 		$this->queue(self::ok('GetAttachment', '<m:Attachments><t:FileAttachment><t:AttachmentId Id="A1"/><t:Name>devis.pdf</t:Name>'
 			. '<t:ContentType>application/pdf</t:ContentType><t:Content>' . base64_encode('%PDF-1.4 test') . '</t:Content></t:FileAttachment></m:Attachments>'));

@@ -98,6 +98,9 @@ seed()
 _mr, _meeting = pim.seed_meeting_request(add_message)
 MESSAGES[_mr]['kind'] = 'MeetingRequest'
 MESSAGES[_mr]['meeting'] = _meeting
+_dr, _delegate = pim.seed_delegate_request(add_message)
+MESSAGES[_dr]['kind'] = 'MeetingRequest'
+MESSAGES[_dr]['meeting'] = _delegate
 
 
 # ----------------------------------------------------------------------------

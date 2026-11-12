@@ -248,6 +248,13 @@ def seed():
               organizer=('Marie Martin', 'marie.martin@societe-a.fr'), location='Antibes')
     add_event('Inventaire', at(0, 14), at(0, 17), folder='shared:martine.leroy@societe-b.fr',
               organizer=('Martine Leroy', 'martine.leroy@societe-b.fr'))
+    # meetings where the calendar owner is an attendee (answer on their behalf)
+    add_event('Revue fournisseurs', at(3, 11), at(3, 12), folder='shared:marie.martin@societe-a.fr',
+              organizer=('Paul Durand', 'paul.durand@societe-a.fr'), response='NoResponseReceived',
+              attendees=[('Marie Martin', 'marie.martin@societe-a.fr', 'NoResponseReceived')])
+    add_event('Point transport', at(2, 16), at(2, 17), folder='shared:martine.leroy@societe-b.fr',
+              organizer=('Paul Durand', 'paul.durand@societe-a.fr'), response='NoResponseReceived',
+              attendees=[('Martine Leroy', 'martine.leroy@societe-b.fr', 'NoResponseReceived')])
     FREEBUSY['paul.durand@societe-a.fr'] = [(at(0, 11), at(0, 12), 'Busy', 'Rendez-vous fournisseur'), (at(1, 15), at(1, 16, 30), 'Tentative', None)]
     first = at(4, 18)
     create_series('Sport', first, at(4, 19), dict(pattern='WeeklyRecurrence', interval=1, days=[WEEKDAYS[first.weekday()]], until=None, count=6),
@@ -504,9 +511,15 @@ def handle(op, el, user, tz, messages, move_message):
         if len(ids) == 1 and 'calendar:Start' in fields and ids[0] in messages and messages[ids[0]].get('kind') in ('MeetingRequest', 'MeetingCancellation'):
             m = messages[ids[0]]
             mt = m['meeting']
-            return wrap(op, [ok(op, '<m:Items><t:%s><t:ItemId Id="%s" ChangeKey="%s"/><t:Start>%s</t:Start><t:End>%s</t:End>'
-                                    '<t:IsAllDayEvent>false</t:IsAllDayEvent><t:Location>%s</t:Location><t:MyResponseType>%s</t:MyResponseType></t:%s></m:Items>'
-                                % (m['kind'], m['id'], m['ck'], utc(mt['start']), utc(mt['end']), esc(mt['location']), mt['response'], m['kind']))])
+            rep_xml = ''
+            if mt.get('representing'):
+                rep_xml = '<t:ReceivedRepresenting>%s</t:ReceivedRepresenting>' % mailbox(*mt['representing'])
+            xml = ('<m:Items><t:%s><t:ItemId Id="%s" ChangeKey="%s"/>' % (m['kind'], m['id'], m['ck'])
+                   + rep_xml
+                   + '<t:Start>%s</t:Start><t:End>%s</t:End><t:IsAllDayEvent>false</t:IsAllDayEvent><t:Location>%s</t:Location>'
+                     '<t:MyResponseType>%s</t:MyResponseType></t:%s></m:Items>'
+                   % (utc(mt['start']), utc(mt['end']), esc(mt['location']), mt['response'], m['kind']))
+            return wrap(op, [ok(op, xml)])
         return None
 
     if op == 'CreateItem':
@@ -555,7 +568,9 @@ def handle(op, el, user, tz, messages, move_message):
             ref = items[0].find('t:ReferenceItemId', NS).get('Id')
             if ref in EVENTS:
                 e = EVENTS[ref]
-                if e['organizer'] == ME:
+                if not can_write(e['folder']):
+                    return wrap(op, [err(op, 'ErrorAccessDenied', 'Access is denied.')])
+                if e['organizer'] == ME and e['folder'] == 'F-CAL':
                     return wrap(op, [err(op, 'ErrorCalendarIsOrganizerForAccept', 'You are the organizer')])
                 e['response'] = response
                 if response == 'Decline':
@@ -711,6 +726,19 @@ def handle(op, el, user, tz, messages, move_message):
                          '<m:ResolutionSet TotalItemsInView="%d" IncludesLastItemInRange="true">%s</m:ResolutionSet></m:ResolveNamesResponseMessage>'
                          % (cls, code, len(found), res)])
     return None
+
+
+def seed_delegate_request(add_message):
+    """A copy of an invitation sent to Marie, received by the user as her delegate."""
+    start, end = at(8, 9), at(8, 10)
+    eid = add_event('Revue trimestrielle', start, end, location='Salle du conseil', folder='shared:marie.martin@societe-a.fr',
+                    organizer=('Paul Durand', 'paul.durand@societe-a.fr'), response='NoResponseReceived',
+                    attendees=[('Marie Martin', 'marie.martin@societe-a.fr', 'NoResponseReceived')], free_busy='Tentative')
+    mid = add_message('F-INBOX', 'Invitation : Revue trimestrielle', ('Paul Durand', 'paul.durand@societe-a.fr'),
+                      '<p>Marie, je t\'invite à la revue trimestrielle.</p>', 60 * 30, is_read=True,
+                      to=(('Marie Martin', 'marie.martin@societe-a.fr'),))
+    return mid, dict(start=start, end=end, location='Salle du conseil', response='NoResponseReceived', event=eid,
+                     representing=('Marie Martin', 'marie.martin@societe-a.fr'))
 
 
 def seed_meeting_request(add_message):
