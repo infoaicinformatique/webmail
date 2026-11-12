@@ -3,6 +3,9 @@
  *
  *   NC_URL=http://localhost:8080 NC_USER=admin NC_PASS=... SHOTS=/tmp/shots node tests/e2e/run-e2e.js
  *
+ * OCC: how to run occ in that Nextcloud (to run the background job of the
+ * new message notifications), by default "docker exec -u www-data nc php occ".
+ *
  * The Nextcloud must have the app enabled, verify_tls=no and the domain
  * societe-a.fr mapped to the fake server (see tests/e2e/README.md).
  */
@@ -10,9 +13,11 @@ const { chromium } = require('playwright')
 const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
+const { execSync } = require('child_process')
 
 const NC = process.env.NC_URL || 'http://localhost:8080'
 const SHOTS = process.env.SHOTS || '/tmp/webmail-shots'
+const OCC = process.env.OCC || 'docker exec -u www-data nc php occ'
 fs.mkdirSync(SHOTS, { recursive: true })
 
 async function main() {
@@ -661,6 +666,65 @@ async function main() {
 		assert.deepStrictEqual(names, ['Grosses pièces jointes'])
 		await page.click('.wm-folder:has-text("Boîte de réception")')
 		await page.waitForSelector('.wm-message')
+	})
+
+	await step('Nextcloud notifications (bell) for new messages, webmail closed', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\NewMailJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		assert(jobId, 'background job registered')
+		const runJob = () => occ('background-job:execute ' + jobId + ' --force-execute')
+		const bell = () => page.evaluate(async () => {
+			const r = await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })
+			return (await r.json()).ocs.data.filter((n) => n.app === 'webmail')
+		})
+		const sendToSelf = async (subject) => {
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'user@societe-a.fr')
+			await page.fill('input[name=subject]', subject)
+			await page.fill('.wm-editor', 'Bonjour, point rapide sur le budget.')
+			await page.click('.wm-compose button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		}
+		// on by default, for each account
+		await page.click('text=Comptes et signature')
+		const box = '.wm-account-card:has-text("user@societe-a.fr") input[name=bell]'
+		assert(await page.isChecked(box), 'on by default')
+		// the first check only notes what is there: old messages are not announced
+		runJob()
+		assert.deepStrictEqual(await bell(), [])
+		await sendToSelf('Budget du chantier')
+		runJob()
+		let mine = (await bell()).filter((n) => n.message.startsWith('« Budget du chantier »'))
+		assert.strictEqual(mine.length, 1, JSON.stringify(await bell()))
+		assert.strictEqual(mine[0].subject, 'Nouveau message d\'Utilisateur')
+		assert.strictEqual(mine[0].message, '« Budget du chantier » — Bonjour, point rapide sur le budget. · user@societe-a.fr')
+		// not announced twice
+		runJob()
+		assert.strictEqual((await bell()).filter((n) => n.message.startsWith('« Budget du chantier »')).length, 1)
+		// in Nextcloud's bell
+		await page.reload()
+		await page.click('.notifications-button')
+		await page.waitForSelector('.notification:has-text("Budget du chantier")')
+		await shot('46-bell-notification')
+		// its link opens the message, which leaves the bell
+		await page.goto(mine[0].link)
+		await page.waitForSelector('.wm-message-header h2:has-text("Budget du chantier")')
+		for (let i = 0; i < 20 && (await bell()).length; i++) await page.waitForTimeout(250)
+		assert.deepStrictEqual(await bell(), [])
+		// switched off for this account
+		await page.click('text=Comptes et signature')
+		await page.uncheck(box)
+		await page.waitForSelector('.wm-toast:has-text("ne seront plus signalés")')
+		await sendToSelf('Sans notification')
+		runJob()
+		assert.deepStrictEqual(await bell(), [])
+		await page.click('text=Comptes et signature')
+		await page.check(box)
+		await page.waitForSelector('.wm-toast:has-text("seront signalés dans Nextcloud")')
+		// read, so that the next steps find the inbox as before
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.click('.wm-message:has-text("Sans notification")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Sans notification")')
 	})
 
 	await step('rich text editor and drafts', async () => {

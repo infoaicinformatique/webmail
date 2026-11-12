@@ -760,3 +760,4 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-rule-tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--color-background-dark); color: var(--color-text-maxcontrast); white-space: nowrap; }
 .wm-rule-tag-error { background: var(--color-error); color: #fff; }
 @media (max-width: 800px) { .wm-rule { grid-template-columns: 24px minmax(0, 1fr); } .wm-rule-buttons { grid-column: 2; justify-content: flex-start; } }
+.wm-bell { display: block; margin: 4px 0 8px; }

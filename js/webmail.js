@@ -2217,6 +2217,21 @@
 					renderNav()
 				} catch (e) { toast(e.message, true) } finally { save.disabled = false }
 			})
+			// saved at once: Nextcloud's notifications (the bell, the phone app) for each new message
+			const bell = h('input', {
+				type: 'checkbox',
+				name: 'bell',
+				checked: a.bell !== false,
+				onchange: async () => {
+					try {
+						Object.assign(a, await api('/accounts/' + a.id, { method: 'PUT', body: { bell: bell.checked } }))
+						toast(bell.checked ? 'Les nouveaux messages seront signalés dans Nextcloud' : 'Les nouveaux messages ne seront plus signalés dans Nextcloud')
+					} catch (e) {
+						bell.checked = !bell.checked
+						toast(e.message, true)
+					}
+				},
+			})
 			const del = h('button', { class: 'wm-danger' }, 'Retirer ce compte')
 			del.addEventListener('click', async () => {
 				if (!window.confirm('Retirer le compte ' + a.email + ' du webmail ? (aucun e-mail n\'est supprimé)')) return
@@ -2236,6 +2251,7 @@
 				h('label', { class: 'wm-field' }, h('span', {}, 'Nom'), name),
 				h('label', { class: 'wm-field' }, h('span', {}, 'Mot de passe'), pwd),
 				h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Signature'), sig),
+				h('label', { class: 'wm-radio wm-bell' }, bell, ' 🔔 Signaler chaque nouveau message dans les notifications Nextcloud, même webmail fermé (et sur le téléphone avec l\'application Nextcloud)'),
 				h('div', { class: 'wm-compose-actions' }, save,
 					h('button', { type: 'button', class: 'wm-oof-btn', onclick: () => openOof(a) }, '🌴 Réponse automatique'),
 					h('button', { type: 'button', class: 'wm-rules-btn', onclick: () => openRules(a) }, '📋 Règles'),

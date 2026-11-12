@@ -39,6 +39,16 @@ class AccountMapper extends QBMapper {
 		return $this->findEntities($qb);
 	}
 
+	/**
+	 * Every account of every user (background checks).
+	 * @return Account[]
+	 */
+	public function findAll(): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')->from($this->getTableName())->orderBy('id', 'ASC');
+		return $this->findEntities($qb);
+	}
+
 	public function deleteAllForUser(string $userId): void {
 		$qb = $this->db->getQueryBuilder();
 		$qb->delete($this->getTableName())
