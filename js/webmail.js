@@ -39,6 +39,39 @@
 	let root, navEl, listEl, detailEl, refreshTimer
 
 	// ------------------------------------------------------------------
+	// caches: what was already seen is shown at once, then refreshed
+	// ------------------------------------------------------------------
+
+	/** "account|folder" -> { messages, total, hasMore, scrollTop } (lists without search) */
+	const listCache = new Map()
+	/** "account|item id" -> message (without remote images), most recent last */
+	const msgCache = new Map()
+	const MSG_CACHE_MAX = 40
+	/** "account|item id" -> pending fetch (prefetch, not marked as read) */
+	const msgPending = new Map()
+	let listSeq = 0
+	let listObserver = null
+
+	const listKey = () => state.accountId + '|' + state.folderId
+	const msgKey = (id) => state.accountId + '|' + id
+
+	function cacheMessage(msg) {
+		const key = msgKey(msg.id)
+		msgCache.delete(key)
+		msgCache.set(key, msg)
+		while (msgCache.size > MSG_CACHE_MAX) msgCache.delete(msgCache.keys().next().value)
+	}
+
+	function saveListCache() {
+		if (state.query || !state.accountId) return
+		listCache.set(listKey(), { messages: state.messages.slice(), total: state.total, hasMore: state.hasMore, scrollTop: listEl ? listEl.scrollTop : 0 })
+	}
+
+	function isMobile() {
+		return window.matchMedia('(max-width: 800px)').matches
+	}
+
+	// ------------------------------------------------------------------
 	// helpers
 	// ------------------------------------------------------------------
 
@@ -147,10 +180,34 @@
 		return f ? f.role : (ROLE_ORDER.includes(state.folderId) ? state.folderId : null)
 	}
 
+	let popping = false
+	let ignorePop = false
+
+	/**
+	 * list | detail | nav (on phones only one is visible). Leaving the list
+	 * adds a browser history entry, so the phone's Back button comes back
+	 * to it instead of leaving the app.
+	 */
 	function setView(v) {
+		const prev = state.view
 		state.view = v
 		root.dataset.view = v
+		if (!isMobile() || v === prev) return
+		try {
+			const ours = history.state && history.state.webmail
+			if (v !== 'list' && prev === 'list') history.pushState({ webmail: v }, '')
+			else if (v !== 'list' && ours) history.replaceState({ webmail: v }, '')
+			else if (v === 'list' && ours && !popping) { ignorePop = true; history.back() }
+		} catch (e) { /* history is a comfort */ }
 	}
+
+	window.addEventListener('popstate', () => {
+		if (ignorePop) { ignorePop = false; return }
+		if (!root || state.view === 'list') return
+		popping = true
+		setView('list')
+		popping = false
+	})
 
 	// ------------------------------------------------------------------
 	// layout
@@ -193,7 +250,76 @@
 
 	function navFooter() {
 		return h('div', { class: 'wm-nav-footer' },
-			h('a', { href: '#', onclick: (e) => { e.preventDefault(); openAccountSettings() } }, '⚙️  Comptes et signature'))
+			h('a', { href: '#', onclick: (e) => { e.preventDefault(); openAccountSettings() } }, '⚙️  Comptes et signature'),
+			h('a', { href: '#', class: 'wm-shortcuts-link wm-desktop-only', onclick: (e) => { e.preventDefault(); showShortcuts() } }, '⌨️  Raccourcis clavier'))
+	}
+
+	// ------------------------------------------------------------------
+	// keyboard shortcuts (mail)
+	// ------------------------------------------------------------------
+
+	const SHORTCUTS = [
+		['j  ou  ↓', 'Message suivant'],
+		['k  ou  ↑', 'Message précédent'],
+		['Entrée', 'Ouvrir le message sélectionné'],
+		['r', 'Répondre'],
+		['a', 'Répondre à tous'],
+		['f', 'Transférer'],
+		['n', 'Nouveau message'],
+		['Suppr', 'Supprimer (Maj+Suppr : définitivement)'],
+		['u', 'Marquer comme non lu'],
+		['s', 'Assurer un suivi / le retirer'],
+		['/', 'Rechercher dans le dossier'],
+		['Échap', 'Revenir à la liste'],
+		['?', 'Afficher cette aide'],
+	]
+
+	function showShortcuts() {
+		if (document.querySelector('.wm-overlay')) return
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true) }
+		const onKey = (e) => { if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); e.stopPropagation(); close() } }
+		document.addEventListener('keydown', onKey, true)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		overlay.appendChild(h('div', { class: 'wm-modal wm-shortcuts', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Raccourcis clavier' },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, 'Raccourcis clavier du courrier'),
+				h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
+			h('table', {}, h('tbody', {}, SHORTCUTS.map(([k, label]) => h('tr', {}, h('td', {}, h('kbd', {}, k)), h('td', {}, label)))))))
+		document.body.appendChild(overlay)
+	}
+
+	function onShortcut(e) {
+		if (state.module !== 'mail' || !root || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
+		const t = e.target
+		if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"]')) return
+		if (document.querySelector('.wm-overlay') || detailEl.querySelector('.wm-compose')) return
+		const m = state.current
+		const role = folderRole()
+		const actions = {
+			j: () => openRelative(1),
+			ArrowDown: () => openRelative(1),
+			k: () => openRelative(-1),
+			ArrowUp: () => openRelative(-1),
+			n: () => openCompose('new'),
+			'/': () => { const s = listEl.querySelector('.wm-search'); if (s) { setView('list'); s.focus() } },
+			'?': () => showShortcuts(),
+			Escape: () => { if (state.view !== 'list') setView('list') },
+		}
+		if (m) {
+			Object.assign(actions, {
+				r: () => openCompose('reply', m),
+				a: () => openCompose('replyAll', m),
+				f: () => openCompose('forward', m),
+				u: () => markUnread(m),
+				s: () => toggleFlag(m),
+				Delete: () => deleteMessages([m.id], e.shiftKey || role === 'deleteditems'),
+				'#': () => deleteMessages([m.id], role === 'deleteditems'),
+			})
+		}
+		const action = actions[e.key]
+		if (!action) return
+		e.preventDefault()
+		action()
 	}
 
 	function currentModule() {
@@ -306,6 +432,7 @@
 	}
 
 	function selectFolder(id) {
+		saveListCache()
 		state.folderId = id
 		state.query = ''
 		state.selectedId = null
@@ -319,54 +446,91 @@
 	// message list
 	// ------------------------------------------------------------------
 
+	/**
+	 * reset: (re)load the folder from the top. A folder already seen is shown
+	 * at once from the cache and refreshed in the background. A newer call
+	 * (another folder clicked meanwhile) wins over an older one.
+	 */
 	async function loadMessages(reset) {
-		if (state.loadingList || state.module !== 'mail') return
+		if (state.module !== 'mail') return
+		if (!reset && (state.loadingList || !state.hasMore)) return
+		const seq = ++listSeq
+		let limit = PAGE_SIZE
 		state.loadingList = true
 		if (reset) {
-			state.messages = []
-			state.total = 0
-			state.hasMore = false
-			renderList(true)
+			const cached = !state.query && listCache.get(listKey())
+			if (cached) {
+				state.messages = cached.messages.slice()
+				state.total = cached.total
+				state.hasMore = cached.hasMore
+				limit = Math.min(100, Math.max(PAGE_SIZE, cached.messages.length))
+				renderList(false, cached.scrollTop)
+			} else {
+				state.messages = []
+				state.total = 0
+				state.hasMore = false
+				renderList(true)
+			}
 		}
 		try {
 			const data = await api('/accounts/' + state.accountId + '/messages', {
-				query: { folder: state.folderId, offset: reset ? 0 : state.messages.length, limit: PAGE_SIZE, q: state.query },
+				query: { folder: state.folderId, offset: reset ? 0 : state.messages.length, limit, q: state.query },
 			})
+			// a newer load (another folder, a search) replaced this one; the folder id
+			// itself may change meanwhile ("inbox" becomes its real id)
+			if (seq !== listSeq) return
 			state.messages = reset ? data.items : state.messages.concat(data.items)
 			state.total = data.total
 			state.hasMore = data.hasMore
 		} catch (e) {
-			toast(e.message, true)
+			if (seq === listSeq) toast(e.message, true)
 		} finally {
-			state.loadingList = false
-			if (state.module === 'mail') renderList(false)
+			if (seq === listSeq) {
+				state.loadingList = false
+				if (state.module === 'mail') {
+					renderList(false)
+					saveListCache()
+				}
+			}
 		}
 	}
 
 	async function refresh() {
 		if (!state.accountId || document.hidden || state.module !== 'mail') return
 		loadFolders()
-		if (state.messages.length <= PAGE_SIZE && !state.loadingList) {
+		if (state.messages.length <= 100 && !state.loadingList) {
+			const seq = listSeq
 			try {
 				const data = await api('/accounts/' + state.accountId + '/messages', {
-					query: { folder: state.folderId, offset: 0, limit: PAGE_SIZE, q: state.query },
+					query: { folder: state.folderId, offset: 0, limit: Math.max(PAGE_SIZE, state.messages.length), q: state.query },
 				})
+				if (seq !== listSeq || state.module !== 'mail') return
 				state.messages = data.items
 				state.total = data.total
 				state.hasMore = data.hasMore
 				renderList(false)
+				saveListCache()
 			} catch (e) { /* silent */ }
 		}
 	}
 
-	function renderList(loading) {
+	/**
+	 * @param {boolean} loading show a spinner instead of the messages
+	 * @param {number} [scrollTop] scroll position to restore (default: keep the current one)
+	 */
+	function renderList(loading, scrollTop) {
+		const keepScroll = scrollTop !== undefined ? scrollTop : listEl.scrollTop
+		// a refresh must not disturb someone typing a search
+		const typing = document.activeElement && document.activeElement.classList.contains('wm-search') && listEl.contains(document.activeElement)
+			? document.activeElement : null
+		if (listObserver) { listObserver.disconnect(); listObserver = null }
 		clear(listEl)
 		const f = currentFolder()
 		const searchInput = h('input', {
 			type: 'search',
 			class: 'wm-search',
 			placeholder: 'Rechercher dans ' + (f ? f.name : 'le dossier'),
-			value: state.query,
+			value: typing ? typing.value : state.query,
 			'aria-label': 'Rechercher',
 		})
 		const form = h('form', {
@@ -378,6 +542,11 @@
 		h('button', { type: 'button', class: 'wm-icon-btn', title: 'Actualiser', 'aria-label': 'Actualiser', onclick: () => { loadFolders(); loadMessages(true) } }, '⟳'),
 		)
 		listEl.appendChild(form)
+		if (typing) {
+			const caret = typing.selectionStart
+			searchInput.focus()
+			try { searchInput.setSelectionRange(caret, caret) } catch (e) { /* ignore */ }
+		}
 
 		if (state.query) {
 			listEl.appendChild(h('div', { class: 'wm-search-info' },
@@ -404,6 +573,9 @@
 				dataset: { id: m.id },
 				onclick: () => openMessage(m.id),
 				onkeydown: (e) => { if (e.key === 'Enter') openMessage(m.id) },
+				// hovering a message for a moment loads it in advance
+				onmouseenter: () => { clearTimeout(hoverTimer); hoverTimer = setTimeout(() => prefetchMessage(m.id), 150) },
+				onmouseleave: () => clearTimeout(hoverTimer),
 			},
 			h('div', { class: 'wm-message-line1' },
 				h('span', { class: 'wm-message-from' }, who),
@@ -425,26 +597,69 @@
 		listEl.appendChild(ul)
 
 		if (state.hasMore) {
-			listEl.appendChild(h('div', { class: 'wm-center' },
-				h('button', { onclick: () => loadMessages(false) }, 'Charger plus (' + state.messages.length + ' / ' + state.total + ')')))
+			// the next page loads by itself when the end of the list comes into view
+			const more = h('div', { class: 'wm-center wm-list-more' },
+				h('button', { onclick: () => loadMessages(false) }, 'Charger plus (' + state.messages.length + ' / ' + state.total + ')'))
+			listEl.appendChild(more)
+			if ('IntersectionObserver' in window) {
+				listObserver = new IntersectionObserver((entries) => {
+					if (entries.some((e) => e.isIntersecting)) loadMessages(false)
+				}, { root: listEl, rootMargin: '400px' })
+				listObserver.observe(more)
+			}
+		}
+		listEl.scrollTop = keepScroll
+	}
+
+	function listItemEl(id) {
+		return [...listEl.querySelectorAll('.wm-message')].find((li) => li.dataset.id === id) || null
+	}
+
+	/** Update one message of the list in place (no full redraw: no flicker, scroll kept). */
+	function updateListItem(id, changes) {
+		const m = state.messages.find((x) => x.id === id)
+		if (!m) return
+		Object.assign(m, changes)
+		const li = listItemEl(id)
+		if (!li) return
+		li.classList.toggle('unread', !m.isRead)
+		const flag = li.querySelector('.wm-flag')
+		if (flag) {
+			flag.classList.toggle('on', !!m.flagged)
+			flag.title = m.flagged ? 'Retirer le suivi' : 'Assurer un suivi'
+		}
+		saveListCache()
+	}
+
+	function markSelected(id) {
+		listEl.querySelectorAll('.wm-message.selected').forEach((li) => li.classList.remove('selected'))
+		const li = id ? listItemEl(id) : null
+		if (li) {
+			li.classList.add('selected')
+			li.scrollIntoView({ block: 'nearest' })
 		}
 	}
 
-	function updateListItem(id, changes) {
-		const m = state.messages.find((x) => x.id === id)
-		if (m) Object.assign(m, changes)
-		renderList(false)
-	}
-
+	/** Applied at once, undone if Exchange refuses. */
 	async function toggleFlag(m) {
-		try {
-			await api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: [m.id], flag: 'flagged', value: !m.flagged } })
-			updateListItem(m.id, { flagged: !m.flagged })
+		const value = !m.flagged
+		const apply = (v) => {
+			updateListItem(m.id, { flagged: v })
+			const cached = msgCache.get(msgKey(m.id))
+			if (cached) cached.flagged = v
 			if (state.current && state.current.id === m.id) {
-				state.current.flagged = !state.current.flagged
-				renderMessage()
+				state.current.flagged = v
+				const btn = detailEl.querySelector('.wm-flag-btn')
+				if (btn) { btn.classList.toggle('on', v); btn.textContent = v ? '⚑ Suivi ✓' : '⚑ Suivi' }
 			}
-		} catch (e) { toast(e.message, true) }
+		}
+		apply(value)
+		try {
+			await api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: [m.id], flag: 'flagged', value } })
+		} catch (e) {
+			apply(!value)
+			toast(e.message, true)
+		}
 	}
 
 	// ------------------------------------------------------------------
@@ -457,28 +672,87 @@
 		detailEl.appendChild(h('div', { class: 'wm-empty wm-empty-detail' }, h('div', { class: 'wm-empty-icon' }, '✉️'), 'Sélectionnez un message'))
 	}
 
+	let hoverTimer = null
+
+	/** Load a message in advance, without marking it as read. */
+	function prefetchMessage(id) {
+		const key = msgKey(id)
+		if (msgCache.has(key)) return Promise.resolve(msgCache.get(key))
+		if (!msgPending.has(key)) {
+			const p = api('/accounts/' + state.accountId + '/message', { query: { itemId: id, remote: 0, markRead: 0 } })
+				.then((msg) => { cacheMessage(msg); return msg })
+				.finally(() => msgPending.delete(key))
+			p.catch(() => { /* prefetch is best effort */ })
+			msgPending.set(key, p)
+		}
+		return msgPending.get(key)
+	}
+
+	/** Load the next and previous messages while this one is read. */
+	function prefetchAround(id) {
+		const i = state.messages.findIndex((m) => m.id === id)
+		if (i < 0) return
+		const ids = [state.messages[i + 1], state.messages[i - 1]].filter(Boolean).map((m) => m.id)
+		setTimeout(() => ids.reduce((p, next) => p.then(() => (state.selectedId === id ? prefetchMessage(next) : null)).catch(() => null), Promise.resolve()), 300)
+	}
+
+	function markReadLocally(id) {
+		const item = state.messages.find((m) => m.id === id)
+		if (item && !item.isRead) {
+			const f = currentFolder()
+			if (f && f.unread > 0) { f.unread--; renderNav() }
+		}
+		updateListItem(id, { isRead: true })
+	}
+
 	async function openMessage(id, remote) {
 		state.selectedId = id
-		renderList(false)
+		markSelected(id)
 		setView('detail')
-		clear(detailEl)
-		detailEl.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
-		try {
-			const msg = await api('/accounts/' + state.accountId + '/message', { query: { itemId: id, remote: remote ? 1 : 0 } })
+		const key = msgKey(id)
+		let msg = !remote ? msgCache.get(key) : null
+		let fromCache = !!msg
+		if (!msg && !remote && msgPending.has(key)) {
+			try { msg = await msgPending.get(key); fromCache = true } catch (e) { msg = null }
 			if (state.selectedId !== id) return
-			msg.remoteAllowed = !!remote
-			state.current = msg
-			const wasUnread = state.messages.find((m) => m.id === id && !m.isRead)
-			updateListItem(id, { isRead: true })
-			if (wasUnread) {
-				const f = currentFolder()
-				if (f && f.unread > 0) { f.unread--; renderNav() }
-			}
-			renderMessage()
-		} catch (e) {
-			clear(detailEl)
-			detailEl.appendChild(h('div', { class: 'wm-empty' }, e.message))
 		}
+		if (!msg) {
+			clear(detailEl)
+			detailEl.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
+			try {
+				msg = await api('/accounts/' + state.accountId + '/message', { query: { itemId: id, remote: remote ? 1 : 0 } })
+				if (!remote) cacheMessage(msg)
+			} catch (e) {
+				if (state.selectedId !== id) return
+				clear(detailEl)
+				detailEl.appendChild(h('div', { class: 'wm-empty' }, e.message))
+				return
+			}
+			if (state.selectedId !== id) return
+		}
+		if (fromCache && !msg.isRead) {
+			// loaded in advance: mark it as read now that it is opened
+			api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: [id], flag: 'read', value: true } })
+				.catch((e) => toast(e.message, true))
+		}
+		msg.isRead = true
+		state.current = Object.assign({}, msg, { remoteAllowed: !!remote })
+		markReadLocally(id)
+		renderMessage()
+		detailEl.scrollTop = 0
+		if (!remote) prefetchAround(id)
+	}
+
+	/** Open the next (+1) or previous (-1) message of the list. */
+	function openRelative(step) {
+		if (!state.messages.length) return
+		const i = state.messages.findIndex((m) => m.id === state.selectedId)
+		const j = i < 0 ? 0 : i + step
+		if (j >= state.messages.length) {
+			if (state.hasMore) loadMessages(false)
+			return
+		}
+		if (j >= 0) openMessage(state.messages[j].id)
 	}
 
 	function renderMessage() {
@@ -624,45 +898,82 @@
 	}
 
 	async function markUnread(m) {
+		updateListItem(m.id, { isRead: false })
+		const cached = msgCache.get(msgKey(m.id))
+		if (cached) cached.isRead = false
+		const f = currentFolder()
+		if (f) { f.unread++; renderNav() }
+		state.selectedId = null
+		markSelected(null)
+		renderEmptyDetail()
+		setView('list')
 		try {
 			await api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: [m.id], flag: 'read', value: false } })
-			updateListItem(m.id, { isRead: false })
-			const f = currentFolder()
-			if (f) { f.unread++; renderNav() }
-			state.selectedId = null
-			renderEmptyDetail()
-			setView('list')
-		} catch (e) { toast(e.message, true) }
+		} catch (e) {
+			updateListItem(m.id, { isRead: true })
+			if (f && f.unread > 0) { f.unread--; renderNav() }
+			toast(e.message, true)
+		}
 	}
 
+	/**
+	 * Take messages out of the list at once. When the open message goes, the
+	 * next one opens (like Outlook) on a large screen.
+	 * @return {function} undo
+	 */
 	function removeFromList(ids) {
+		const before = { messages: state.messages.slice(), total: state.total, selectedId: state.selectedId }
+		const i = state.messages.findIndex((m) => m.id === state.selectedId)
 		state.messages = state.messages.filter((m) => !ids.includes(m.id))
 		state.total = Math.max(0, state.total - ids.length)
-		if (ids.includes(state.selectedId)) {
-			state.selectedId = null
-			renderEmptyDetail()
-			setView('list')
-		}
+		ids.forEach((id) => msgCache.delete(msgKey(id)))
 		renderList(false)
+		saveListCache()
+		if (ids.includes(state.selectedId)) {
+			const next = !isMobile() && i >= 0 ? (state.messages[i] || state.messages[i - 1]) : null
+			if (next) {
+				openMessage(next.id)
+			} else {
+				state.selectedId = null
+				renderEmptyDetail()
+				setView('list')
+			}
+		}
+		return () => {
+			state.messages = before.messages
+			state.total = before.total
+			renderList(false)
+			saveListCache()
+			if (before.selectedId && ids.includes(before.selectedId)) openMessage(before.selectedId)
+		}
 	}
 
 	async function moveMessages(ids, target) {
+		const undo = removeFromList(ids)
 		try {
 			await api('/accounts/' + state.accountId + '/move', { method: 'POST', body: { itemIds: ids, target } })
-			removeFromList(ids)
 			toast('Message déplacé')
+			listCache.delete(state.accountId + '|' + target)
 			loadFolders()
-		} catch (e) { toast(e.message, true) }
+		} catch (e) {
+			undo()
+			toast(e.message, true)
+		}
 	}
 
 	async function deleteMessages(ids, permanent) {
 		if (permanent && !window.confirm('Supprimer définitivement ce message ?')) return
+		const undo = removeFromList(ids)
 		try {
 			await api('/accounts/' + state.accountId + '/delete', { method: 'POST', body: { itemIds: ids, permanent: !!permanent } })
-			removeFromList(ids)
 			toast(permanent ? 'Message supprimé définitivement' : 'Message placé dans les éléments supprimés')
+			const trash = state.folders.find((f) => f.role === 'deleteditems')
+			if (trash) listCache.delete(state.accountId + '|' + trash.id)
 			loadFolders()
-		} catch (e) { toast(e.message, true) }
+		} catch (e) {
+			undo()
+			toast(e.message, true)
+		}
 	}
 
 	function saveAttachment(a) {
@@ -1050,6 +1361,7 @@
 		clearInterval(refreshTimer)
 		refreshTimer = setInterval(refresh, REFRESH_MS)
 		document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh() })
+		document.addEventListener('keydown', onShortcut)
 	}
 
 	if (document.readyState === 'loading') {

@@ -22,8 +22,20 @@ class EwsClient {
 	/** Folders that can be addressed by their well-known name. */
 	public const DISTINGUISHED = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'outbox', 'msgfolderroot', 'archivemsgfolderroot'];
 
-	/** @var null|callable(string $url, string $body): array{0: int, 1: string} */
+	/** @var null|callable(string $url, string $body, string[] $headers): array{0: int, 1: string} */
 	private $transport;
+
+	/** Public folder mailbox the requests are routed to (Exchange 2013+), null for the user's mailbox. */
+	private ?string $publicFolderMailbox = null;
+
+	/** One HTTP connection for all the requests of this client (TLS and NTLM handshakes once). */
+	private ?\CurlHandle $curl = null;
+
+	/**
+	 * Authentication: Basic is sent with the first request (no extra round
+	 * trip to discover the method); NTLM is used if the server refuses it.
+	 */
+	private int $auth = CURLAUTH_BASIC;
 
 	/** Windows time zone id sent in the TimeZoneContext header (e.g. "Romance Standard Time"). */
 	private ?string $timeZoneId = null;
@@ -48,6 +60,54 @@ class EwsClient {
 
 	public function getTimeZone(): ?string {
 		return $this->timeZoneId;
+	}
+
+	/**
+	 * Route the following requests to the public folders: since Exchange 2013
+	 * they live in "public folder mailboxes" and requests about them carry
+	 * that mailbox in the X-AnchorMailbox / X-PublicFolderMailbox headers.
+	 */
+	public function usePublicFolderMailbox(?string $smtp): void {
+		$this->publicFolderMailbox = $smtp !== null && $smtp !== '' ? $smtp : null;
+	}
+
+	/**
+	 * The user's public folder mailbox, from Autodiscover (GetUserSettings,
+	 * setting "PublicFolderInformation"), on the same host as EWS.
+	 * @return ?string null when the server has none or does not answer
+	 */
+	public function discoverPublicFolderMailbox(): ?string {
+		$parts = parse_url($this->url);
+		if (!isset($parts['scheme'], $parts['host']) || !str_contains($this->username, '@')) {
+			return null;
+		}
+		$url = $parts['scheme'] . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '') . '/autodiscover/autodiscover.svc';
+		$ns = 'http://schemas.microsoft.com/exchange/2010/Autodiscover';
+		$action = $ns . '/Autodiscover/GetUserSettings';
+		$envelope = '<?xml version="1.0" encoding="utf-8"?>'
+			. '<soap:Envelope xmlns:soap="' . self::NS_SOAP . '" xmlns:a="' . $ns . '" xmlns:wsa="http://www.w3.org/2005/08/addressing">'
+			. '<soap:Header><a:RequestedServerVersion>Exchange2013</a:RequestedServerVersion>'
+			. '<wsa:Action>' . $action . '</wsa:Action><wsa:To>' . $this->esc($url) . '</wsa:To></soap:Header>'
+			. '<soap:Body><a:GetUserSettingsRequestMessage><a:Request>'
+			. '<a:Users><a:User><a:Mailbox>' . $this->esc($this->username) . '</a:Mailbox></a:User></a:Users>'
+			. '<a:RequestedSettings><a:Setting>PublicFolderInformation</a:Setting></a:RequestedSettings>'
+			. '</a:Request></a:GetUserSettingsRequestMessage></soap:Body></soap:Envelope>';
+		try {
+			$headers = ['SOAPAction: "' . $action . '"'];
+			[$status, $response] = $this->transport !== null
+				? ($this->transport)($url, $envelope, $headers)
+				: $this->httpPost($envelope, $headers, $url);
+		} catch (MailException) {
+			return null;
+		}
+		$doc = new \DOMDocument();
+		if ($status !== 200 || $response === '' || !@$doc->loadXML($response, LIBXML_NONET)) {
+			return null;
+		}
+		$xp = new \DOMXPath($doc);
+		$xp->registerNamespace('a', $ns);
+		$value = trim((string)$xp->evaluate('string(//a:UserSetting[a:Name="PublicFolderInformation"]/a:Value)'));
+		return filter_var($value, FILTER_VALIDATE_EMAIL) ? $value : null;
 	}
 
 	// ------------------------------------------------------------------
@@ -561,9 +621,12 @@ class EwsClient {
 			. '</soap:Header>'
 			. '<soap:Body>' . $bodyXml . '</soap:Body></soap:Envelope>';
 
+		$headers = $this->publicFolderMailbox !== null
+			? ['X-AnchorMailbox: ' . $this->publicFolderMailbox, 'X-PublicFolderMailbox: ' . $this->publicFolderMailbox]
+			: [];
 		[$status, $response] = $this->transport !== null
-			? ($this->transport)($this->url, $envelope)
-			: $this->httpPost($envelope);
+			? ($this->transport)($this->url, $envelope, $headers)
+			: $this->httpPost($envelope, $headers);
 
 		if ($status === 401) {
 			throw new MailException('Identifiant ou mot de passe Exchange incorrect');
@@ -625,18 +688,23 @@ class EwsClient {
 	}
 
 	/**
+	 * @param string[] $headers extra HTTP headers
 	 * @return array{0: int, 1: string}
 	 */
-	private function httpPost(string $body): array {
-		$ch = curl_init($this->url);
+	private function httpPost(string $body, array $headers = [], ?string $url = null): array {
+		$this->curl ??= curl_init();
+		$ch = $this->curl;
 		curl_setopt_array($ch, [
+			CURLOPT_URL => $url ?? $this->url,
 			CURLOPT_POST => true,
 			CURLOPT_POSTFIELDS => $body,
 			CURLOPT_RETURNTRANSFER => true,
-			CURLOPT_HTTPHEADER => ['Content-Type: text/xml; charset=utf-8', 'Accept: text/xml'],
-			// OVH Hosted Exchange accepts Basic and NTLM; let curl negotiate.
-			CURLOPT_HTTPAUTH => CURLAUTH_BASIC | CURLAUTH_NTLM,
+			CURLOPT_HTTPHEADER => array_merge(['Content-Type: text/xml; charset=utf-8', 'Accept: text/xml'], $headers),
+			// OVH Hosted Exchange accepts Basic and NTLM
+			CURLOPT_HTTPAUTH => $this->auth,
 			CURLOPT_USERPWD => $this->username . ':' . $this->password,
+			// EWS answers are verbose XML: let the server compress them
+			CURLOPT_ENCODING => '',
 			CURLOPT_TIMEOUT => $this->timeout,
 			CURLOPT_CONNECTTIMEOUT => 15,
 			CURLOPT_SSL_VERIFYPEER => $this->verifyPeer,
@@ -648,8 +716,15 @@ class EwsClient {
 		$response = curl_exec($ch);
 		$status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 		$error = curl_error($ch);
-		curl_close($ch);
+		if ($status === 401 && $this->auth === CURLAUTH_BASIC && $response !== false) {
+			// Basic refused: this server wants NTLM (kept for the next requests)
+			$this->auth = CURLAUTH_NTLM;
+			return $this->httpPost($body, $headers, $url);
+		}
 		if ($response === false) {
+			// do not reuse a connection in an unknown state
+			curl_close($ch);
+			$this->curl = null;
 			throw new MailException('Impossible de joindre le serveur Exchange : ' . $error);
 		}
 		return [$status, (string)$response];

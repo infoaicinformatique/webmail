@@ -9,6 +9,7 @@ use OCA\Webmail\Db\AccountMapper;
 use OCA\Webmail\Ews\EwsClient;
 use OCA\Webmail\Exception\MailException;
 use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\Security\ICrypto;
 
@@ -18,6 +19,7 @@ class AccountService {
 		private ServerConfigService $servers,
 		private ICrypto $crypto,
 		private IConfig $config,
+		private ICacheFactory $cacheFactory,
 	) {
 	}
 
@@ -102,6 +104,23 @@ class AccountService {
 			throw new MailException('Mot de passe enregistré illisible, merci de le saisir à nouveau dans les paramètres du compte');
 		}
 		return $this->buildClient($this->servers->resolveUrl($account->getEmail()), $account->getEmail(), $password);
+	}
+
+	/**
+	 * A client routed to the account's public folders. The public folder
+	 * mailbox comes from Autodiscover and is remembered for a day.
+	 */
+	public function getPublicFolderClient(Account $account): EwsClient {
+		$client = $this->getClient($account);
+		$cache = $this->cacheFactory->createDistributed('webmail-pf');
+		$key = 'pf_' . $account->getId();
+		$mailbox = $cache->get($key);
+		if (!is_string($mailbox)) {
+			$mailbox = (string)$client->discoverPublicFolderMailbox();
+			$cache->set($key, $mailbox, 86400);
+		}
+		$client->usePublicFolderMailbox($mailbox !== '' ? $mailbox : null);
+		return $client;
 	}
 
 	private function buildClient(string $url, string $email, string $password): EwsClient {

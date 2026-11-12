@@ -225,6 +225,103 @@ class EwsContactsTest extends EwsTestCase {
 		$this->contacts()->getPermissions('shared:marie@x.fr:F1');
 	}
 
+	// ------------------------------------------------------------------ public folders
+
+	public function testDiscoverPublicFolderMailbox(): void {
+		$this->responses[] = [200, '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>'
+			. '<GetUserSettingsResponseMessage xmlns="http://schemas.microsoft.com/exchange/2010/Autodiscover"><Response><ErrorCode>NoError</ErrorCode>'
+			. '<UserResponses><UserResponse><ErrorCode>NoError</ErrorCode><UserSettings><UserSetting xmlns:i="http://www.w3.org/2001/XMLSchema-instance" i:type="StringSetting">'
+			. '<Name>PublicFolderInformation</Name><Value>pf-mailbox@example.fr</Value></UserSetting></UserSettings></UserResponse></UserResponses>'
+			. '</Response></GetUserSettingsResponseMessage></s:Body></s:Envelope>'];
+		$this->assertSame('pf-mailbox@example.fr', $this->client()->discoverPublicFolderMailbox());
+		$this->assertStringContainsString('<a:Mailbox>user@example.fr</a:Mailbox>', $this->autodiscover[0]);
+		$this->assertStringContainsString('<a:Setting>PublicFolderInformation</a:Setting>', $this->autodiscover[0]);
+		$this->assertStringContainsString('<wsa:To>https://ex3.mail.ovh.net/autodiscover/autodiscover.svc</wsa:To>', $this->autodiscover[0]);
+	}
+
+	public function testDiscoverPublicFolderMailboxIsOptional(): void {
+		$this->responses[] = [404, ''];
+		$this->assertNull($this->client()->discoverPublicFolderMailbox());
+	}
+
+	public function testPublicFolderRequestsAreRouted(): void {
+		$client = $this->client();
+		$client->usePublicFolderMailbox('pf-mailbox@example.fr');
+		$this->queue(self::ok('FindFolder', '<m:RootFolder TotalItemsInView="0" IncludesLastItemInRange="true"><t:Folders/></m:RootFolder>'));
+		(new EwsContacts($client))->listPublicFolders();
+		$this->assertSame(['X-AnchorMailbox: pf-mailbox@example.fr', 'X-PublicFolderMailbox: pf-mailbox@example.fr'], $this->headers[0]);
+		$this->assertStringContainsString('<m:FindFolder Traversal="Shallow">', $this->lastRequest());
+		$this->assertStringContainsString('<m:ParentFolderIds><t:DistinguishedFolderId Id="publicfoldersroot"/></m:ParentFolderIds>', $this->lastRequest());
+		// a normal client sends no routing header
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="0" IncludesLastItemInRange="true"><t:Items/></m:RootFolder>'));
+		$this->contacts()->listContacts();
+		$this->assertSame([], $this->headers[1]);
+	}
+
+	public function testListPublicFoldersKeepsContactsAndFoldersToOpen(): void {
+		$f = fn (string $id, string $name, string $class, int $children, bool $read = true, bool $edit = false) => '<t:Folder><t:FolderId Id="' . $id . '"/>'
+			. '<t:FolderClass>' . $class . '</t:FolderClass><t:DisplayName>' . $name . '</t:DisplayName><t:ChildFolderCount>' . $children . '</t:ChildFolderCount>'
+			. self::rights($edit, $read) . '</t:Folder>';
+		$this->queue(self::ok('FindFolder', '<m:RootFolder TotalItemsInView="5" IncludesLastItemInRange="true"><t:Folders>'
+			. $f('SOC', 'Société', 'IPF.Note', 2)
+			. $f('ANN', 'Annonces', 'IPF.Note', 0)
+			. $f('AG', 'Agenda commun', 'IPF.Appointment', 0)
+			. $f('CLI', 'Clients', 'IPF.Contact', 0, true, true)
+			. $f('SECRET', 'Direction', 'IPF.Contact', 0, false)
+			. '</t:Folders></m:RootFolder>'));
+		$this->assertSame([
+			['id' => 'CLI', 'name' => 'Clients', 'isContacts' => true, 'hasChildren' => false, 'canEdit' => true],
+			['id' => 'SOC', 'name' => 'Société', 'isContacts' => false, 'hasChildren' => true, 'canEdit' => false],
+		], $this->contacts()->listPublicFolders());
+	}
+
+	public function testListPublicFoldersOfAFolder(): void {
+		$this->queue(self::ok('FindFolder', '<m:RootFolder TotalItemsInView="0" IncludesLastItemInRange="true"><t:Folders/></m:RootFolder>'));
+		$this->contacts()->listPublicFolders('SOC');
+		$this->assertStringContainsString('<m:ParentFolderIds><t:FolderId Id="SOC"/></m:ParentFolderIds>', $this->lastRequest());
+	}
+
+	public function testNoPublicFolders(): void {
+		$this->queue('<m:FindFolderResponse ' . self::NS . '><m:ResponseMessages>' . self::error('FindFolder', 'ErrorFolderNotFound') . '</m:ResponseMessages></m:FindFolderResponse>');
+		$this->expectException(MailException::class);
+		$this->expectExceptionMessage('Aucun dossier public n\'est accessible sur ce serveur Exchange');
+		$this->contacts()->listPublicFolders();
+	}
+
+	public function testGetPublicBook(): void {
+		$this->queue(self::ok('GetFolder', '<m:Folders>' . self::folder('CLI', 'Clients', 'IPF.Contact', self::rights(true)) . '</m:Folders>'));
+		$this->assertSame(['name' => 'Clients', 'canEdit' => true], $this->contacts()->getPublicBook('CLI'));
+		$this->assertStringContainsString('<m:FolderIds><t:FolderId Id="CLI"/></m:FolderIds>', $this->lastRequest());
+	}
+
+	public function testGetPublicBookRejectsOtherFolders(): void {
+		$this->queue(self::ok('GetFolder', '<m:Folders><t:CalendarFolder><t:FolderId Id="AG"/><t:FolderClass>IPF.Appointment</t:FolderClass>'
+			. '<t:DisplayName>Agenda</t:DisplayName>' . self::rights(true) . '</t:CalendarFolder></m:Folders>'));
+		$this->expectException(MailException::class);
+		$this->expectExceptionMessage('n\'est pas un carnet d\'adresses');
+		$this->contacts()->getPublicBook('AG');
+	}
+
+	public function testSearchInAPublicBookUsesARestriction(): void {
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="0" IncludesLastItemInRange="true"><t:Items/></m:RootFolder>'));
+		$this->contacts()->listContacts(0, 100, 'azur', 'public:CLI');
+		$req = $this->lastRequest();
+		$this->assertStringNotContainsString('QueryString', $req);
+		$this->assertStringContainsString('<t:Contains ContainmentMode="Substring" ContainmentComparison="IgnoreCase"><t:FieldURI FieldURI="contacts:DisplayName"/><t:Constant Value="azur"/></t:Contains>', $req);
+		$this->assertStringContainsString('<m:ParentFolderIds><t:FolderId Id="CLI"/></m:ParentFolderIds>', $req);
+	}
+
+	public function testDeleteInAPublicBookIsPermanent(): void {
+		$this->queue(self::ok('DeleteItem'));
+		$this->contacts()->deleteContact('C1', true);
+		$this->assertStringContainsString('<m:DeleteItem DeleteType="HardDelete">', $this->lastRequest());
+	}
+
+	public function testPublicBooksCannotBeShared(): void {
+		$this->expectException(MailException::class);
+		$this->contacts()->getPermissions('public:CLI');
+	}
+
 	public function testSearchDirectoryReturnsFullCards(): void {
 		$this->queue('<m:ResolveNamesResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>'
 			. '<m:ResolveNamesResponseMessage ResponseClass="Warning"><m:ResponseCode>ErrorNameResolutionMultipleResults</m:ResponseCode><m:ResolutionSet TotalItemsInView="2" IncludesLastItemInRange="true">'
