@@ -198,6 +198,42 @@ class HtmlSanitizer {
 		return '<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">' . $inner . '</div>';
 	}
 
+	/**
+	 * Images pasted in the editor (data: URLs) become inline attachments,
+	 * referenced as cid:, as Outlook sends them: every mail program shows
+	 * them, and the message is not weighed down by base64 text in its HTML.
+	 * The same image twice is attached once.
+	 *
+	 * @return array{html: string, images: list<array{name: string, contentType: string, content: string, contentId: string, isInline: bool}>}
+	 */
+	public static function extractInlineImages(string $html): array {
+		$images = [];
+		$out = preg_replace_callback(
+			'#(<img\b[^>]*?\bsrc\s*=\s*)(["\'])data:image/(png|jpe?g|gif|webp|bmp);base64,([A-Za-z0-9+/=\s]+)\2#i',
+			function (array $m) use (&$images): string {
+				$content = base64_decode(preg_replace('/\s+/', '', $m[4]) ?? '', true);
+				if ($content === false || $content === '') {
+					return $m[1] . '""';
+				}
+				$type = strtolower($m[3]) === 'jpg' ? 'jpeg' : strtolower($m[3]);
+				$hash = substr(hash('sha256', $content), 0, 16);
+				$cid = 'image-' . $hash . '@webmail';
+				if (!isset($images[$cid])) {
+					$images[$cid] = [
+						'name' => 'image-' . (count($images) + 1) . '.' . ($type === 'jpeg' ? 'jpg' : $type),
+						'contentType' => 'image/' . $type,
+						'content' => $content,
+						'contentId' => $cid,
+						'isInline' => true,
+					];
+				}
+				return $m[1] . $m[2] . 'cid:' . $cid . $m[2];
+			},
+			$html
+		);
+		return ['html' => $out ?? $html, 'images' => array_values($images)];
+	}
+
 	public static function textToHtml(string $text): string {
 		$escaped = htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 		$linked = (string)preg_replace('#(https?://[^\s<>"\']+)#i', '<a href="$1">$1</a>', $escaped);

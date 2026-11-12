@@ -2256,6 +2256,50 @@
 		return wrap
 	}
 
+	/** Largest side of an image put in a message, in pixels (a photo from a phone is reduced). */
+	const IMAGE_MAX_SIDE = 1600
+	const IMAGE_MAX_BYTES = 5 * 1024 * 1024
+
+	/**
+	 * An image file as a data: URL for the editor. Photos larger than
+	 * IMAGE_MAX_SIDE are reduced (JPEG); screenshots stay PNG when they are
+	 * light enough; GIFs are kept as they are (animation).
+	 */
+	function imageDataUrl(file) {
+		const read = (blob) => new Promise((resolve, reject) => {
+			const r = new FileReader()
+			r.onload = () => resolve(r.result)
+			r.onerror = () => reject(new Error('Image illisible : ' + file.name))
+			r.readAsDataURL(blob)
+		})
+		const tooBig = () => new Error('Image trop lourde (' + formatSize(file.size) + ') : joignez-la plutôt en pièce jointe')
+		if (file.type === 'image/gif') {
+			if (file.size > IMAGE_MAX_BYTES) return Promise.reject(tooBig())
+			return read(file)
+		}
+		return read(file).then((url) => new Promise((resolve, reject) => {
+			const img = new Image()
+			img.onerror = () => reject(new Error('Image illisible : ' + file.name))
+			img.onload = () => {
+				const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight))
+				if (scale === 1 && file.size <= 1024 * 1024) { resolve(url); return }
+				const canvas = document.createElement('canvas')
+				canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+				canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
+				const ctx = canvas.getContext('2d')
+				// JPEG has no transparency: white behind
+				ctx.fillStyle = '#fff'
+				ctx.fillRect(0, 0, canvas.width, canvas.height)
+				ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+				let out = file.type === 'image/png' ? canvas.toDataURL('image/png') : ''
+				if (!out || out.length * 0.75 > 1024 * 1024) out = canvas.toDataURL('image/jpeg', 0.85)
+				if (out.length * 0.75 > IMAGE_MAX_BYTES) { reject(tooBig()); return }
+				resolve(out)
+			}
+			img.src = url
+		}))
+	}
+
 	function openCompose(mode, original, prefill) {
 		if (!state.accountId) { openAccountSettings(); return }
 		if (state.module !== 'mail') {
@@ -2338,6 +2382,8 @@
 			onmousedown: (e) => e.preventDefault(), // keep the selection in the text
 			onclick: action,
 		}, label)
+		let savedImageRange = null
+		const imagePicker = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', multiple: true, hidden: true, name: 'inlineImages', 'aria-label': 'Insérer une image' })
 		const editorBar = h('div', { class: 'wm-editor-bar', role: 'toolbar', 'aria-label': 'Mise en forme' },
 			tool('G', 'Gras (Ctrl+B)', () => exec('bold')),
 			tool('I', 'Italique (Ctrl+I)', () => exec('italic')),
@@ -2355,10 +2401,62 @@
 				else exec('insertHTML', '<a href="' + escapeHtml(url) + '">' + escapeHtml(url) + '</a>')
 			}),
 			tool('❝', 'Citation', () => exec('formatBlock', 'blockquote')),
-			tool('⌫', 'Effacer la mise en forme', () => { exec('removeFormat'); exec('unlink') }))
+			tool('🖼', 'Insérer une image dans le texte (ou coller une capture d\'écran)', () => {
+				const sel = window.getSelection()
+				savedImageRange = sel && sel.rangeCount && body.contains(sel.anchorNode) ? sel.getRangeAt(0) : null
+				imagePicker.click()
+			}),
+			tool('⌫', 'Effacer la mise en forme', () => { exec('removeFormat'); exec('unlink') }),
+			imagePicker)
 		body.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit() }
 		})
+
+		// ---- images in the text: pasted (screenshot), dropped, or chosen; sent as inline images (cid:)
+		async function insertImages(list) {
+			const images = Array.from(list).filter((f) => /^image\/(png|jpeg|gif|webp)$/.test(f.type))
+			for (const f of images) {
+				try {
+					const url = await imageDataUrl(f)
+					body.focus()
+					if (savedImageRange) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedImageRange); savedImageRange = null }
+					exec('insertHTML', '<img src="' + url + '" alt="' + escapeHtml(f.name && f.name !== 'image.png' ? f.name : 'image') + '" style="max-width:100%">')
+				} catch (e) {
+					toast(e.message, true)
+				}
+			}
+			return images.length
+		}
+		body.addEventListener('paste', (e) => {
+			const items = Array.from((e.clipboardData && e.clipboardData.files) || [])
+			// a copied file or screenshot (the HTML of a copied web page keeps its own images)
+			if (items.some((f) => f.type.startsWith('image/')) && !(e.clipboardData.types || []).includes('text/html')) {
+				e.preventDefault()
+				insertImages(items)
+			}
+		})
+		body.addEventListener('dragover', (e) => {
+			if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) e.preventDefault()
+		})
+		body.addEventListener('drop', (e) => {
+			const list = Array.from((e.dataTransfer && e.dataTransfer.files) || [])
+			if (!list.some((f) => f.type.startsWith('image/'))) return
+			e.preventDefault()
+			e.stopPropagation()
+			// where the image was dropped
+			const range = document.caretRangeFromPoint ? document.caretRangeFromPoint(e.clientX, e.clientY) : null
+			if (range) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range) }
+			insertImages(list)
+			// the other files are attached as usual
+			const others = list.filter((f) => !/^image\/(png|jpeg|gif|webp)$/.test(f.type))
+			if (others.length) {
+				const dt = new DataTransfer()
+				Array.from(files.files).concat(others).forEach((f) => dt.items.add(f))
+				files.files = dt.files
+				renderAttachList()
+			}
+		})
+		imagePicker.addEventListener('change', () => { insertImages(imagePicker.files); imagePicker.value = '' })
 
 		// ---- Nextcloud share links instead of heavy attachments
 		// where the user was typing, to put the links there

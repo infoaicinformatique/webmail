@@ -1007,6 +1007,56 @@ async function main() {
 		await page.click('.wm-folder:has-text("Boîte de réception")')
 	})
 
+	await step('images in the text: pasted screenshot, inserted image, sent inline', async () => {
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'client@exemple.fr')
+		await page.fill('input[name=subject]', 'Capture du problème')
+		await page.click('.wm-editor')
+		await page.keyboard.press('Control+Home')
+		await page.keyboard.type('Voici la capture : ')
+		// a big screenshot pasted (2400 px wide): reduced to 1600 px
+		await page.evaluate(async () => {
+			const c = document.createElement('canvas')
+			c.width = 2400
+			c.height = 1200
+			const ctx = c.getContext('2d')
+			ctx.fillStyle = '#0082c9'
+			ctx.fillRect(0, 0, 2400, 1200)
+			ctx.fillStyle = '#fff'
+			ctx.font = 'bold 160px sans-serif'
+			ctx.fillText('Erreur 500', 300, 650)
+			const blob = await new Promise((resolve) => c.toBlob(resolve, 'image/png'))
+			const dt = new DataTransfer()
+			dt.items.add(new File([blob], 'image.png', { type: 'image/png' }))
+			document.querySelector('.wm-editor').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+		})
+		await page.waitForFunction(() => { const i = document.querySelector('.wm-editor img'); return i && i.complete && i.naturalWidth === 1600 })
+		// an image chosen with the 🖼 button
+		await page.setInputFiles('input[name=inlineImages]', { name: 'logo.png', mimeType: 'image/png',
+			buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') })
+		await page.waitForFunction(() => document.querySelectorAll('.wm-editor img').length === 2)
+		assert.strictEqual(await page.$eval('.wm-editor img[alt="logo.png"]', (i) => i.src.slice(0, 22)), 'data:image/png;base64,')
+		// not shown as attachments: they are in the text
+		assert.strictEqual(await page.$$eval('.wm-compose-attachments li', (els) => els.length), 0)
+		await page.waitForSelector('.wm-draft-status:has-text("Brouillon enregistré à")')
+		await shot('60-inline-images')
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		// sent with the images in the text (cid:), not as attachments
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.waitForSelector('.wm-message:has-text("Capture du problème")')
+		assert(!(await page.$('.wm-message:has-text("Capture du problème") .wm-attach-icon')), 'no paper clip for inline images')
+		await page.click('.wm-message:has-text("Capture du problème")')
+		await page.waitForSelector('.wm-body-frame')
+		const loaded = await page.waitForFunction(() => {
+			const imgs = [...document.querySelector('.wm-body-frame').contentDocument.querySelectorAll('img')]
+			return imgs.length === 2 && imgs.every((i) => i.complete && i.naturalWidth > 0 && i.getAttribute('src').includes('/apps/webmail/api/accounts/'))
+		}, null, { timeout: 10000 }).then(() => true, () => false)
+		assert(loaded, 'inline images shown')
+		assert.strictEqual(await page.$$eval('.wm-attachment-name', (els) => els.length), 0)
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+	})
+
 	await step('second account on the other server', async () => {
 		await page.click('text=Comptes et signature')
 		await page.fill('.wm-add-account input[type=email]', 'compta@societe-b.fr')

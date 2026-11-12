@@ -653,7 +653,9 @@ def handle(op, el, user):
             for a in it.findall('t:Attachments/t:FileAttachment', NS):
                 aid = 'ATT-%d' % next(COUNTER)
                 ATTACHMENTS[aid] = dict(id=aid, name=a.findtext('t:Name', namespaces=NS), content_type=a.findtext('t:ContentType', default='application/octet-stream', namespaces=NS),
-                                        content=base64.b64decode(a.findtext('t:Content', default='', namespaces=NS)), inline=False)
+                                        content=base64.b64decode(a.findtext('t:Content', default='', namespaces=NS)),
+                                        inline=a.findtext('t:IsInline', default='false', namespaces=NS) == 'true',
+                                        content_id=a.findtext('t:ContentId', default='', namespaces=NS))
                 atts.append(aid)
             if tag == 'ForwardItem':
                 atts += list(ref['attachments'])
@@ -684,7 +686,9 @@ def handle(op, el, user):
         for a in el.find('m:Attachments', NS):
             aid = 'ATT-%d' % next(COUNTER)
             ATTACHMENTS[aid] = dict(id=aid, name=a.findtext('t:Name', namespaces=NS), content_type=a.findtext('t:ContentType', default='application/octet-stream', namespaces=NS),
-                                    content=base64.b64decode(a.findtext('t:Content', default='', namespaces=NS)), inline=False)
+                                    content=base64.b64decode(a.findtext('t:Content', default='', namespaces=NS)),
+                                        inline=a.findtext('t:IsInline', default='false', namespaces=NS) == 'true',
+                                        content_id=a.findtext('t:ContentId', default='', namespaces=NS))
             parent['attachments'].append(aid)
             parent['ck'] = 'CK-%d' % next(COUNTER)
             out.append(ok(op, '<m:Attachments><t:FileAttachment><t:AttachmentId Id="%s" RootItemId="%s" RootItemChangeKey="%s"/></t:FileAttachment></m:Attachments>'

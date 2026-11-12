@@ -436,6 +436,14 @@ class MailController extends Controller {
 
 			$m = $this->composed(true);
 			$attachments = $this->collectAttachments();
+			// images pasted in the text: inline attachments (cid:)
+			$inline = HtmlSanitizer::extractInlineImages($m['html']);
+			$m['html'] = $inline['html'];
+			$size = array_sum(array_map(fn ($a) => strlen($a['content']), array_merge($attachments, $inline['images'])));
+			if ($size > self::MAX_ATTACHMENTS_BYTES) {
+				throw new MailException('Pièces jointes et images trop lourdes (' . round($size / 1048576, 1) . ' Mo, ' . (self::MAX_ATTACHMENTS_BYTES / 1048576) . ' Mo au plus) : envoyez les plus grosses en lien Nextcloud');
+			}
+			$attachments = array_merge($attachments, $inline['images']);
 			$draftId = (string)$this->request->getParam('draftId', '');
 
 			$receipt = $this->request->getParam('readReceipt', '');

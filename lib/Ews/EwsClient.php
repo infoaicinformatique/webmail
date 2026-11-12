@@ -1062,12 +1062,15 @@ class EwsClient {
 	}
 
 	/**
-	 * @param array{name: string, contentType: string, content: string} $a
+	 * @param array{name: string, contentType: string, content: string, contentId?: string, isInline?: bool} $a
+	 *        contentId / isInline: an image shown in the text (cid:)
 	 */
 	private function fileAttachmentXml(array $a): string {
 		return '<t:FileAttachment>'
 			. '<t:Name>' . $this->esc($a['name']) . '</t:Name>'
 			. '<t:ContentType>' . $this->esc($a['contentType'] ?: 'application/octet-stream') . '</t:ContentType>'
+			. (!empty($a['contentId']) ? '<t:ContentId>' . $this->esc($a['contentId']) . '</t:ContentId>' : '')
+			. (!empty($a['isInline']) ? '<t:IsInline>true</t:IsInline>' : '')
 			. '<t:Content>' . base64_encode($a['content']) . '</t:Content>'
 			. '</t:FileAttachment>';
 	}
