@@ -1982,6 +1982,7 @@
 				title: _('Télécharger le message (.eml, pour Outlook, Thunderbird…)'),
 				'aria-label': _('Télécharger le message'),
 			}, '⬇\uFE0E'),
+			window.WebmailModules.calendar ? h('button', { class: 'wm-event-from-msg', title: _('Créer un événement à partir de ce message'), 'aria-label': _('Créer un événement à partir de ce message'), onclick: () => eventFromMessage(m) }, '📅') : null,
 			h('button', { class: 'wm-eml-save-btn', title: _('Enregistrer le message dans Fichiers (.eml)'), 'aria-label': _('Enregistrer le message dans Fichiers'), onclick: () => saveMessageToFiles(m) }, '☁️'),
 			h('button', { class: 'wm-rule-from-msg', title: _('Créer une règle pour les messages de cet expéditeur'), onclick: () => ruleFromMessage(m) }, '📋 ' + _('Règle…')),
 		)
@@ -2529,6 +2530,27 @@
 		} else {
 			doSave('/' + _('Pièces jointes'))
 		}
+	}
+
+	/**
+	 * A meeting about a message, as Outlook's « Reply with meeting »: its subject,
+	 * its text, and its sender and recipients (but me) as attendees.
+	 */
+	function eventFromMessage(m) {
+		const me = ((state.accounts.find((a) => a.id === state.accountId) || {}).email || '').toLowerCase()
+		const people = [m.from].concat(m.to || [], m.cc || [])
+			.map((p) => (p && p.email ? p.email.trim().toLowerCase() : ''))
+			.filter((e, i, all) => /@/.test(e) && e !== me && all.indexOf(e) === i)
+		const text = (new DOMParser().parseFromString(m.body || '', 'text/html').body.textContent || '')
+			.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+		const head = _('Message de {sender} du {date} :', { sender: personLabel(m.from), date: formatDate(m.date, true) })
+		const prefill = {
+			subject: (m.subject || '').replace(/^((re|tr|fw|fwd)\s?:\s*)+/i, ''),
+			body: head + '\n\n' + (text.length > 4000 ? text.slice(0, 4000) + '…' : text),
+			attendees: people,
+		}
+		selectModule('calendar')
+		window.WebmailModules.calendar.newFromMessage(core, prefill)
 	}
 
 	/** The whole message as an .eml file, in a Files folder chosen by the user. */

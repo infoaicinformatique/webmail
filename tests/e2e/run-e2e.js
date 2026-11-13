@@ -2931,6 +2931,26 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('an event from a message: its subject, its text, its people (not me) as attendees', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-folder >> nth=0')
+		await page.click('.wm-message:has-text("Réunion de lundi")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Réunion de lundi")')
+		await page.click('.wm-event-from-msg')
+		await page.waitForSelector('.wm-tab.active[data-module="calendar"]')
+		await page.waitForSelector('.wm-modal input[name=subject]')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=subject]'), 'Réunion de lundi')
+		const attendees = (await page.inputValue('.wm-modal input[name=attendees]')).split(/,\s*/)
+		assert.ok(attendees.includes('marie.martin@societe-a.fr') && attendees.includes('paul@societe-a.fr'), attendees.join(' '))
+		assert.ok(!attendees.includes('user@societe-a.fr'), 'not me')
+		const body = await page.inputValue('.wm-modal textarea[name=body]')
+		assert.ok(body.startsWith('Message de Marie Martin <marie.martin@societe-a.fr>') && body.includes('On décale la réunion à 14h'), body)
+		await shot('72-event-from-message')
+		await page.click('.wm-modal button:has-text("Annuler")')
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')
