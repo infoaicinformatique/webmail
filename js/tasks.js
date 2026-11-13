@@ -79,8 +79,13 @@
 		if (!core || core.state.module !== 'tasks') return
 		const h = core.h
 		const el = core.listEl
+		// the list is drawn again when fresh tasks arrive: the quick-add field is kept as it is
+		// (what is being typed, the focus and the caret), not replaced by an empty one
+		const old = el.querySelector('input[name=quickTask]')
+		const typing = old && document.activeElement === old
+		const caret = typing ? [old.selectionStart, old.selectionEnd] : null
 		core.clear(el)
-		const quick = h('input', { type: 'text', class: 'wm-search wm-task-quick', name: 'quickTask', placeholder: _('Ajouter une tâche (Entrée)'), 'aria-label': _('Ajouter une tâche') })
+		const quick = old || h('input', { type: 'text', class: 'wm-search wm-task-quick', name: 'quickTask', placeholder: _('Ajouter une tâche (Entrée)'), 'aria-label': _('Ajouter une tâche') })
 		el.appendChild(h('form', {
 			class: 'wm-list-header',
 			onsubmit: async (e) => {
@@ -99,6 +104,10 @@
 		},
 		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Menu'), onclick: () => core.setView('nav') }, '☰'),
 		tk.filter === 'todo' ? quick : h('div', { class: 'wm-muted wm-task-title' }, _('Tâches terminées'))))
+		if (typing && tk.filter === 'todo') {
+			quick.focus()
+			try { quick.setSelectionRange(caret[0], caret[1]) } catch (e) { /* not a text field */ }
+		}
 		if (tk.loading && !tk.tasks.length) {
 			el.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
 			return
