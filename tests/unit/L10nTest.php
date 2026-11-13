@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
  */
 class L10nTest extends TestCase {
 	/** The files whose texts all go through _() (the others follow, one at a time). */
-	private const TRANSLATED = ['js/tasks.js', 'js/rules.js', 'js/delegates.js', 'js/sharing.js', 'js/contacts.js', 'js/calendar.js'];
+	private const TRANSLATED = ['js/tasks.js', 'js/rules.js', 'js/delegates.js', 'js/sharing.js', 'js/contacts.js', 'js/calendar.js', 'js/webmail.js'];
 
 	private static function root(): string {
 		return dirname(__DIR__, 2);
