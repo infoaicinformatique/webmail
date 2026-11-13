@@ -991,3 +991,23 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 .wm-message.wm-swipe-right::after { left: 12px; }
 /* (on the list pane, already scrolling: a list itself clipping would shrink in its flex column) */
 .wm-list { overflow-x: hidden; }
+
+/* « Hors connexion »: above the panes, under the Nextcloud header */
+.wm-offline {
+	position: fixed;
+	top: calc(var(--header-height, 50px) + 6px);
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 2000;
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	max-width: calc(100vw - 32px);
+	padding: 6px 8px 6px 14px;
+	border-radius: var(--border-radius-pill, 20px);
+	background: var(--color-warning, #c28900);
+	color: var(--color-primary-element-text, #fff);
+	box-shadow: 0 2px 8px var(--color-box-shadow, rgba(0, 0, 0, .2));
+	font-size: 14px;
+}
+.wm-offline button { margin: 0; }

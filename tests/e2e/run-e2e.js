@@ -3669,6 +3669,34 @@ async function main() {
 		assert.strictEqual(await page.locator('.wm-message.wm-swiping').count(), 0)
 	})
 
+	await step('offline: a banner, what is loaded stays readable, back by itself when the network returns', async () => {
+		const row = '.wm-message:has-text("Devis pour la maintenance annuelle")'
+		await page.click('.wm-folder >> nth=0')
+		await page.click(row)
+		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+		await page.context().setOffline(true)
+		try {
+			await page.click('.wm-list-header button[title="Actualiser"]')
+			await page.waitForSelector('.wm-offline:has-text("Hors connexion : les messages déjà chargés restent lisibles.")')
+			await page.waitForSelector('.wm-offline:has-text("Nouvel essai dans")')
+			// the list and the message already loaded are still there
+			await page.waitForSelector(row)
+			await page.click(row)
+			await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+			await page.waitForSelector('.wm-body-frame')
+			// « Réessayer » while still offline: still offline
+			await page.click('.wm-offline button:has-text("Réessayer")')
+			await page.waitForSelector('.wm-offline:has-text("Nouvel essai dans")')
+			await shot('91-offline')
+		} finally {
+			await page.context().setOffline(false)
+		}
+		// the network is back: tried at once, the banner goes
+		await page.waitForSelector('.wm-toast:has-text("Connexion rétablie")')
+		await page.locator('.wm-offline').waitFor({ state: 'detached' })
+		await page.waitForSelector(row)
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')
