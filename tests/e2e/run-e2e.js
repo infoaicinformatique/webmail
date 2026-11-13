@@ -2891,7 +2891,8 @@ async function main() {
 		const runJob = () => occ('background-job:execute ' + jobId + ' --force-execute')
 		const mine = () => page.evaluate(async () => {
 			const r = await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })
-			return (await r.json()).ocs.data.filter((n) => n.app === 'webmail' && n.subject === 'Tâche : Renouveler le nom de domaine')
+			// (the account tested: the fake server gives the same tasks to every mailbox)
+			return (await r.json()).ocs.data.filter((n) => n.app === 'webmail' && n.subject === 'Tâche : Renouveler le nom de domaine' && n.message.includes('user@societe-a.fr'))
 		})
 		const task = '.wm-task:has-text("Renouveler le nom de domaine")'
 		const open = async () => {
