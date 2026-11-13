@@ -1479,6 +1479,8 @@
 				draggable: conv ? 'false' : 'true',
 				dataset: { id: m.id },
 				onclick: (e) => {
+					// (the end of a swipe is not a click)
+					if (e.currentTarget.dataset.swiped) return
 					// Ctrl/Cmd+click: tick; Shift+click: tick a range; click: open
 					if (!conv && (e.ctrlKey || e.metaKey)) toggleChecked(m.id)
 					else if (!conv && e.shiftKey) checkRange(m.id)
@@ -1530,6 +1532,7 @@
 				}, '⚑')),
 			m.preview ? h('div', { class: 'wm-message-preview' }, m.preview) : null,
 			)
+			if (!conv) swipeable(li, m)
 			ul.appendChild(li)
 		})
 		listEl.appendChild(ul)
@@ -1778,6 +1781,68 @@
 	}
 
 	/** Read / unread for several messages, at once on screen. */
+	/**
+	 * On a touch screen, a message swiped in the list: to the left, to « Éléments supprimés »
+	 * (with « Annuler »); to the right, read / unread. Past a third of the width, the action is
+	 * armed (stronger colour); let go before, nothing happens. A vertical move scrolls as usual.
+	 */
+	function swipeable(li, m) {
+		let x0 = null
+		let y0 = 0
+		let dx = 0
+		let decided = false
+		let swiping = false
+		const armed = () => Math.abs(dx) > li.offsetWidth * 0.35
+		// the message as it is now (a refresh of the list may have replaced the one this row was drawn from)
+		const current = () => state.messages.find((x) => x.id === m.id) || m
+		const reset = () => {
+			li.style.transform = ''
+			li.classList.remove('wm-swiping', 'wm-swipe-left', 'wm-swipe-right', 'wm-swipe-armed')
+			delete li.dataset.swipe
+		}
+		li.addEventListener('touchstart', (e) => {
+			if (e.touches.length !== 1) { x0 = null; return }
+			x0 = e.touches[0].clientX
+			y0 = e.touches[0].clientY
+			dx = 0
+			decided = false
+			swiping = false
+		}, { passive: true })
+		li.addEventListener('touchmove', (e) => {
+			if (x0 === null) return
+			const mx = e.touches[0].clientX - x0
+			const my = e.touches[0].clientY - y0
+			if (!decided) {
+				if (Math.abs(mx) < 10 && Math.abs(my) < 10) return
+				decided = true
+				swiping = Math.abs(mx) > Math.abs(my) * 1.5
+			}
+			if (!swiping) return
+			e.preventDefault()
+			dx = mx
+			li.classList.add('wm-swiping')
+			li.style.transform = 'translateX(' + dx + 'px)'
+			li.classList.toggle('wm-swipe-left', dx < 0)
+			li.classList.toggle('wm-swipe-right', dx > 0)
+			li.classList.toggle('wm-swipe-armed', armed())
+			li.dataset.swipe = dx < 0 ? '🗑 ' + _('Supprimer') : (current().isRead ? '● ' + _('Non lu') : '✓ ' + _('Lu'))
+		}, { passive: false })
+		const end = () => {
+			if (x0 === null) return
+			x0 = null
+			if (!swiping) return
+			const go = armed()
+			reset()
+			li.dataset.swiped = '1'
+			setTimeout(() => { delete li.dataset.swiped }, 400)
+			if (!go) return
+			if (dx < 0) deleteMessages([m.id], folderRole() === 'deleteditems')
+			else setReadMany([m.id], !current().isRead)
+		}
+		li.addEventListener('touchend', end)
+		li.addEventListener('touchcancel', () => { x0 = null; reset() })
+	}
+
 	async function setReadMany(ids, value) {
 		const changed = state.messages.filter((m) => ids.includes(m.id) && m.isRead !== value)
 		changed.forEach((m) => updateListItem(m.id, { isRead: value }))

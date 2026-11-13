@@ -3573,6 +3573,39 @@ async function main() {
 		await page.waitForSelector('.wm-compose', { state: 'detached' })
 	})
 
+	await step('touch: a message swiped to the right is read / unread, to the left goes to the trash (with « Annuler »)', async () => {
+		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°2"))'
+		// a finger on the row, moved by a fraction of its width (touch events, as a phone sends them)
+		const swipe = (fraction) => page.locator(row).evaluate((el, f) => {
+			const r = el.getBoundingClientRect()
+			const x = r.left + r.width / 2
+			const y = r.top + r.height / 2
+			const t = (cx) => new Touch({ identifier: 1, target: el, clientX: cx, clientY: y })
+			el.dispatchEvent(new TouchEvent('touchstart', { touches: [t(x)], bubbles: true, cancelable: true }))
+			for (let i = 1; i <= 10; i++) el.dispatchEvent(new TouchEvent('touchmove', { touches: [t(x + r.width * f * i / 10)], bubbles: true, cancelable: true }))
+			el.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [t(x + r.width * f)], bubbles: true, cancelable: true }))
+		}, fraction)
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector(row)
+		assert.ok(!(await page.$(row + '.unread')), 'read to start with')
+		// not far enough: nothing
+		await swipe(0.2)
+		await page.waitForTimeout(300)
+		assert.ok(!(await page.$(row + '.unread')))
+		// to the right: unread, then read again
+		await swipe(0.5)
+		await page.waitForSelector(row + '.unread')
+		await page.waitForSelector('.wm-toast:has-text("1 message marqué comme non lu")')
+		await swipe(0.5)
+		await page.waitForSelector(row + ':not(.unread)')
+		// to the left: to the trash, and back with « Annuler »
+		await swipe(-0.5)
+		await page.locator(row).waitFor({ state: 'detached' })
+		await page.click('.wm-toast:has-text("Message placé dans les éléments supprimés") .wm-toast-action')
+		await page.waitForSelector(row)
+		assert.strictEqual(await page.locator('.wm-message.wm-swiping').count(), 0)
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')
