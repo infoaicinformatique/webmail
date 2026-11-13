@@ -1809,8 +1809,16 @@ async function main() {
 		const col = '.wm-week-col[data-date="' + ymd(new Date()) + '"]'
 		const pad = (n) => String(n).padStart(2, '0')
 		// the first hours seen in the grid (it opens scrolled to the working day), where nothing is planned today
-		const box = await page.locator(col).boundingBox()
-		const view = await page.locator('.wm-week-scroll').boundingBox()
+		// the week is drawn again when its events arrive: measured once it is there for good
+		await page.waitForFunction(() => !document.querySelector('.wm-cal-toolbar .icon-loading-small'))
+		let box = null
+		let view = null
+		for (let i = 0; i < 30 && !(box && view); i++) {
+			await page.waitForTimeout(100)
+			box = await page.locator(col).boundingBox()
+			view = await page.locator('.wm-week-scroll').boundingBox()
+		}
+		assert.ok(box && view, 'week grid shown')
 		const busy = await page.$$eval(col + ' .wm-week-event', (els) => els.map((e) => [parseFloat(e.style.top), parseFloat(e.style.top) + parseFloat(e.style.height)]))
 		let hour = Math.ceil((view.y - box.y) / 48) + 1
 		while (busy.some(([t, b]) => t < (hour + 2) * 48 && b > hour * 48)) hour++
