@@ -164,21 +164,21 @@
 		}
 	}
 
-	/** The form of a task (t: from the server, or null for a new one). */
-	function openForm(t) {
+	/** The form of a task (t: from the server, or null for a new one; prefill: the title and notes of a new one). */
+	function openForm(t, prefill) {
 		const h = core.h
 		const el = core.detailEl
 		const isNew = !t
 		core.setView('detail')
 		core.clear(el)
 		const subject = h('input', { type: 'text', name: 'subject', required: true, placeholder: _('Titre') })
-		subject.value = t ? t.subject : ''
+		subject.value = t ? t.subject : ((prefill && prefill.subject) || '')
 		const due = h('input', { type: 'date', name: 'due' })
 		due.value = t && t.due ? t.due : ''
 		const status = h('select', { name: 'status' }, STATUS.map(([v, l]) => h('option', { value: v, selected: (t ? t.status : 'NotStarted') === v }, l)))
 		const importance = h('select', { name: 'importance' }, IMPORTANCE.map(([v, l]) => h('option', { value: v, selected: (t ? t.importance : 'Normal') === v }, l)))
 		const notes = h('textarea', { name: 'notes', rows: '8', placeholder: _('Notes') })
-		notes.value = t && t.notes ? t.notes : ''
+		notes.value = t ? (t.notes || '') : ((prefill && prefill.notes) || '')
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
 		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? _('Créer') : _('Enregistrer'))
 		const field = (label, ...inputs) => h('label', { class: 'wm-field' }, h('span', {}, label), ...inputs)
@@ -258,6 +258,11 @@
 		renderNav(navEl, c) {
 			core = c
 			renderNav(navEl)
+		},
+		/** A new task with its title and notes filled in (from a message); the tasks module is already shown. */
+		newFromMessage(c, prefill) {
+			core = c
+			openForm(null, prefill)
 		},
 	}
 })()

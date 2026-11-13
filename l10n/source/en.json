@@ -1121,5 +1121,6 @@
 	"Ajouter {email} à mes contacts": "Add {email} to my contacts",
 	"{name} est déjà dans vos contacts": "{name} is already in your contacts",
 	"Créer un événement à partir de ce message": "Create an event from this message",
+	"Créer une tâche à partir de ce message": "Create a task from this message",
 	"Message de {sender} du {date} :": "Message from {sender} of {date}:"
 }

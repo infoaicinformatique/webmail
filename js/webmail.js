@@ -1982,6 +1982,7 @@
 				title: _('Télécharger le message (.eml, pour Outlook, Thunderbird…)'),
 				'aria-label': _('Télécharger le message'),
 			}, '⬇\uFE0E'),
+			window.WebmailModules.tasks ? h('button', { class: 'wm-task-from-msg', title: _('Créer une tâche à partir de ce message'), 'aria-label': _('Créer une tâche à partir de ce message'), onclick: () => taskFromMessage(m) }, '✅') : null,
 			window.WebmailModules.calendar ? h('button', { class: 'wm-event-from-msg', title: _('Créer un événement à partir de ce message'), 'aria-label': _('Créer un événement à partir de ce message'), onclick: () => eventFromMessage(m) }, '📅') : null,
 			h('button', { class: 'wm-eml-save-btn', title: _('Enregistrer le message dans Fichiers (.eml)'), 'aria-label': _('Enregistrer le message dans Fichiers'), onclick: () => saveMessageToFiles(m) }, '☁️'),
 			h('button', { class: 'wm-rule-from-msg', title: _('Créer une règle pour les messages de cet expéditeur'), onclick: () => ruleFromMessage(m) }, '📋 ' + _('Règle…')),
@@ -2536,11 +2537,8 @@
 	 * A meeting about a message, as Outlook's « Reply with meeting »: its subject,
 	 * its text, and its sender and recipients (but me) as attendees.
 	 */
-	function eventFromMessage(m) {
-		const me = ((state.accounts.find((a) => a.id === state.accountId) || {}).email || '').toLowerCase()
-		const people = [m.from].concat(m.to || [], m.cc || [])
-			.map((p) => (p && p.email ? p.email.trim().toLowerCase() : ''))
-			.filter((e, i, all) => /@/.test(e) && e !== me && all.indexOf(e) === i)
+	/** What an event or a task made from a message takes from it: its subject (without « RE : »), « Message de … du … : » and its text. */
+	function messageSummary(m) {
 		// the text of the message, one line per paragraph, line break or table row
 		const doc = new DOMParser().parseFromString(m.body || '', 'text/html')
 		doc.querySelectorAll('script, style, title').forEach((e) => e.remove())
@@ -2549,13 +2547,28 @@
 		const text = (doc.body.textContent || '').replace(/[ \t\u00a0]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 		// the values put in afterwards: the translation would take « <address> » for an HTML tag and drop it
 		const head = _('Message de {sender} du {date} :').replace('{sender}', personLabel(m.from)).replace('{date}', formatDate(m.date, true))
-		const prefill = {
+		return {
 			subject: (m.subject || '').replace(/^((re|tr|fw|fwd)\s?:\s*)+/i, ''),
 			body: head + '\n\n' + (text.length > 4000 ? text.slice(0, 4000) + '…' : text),
-			attendees: people,
 		}
+	}
+
+	/** A new event in the calendar, from the message: its subject, its text, and its people (not me) as attendees. */
+	function eventFromMessage(m) {
+		const me = ((state.accounts.find((a) => a.id === state.accountId) || {}).email || '').toLowerCase()
+		const people = [m.from].concat(m.to || [], m.cc || [])
+			.map((p) => (p && p.email ? p.email.trim().toLowerCase() : ''))
+			.filter((e, i, all) => /@/.test(e) && e !== me && all.indexOf(e) === i)
+		const prefill = Object.assign(messageSummary(m), { attendees: people })
 		selectModule('calendar')
 		window.WebmailModules.calendar.newFromMessage(core, prefill)
+	}
+
+	/** A new task, from the message: its subject as the title, its text in the notes (« flag for follow-up », as a real task). */
+	function taskFromMessage(m) {
+		const summary = messageSummary(m)
+		selectModule('tasks')
+		window.WebmailModules.tasks.newFromMessage(core, { subject: summary.subject, notes: summary.body })
 	}
 
 	/** The whole message as an .eml file, in a Files folder chosen by the user. */

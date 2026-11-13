@@ -266,6 +266,7 @@ OC.L10N.register(
     "Créer un événement à partir de ce message": "Create an event from this message",
     "Créer une règle pour les messages de cet expéditeur": "Create a rule for the messages from this sender",
     "Créer une salle de visio Nextcloud Talk pour cet événement (les invités y entrent par le lien, sans compte)": "Create a Nextcloud Talk video call room for this event (guests join with the link, without an account)",
+    "Créer une tâche à partir de ce message": "Create a task from this message",
     "Dans": "Into",
     "Dans une semaine": "In a week",
     "Date": "Date",

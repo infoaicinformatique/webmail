@@ -32,6 +32,7 @@ et sur les téléphones, et inversement.
 | Courrier indésirable | « ⛔ Indésirable » déplace le message dans « Courrier indésirable » et **bloque l'expéditeur** (ses prochains messages y iront directement) ; dans ce dossier, « ✔ Pas indésirable » le remet dans la boîte de réception et **fait confiance à l'expéditeur**. Comme dans Outlook, les listes d'expéditeurs bloqués et fiables sont celles d'Exchange. Aussi pour plusieurs messages à la fois |
 | Plusieurs messages | Case à cocher devant chaque message (au survol), **Ctrl+clic** pour en ajouter, **Maj+clic** pour une plage, `x` au clavier ; une barre propose alors Tout sélectionner, Lu, Non lu, Suivi, Déplacer vers… et Supprimer, pour tous d'un coup. Échap annule la sélection. **Glisser-déposer** un message (ou la sélection) sur un dossier le déplace |
 | Envoi | Nouveau message, Répondre, Répondre à tous, Transférer (Exchange cite le message d'origine et garde ses pièces jointes), Cc/Cci, importance, signature ; `Ctrl+Entrée` envoie |
+| Tâche depuis un message | « ✅ » dans la barre d'un message ouvre une **nouvelle tâche** Exchange : titre repris de l'objet (sans « RE: »), notes avec l'expéditeur, la date et le texte du message ; il reste à choisir l'échéance. Pour ne pas oublier de traiter un message, comme « Assurer un suivi » d'Outlook mais en vraie tâche |
 | Événement depuis un message | « 📅 » dans la barre d'un message ouvre un **nouvel événement** de l'agenda : titre repris de l'objet (sans « RE: »), description avec le texte du message, expéditeur et destinataires (sauf soi) proposés comme participants ; comme « Répondre par une réunion » d'Outlook |
 | Ajouter l'expéditeur | « 👤＋ » à côté de l'expéditeur d'un message l'ajoute à « Contacts » (prénom et nom tirés du nom affiché) ; s'il y est déjà avec cette adresse, rien n'est créé en double |
 | Liens « mailto: » | Une adresse e-mail cliquée dans un message reçu ouvre un **nouveau message** dans le webmail (destinataires, copie, objet et texte du lien repris). « Comptes et signature » → « Ouvrir les liens « mailto: » avec ce webmail » en fait le programme de messagerie du navigateur : les adresses cliquées sur les autres sites arrivent ici (`…/apps/webmail/?mailto=…`) |
@@ -192,6 +193,7 @@ L'onglet **✅ Tâches** affiche le dossier « Tâches » de la boîte Exchange,
 | Liste | « À faire » : les tâches en retard d'abord (échéance en rouge, « En retard · 10 nov. »), puis par échéance (« Aujourd'hui », « Demain »…), puis celles sans échéance ; importance haute marquée ❗, état « En cours » / « En attente » / « Reportée » affiché. « Terminées » : les tâches finies, les plus récentes d'abord |
 | Ajout rapide | Champ « Ajouter une tâche » en haut de la liste : un titre, Entrée, et la tâche est créée |
 | Terminer | La case devant une tâche la marque **terminée** (100 %) ou la remet à faire, tout de suite |
+| Depuis un message | « ✅ » dans la barre d'un message : une nouvelle tâche, titre et notes repris du message |
 | Modifier | Un clic ouvre la tâche : titre, **échéance** (raccourcis Aujourd'hui, Demain, Dans une semaine, Aucune), état, importance, notes. « Supprimer » la met dans « Éléments supprimés » |
 
 ### Délégués
@@ -236,7 +238,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.71.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.72.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -279,7 +281,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.71 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.72 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

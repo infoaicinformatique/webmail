@@ -2963,6 +2963,34 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('a task from a message: its subject as the title, its sender and text in the notes, saved in Exchange', async () => {
+		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+		await page.click('.wm-task-from-msg')
+		await page.waitForSelector('.wm-tab.active[data-module="tasks"]')
+		await page.waitForSelector('.wm-task-form input[name=subject]')
+		assert.strictEqual(await page.inputValue('.wm-task-form input[name=subject]'), 'Devis pour la maintenance annuelle')
+		const notes = await page.inputValue('.wm-task-form textarea[name=notes]')
+		assert.ok(notes.startsWith('Message de Jean Dupont <jean.dupont@client-exemple.fr>') && notes.includes('Bonjour,\nVeuillez trouver ci-joint notre devis'), notes)
+		await page.click('.wm-task-form button:has-text("Demain")')
+		await shot('73-task-from-message')
+		await page.click('.wm-task-form button:has-text("Créer")')
+		await page.waitForSelector('.wm-toast:has-text("Tâche créée")')
+		const task = '.wm-task:has-text("Devis pour la maintenance annuelle")'
+		await page.waitForSelector(task + ' .wm-task-due:has-text("Demain")')
+		// saved with its notes
+		await page.click('.wm-task:has-text("Renouveler le nom de domaine") .wm-task-subject')
+		await page.waitForFunction(() => document.querySelector('.wm-task-form input[name=subject]')?.value === 'Renouveler le nom de domaine')
+		await page.click(task + ' .wm-task-subject')
+		await page.waitForFunction(() => (document.querySelector('.wm-task-form textarea[name=notes]')?.value || '').includes('notre devis pour la maintenance 2027'))
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-task-form button:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Tâche supprimée")')
+		await page.locator(task).waitFor({ state: 'detached' })
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')
