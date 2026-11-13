@@ -24,6 +24,12 @@ async function main() {
 	const browser = await chromium.launch()
 	const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'fr-FR', timezoneId: 'Europe/Paris' })
 	const page = await context.newPage()
+	/** every list request of the run: [offset, limit] */
+	const listRequests = []
+	page.on('request', (r) => {
+		const u = new URL(r.url())
+		if (/\/apps\/webmail\/api\/accounts\/\d+\/(messages|conversations)$/.test(u.pathname)) listRequests.push([Number(u.searchParams.get('offset')), Number(u.searchParams.get('limit'))])
+	})
 	const errors = []
 	page.on('pageerror', (e) => errors.push('pageerror: ' + e.message))
 	page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()) })
@@ -2651,6 +2657,44 @@ async function main() {
 			await page.unroute(listCall)
 		}
 		await page.waitForSelector('.wm-message')
+	})
+
+	await step('idle prefetch and first page: unread messages ready before the click, a new folder shows its first rows sooner', async () => {
+		// a folder never seen: 25 rows first, then the rest of the page right after
+		const firstPages = listRequests.findIndex(([offset, limit], i) => offset === 0 && limit === 25 && listRequests.slice(i + 1).some(([o, l]) => o === 25 && l === 25))
+		assert.ok(firstPages >= 0, 'first page of 25 then 25 more: ' + JSON.stringify(listRequests.slice(0, 12)))
+		// after a reload (empty message memory), the first unread messages of the inbox are loaded while idle
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		for (const subject of ['Préchargé 1', 'Préchargé 2']) {
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'user@societe-a.fr')
+			await page.fill('input[name=subject]', subject)
+			await page.fill('.wm-editor', 'Message à lire.')
+			await submitCompose()
+		}
+		const fetched = []
+		const onRequest = (r) => { if (r.url().includes('/message?')) fetched.push(new URL(r.url()).searchParams) }
+		page.on('request', onRequest)
+		try {
+			await page.reload()
+			await page.waitForSelector('.wm-message')
+			const unread = await page.$$eval('.wm-message.unread', (els) => els.slice(0, 5).map((e) => e.dataset.id))
+			assert.ok(unread.length > 0, 'unread messages in the inbox')
+			for (let i = 0; i < 80 && !unread.every((id) => fetched.some((q) => q.get('itemId') === id)); i++) await page.waitForTimeout(100)
+			for (const id of unread) {
+				const q = fetched.find((x) => x.get('itemId') === id)
+				assert.ok(q && q.get('markRead') === '0', 'prefetched without marking it read: ' + id)
+				assert.ok(await page.$(`.wm-message.unread[data-id="${id}"]`), 'still unread')
+			}
+			// the first one opens without asking the server again
+			const before = fetched.length
+			await page.click(`.wm-message[data-id="${unread[0]}"]`)
+			await page.waitForSelector('.wm-body-frame')
+			assert.strictEqual(fetched.slice(before).filter((q) => q.get('itemId') === unread[0]).length, 0, 'opened from the prefetch')
+		} finally {
+			page.off('request', onRequest)
+		}
 	})
 
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
