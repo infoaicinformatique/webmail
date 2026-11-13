@@ -2920,7 +2920,7 @@ async function main() {
 		await page.waitForFunction(() => document.querySelector('.wm-task-form input[name=subject]')?.value === 'Renouveler le nom de domaine')
 		assert.ok(await page.inputValue('input[name=reminder]'))
 		// removed: gone from the bell
-		await page.click('.wm-task-form button:has-text("Aucun")')
+		await page.click('.wm-task-form button:text-is("Aucun")')
 		await page.click('.wm-task-form button[type=submit]')
 		await page.waitForSelector('.wm-toast:has-text("Tâche enregistrée")')
 		await page.locator(task + ' .wm-task-reminder').waitFor({ state: 'detached' })
