@@ -2623,7 +2623,8 @@
 					h('a', { href: attachmentUrl(a), class: 'wm-attachment-name', title: _('Télécharger'), download: a.name }, '📎 ' + a.name),
 					h('span', { class: 'wm-muted' }, ' ' + formatSize(a.size) + ' '),
 					kind ? h('button', { class: 'wm-small wm-preview-btn', onclick: open }, '👁 ' + _('Aperçu')) : null,
-					h('button', { class: 'wm-small', onclick: () => saveAttachment(a) }, _('Enregistrer dans Fichiers'))))
+					h('button', { class: 'wm-small', onclick: () => saveAttachment(a) }, _('Enregistrer dans Fichiers')),
+					a.isItem ? null : h('button', { class: 'wm-small wm-open-nc', title: _('Une copie dans Fichiers, ouverte avec l\'éditeur ou le visionneur de Nextcloud'), onclick: (e) => openInNextcloud(a, e.currentTarget) }, '↗ ' + _('Ouvrir dans Nextcloud'))))
 			})
 			detailEl.appendChild(list)
 			if (m.attachments.length > 1) {
@@ -3475,6 +3476,21 @@
 		} else {
 			doSave('/' + _('Pièces jointes'))
 		}
+	}
+
+	/** A copy in Files (« Pièces jointes »), opened there: Office, Text, PDF, images… as this Nextcloud has them. */
+	async function openInNextcloud(a, button) {
+		// (opened at once, then sent to the file: a popup blocker lets it through)
+		const tab = window.open('', '_blank')
+		button.disabled = true
+		try {
+			const r = await api('/accounts/' + state.accountId + '/attachment/open', { method: 'POST', body: { attachmentId: a.id } })
+			toast(_('Copié dans {path}', { path: r.path }))
+			if (tab) tab.location = r.url; else window.open(r.url, '_blank', 'noopener')
+		} catch (e) {
+			if (tab) tab.close()
+			toast(e.message, true)
+		} finally { button.disabled = false }
 	}
 
 	function saveAttachment(a) {
