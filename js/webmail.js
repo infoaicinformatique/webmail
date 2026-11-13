@@ -4275,6 +4275,18 @@
 				} catch (e) { toast(_('Ce navigateur refuse : {error}', { error: e.message }), true) }
 			},
 		}, '✉️ ' + _('Ouvrir les liens « mailto: » avec ce webmail')) : null
+		const densitySelect = h('select', {
+			name: 'density',
+			onchange: () => {
+				try { localStorage.setItem('webmail.density', densitySelect.value) } catch (e) { /* not kept */ }
+				applyDensity()
+				toast(_('Affichage enregistré'))
+			},
+		}, DENSITIES.map(([v, label]) => h('option', { value: v, selected: v === density() }, label())))
+		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-display-settings' },
+			h('legend', {}, _('Affichage')),
+			h('label', { class: 'wm-field' }, h('span', {}, _('Liste des messages')), densitySelect),
+			h('p', { class: 'wm-muted' }, _('Plus compact, plus de messages tiennent à l\'écran.'))))
 		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-send-settings' },
 			h('legend', {}, _('Envoi')),
 			h('label', { class: 'wm-field' }, h('span', {}, _('Délai pour annuler l\'envoi')), undo),
@@ -4546,6 +4558,18 @@
 		}).observe(document.body, { childList: true })
 	}
 
+	/** « Affichage de la liste »: with the preview (the default), compact (no preview), one line per message. */
+	const DENSITIES = [['comfortable', () => _('Confortable (avec aperçu)')], ['compact', () => _('Compact (sans aperçu)')], ['line', () => _('Une ligne par message')]]
+	function density() {
+		let v = null
+		try { v = localStorage.getItem('webmail.density') } catch (e) { /* default */ }
+		return DENSITIES.some(([d]) => d === v) ? v : 'comfortable'
+	}
+	function applyDensity() {
+		if (!root) return
+		DENSITIES.forEach(([d]) => root.classList.toggle('wm-density-' + d, d === density()))
+	}
+
 	async function init() {
 		root = document.getElementById('webmail-app')
 		if (!root) return
@@ -4555,6 +4579,7 @@
 		state.isAdmin = root.dataset.isAdmin === '1'
 		restoreTab()
 		window.addEventListener('pagehide', writeTab)
+		applyDensity()
 
 		try {
 			// given with the page (no first request); asked for if not

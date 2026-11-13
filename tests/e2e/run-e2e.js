@@ -3477,6 +3477,44 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('display: compact list, one line per message, kept, back to comfortable', async () => {
+		const setDensity = async (v) => {
+			await page.click('text=Comptes et signature')
+			await page.selectOption('select[name=density]', v)
+			await page.waitForSelector('.wm-toast:has-text("Affichage enregistré")')
+			await page.click('.wm-folder >> nth=0')
+			await page.waitForSelector('.wm-messages .wm-message')
+		}
+		const row = '.wm-messages .wm-message:has-text("Devis pour la maintenance annuelle")'
+		const look = () => page.$eval(row, (li) => ({
+			preview: getComputedStyle(li.querySelector('.wm-message-preview')).display,
+			display: getComputedStyle(li).display,
+			height: li.getBoundingClientRect().height,
+		}))
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector(row)
+		const comfortable = await look()
+		assert.notStrictEqual(comfortable.preview, 'none')
+		await setDensity('compact')
+		const compact = await look()
+		assert.strictEqual(compact.preview, 'none')
+		assert.ok(compact.height < comfortable.height, JSON.stringify([comfortable, compact]))
+		await setDensity('line')
+		const line = await look()
+		assert.strictEqual(line.display, 'flex')
+		assert.ok(line.height < compact.height, JSON.stringify([compact, line]))
+		// the date at the end of the line, after the subject
+		const [subject, date] = await page.$eval(row, (li) => [li.querySelector('.wm-message-subject').getBoundingClientRect().right, li.querySelector('.wm-message-date').getBoundingClientRect().left])
+		assert.ok(date >= subject, subject + ' / ' + date)
+		await shot('87-one-line')
+		// kept after a reload
+		await page.reload()
+		await page.waitForSelector(row)
+		assert.ok(await page.$eval('#webmail-app', (e) => e.classList.contains('wm-density-line')))
+		await setDensity('comfortable')
+		assert.notStrictEqual((await look()).preview, 'none')
+	})
+
 	await step('trusted senders: « Toujours pour… » shows a sender\'s remote images at once, until removed', async () => {
 		const row = '.wm-message:has-text("Devis pour la maintenance annuelle")'
 		const tracker = () => page.evaluate(() => !!document.querySelector('.wm-body-frame').contentDocument.querySelector('img[src*="tracker.example"]'))

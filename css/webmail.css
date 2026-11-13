@@ -114,6 +114,19 @@
 	white-space: nowrap;
 	margin-top: 2px;
 }
+/* « Affichage » of the list: compact (no preview), one line (sender and subject side by side) */
+.wm-density-compact .wm-message, .wm-density-line .wm-message { padding-top: 5px; padding-bottom: 5px; }
+.wm-density-compact .wm-message-preview, .wm-density-line .wm-message-preview { display: none; }
+.wm-density-line .wm-message:not(.wm-list-period) { display: flex; gap: 10px; align-items: center; }
+/* (the first line's sender, counts and date become items of the row: the date goes to the end) */
+.wm-density-line .wm-message-line1 { display: contents; }
+.wm-density-line .wm-message-from { flex: 0 0 28%; min-width: 0; }
+.wm-density-line .wm-message-line2 { flex: 1; min-width: 0; order: 1; }
+.wm-density-line .wm-message-date { order: 2; min-width: 64px; text-align: right; }
+@media (max-width: 1024px) {
+	/* too narrow for one line: compact */
+	.wm-density-line .wm-message:not(.wm-list-period) { display: block; }
+}
 .wm-flag {
 	background: none !important;
 	border: none !important;
