@@ -2696,7 +2696,8 @@ async function main() {
 		page.on('request', onRequest)
 		try {
 			await page.reload()
-			await page.waitForSelector('.wm-message')
+			// the list remembered by the tab shows first (without the two messages just sent): wait for Exchange's
+			await page.waitForSelector('.wm-message.unread:has-text("Préchargé 2")')
 			const unread = await page.$$eval('.wm-message.unread', (els) => els.slice(0, 5).map((e) => e.dataset.id))
 			assert.ok(unread.length > 0, 'unread messages in the inbox')
 			for (let i = 0; i < 80 && !unread.every((id) => fetched.some((q) => q.get('itemId') === id)); i++) await page.waitForTimeout(100)
