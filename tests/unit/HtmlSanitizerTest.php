@@ -120,6 +120,9 @@ class HtmlSanitizerTest extends TestCase {
 		$this->assertStringNotContainsString('<script', $out);
 		$this->assertSame(1, substr_count($out, '</style>'));
 		// ordinary escapes still work
-		$this->assertStringContainsString('content:"“"', $this->clean('<p style="content:&quot;\\201C&quot;">x</p>')['html']);
+		// (read as a browser would: libxml writes the quotes as ' or &quot; depending on its version)
+		$doc = new \DOMDocument();
+		$doc->loadHTML('<?xml encoding="UTF-8"?>' . $this->clean('<p style="content:&quot;\\201C&quot;">x</p>')['html']);
+		$this->assertSame('content:"“"', $doc->getElementsByTagName('p')->item(0)->getAttribute('style'));
 	}
 }
