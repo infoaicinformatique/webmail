@@ -91,6 +91,7 @@
 					headers: { 'Content-Type': 'application/json', requesttoken: OC.requestToken },
 					body: JSON.stringify({
 						servers,
+						visio: document.getElementById('webmail-visio').value.trim(),
 						autodiscover: {
 							enabled: document.getElementById('webmail-autodiscover').checked,
 							hosts: document.getElementById('webmail-autodiscover-hosts').value.split(/[,;\s]+/).filter(Boolean),
@@ -108,6 +109,7 @@
 					tr.querySelector('.wm-url').value = s.url
 					tbody.appendChild(tr)
 				})
+				document.getElementById('webmail-visio').value = data.visio
 				document.getElementById('webmail-autodiscover').checked = data.autodiscover.enabled
 				document.getElementById('webmail-autodiscover-hosts').value = data.autodiscover.hosts.join(', ')
 				showDiscovered(data.discovered)

@@ -1190,10 +1190,51 @@
 		return window.location.origin + OC.generateUrl('/call/' + token)
 	}
 
-	/** The link to join a meeting: a Talk room, else a link given as the place (Teams, Zoom…). */
+	// ------------------------------------------------------------------
+	// Video meetings set by the administrator: Element Call (Matrix), or another service (Jitsi…)
+	// ------------------------------------------------------------------
+
+	/** '' (none), an Element Call address, or an address with « {room} ». */
+	function visioBase() {
+		const root = document.getElementById('webmail-app')
+		return (root && root.dataset.visio) || ''
+	}
+
+	/** Random letters and digits (the room's secret), from the browser's secure generator. */
+	function randomToken(length) {
+		const chars = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+		const bytes = crypto.getRandomValues(new Uint8Array(length))
+		return Array.from(bytes, (b) => chars[b % chars.length]).join('')
+	}
+
+	/**
+	 * A room of its own for the meeting: « reunion-de-chantier-k3x9 ». Element Call: an encrypted room,
+	 * its password after « # » (never sent to the server); another service: the name in its address.
+	 */
+	function visioLink(subject) {
+		const base = visioBase()
+		const slug = (subject || _('Réunion')).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'reunion'
+		const room = slug + '-' + randomToken(6).toLowerCase()
+		if (base.includes('{room}')) return base.split('{room}').join(encodeURIComponent(room))
+		return base + '/room/#/' + encodeURIComponent(room) + '?password=' + randomToken(24)
+	}
+
+	/** A link of the visio set by the administrator. */
+	function isVisioLink(url) {
+		const base = visioBase()
+		if (!base) return false
+		const start = base.includes('{room}') ? base.slice(0, base.indexOf('{room}')) : base + '/'
+		return url.startsWith(start)
+	}
+
+	/** The link to join a meeting: a Talk room, the visio set by the administrator, else a link given as the place (Teams, Zoom…). */
 	function meetingLink(ev) {
 		const talk = ((ev.location || '') + ' ' + (ev.body || '')).match(TALK_LINK)
 		if (talk) return { url: talk[0], talk: true }
+		const links = ((ev.location || '') + ' ' + (ev.body || '')).match(/https?:\/\/[^\s<>"']+/g) || []
+		const visio = links.find(isVisioLink)
+		if (visio) return { url: visio, visio: true }
 		const other = (ev.location || '').match(ANY_LINK)
 		return other ? { url: other[0], talk: false } : null
 	}
@@ -1238,7 +1279,7 @@
 			(() => {
 				const link = meetingLink(ev)
 				return link ? h('div', { class: 'wm-event-join' },
-					h('a', { class: 'button primary wm-join-btn', href: link.url, target: '_blank', rel: 'noopener noreferrer' }, link.talk ? '🎥 ' + _('Rejoindre la visio Nextcloud Talk') : '🎥 ' + _('Rejoindre la réunion en ligne'))) : null
+					h('a', { class: 'button primary wm-join-btn', href: link.url, target: '_blank', rel: 'noopener noreferrer' }, link.talk ? '🎥 ' + _('Rejoindre la visio Nextcloud Talk') : link.visio ? '🎥 ' + _('Rejoindre la visio') : '🎥 ' + _('Rejoindre la réunion en ligne'))) : null
 			})(),
 			ev.isMeeting && ev.organizer ? h('div', {}, '👤 ' + _('Organisateur : {name}').replace('{name}', core.personLabel(ev.organizer))) : null,
 			ev.attendees.length ? h('div', {}, h('strong', {}, _('Participants')), h('ul', { class: 'wm-attendees' }, people(ev.attendees))) : null,
@@ -1486,8 +1527,25 @@
 			})
 			roomBox.appendChild(ul)
 		}
-		// a video meeting: a Nextcloud Talk room, its link in the place and the description
-		const talkBtn = talkEnabled() ? h('button', {
+		// a video meeting: a room of the visio set by the administrator (Element Call…), its link in the place and the description
+		const hasVisio = () => (location.value + ' ' + description.value).split(/\s+/).some(isVisioLink)
+		const visioBtn = visioBase() ? h('button', {
+			type: 'button',
+			class: 'wm-visio-btn',
+			title: visioBase().includes('{room}')
+				? _('Ajouter une salle de visio pour cet événement : son lien va dans le lieu et dans l\'invitation')
+				: _('Ajouter une salle Element (Matrix) chiffrée pour cet événement : son lien va dans le lieu et dans l\'invitation'),
+			hidden: hasVisio(),
+			onclick: () => {
+				const url = visioLink(subject.value.trim())
+				if (!location.value.trim()) location.value = url
+				description.value = (description.value.trim() ? description.value.trim() + '\n\n' : '') + _('Rejoindre la visio : {url}', { url })
+				visioBtn.hidden = true
+				core.toast(_('Salle de visio ajoutée : son lien est dans le lieu et la description'))
+			},
+		}, '🎥 ' + (visioBase().includes('{room}') ? _('Visio') : _('Visio Element'))) : null
+		// else Nextcloud Talk, if it is installed
+		const talkBtn = !visioBtn && talkEnabled() ? h('button', {
 			type: 'button',
 			class: 'wm-talk-btn',
 			title: _('Créer une salle de visio Nextcloud Talk pour cet événement (les invités y entrent par le lien, sans compte)'),
@@ -1707,7 +1765,7 @@
 		h('label', { class: 'wm-inline' }, allDay, ' ' + _('Journée entière')),
 		field(_('Début'), startDate, startTime),
 		field(_('Fin'), endDate, endTime),
-		field(_('Lieu'), location, talkBtn),
+		field(_('Lieu'), location, visioBtn, talkBtn),
 		h('div', { class: 'wm-field' }, h('span', {}, _('Salle')), h('div', { class: 'wm-room-field' }, roomChips, roomBtn, roomBox)),
 		field(_('Participants'), core.attachAutocomplete(attendees)),
 		field(_('Facultatifs'), core.attachAutocomplete(optional)),

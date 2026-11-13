@@ -1762,6 +1762,75 @@ async function main() {
 		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
 	})
 
+	await step('calendar: an Element (Matrix) video room set by the administrator, instead of Talk', async () => {
+		const setVisio = async (value) => {
+			await page.goto(NC + '/settings/admin/webmail')
+			await page.fill('#webmail-visio', value)
+			await page.click('#webmail-save')
+			await page.waitForSelector('#webmail-admin-msg.success')
+		}
+		// a wrong address is refused
+		await page.goto(NC + '/settings/admin/webmail')
+		await page.fill('#webmail-visio', 'http://call.element.io')
+		await page.click('#webmail-save')
+		await page.waitForSelector('#webmail-admin-msg.error:has-text("Adresse de visio invalide")')
+		await setVisio('https://call.element.io/')
+		assert.strictEqual(await page.inputValue('#webmail-visio'), 'https://call.element.io')
+
+		await page.goto(NC + '/apps/webmail/?module=calendar')
+		await page.waitForSelector('.wm-compose-btn:has-text("Nouvel événement")')
+		// (even with Talk installed, the visio chosen by the administrator)
+		await page.evaluate(() => { document.getElementById('webmail-app').dataset.talk = '1' })
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		await page.fill('.wm-modal input[name=subject]', 'Point de chantier à Nice')
+		assert(!(await page.$('.wm-modal .wm-talk-btn')), 'no Talk button')
+		await page.click('.wm-modal .wm-visio-btn:has-text("Visio Element")')
+		await page.waitForSelector('.wm-toast:has-text("Salle de visio ajoutée")')
+		const url = await page.inputValue('.wm-modal input[name=location]')
+		assert.match(url, /^https:\/\/call\.element\.io\/room\/#\/point-de-chantier-a-nice-[a-z0-9]{6}\?password=[A-Za-z0-9]{24}$/)
+		assert.strictEqual(await page.inputValue('.wm-modal textarea[name=body]'), 'Rejoindre la visio : ' + url)
+		assert(await page.isHidden('.wm-modal .wm-visio-btn'), 'one room per event')
+		await shot('77-element-visio')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
+		const created = await page.evaluate(async () => {
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const from = new Date(Date.now() - 86400000).toISOString().slice(0, 16)
+			const to = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 16)
+			const r = await (await fetch('/apps/webmail/api/accounts/' + id + '/calendar/events?tz=UTC&start=' + from + '&end=' + to, { headers: { requesttoken: OC.requestToken } })).json()
+			return { account: id, event: r.events.find((e) => e.subject === 'Point de chantier à Nice').id }
+		})
+		await page.goto(NC + '/apps/webmail/?' + new URLSearchParams({ account: created.account, module: 'calendar', event: created.event }))
+		await page.waitForSelector('.wm-modal .wm-join-btn:has-text("Rejoindre la visio")')
+		assert.strictEqual(await page.getAttribute('.wm-modal .wm-join-btn', 'href'), url)
+		await page.click('.wm-modal-close')
+		await page.evaluate(async (c) => {
+			await fetch('/apps/webmail/api/accounts/' + c.account + '/calendar/delete', {
+				method: 'POST',
+				headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ eventId: c.event }),
+			})
+		}, created)
+
+		// another service (Jitsi…): the room name in its address
+		await setVisio('https://meet.example.org/{room}')
+		await page.goto(NC + '/apps/webmail/?module=calendar')
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		await page.fill('.wm-modal input[name=subject]', 'Revue')
+		await page.click('.wm-modal .wm-visio-btn:text-is("🎥 Visio")')
+		assert.match(await page.inputValue('.wm-modal input[name=location]'), /^https:\/\/meet\.example\.org\/revue-[a-z0-9]{6}$/)
+		await page.click('.wm-modal-close')
+
+		// none: no button
+		await setVisio('')
+		await page.goto(NC + '/apps/webmail/?module=calendar')
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		assert(!(await page.$('.wm-modal .wm-visio-btn')))
+		await page.click('.wm-modal-close')
+		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
+	})
+
 	await step('calendar: scheduling assistant, first free slot for all', async () => {
 		const ymd = (x) => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0')
 		await page.click('.wm-compose-btn:has-text("Nouvel événement")')

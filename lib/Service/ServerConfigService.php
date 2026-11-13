@@ -180,6 +180,44 @@ class ServerConfigService {
 		return $this->getAutodiscover();
 	}
 
+	// ------------------------------------------------------------------
+	// Video meetings: Element Call (Matrix), or any service with a room name in its links (Jitsi…)
+	// ------------------------------------------------------------------
+
+	/** The address of the video meetings, '' when none is set. */
+	public function getVisio(): string {
+		return $this->config->getAppValue(Application::APP_ID, 'visio', '');
+	}
+
+	/** @throws MailException */
+	public function setVisio(string $url): string {
+		$url = self::visioUrl($url);
+		$this->config->setAppValue(Application::APP_ID, 'visio', $url);
+		return $url;
+	}
+
+	/**
+	 * '' (none), an Element Call address (« https://call.element.io »: its links are
+	 * …/room/#/<name>?password=<secret>), or any https address with « {room} » where the
+	 * name of the room goes (« https://meet.example.org/{room} »).
+	 *
+	 * @throws MailException
+	 */
+	public static function visioUrl(string $url): string {
+		$url = trim($url);
+		if ($url === '') {
+			return '';
+		}
+		$check = str_replace('{room}', 'room', $url);
+		$parts = parse_url($check);
+		if (strlen($url) > 500 || preg_match('/[\s"<>\\\\\'`]/', $url) || !is_array($parts)
+			|| strtolower($parts['scheme'] ?? '') !== 'https' || empty($parts['host']) || isset($parts['user']) || isset($parts['pass'])) {
+			throw new MailException('Adresse de visio invalide : une adresse https://, par exemple %s', ['https://call.element.io']);
+		}
+		// Element Call: its address only (the links are made from it)
+		return str_contains($url, '{room}') ? $url : rtrim($url, '/');
+	}
+
 	/** @return array<string, string> domain => EWS URL found by Autodiscover */
 	public function getDiscovered(): array {
 		$data = json_decode($this->config->getAppValue(Application::APP_ID, 'discovered', '{}'), true);

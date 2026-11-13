@@ -23,6 +23,7 @@ class Admin implements ISettings {
 			'servers' => $this->servers->getServers(),
 			'autodiscover' => $this->servers->getAutodiscover(),
 			'discovered' => $this->servers->getDiscovered(),
+			'visio' => $this->servers->getVisio(),
 		], '');
 	}
 

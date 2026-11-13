@@ -36,9 +36,13 @@ class AdminController extends Controller {
 	/**
 	 * @param array<int, array<string, string>> $servers
 	 * @param ?array{enabled?: bool, hosts?: string[]} $autodiscover
+	 * @param ?string $visio the address of the video meetings (Element Call…), '' for none
 	 */
-	public function save(array $servers = [], ?array $autodiscover = null): Response {
-		return $this->handle(function () use ($servers, $autodiscover) {
+	public function save(array $servers = [], ?array $autodiscover = null, ?string $visio = null): Response {
+		return $this->handle(function () use ($servers, $autodiscover, $visio) {
+			if ($visio !== null) {
+				$this->servers->setVisio($visio);
+			}
 			$this->servers->setServers($servers);
 			if ($autodiscover !== null) {
 				$this->servers->setAutodiscover(!empty($autodiscover['enabled']), (array)($autodiscover['hosts'] ?? []));
@@ -60,6 +64,7 @@ class AdminController extends Controller {
 			'servers' => $this->servers->getServers(),
 			'autodiscover' => $this->servers->getAutodiscover(),
 			'discovered' => $this->servers->getDiscovered(),
+			'visio' => $this->servers->getVisio(),
 		];
 	}
 }
