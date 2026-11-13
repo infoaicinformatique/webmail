@@ -1049,13 +1049,15 @@
 		if (folderRole() !== 'inbox' || isSearching() || document.hidden) return
 		if (navigator.connection && navigator.connection.saveData) return
 		const seq = listSeq
+		const accountId = state.accountId
 		const ids = state.messages.filter((m) => !m.isRead && !msgCache.has(msgKey(m.id))).slice(0, IDLE_PREFETCH).map((m) => m.id)
 		if (!ids.length) return
 		const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500))
+		// stop when the user moved to another folder or another account
+		const current = () => seq === listSeq && accountId === state.accountId && state.module === 'mail'
 		const next = (i) => {
-			// stop when the user moved to another folder or another account
-			if (i >= ids.length || seq !== listSeq || state.module !== 'mail') return
-			idle(() => prefetchMessage(ids[i]).catch(() => null).then(() => next(i + 1)), { timeout: 4000 })
+			if (i >= ids.length || !current()) return
+			idle(() => (current() ? prefetchMessage(ids[i]).catch(() => null).then(() => next(i + 1)) : null), { timeout: 4000 })
 		}
 		next(0)
 	}
@@ -3175,8 +3177,11 @@
 					if (!navEl || !root.contains(navEl)) buildLayout()
 					await selectAccount(acc.id)
 					startBackground()
-					renderEmptyDetail()
-					setView('list')
+					// unless another account or a message was opened meanwhile
+					if (state.accountId === acc.id && !state.selectedId && state.module === 'mail') {
+						renderEmptyDetail()
+						setView('list')
+					}
 				} catch (ex) {
 					err.textContent = ex.message
 				} finally {
