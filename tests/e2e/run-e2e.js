@@ -2078,8 +2078,8 @@ async function main() {
 		await page.waitForSelector('.wm-group-members:has-text("2 membres")')
 		page.once('dialog', (d) => d.accept())
 		await page.click('.wm-toolbar button:has-text("Supprimer")')
-		await page.waitForSelector('.wm-toast:has-text("Contact supprimé")')
-		assert(!(await page.$('.wm-contact:has-text("Fournisseurs chantier")')))
+		// (the toast of the previous step may still be there: wait for the group itself to go)
+		await page.waitForSelector('.wm-contact:has-text("Fournisseurs chantier")', { state: 'detached' })
 	})
 
 	await step('contacts: export and import vCard files', async () => {
