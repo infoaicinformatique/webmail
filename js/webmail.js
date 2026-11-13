@@ -84,6 +84,31 @@
 		state.showFilters = false
 	}
 
+	/**
+	 * The period a date belongs to, as a heading of the list: « Aujourd'hui », « Hier »,
+	 * « Cette semaine », « La semaine dernière », « Ce mois-ci », then the month (« Septembre 2026 »).
+	 */
+	function dayPeriods() {
+		const now = new Date()
+		const day = (n) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + n).getTime()
+		const today = day(0)
+		const weekStart = day(-((now.getDay() + 6) % 7)) // Monday
+		const lastWeekStart = weekStart - 7 * 86400000
+		const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+		return (iso) => {
+			const d = new Date(iso)
+			if (!iso || isNaN(d)) return null
+			const t = d.getTime()
+			if (t >= today) return _('Aujourd\'hui')
+			if (t >= day(-1)) return _('Hier')
+			if (t >= weekStart) return _('Cette semaine')
+			if (t >= lastWeekStart) return _('La semaine dernière')
+			if (t >= monthStart) return _('Ce mois-ci')
+			const label = d.toLocaleDateString(locale(), { month: 'long', year: 'numeric' })
+			return label.charAt(0).toUpperCase() + label.slice(1)
+		}
+	}
+
 	/** Search while typing: the pause (ms) and the fewest characters before Exchange is asked. */
 	const SEARCH_DELAY = 350
 	const SEARCH_MIN = 2
@@ -1438,7 +1463,15 @@
 		// conversations: one row each, opened on their newest message (no ticks nor drag and drop)
 		const conv = grouped()
 		const ul = h('ul', { class: 'wm-messages' + (conv ? ' wm-conversations' : ''), role: 'list' })
+		// « Aujourd'hui », « Hier », « Cette semaine »…: a heading where the period changes
+		const period = dayPeriods()
+		let lastPeriod = null
 		state.messages.forEach((m) => {
+			const p = period(m.date)
+			if (p && p !== lastPeriod) {
+				lastPeriod = p
+				ul.appendChild(h('li', { class: 'wm-list-period', role: 'presentation' }, p))
+			}
 			const who = showRecipients ? _('À : {names}', { names: m.displayTo || '' }) : (personShort(m.from) || _('(expéditeur inconnu)'))
 			const li = h('li', {
 				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : '') + (state.checked.has(m.id) ? ' checked' : ''),

@@ -267,6 +267,19 @@ async function main() {
 		}
 	})
 
+	await step('list headings: « Aujourd\'hui », « Hier », « Cette semaine »… where the period changes', async () => {
+		const periods = await page.$$eval('.wm-messages > .wm-list-period', (els) => els.map((e) => e.textContent))
+		assert.strictEqual(periods[0], 'Aujourd\'hui', periods.join(' | '))
+		assert.strictEqual(new Set(periods).size, periods.length, 'each period once: ' + periods.join(' | '))
+		// the order of the periods, newest first; then months (« Octobre 2026 »)
+		const order = ['Aujourd\'hui', 'Hier', 'Cette semaine', 'La semaine dernière', 'Ce mois-ci']
+		const known = periods.filter((p) => order.includes(p)).map((p) => order.indexOf(p))
+		assert.deepStrictEqual(known, known.slice().sort((a, b) => a - b), periods.join(' | '))
+		periods.filter((p) => !order.includes(p)).forEach((p) => assert.match(p, /^[A-ZÀ-Ü][a-zà-ü]+ \d{4}$/))
+		// not a message: keyboard and counts unchanged
+		assert.strictEqual(await page.locator('.wm-message').count(), 62)
+	})
+
 	await step('search filters and search in all folders', async () => {
 		const subjects = () => page.$$eval('.wm-message-subject', (els) => els.map((e) => e.textContent))
 		const settle = () => page.waitForFunction(() => !document.querySelector('.wm-list .icon-loading') && document.querySelector('.wm-search-info, .wm-message'))
