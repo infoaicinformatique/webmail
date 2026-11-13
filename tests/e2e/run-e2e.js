@@ -3387,6 +3387,37 @@ async function main() {
 		await page.waitForSelector(row)
 	})
 
+	await step('quick reply: a few lines under the message, sent with Ctrl+Enter, or « Plus d\'options… » with what was typed', async () => {
+		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°6"))'
+		await page.click('.wm-folder >> nth=0')
+		await page.click(row)
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°6")')
+		assert.strictEqual(await page.getAttribute('.wm-quick-text', 'placeholder'), 'Répondre à Lettre d\'info…')
+		// « Plus d'options… »: the full form, with the text
+		await page.click('.wm-quick-text')
+		await page.keyboard.type('Merci, à lire plus tard.')
+		await page.click('.wm-quick-more')
+		await page.waitForSelector('.wm-compose .wm-editor:has-text("Merci, à lire plus tard.")')
+		assert.strictEqual(await page.inputValue('.wm-compose input[name=subject]'), 'RE : Newsletter n°6')
+		await page.click('.wm-compose button:has-text("Annuler")')
+		// sent from the box (Ctrl+Enter)
+		await page.click(row)
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°6")')
+		await page.click('.wm-quick-text')
+		await page.keyboard.type('Bien reçu, merci.\nBonne journée')
+		await shot('81-quick-reply')
+		await page.keyboard.press('Control+Enter')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		assert.strictEqual(await page.inputValue('.wm-quick-text'), '')
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.click('.wm-message:has-text("RE: Newsletter n°6")')
+		await page.waitForSelector('.wm-message-header h2:has-text("RE: Newsletter n°6")')
+		const body = await page.frameLocator('.wm-body-frame').locator('body').textContent()
+		assert.ok(body.includes('Bien reçu, merci.') && body.includes('Bonne journée'), body)
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')

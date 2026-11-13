@@ -1201,5 +1201,10 @@
 	"Commandes": "Commands",
 	"Ctrl+K": "Ctrl+K",
 	"Palette de commandes : aller à un dossier, créer, rechercher": "Command palette: go to a folder, create, search",
-	"Annulé": "Undone"
+	"Annulé": "Undone",
+	"Répondre à {name}…": "Reply to {name}…",
+	"l'expéditeur": "the sender",
+	"Réponse rapide": "Quick reply",
+	"Plus d'options…": "More options…",
+	"Envoi annulé": "Sending cancelled"
 }
