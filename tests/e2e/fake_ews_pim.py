@@ -492,7 +492,8 @@ def seed():
     contact('Émilie', 'Roux', 'Roux Architectes', 'emilie@roux-archi.fr', 'emilie.roux@gmail.example', mobile='07 00 11 22 33')
     contact('', '', 'Plombier Express', 'contact@plombier-express.fr', business='04 92 11 11 11')
     gid = new_id('DL')
-    CONTACTS[gid] = dict(id=gid, kind='DistributionList', displayName='Équipe projet', folder='F-CONTACTS')
+    CONTACTS[gid] = dict(id=gid, kind='DistributionList', displayName='Équipe projet', folder='F-CONTACTS',
+                         members=[('Anne Bernard', 'anne@cabinet-bernard.fr'), ('Lucas Petit', 'lucas.petit@exemple.org')])
     contact('', '', 'Électricité Azur', 'devis@elec-azur.example', business='04 93 55 55 55', folder='F-CONTACTS2')
     contact('', '', 'Papeterie du Port', 'commandes@papeterie-port.example', folder='F-CONTACTS2')
     contact('Hugo', 'Blanc', 'Client Riviera', 'hugo@client-riviera.example', mobile='06 77 77 77 77', folder='shared:marie.martin@societe-a.fr')
@@ -555,7 +556,10 @@ def event_xml(e, detail, recurrence='', reminders=False):
 
 def contact_xml(c, detail):
     if c['kind'] == 'DistributionList':
-        return '<t:DistributionList><t:ItemId Id="%s"/><t:DisplayName>%s</t:DisplayName></t:DistributionList>' % (c['id'], esc(c['displayName']))
+        members = ''.join('<t:Member><t:Mailbox><t:Name>%s</t:Name><t:EmailAddress>%s</t:EmailAddress><t:RoutingType>SMTP</t:RoutingType>'
+                          '<t:MailboxType>OneOff</t:MailboxType></t:Mailbox></t:Member>' % (esc(n), esc(e)) for n, e in c.get('members', []))
+        return ('<t:DistributionList><t:ItemId Id="%s"/><t:DisplayName>%s</t:DisplayName>%s</t:DistributionList>'
+                % (c['id'], esc(c['displayName']), '<t:Members>%s</t:Members>' % members if detail and members else ''))
     x = '<t:Contact><t:ItemId Id="%s"/>' % c['id']
     if detail and c['notes']:
         x += '<t:Body BodyType="Text">%s</t:Body>' % esc(c['notes'])
@@ -893,6 +897,18 @@ def handle(op, el, user, tz, messages, move_message):
                     eid = add_event(text(it, 't:Subject'), start, end, folder=folder, resources=read_attendees(it, 'Resources'), **common)
                     out.append(ok(op, '<m:Items><t:CalendarItem><t:ItemId Id="%s" ChangeKey="%s"/></t:CalendarItem></m:Items>' % (eid, EVENTS[eid]['ck'])))
             return wrap(op, out)
+        if tag == 'DistributionList':
+            target = el.find('m:SavedItemFolderId', NS)
+            folder, code = contacts_folder(target[0]) if target is not None else ('F-CONTACTS', None)
+            if code or not can_write(folder):
+                return wrap(op, [err(op, code or 'ErrorAccessDenied', 'Access is denied.')])
+            out = []
+            for it in items:
+                gid = new_id('DL')
+                CONTACTS[gid] = dict(id=gid, kind='DistributionList', displayName=text(it, 't:DisplayName'), folder=folder,
+                                     members=[(text(m, 't:Name'), text(m, 't:EmailAddress')) for m in it.findall('t:Members/t:Member/t:Mailbox', NS)])
+                out.append(ok(op, '<m:Items><t:DistributionList><t:ItemId Id="%s" ChangeKey="CK"/></t:DistributionList></m:Items>' % gid))
+            return wrap(op, out)
         if tag == 'Contact':
             out = []
             target = el.find('m:SavedItemFolderId', NS)
@@ -1012,11 +1028,20 @@ def handle(op, el, user, tz, messages, move_message):
             for ch in changes:
                 c = CONTACTS[ch.find('t:ItemId', NS).get('Id')]
                 for upd in ch.find('t:Updates', NS):
+                    if c['kind'] == 'DistributionList':
+                        uri = upd.find('t:FieldURI', NS).get('FieldURI')
+                        dl = upd.find('t:DistributionList', NS)
+                        if uri == 'distributionlist:Members':
+                            c['members'] = [] if dl is None else [(text(m, 't:Name'), text(m, 't:EmailAddress')) for m in dl.findall('t:Members/t:Member/t:Mailbox', NS)]
+                        elif uri == 'contacts:DisplayName':
+                            c['displayName'] = text(dl, 't:DisplayName')
+                        continue
                     if upd.tag == T + 'DeleteItemField':
                         delete_contact_field(c, upd[0])
                     else:
                         apply_contact_fields(c, upd.find('t:Contact', NS))
-                c['emails'] = [e for e in c['emails'] if e]
+                if c['kind'] != 'DistributionList':
+                    c['emails'] = [e for e in c['emails'] if e]
             return wrap(op, [ok(op, '<m:Items/><m:ConflictResults><t:Count>0</t:Count></m:ConflictResults>') for _ in ids])
         return None
 

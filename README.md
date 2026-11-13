@@ -167,7 +167,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Fiche | Société, fonction, jusqu'à 3 e-mails, mobile, téléphone du bureau et du domicile, adresse (lien vers la carte), notes |
 | Actions | Créer (dans le carnet choisi), modifier, supprimer, **écrire** (ouvre un nouveau message), appeler (lien `tel:`) |
 | Import / export | « ⬇ » au-dessus de la liste : tout le carnet affiché dans un fichier **vCard** (.vcf) pour Outlook, un téléphone, Nextcloud Contacts… « ⬆ » : les contacts d'un fichier vCard (2.1, 3.0 ou 4.0, celui d'Outlook ou d'un téléphone) sont ajoutés au carnet ; ceux déjà présents (même adresse e-mail) sont ignorés, et le bilan s'affiche |
-| Groupes | Les listes de distribution sont affichées, leur gestion reste dans Outlook |
+| Groupes | Les **groupes de contacts** d'Outlook (listes de distribution personnelles) : leurs membres s'affichent, « ✉️ Écrire au groupe » adresse le message à tous. « 👥 Nouveau groupe » en crée un, « ✏️ Modifier » ajoute des membres (complétion depuis les contacts et l'annuaire, ou adresse saisie) ou en retire. Les groupes sont enregistrés dans Exchange et retrouvés dans Outlook |
 
 ### Tâches
 
@@ -224,7 +224,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.46.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.47.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -246,7 +246,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.46 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.47 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -347,7 +347,7 @@ templates/          page principale et page d'administration
 - Liste des messages regroupée par conversation
 
 **Contacts**
-- Groupes de contacts modifiables, photos
+- Photos des contacts
 
 **Nextcloud et serveur**
 - Notifications Exchange en direct (abonnement « streaming ») à la place de la vérification régulière

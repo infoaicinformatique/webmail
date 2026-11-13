@@ -471,7 +471,111 @@ class EwsContacts {
 		$contact = $this->parseContact($xp, $node);
 		$contact['id'] = $this->client->attr($xp, 't:ItemId', 'Id', $node);
 		$contact['isGroup'] = $node->localName === 'DistributionList';
+		if ($contact['isGroup']) {
+			$contact['members'] = $this->groupMembers((string)$contact['id']);
+		}
 		return $contact;
+	}
+
+	/**
+	 * The members of a contact group (an Outlook distribution list).
+	 * @return list<array{name: string, email: string}>
+	 */
+	public function groupMembers(string $id): array {
+		$xp = $this->client->request(
+			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:FieldURI FieldURI="distributionlist:Members"/></t:AdditionalProperties></m:ItemShape>'
+			. '<m:ItemIds><t:ItemId Id="' . $this->client->esc($id) . '"/></m:ItemIds></m:GetItem>'
+		);
+		$out = [];
+		foreach ($xp->query('//m:Items/t:DistributionList/t:Members/t:Member/t:Mailbox') as $mb) {
+			$email = (string)$this->client->text($xp, 't:EmailAddress', $mb);
+			$name = (string)$this->client->text($xp, 't:Name', $mb);
+			if ($email === '' && $name === '') {
+				continue;
+			}
+			$out[] = ['name' => $name !== '' ? $name : $email, 'email' => filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : ''];
+		}
+		return $out;
+	}
+
+	/**
+	 * A contact group: a name and its members (with an address each).
+	 * @param array<string, mixed> $data {displayName, members: [{name, email}]}
+	 */
+	public function createGroup(array $data, string $book = 'contacts'): string {
+		$g = self::normalizeGroup($data);
+		$c = $this->client;
+		$xp = $c->request(
+			'<m:CreateItem><m:SavedItemFolderId>' . $this->folderXml($book) . '</m:SavedItemFolderId><m:Items>'
+			. '<t:DistributionList><t:DisplayName>' . $c->esc($g['displayName']) . '</t:DisplayName>'
+			. '<t:FileAs>' . $c->esc($g['displayName']) . '</t:FileAs>'
+			. ($g['members'] !== [] ? $this->membersXml($g['members']) : '')
+			. '</t:DistributionList></m:Items></m:CreateItem>'
+		);
+		return (string)$c->attr($xp, '//m:Items/t:DistributionList/t:ItemId', 'Id');
+	}
+
+	/** @param array<string, mixed> $data */
+	public function updateGroup(string $id, array $data): void {
+		$g = self::normalizeGroup($data);
+		$c = $this->client;
+		$set = fn (string $uri, string $inner) => '<t:SetItemField><t:FieldURI FieldURI="' . $uri . '"/><t:DistributionList>' . $inner . '</t:DistributionList></t:SetItemField>';
+		$updates = $set('contacts:DisplayName', '<t:DisplayName>' . $c->esc($g['displayName']) . '</t:DisplayName>')
+			. $set('contacts:FileAs', '<t:FileAs>' . $c->esc($g['displayName']) . '</t:FileAs>')
+			. ($g['members'] !== []
+				? $set('distributionlist:Members', $this->membersXml($g['members']))
+				: '<t:DeleteItemField><t:FieldURI FieldURI="distributionlist:Members"/></t:DeleteItemField>');
+		$c->request(
+			'<m:UpdateItem ConflictResolution="AlwaysOverwrite"><m:ItemChanges><t:ItemChange><t:ItemId Id="' . $c->esc($id) . '"/>'
+			. '<t:Updates>' . $updates . '</t:Updates></t:ItemChange></m:ItemChanges></m:UpdateItem>'
+		);
+	}
+
+	/** @param list<array{name: string, email: string}> $members */
+	private function membersXml(array $members): string {
+		$c = $this->client;
+		$xml = '';
+		foreach ($members as $m) {
+			$xml .= '<t:Member><t:Mailbox><t:Name>' . $c->esc($m['name']) . '</t:Name><t:EmailAddress>' . $c->esc($m['email']) . '</t:EmailAddress>'
+				. '<t:RoutingType>SMTP</t:RoutingType><t:MailboxType>OneOff</t:MailboxType></t:Mailbox></t:Member>';
+		}
+		return '<t:Members>' . $xml . '</t:Members>';
+	}
+
+	/**
+	 * @param array<string, mixed> $data
+	 * @return array{displayName: string, members: list<array{name: string, email: string}>}
+	 */
+	public static function normalizeGroup(array $data): array {
+		$name = trim((string)($data['displayName'] ?? ''));
+		if ($name === '') {
+			throw new MailException('Donnez un nom au groupe');
+		}
+		$members = [];
+		$seen = [];
+		foreach ((array)($data['members'] ?? []) as $m) {
+			if (!is_array($m)) {
+				continue;
+			}
+			$email = strtolower(trim((string)($m['email'] ?? '')));
+			if ($email === '') {
+				continue;
+			}
+			if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+				throw new MailException('Adresse invalide dans le groupe : ' . $email);
+			}
+			if (isset($seen[$email])) {
+				continue;
+			}
+			$seen[$email] = true;
+			$mname = trim((string)($m['name'] ?? ''));
+			$members[] = ['name' => $mname !== '' ? $mname : $email, 'email' => $email];
+		}
+		if (count($members) > 500) {
+			throw new MailException('500 membres au plus par groupe');
+		}
+		return ['displayName' => $name, 'members' => $members];
 	}
 
 	/**

@@ -107,6 +107,7 @@
 	function renderNav(navEl) {
 		const h = core.h
 		navEl.appendChild(h('button', { class: 'wm-compose-btn primary', onclick: () => openForm(null) }, '＋  Nouveau contact'))
+		navEl.appendChild(h('button', { class: 'wm-new-group', onclick: () => openGroupForm(null) }, '👥  Nouveau groupe'))
 		const sel = core.accountSelector()
 		if (sel) navEl.appendChild(sel)
 		navEl.appendChild(bookList())
@@ -531,11 +532,14 @@
 		const tel = (v) => v ? h('a', { href: 'tel:' + v.replace(/[^+\d]/g, '') }, v) : null
 		const address = [c.street, [c.postalCode, c.city].filter(Boolean).join(' '), c.country].filter(Boolean).join(', ')
 		const writeTo = (email) => core.openCompose('new', null, { to: (c.displayName ? c.displayName + ' <' + email + '>' : email) + ', ' })
+		const members = (c.members || [])
+		const writeToGroup = () => core.openCompose('new', null, { to: members.filter((m) => m.email).map((m) => (m.name && m.name !== m.email ? m.name + ' <' + m.email + '>' : m.email)).join(', ') + ', ' })
 
 		el.appendChild(h('div', { class: 'wm-toolbar' },
 			h('button', { class: 'wm-back wm-mobile-only', 'aria-label': 'Retour', onclick: () => core.setView('list') }, '←'),
 			c.emails.length ? h('button', { class: 'primary', onclick: () => writeTo(c.emails[0]) }, '✉️ Écrire') : null,
-			!book.canEdit || c.isGroup ? null : h('button', { onclick: () => openForm(c) }, '✏️ Modifier'),
+			c.isGroup && members.some((m) => m.email) ? h('button', { class: 'primary', onclick: writeToGroup }, '✉️ Écrire au groupe') : null,
+			!book.canEdit ? null : h('button', { onclick: () => (c.isGroup ? openGroupForm(c) : openForm(c)) }, '✏️ Modifier'),
 			book.canEdit ? h('button', { class: 'wm-danger', onclick: () => remove(c) }, '🗑 Supprimer') : null,
 			!book.canEdit && !c.isGroup ? h('button', { onclick: () => copyToMine(c) }, '＋ Ajouter à mes contacts') : null,
 			!book.canEdit ? h('span', { class: 'wm-muted' }, book.kind === 'directory' ? '🏢 Annuaire de l\'entreprise' : '🔒 ' + bookTitle(book) + ' (lecture seule)') : null))
@@ -553,7 +557,95 @@
 			row('🏢', 'Site', c.office || null),
 			row('📍', 'Adresse', address ? h('a', { href: 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(address), target: '_blank', rel: 'noopener noreferrer' }, address) : null),
 			(c.notes || '').trim() ? h('div', { class: 'wm-event-body' }, c.notes.trim()) : null,
-			c.isGroup ? h('p', { class: 'wm-muted' }, 'Les groupes de contacts se gèrent dans Outlook.') : null))
+			c.isGroup ? h('div', { class: 'wm-group-members' },
+				h('strong', {}, members.length + ' membre' + (members.length > 1 ? 's' : '')),
+				h('ul', { class: 'wm-attendees' }, members.map((m) => h('li', {}, m.email
+					? h('a', { href: '#', onclick: (ev) => { ev.preventDefault(); core.openCompose('new', null, { to: (m.name !== m.email ? m.name + ' <' + m.email + '>' : m.email) + ', ' }) } },
+						m.name !== m.email ? m.name + ' <' + m.email + '>' : m.email)
+					: h('span', { class: 'wm-muted', title: 'Adresse interne d\'Exchange' }, m.name))))) : null))
+	}
+
+	/**
+	 * A contact group (Outlook distribution list): a name and members,
+	 * added from the contacts and the directory (completion) or by address.
+	 */
+	function openGroupForm(g) {
+		const h = core.h
+		const isNew = !g
+		const members = ((g && g.members) || []).map((m) => ({ name: m.name, email: m.email }))
+		core.setView('detail')
+		const el = core.detailEl
+		core.clear(el)
+		const name = h('input', { type: 'text', name: 'groupName', required: true, value: g ? g.displayName : '', placeholder: 'Équipe chantier, Clients VIP…' })
+		const who = h('input', { type: 'text', name: 'groupMember', placeholder: 'Nom ou adresse (complétion)', autocomplete: 'off' })
+		const list = h('ul', { class: 'wm-group-edit' })
+		const err = h('div', { class: 'wm-form-error', role: 'alert' })
+		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? 'Créer le groupe' : 'Enregistrer')
+		const writable = ct.books.filter((b) => b.canEdit)
+		const bookSelect = isNew && writable.length > 1
+			? h('select', { name: 'book', 'aria-label': 'Carnet' }, writable.map((b) => h('option', { value: b.key, selected: b.key === (currentBook().canEdit ? ct.book : 'contacts') }, bookTitle(b))))
+			: null
+		const render = () => {
+			core.clear(list)
+			if (!members.length) list.appendChild(h('li', { class: 'wm-muted' }, 'Aucun membre pour l\'instant'))
+			members.forEach((m, i) => list.appendChild(h('li', { dataset: { email: m.email } },
+				m.name && m.name !== m.email ? m.name + ' <' + m.email + '>' : (m.email || m.name), ' ',
+				h('button', { type: 'button', class: 'wm-small wm-icon-btn', 'aria-label': 'Retirer ' + (m.email || m.name), onclick: () => { members.splice(i, 1); render() } }, '✕'))))
+		}
+		/** "Jean Dupont <jean@x.fr>, paul@x.fr" → members */
+		const addFromInput = () => {
+			const bad = []
+			who.value.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean).forEach((part) => {
+				const m = part.match(/^(.*?)\s*<([^>]+)>$/)
+				const email = (m ? m[2] : part).trim().toLowerCase()
+				const label = m ? m[1].replace(/^"|"$/g, '').trim() : ''
+				if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { bad.push(part); return }
+				if (!members.some((x) => x.email === email)) members.push({ name: label || email, email })
+			})
+			who.value = bad.join(', ')
+			err.textContent = bad.length ? 'Adresse invalide : ' + bad.join(', ') : ''
+			render()
+		}
+		who.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addFromInput() } })
+		render()
+		el.appendChild(h('form', {
+			class: 'wm-compose wm-contact-form wm-group-form',
+			onsubmit: async (e) => {
+				e.preventDefault()
+				if (who.value.trim()) addFromInput()
+				if (err.textContent) return
+				save.disabled = true
+				const data = { isGroup: true, displayName: name.value, members }
+				try {
+					let id = g && g.id
+					if (isNew) {
+						const target = bookSelect ? bookSelect.value : 'contacts'
+						id = (await api('/accounts/' + core.accountId + '/contacts', { method: 'POST', body: { contact: data, book: target } })).id
+						if (target !== ct.book) { ct.book = target; core.renderNav() }
+					} else {
+						await api('/accounts/' + core.accountId + '/contacts/update', { method: 'POST', body: { contactId: g.id, contact: data, book: ct.book } })
+					}
+					core.toast(isNew ? 'Groupe créé' : 'Groupe enregistré')
+					await load(true)
+					openContact(id)
+				} catch (ex) {
+					err.textContent = ex.message
+					save.disabled = false
+				}
+			},
+		},
+		h('div', { class: 'wm-compose-title' },
+			h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': 'Retour', onclick: () => core.setView('list') }, '←'),
+			h('h2', {}, isNew ? 'Nouveau groupe' : 'Modifier le groupe')),
+		bookSelect ? h('label', { class: 'wm-field' }, h('span', {}, 'Carnet'), bookSelect) : null,
+		h('label', { class: 'wm-field' }, h('span', {}, 'Nom du groupe'), name),
+		h('div', { class: 'wm-field' }, h('span', {}, 'Ajouter'), core.attachAutocomplete(who),
+			h('button', { type: 'button', class: 'wm-small', onclick: addFromInput }, 'Ajouter')),
+		h('div', { class: 'wm-field wm-field-top' }, h('span', {}, 'Membres'), list),
+		err,
+		h('div', { class: 'wm-compose-actions' }, save,
+			h('button', { type: 'button', onclick: () => (isNew ? (renderEmpty(), core.setView('list')) : openContact(g.id)) }, 'Annuler'))))
+		name.focus()
 	}
 
 	/** Copy a read-only card (directory, shared) into the user's own contacts. */

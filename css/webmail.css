@@ -875,3 +875,9 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-signature-wrap { flex: 1; min-width: 0; }
 .wm-signature-editor { min-height: 90px; max-height: 260px; overflow: auto; }
 .wm-signature-editor img, .wm-editor .wm-signature img { max-width: 400px; height: auto; }
+
+/* Contact groups */
+.wm-new-group { width: 100%; margin: 0 0 8px !important; }
+.wm-group-edit { list-style: none; margin: 0; padding: 0; flex: 1; }
+.wm-group-edit li { display: flex; align-items: center; gap: 6px; padding: 2px 0; overflow-wrap: anywhere; }
+.wm-group-members { margin-top: 12px; }

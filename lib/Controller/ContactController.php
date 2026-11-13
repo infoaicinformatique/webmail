@@ -280,7 +280,8 @@ class ContactController extends Controller {
 					throw new MailException('Vous ne pouvez pas ajouter de contact dans ce carnet');
 				}
 			}
-			return ['id' => $this->contacts($id, $book)->createContact($contact, $book)];
+			$c = $this->contacts($id, $book);
+			return ['id' => !empty($contact['isGroup']) ? $c->createGroup($contact, $book) : $c->createContact($contact, $book)];
 		});
 	}
 
@@ -291,7 +292,12 @@ class ContactController extends Controller {
 	public function update(int $id, string $contactId, array $contact, string $book = ''): Response {
 		return $this->handle(function () use ($id, $contactId, $contact, $book) {
 			$this->assertKnownBook($id, $book);
-			$this->contacts($id, $book)->updateContact($contactId, $contact);
+			$c = $this->contacts($id, $book);
+			if (!empty($contact['isGroup'])) {
+				$c->updateGroup($contactId, $contact);
+			} else {
+				$c->updateContact($contactId, $contact);
+			}
 			return ['status' => 'ok'];
 		});
 	}
