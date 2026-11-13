@@ -413,12 +413,12 @@ class MailController extends Controller {
 	 * @param string[] $itemIds
 	 */
 	#[NoAdminRequired]
-	public function flags(int $id, array $itemIds, string $flag, bool $value): Response {
-		return $this->handle(function () use ($id, $itemIds, $flag, $value) {
+	public function flags(int $id, array $itemIds, string $flag, bool $value, string $due = ''): Response {
+		return $this->handle(function () use ($id, $itemIds, $flag, $value, $due) {
 			$client = $this->client($id);
 			match ($flag) {
 				'read' => $client->setRead($itemIds, $value),
-				'flagged' => $client->setFlagged($itemIds, $value),
+				'flagged' => $client->setFlagged($itemIds, $value, $due),
 				default => throw new MailException('Indicateur inconnu'),
 			};
 			if ($flag === 'read' && $value) {

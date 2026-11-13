@@ -273,13 +273,13 @@ def item_summary_xml(m, with_folder=False):
     display_to = '; '.join(n for n, _ in m['to'])
     return (('<t:Message><t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject><t:DateTimeReceived>%s</t:DateTimeReceived>'
             '<t:HasAttachments>%s</t:HasAttachments><t:Importance>%s</t:Importance><t:DisplayTo>%s</t:DisplayTo><t:Preview>%s</t:Preview>'
-            '<t:Flag><t:FlagStatus>%s</t:FlagStatus></t:Flag><t:IsRead>%s</t:IsRead><t:From>%s</t:From></t:Message>').replace('Message>', m.get('kind', 'Message') + '>')
+            '<t:Flag><t:FlagStatus>%s</t:FlagStatus>%s</t:Flag><t:IsRead>%s</t:IsRead><t:From>%s</t:From></t:Message>').replace('Message>', m.get('kind', 'Message') + '>')
             .replace('<t:Importance>', categories_xml(m) + '<t:Importance>', 1)
             .replace('<t:Subject>', ('<t:ParentFolderId Id="%s" ChangeKey="AQ"/>' % m['folder'] if with_folder else '') + '<t:Subject>', 1)
             % (m['id'], m['ck'], esc(m['subject']), m['date'],
                'true' if any(not ATTACHMENTS[a].get('inline') for a in m['attachments']) else 'false',
                m['importance'], esc(display_to), esc(text),
-               'Flagged' if m['flagged'] else 'NotFlagged', 'true' if m['is_read'] else 'false', mailbox(*m['sender'])))
+               'Flagged' if m['flagged'] else 'NotFlagged', flag_dates(m), 'true' if m['is_read'] else 'false', mailbox(*m['sender'])))
 
 
 def categories_xml(m):
@@ -312,6 +312,11 @@ def mime_of(m):
     msg['Date'] = m['date']
     msg.set_content(m['body'], subtype='html')
     return bytes(msg)
+
+
+def flag_dates(m):
+    due = m.get('flag_due') if m['flagged'] else None
+    return '<t:StartDate>%s</t:StartDate><t:DueDate>%s</t:DueDate>' % (due, due) if due else ''
 
 
 def headers_of(m):
@@ -357,12 +362,12 @@ def _item_full_xml(m):
     return ('<t:Message><t:ItemId Id="%s" ChangeKey="%s"/><t:ParentFolderId Id="%s" ChangeKey="AQ"/><t:Subject>%s</t:Subject>'
             '<t:Body BodyType="HTML" IsTruncated="false">%s</t:Body>%s<t:DateTimeReceived>%s</t:DateTimeReceived>'
             '<t:HasAttachments>%s</t:HasAttachments><t:Importance>%s</t:Importance><t:DateTimeSent>%s</t:DateTimeSent>'
-            '<t:Flag><t:FlagStatus>%s</t:FlagStatus></t:Flag><t:Sender>%s</t:Sender>%s%s<t:IsRead>%s</t:IsRead><t:From>%s</t:From>'
+            '<t:Flag><t:FlagStatus>%s</t:FlagStatus>%s</t:Flag><t:Sender>%s</t:Sender>%s%s<t:IsRead>%s</t:IsRead><t:From>%s</t:From>'
             '<t:InternetMessageId>&lt;%s@fake&gt;</t:InternetMessageId></t:Message>'
             % (m['id'], m['ck'], m['folder'], esc(m['subject']), esc(m['body']),
                '<t:Attachments>%s</t:Attachments>' % atts if atts else '', m['date'],
                'true' if m['attachments'] else 'false', m['importance'], m['date'],
-               'Flagged' if m['flagged'] else 'NotFlagged', mailbox(*m['sender']),
+               'Flagged' if m['flagged'] else 'NotFlagged', flag_dates(m), mailbox(*m['sender']),
                '<t:ToRecipients>%s</t:ToRecipients>' % to if to else '',
                ('<t:CcRecipients>%s</t:CcRecipients>' % cc if cc else '') + ('<t:BccRecipients>%s</t:BccRecipients>' % bcc if bcc else ''),
                'true' if m['is_read'] else 'false', mailbox(*m['sender']), m['id']))
@@ -741,6 +746,8 @@ def handle(op, el, user):
                 fs = upd.findtext('.//t:FlagStatus', default=None, namespaces=NS)
                 if fs is not None:
                     m['flagged'] = fs == 'Flagged'
+                    # the due date goes with the flag (Exchange drops it when the flag goes)
+                    m['flag_due'] = upd.findtext('.//t:Flag/t:DueDate', default=None, namespaces=NS) if fs == 'Flagged' else None
             m['ck'] = 'CK-%d' % next(COUNTER)
             msgs.append(ok(op, '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/></t:Message></m:Items><m:ConflictResults><t:Count>0</t:Count></m:ConflictResults>' % (m['id'], m['ck'])))
         return wrap(op, msgs)

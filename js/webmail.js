@@ -1286,6 +1286,7 @@
 				h('span', { class: 'wm-message-subject' }, m.subject || _('(sans objet)')),
 				categoryPills(m.categories),
 				m.hasAttachments ? h('span', { class: 'wm-attach-icon', title: _('Pièce jointe') }, '📎') : null,
+				flagDueBadge(m),
 				h('button', {
 					class: 'wm-flag' + (m.flagged ? ' on' : ''),
 					title: m.flagged ? _('Retirer le suivi') : _('Assurer un suivi'),
@@ -1564,13 +1565,13 @@
 	async function setFlagMany(ids) {
 		const items = state.messages.filter((m) => ids.includes(m.id))
 		const value = !items.every((m) => m.flagged)
-		const before = items.map((m) => [m.id, m.flagged])
-		items.forEach((m) => updateListItem(m.id, { flagged: value }))
+		const before = items.map((m) => [m.id, { flagged: !!m.flagged, flagDue: m.flagDue || null }])
+		items.forEach((m) => updateListItem(m.id, value ? { flagged: true } : { flagged: false, flagDue: null }))
 		clearChecked()
 		try {
 			await api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: ids, flag: 'flagged', value } })
 		} catch (e) {
-			before.forEach(([id, v]) => updateListItem(id, { flagged: v }))
+			before.forEach(([id, v]) => updateListItem(id, v))
 			toast(e.message, true)
 		}
 	}
@@ -1793,6 +1794,12 @@
 	}
 
 	/** Update one message of the list in place (no full redraw: no flicker, scroll kept). */
+	/** « Demain », « En retard »… next to the flag of a message in the list. */
+	function flagDueBadge(m) {
+		if (!m.flagged || !m.flagDue) return null
+		return h('span', { class: 'wm-flag-due' + (m.flagDue < ymdLocal(new Date()) ? ' late' : ''), title: _('Échéance du suivi') }, flagDueLabel(m.flagDue))
+	}
+
 	function updateListItem(id, changes) {
 		const m = state.messages.find((x) => x.id === id)
 		if (!m) return
@@ -1810,6 +1817,10 @@
 		if (flag) {
 			flag.classList.toggle('on', !!m.flagged)
 			flag.title = m.flagged ? _('Retirer le suivi') : _('Assurer un suivi')
+			const old = li.querySelector('.wm-flag-due')
+			if (old) old.remove()
+			const badge = flagDueBadge(m)
+			if (badge) flag.before(badge)
 		}
 		saveListCache()
 	}
@@ -1824,25 +1835,101 @@
 	}
 
 	/** Applied at once, undone if Exchange refuses. */
+	/** Y-m-d of a local date. */
+	function ymdLocal(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
+
+	/** « En retard », « Aujourd'hui », « Demain », « ven. 20 nov. »: when a flagged message is due. */
+	function flagDueLabel(due) {
+		if (!due) return ''
+		const now = new Date()
+		const today = ymdLocal(now)
+		if (due < today) return _('En retard')
+		if (due === today) return _('Aujourd\'hui')
+		if (due === ymdLocal(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))) return _('Demain')
+		return new Date(due + 'T12:00').toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' })
+	}
+
+	function flagButtonText(m) {
+		if (!m.flagged) return '⚑ ' + _('Suivi')
+		return '⚑ ' + _('Suivi') + (m.flagDue ? ' : ' + flagDueLabel(m.flagDue) : ' ✓')
+	}
+
+	/** The choices of Outlook's flag menu: today, tomorrow, this week (Friday), next week (its Friday). */
+	function flagChoices() {
+		const now = new Date()
+		const day = (n) => ymdLocal(new Date(now.getFullYear(), now.getMonth(), now.getDate() + n))
+		const wd = now.getDay() // 0 = Sunday
+		const toNextMonday = ((8 - wd) % 7) || 7
+		return [
+			['today', _('Aujourd\'hui'), day(0)],
+			['tomorrow', _('Demain'), day(1)],
+			// « this week » only while there is some of it left before Friday
+			wd >= 1 && wd <= 3 ? ['week', _('Cette semaine'), day(5 - wd)] : null,
+			['nextweek', _('La semaine prochaine'), day(toNextMonday + 4)],
+			['nodate', _('Sans date'), ''],
+		].filter(Boolean)
+	}
+
 	async function toggleFlag(m) {
-		const value = !m.flagged
+		return setFlag(m, !m.flagged, '')
+	}
+
+	/** Flag (with a due date, or '' for none) or unflag a message, at once on screen. */
+	async function setFlag(m, value, due) {
+		const before = { flagged: !!m.flagged, flagDue: m.flagDue || null }
+		const after = { flagged: value, flagDue: value && due ? due : null }
 		const apply = (v) => {
-			updateListItem(m.id, { flagged: v })
+			updateListItem(m.id, v)
 			const cached = msgCache.get(msgKey(m.id))
-			if (cached) cached.flagged = v
+			if (cached) Object.assign(cached, v)
 			if (state.current && state.current.id === m.id) {
-				state.current.flagged = v
+				Object.assign(state.current, v)
 				const btn = detailEl.querySelector('.wm-flag-btn')
-				if (btn) { btn.classList.toggle('on', v); btn.textContent = v ? '⚑ ' + _('Suivi') + ' ✓' : '⚑ ' + _('Suivi') }
+				if (btn) { btn.classList.toggle('on', !!v.flagged); btn.textContent = flagButtonText(state.current) }
 			}
 		}
-		apply(value)
+		apply(after)
 		try {
-			await api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: [m.id], flag: 'flagged', value } })
+			await api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: [m.id], flag: 'flagged', value, due: after.flagDue || '' } })
 		} catch (e) {
-			apply(!value)
+			apply(before)
 			toast(e.message, true)
 		}
+	}
+
+	/** Outlook's flag menu: a due date for the follow-up, or none, or no more follow-up. */
+	function flagMenu(anchor, m) {
+		document.querySelectorAll('.wm-cat-menu').forEach((x) => x.remove())
+		const menu = h('div', { class: 'wm-cat-menu wm-flag-menu', role: 'menu', 'aria-label': _('Échéance du suivi') })
+		const close = () => { menu.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', esc, true); if (anchor.isConnected) anchor.focus() }
+		const outside = (e) => { if (!menu.contains(e.target) && e.target !== anchor) close() }
+		const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close() } }
+		document.addEventListener('mousedown', outside, true)
+		document.addEventListener('keydown', esc, true)
+		const pick = (due) => { close(); setFlag(m, true, due) }
+		menu.appendChild(h('div', { class: 'wm-cat-title' }, _('Assurer un suivi')))
+		flagChoices().forEach(([key, label, due]) => menu.appendChild(h('button', {
+			type: 'button',
+			role: 'menuitem',
+			class: 'wm-flag-choice' + (m.flagged && (m.flagDue || '') === due ? ' current' : ''),
+			dataset: { choice: key },
+			onclick: () => pick(due),
+		}, h('span', {}, label), due ? h('span', { class: 'wm-muted' }, new Date(due + 'T12:00').toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' })) : null)))
+		const date = h('input', { type: 'date', name: 'flagDue', 'aria-label': _('Date personnalisée'), min: ymdLocal(new Date()) })
+		if (m.flagDue) date.value = m.flagDue
+		menu.appendChild(h('form', {
+			class: 'wm-flag-custom',
+			onsubmit: (e) => { e.preventDefault(); if (date.value) pick(date.value) },
+		}, date, h('button', { type: 'submit', class: 'primary' }, _('OK'))))
+		if (m.flagged) {
+			menu.appendChild(h('button', { type: 'button', role: 'menuitem', class: 'wm-flag-choice', dataset: { choice: 'clear' }, onclick: () => { close(); setFlag(m, false, '') } }, '✕ ' + _('Retirer le suivi')))
+		}
+		document.body.appendChild(menu)
+		const r = anchor.getBoundingClientRect()
+		menu.style.top = Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8) + 'px'
+		menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px'
+		const first = menu.querySelector('button')
+		if (first) first.focus()
 	}
 
 	// ------------------------------------------------------------------
@@ -1969,7 +2056,9 @@
 			h('button', { onclick: () => openCompose('replyAll', m) }, '↩↩ ' + _('Répondre à tous')),
 			h('button', { onclick: () => openCompose('forward', m) }, '↪ ' + _('Transférer')),
 			h('button', { onclick: () => markUnread(m) }, _('Non lu')),
-			h('button', { class: m.flagged ? 'wm-flag-btn on' : 'wm-flag-btn', onclick: () => toggleFlag(m) }, m.flagged ? '⚑ ' + _('Suivi') + ' ✓' : '⚑ ' + _('Suivi')),
+			h('span', { class: 'wm-split' },
+				h('button', { class: m.flagged ? 'wm-flag-btn on' : 'wm-flag-btn', onclick: () => toggleFlag(m) }, flagButtonText(m)),
+				h('button', { class: 'wm-flag-menu-btn', title: _('Échéance du suivi'), 'aria-label': _('Échéance du suivi'), 'aria-haspopup': 'menu', onclick: (e) => flagMenu(e.currentTarget, m) }, '▾')),
 			moveSelect,
 			h('button', { class: 'wm-danger', onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
 			junkButton([m.id], role),

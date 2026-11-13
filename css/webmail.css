@@ -931,3 +931,16 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 .wm-headers-all table { border-collapse: collapse; width: 100%; table-layout: fixed; font-family: var(--font-face-monospace, monospace); font-size: 0.85em; }
 .wm-headers-all th, .wm-headers-all td { text-align: start; vertical-align: top; padding: 3px 6px; border-bottom: 1px solid var(--color-border); overflow-wrap: anywhere; }
 .wm-headers-all th { width: 34%; }
+
+/* follow-up flag with a due date */
+.wm-split { display: inline-flex; }
+.wm-split > .wm-flag-btn { border-start-end-radius: 0; border-end-end-radius: 0; margin-inline-end: 0; }
+.wm-split > .wm-flag-menu-btn { border-start-start-radius: 0; border-end-start-radius: 0; margin-inline-start: 1px; padding-inline: 8px; }
+.wm-flag-due { font-size: 0.8em; padding: 0 6px; border-radius: var(--border-radius-pill, 10px); background: var(--color-background-dark); color: var(--color-text-maxcontrast); white-space: nowrap; }
+.wm-flag-due.late { background: var(--color-error); color: #fff; }
+.wm-flag-menu { width: 250px; display: flex; flex-direction: column; gap: 2px; }
+.wm-flag-choice { display: flex; justify-content: space-between; gap: 8px; width: 100%; text-align: start; margin: 0; background: transparent; border: none; }
+.wm-flag-choice:hover, .wm-flag-choice:focus-visible { background: var(--color-background-hover); }
+.wm-flag-choice.current { font-weight: bold; }
+.wm-flag-custom { display: flex; gap: 6px; margin: 6px 0 2px; }
+.wm-flag-custom input { flex: 1; min-width: 0; }

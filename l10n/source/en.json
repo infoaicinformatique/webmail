@@ -1143,5 +1143,12 @@
 	"En-têtes copiés": "Headers copied",
 	"Copie impossible : sélectionnez le texte et copiez-le": "Cannot copy: select the text and copy it",
 	"Copier les en-têtes": "Copy the headers",
-	"Tous les en-têtes ({n})": "All headers ({n})"
+	"Tous les en-têtes ({n})": "All headers ({n})",
+	"En retard": "Overdue",
+	"Cette semaine": "This week",
+	"La semaine prochaine": "Next week",
+	"Sans date": "No date",
+	"Échéance du suivi": "Follow-up due date",
+	"Date personnalisée": "Custom date",
+	"OK": "OK"
 }
