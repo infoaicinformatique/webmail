@@ -3512,8 +3512,8 @@ async function main() {
 		}
 		// an ordinary message: nothing
 		await page.click('.wm-folder >> nth=0')
-		await page.click('.wm-message:has-text("Réunion de lundi")')
-		await page.waitForSelector('.wm-message-header h2:has-text("Réunion de lundi")')
+		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
 		assert.strictEqual(await page.$('.wm-unsub-banner'), null)
 		// a page to open only: in a new tab, nothing sent
 		await page.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(u); return null } })
