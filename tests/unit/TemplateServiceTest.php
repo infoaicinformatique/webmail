@@ -21,7 +21,11 @@ class TemplateServiceTest extends TestCase {
 
 	public function testCleanedLikeASignature(): void {
 		$t = TemplateService::put([], null, 'Piège', '<p onclick="x()">Bonjour</p><script>alert(1)</script><!--><img src=x onerror=alert(1)>-->', 'A')[0];
-		$this->assertSame('<p>Bonjour</p>', $t['html']);
+		// (libxml versions differ on « <!--> »: what remains must be harmless, not a given text)
+		$this->assertStringStartsWith('<p>Bonjour</p>', $t['html']);
+		foreach (['onclick', 'onerror', '<script', 'src=', '<!--'] as $bad) {
+			$this->assertStringNotContainsString($bad, $t['html']);
+		}
 		// plain text becomes HTML, an image alone is a template too
 		$this->assertStringContainsString('Ligne 1<br>', TemplateService::put([], null, 'Texte', "Ligne 1\nLigne 2", 'A')[0]['html']);
 		$this->assertStringContainsString('<img', TemplateService::put([], null, 'Logo', '<img src="data:image/png;base64,iVBORw0KGgo=">', 'A')[0]['html']);
