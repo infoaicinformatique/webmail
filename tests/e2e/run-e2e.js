@@ -3513,11 +3513,13 @@ async function main() {
 			await page.waitForSelector('.wm-messages .wm-message')
 		}
 		const row = '.wm-messages .wm-message:has-text("Devis pour la maintenance annuelle")'
-		const look = () => page.$eval(row, (li) => ({
-			preview: getComputedStyle(li.querySelector('.wm-message-preview')).display,
-			display: getComputedStyle(li).display,
-			height: li.getBoundingClientRect().height,
-		}))
+		// (the row on screen now: a refresh of the list may replace it between two calls)
+		const look = async () => (await page.waitForFunction(() => {
+			const li = [...document.querySelectorAll('.wm-messages .wm-message')].find((e) => e.textContent.includes('Devis pour la maintenance annuelle'))
+			const height = li ? li.getBoundingClientRect().height : 0
+			if (!height) return null
+			return { preview: getComputedStyle(li.querySelector('.wm-message-preview')).display, display: getComputedStyle(li).display, height }
+		})).jsonValue()
 		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector(row)
 		const comfortable = await look()
@@ -3531,7 +3533,10 @@ async function main() {
 		assert.strictEqual(line.display, 'flex')
 		assert.ok(line.height < compact.height, JSON.stringify([compact, line]))
 		// the date at the end of the line, after the subject
-		const [subject, date] = await page.$eval(row, (li) => [li.querySelector('.wm-message-subject').getBoundingClientRect().right, li.querySelector('.wm-message-date').getBoundingClientRect().left])
+		const [subject, date] = await (await page.waitForFunction(() => {
+			const li = [...document.querySelectorAll('.wm-messages .wm-message')].find((e) => e.textContent.includes('Devis pour la maintenance annuelle'))
+			return li && li.getBoundingClientRect().height ? [li.querySelector('.wm-message-subject').getBoundingClientRect().right, li.querySelector('.wm-message-date').getBoundingClientRect().left] : null
+		})).jsonValue()
 		assert.ok(date >= subject, subject + ' / ' + date)
 		await shot('87-one-line')
 		// kept after a reload
