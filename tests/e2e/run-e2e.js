@@ -686,7 +686,7 @@ async function main() {
 		await page.hover(row('Boîte de réception'))
 		await page.click(row('Boîte de réception') + ' .wm-folder-menu-btn')
 		const items = await page.$$eval('.wm-folder-menu button', (els) => els.map((e) => e.textContent))
-		assert.deepStrictEqual(items, ['＋ Nouveau sous-dossier', '📥 Importer des messages (.eml)…'])
+		assert.deepStrictEqual(items, ['★ Ajouter aux favoris', '＋ Nouveau sous-dossier', '📥 Importer des messages (.eml)…'])
 		await page.keyboard.press('Escape')
 		await page.click(row('Boîte de réception') + ' .wm-folder')
 		await page.waitForSelector('.wm-message')
@@ -2776,6 +2776,33 @@ async function main() {
 		await page.waitForSelector('.wm-settings h2:has-text("Comptes Exchange")')
 	})
 
+	await step('tasks: what is typed in « Ajouter une tâche » stays when the list is refreshed meanwhile', async () => {
+		// the tasks shown at once from the cache, the fresh list held back 1.5 s
+		let fetched = false
+		const hold = async (route) => {
+			const response = await route.fetch()
+			fetched = true
+			await new Promise((r) => setTimeout(r, 1500))
+			await route.fulfill({ response })
+		}
+		await page.route('**/api/accounts/*/tasks?*', hold)
+		try {
+			await page.click('.wm-tab[data-module="tasks"]')
+			await page.waitForSelector('input[name=quickTask]')
+			for (let i = 0; i < 100 && !fetched; i++) await page.waitForTimeout(50)
+			await page.click('input[name=quickTask]')
+			await page.keyboard.type('Brouillon de tâche')
+			// the fresh list arrives: the field is still there, with its text and the focus
+			await page.waitForTimeout(1800)
+			assert.strictEqual(await page.inputValue('input[name=quickTask]'), 'Brouillon de tâche')
+			assert.ok(await page.$eval('input[name=quickTask]', (e) => document.activeElement === e))
+		} finally {
+			await page.unroute('**/api/accounts/*/tasks?*', hold)
+		}
+		await page.fill('input[name=quickTask]', '')
+		await page.click('.wm-tab[data-module="mail"]')
+	})
+
 	await step('tasks: add, edit, complete and delete an Exchange task', async () => {
 		await page.click('.wm-tab[data-module="tasks"]')
 		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
@@ -3313,6 +3340,62 @@ async function main() {
 		await inbox()
 	})
 
+	await step('forward as attachment: one message as an .eml, several from the selection', async () => {
+		const msg = (n) => '.wm-message:has(.wm-message-subject:text-is("Newsletter n°' + n + '"))'
+		await page.click('.wm-folder >> nth=0')
+		await page.click(msg(25))
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°25")')
+		await page.click('.wm-toolbar .wm-forward-attach')
+		await page.waitForSelector('.wm-compose .wm-compose-attachments li:has-text("Newsletter n°25.eml")')
+		assert.strictEqual(await page.inputValue('.wm-compose input[name=subject]'), 'TR : Newsletter n°25')
+		await page.fill('input[name=to]', 'paul@societe-a.fr')
+		await page.fill('.wm-editor', 'Pour info, la lettre de la semaine.')
+		await submitCompose()
+		// sent with the message attached
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.click('.wm-message:has-text("TR : Newsletter n°25")')
+		await page.waitForSelector('.wm-attachment-name:has-text("Newsletter n°25.eml")')
+		// several, from the selection: one new message, each attached
+		await page.click('.wm-folder >> nth=0')
+		await page.click(msg(26) + ' .wm-check')
+		await page.click(msg(27) + ' .wm-check')
+		await page.click('.wm-bulk .wm-forward-attach')
+		await page.waitForSelector('.wm-compose .wm-compose-attachments li:has-text("Newsletter n°27.eml")')
+		await page.waitForSelector('.wm-compose .wm-compose-attachments li:has-text("Newsletter n°26.eml")')
+		assert.strictEqual(await page.inputValue('.wm-compose input[name=subject]'), 'TR : 2 messages')
+		await shot('89-forward-attachment')
+		await page.waitForSelector('.wm-draft-status:has-text("Pièces jointes enregistrées dans le brouillon")')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-compose button:has-text("Supprimer le brouillon")')
+		await page.waitForSelector('.wm-toast:has-text("Brouillon supprimé")')
+		await page.click('.wm-folder >> nth=0')
+	})
+
+	await step('favorites: a folder pinned at the top of the pane, kept, then removed', async () => {
+		const tree = '.wm-folders:not(.wm-favorites) .wm-folder-row:has(.wm-folder-name:text-is("Clients"))'
+		await page.click('.wm-folder >> nth=0')
+		assert.strictEqual(await page.$('.wm-favorites'), null)
+		await page.click(tree + ' .wm-folder-menu-btn')
+		await page.click('.wm-folder-menu-item:has-text("Ajouter aux favoris")')
+		await page.waitForSelector('.wm-toast:has-text("« Clients » ajouté aux favoris")')
+		await page.waitForSelector('.wm-nav-section:text-is("Favoris")')
+		// one click away: its messages
+		await page.click('.wm-favorites .wm-folder:has-text("Clients")')
+		await page.waitForSelector('.wm-message:has-text("Photos du chantier")')
+		assert.ok(await page.$eval('.wm-favorites .wm-folder', (a) => a.classList.contains('active')))
+		await shot('88-favorites')
+		// kept after a reload; the menu offers to remove it
+		await page.reload()
+		await page.waitForSelector('.wm-favorites .wm-folder:has-text("Clients")')
+		await page.click(tree + ' .wm-folder-menu-btn')
+		await page.waitForSelector('.wm-folder-menu-item:has-text("Retirer des favoris")')
+		await page.keyboard.press('Escape')
+		await page.click('.wm-favorites .wm-unfavorite')
+		await page.waitForSelector('.wm-toast:has-text("« Clients » retiré des favoris")')
+		await page.locator('.wm-favorites').waitFor({ state: 'detached' })
+		await page.click('.wm-folder >> nth=0')
+	})
+
 	await step('Internet headers: the SPF, DKIM and DMARC checks, the way of the message, every header', async () => {
 		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
@@ -3516,6 +3599,49 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('display: compact list, one line per message, kept, back to comfortable', async () => {
+		const setDensity = async (v) => {
+			await page.click('text=Comptes et signature')
+			await page.selectOption('select[name=density]', v)
+			await page.waitForSelector('.wm-toast:has-text("Affichage enregistré")')
+			await page.click('.wm-folder >> nth=0')
+			await page.waitForSelector('.wm-messages .wm-message')
+		}
+		const row = '.wm-messages .wm-message:has-text("Devis pour la maintenance annuelle")'
+		// (the row on screen now: a refresh of the list may replace it between two calls)
+		const look = async () => (await page.waitForFunction(() => {
+			const li = [...document.querySelectorAll('.wm-messages .wm-message')].find((e) => e.textContent.includes('Devis pour la maintenance annuelle'))
+			const height = li ? li.getBoundingClientRect().height : 0
+			if (!height) return null
+			return { preview: getComputedStyle(li.querySelector('.wm-message-preview')).display, display: getComputedStyle(li).display, height }
+		})).jsonValue()
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector(row)
+		const comfortable = await look()
+		assert.notStrictEqual(comfortable.preview, 'none')
+		await setDensity('compact')
+		const compact = await look()
+		assert.strictEqual(compact.preview, 'none')
+		assert.ok(compact.height < comfortable.height, JSON.stringify([comfortable, compact]))
+		await setDensity('line')
+		const line = await look()
+		assert.strictEqual(line.display, 'flex')
+		assert.ok(line.height < compact.height, JSON.stringify([compact, line]))
+		// the date at the end of the line, after the subject
+		const [subject, date] = await (await page.waitForFunction(() => {
+			const li = [...document.querySelectorAll('.wm-messages .wm-message')].find((e) => e.textContent.includes('Devis pour la maintenance annuelle'))
+			return li && li.getBoundingClientRect().height ? [li.querySelector('.wm-message-subject').getBoundingClientRect().right, li.querySelector('.wm-message-date').getBoundingClientRect().left] : null
+		})).jsonValue()
+		assert.ok(date >= subject, subject + ' / ' + date)
+		await shot('87-one-line')
+		// kept after a reload
+		await page.reload()
+		await page.waitForSelector(row)
+		assert.ok(await page.$eval('#webmail-app', (e) => e.classList.contains('wm-density-line')))
+		await setDensity('comfortable')
+		assert.notStrictEqual((await look()).preview, 'none')
+	})
+
 	await step('trusted senders: « Toujours pour… » shows a sender\'s remote images at once, until removed', async () => {
 		const row = '.wm-message:has-text("Devis pour la maintenance annuelle")'
 		const tracker = () => page.evaluate(() => !!document.querySelector('.wm-body-frame').contentDocument.querySelector('img[src*="tracker.example"]'))
@@ -3580,6 +3706,35 @@ async function main() {
 		await page.waitForSelector('.wm-message:has-text("Desinscription lettre d\'info")')
 	})
 
+	await step('sort: « Trier par » subject, size, then back to the date (kept after a reload)', async () => {
+		const subjects = () => page.$$eval('.wm-messages .wm-message-subject', (els) => els.map((e) => e.textContent))
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-list-period')
+		await page.selectOption('.wm-sort', 'subject-asc')
+		await page.waitForFunction(() => !document.querySelector('.wm-list-period') && document.querySelector('.wm-messages .wm-message'))
+		await page.waitForFunction(() => {
+			const s = [...document.querySelectorAll('.wm-messages .wm-message-subject')].map((e) => e.textContent.toLowerCase())
+			return s.length > 3 && s.every((x, i) => i === 0 || s[i - 1] <= x)
+		})
+		const sorted = await subjects()
+		assert.ok(sorted[0].toLowerCase() <= sorted[1].toLowerCase(), sorted.slice(0, 5).join(' | '))
+		// kept: a reload shows the same order
+		await page.reload()
+		await page.waitForSelector('.wm-messages .wm-message')
+		assert.strictEqual(await page.$eval('.wm-sort', (e) => e.value), 'subject-asc')
+		await page.waitForFunction((first) => document.querySelector('.wm-messages .wm-message-subject').textContent === first, sorted[0])
+		// the largest first, its size where the date was
+		await page.selectOption('.wm-sort', 'size-desc')
+		await page.waitForSelector('.wm-messages .wm-message:first-child .wm-message-subject:text-is("Devis pour la maintenance annuelle")')
+		const size = await page.textContent('.wm-messages .wm-message:first-child .wm-message-date')
+		assert.ok(/\d.*(o|Ko|Mo)$/.test(size.trim()), size)
+		await shot('86-sort')
+		// back to the date: the headings again
+		await page.selectOption('.wm-sort', 'date-desc')
+		await page.waitForSelector('.wm-list-period')
+		assert.ok(!(await page.$eval('.wm-sort', (e) => e.classList.contains('active'))))
+	})
+
 	await step('recent recipients: the people written to come first in the completion, from the first letter', async () => {
 		await page.click('.wm-folder >> nth=0')
 		await page.click('.wm-compose-btn')
@@ -3610,6 +3765,42 @@ async function main() {
 		}
 		await page.click('.wm-compose button:has-text("Annuler")')
 		await page.waitForSelector('.wm-compose', { state: 'detached' })
+	})
+
+	await step('list: an answer asked for before a change, arriving after it, does not undo it', async () => {
+		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°30"))'
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector(row + ':not(.unread)')
+		// the next list answer held back 1.5 s (a slow Exchange)
+		let held = 0
+		let fetched = false
+		const hold = async (route) => {
+			held++
+			// asked now, answered late: the answer is the folder as it was before the change
+			const response = await route.fetch()
+			fetched = true
+			await new Promise((r) => setTimeout(r, 1500))
+			await route.fulfill({ response })
+		}
+		await page.route('**/api/accounts/*/messages?*', hold)
+		try {
+			await page.click('.wm-list-header button[title="Actualiser"]')
+			for (let i = 0; i < 100 && !fetched; i++) await page.waitForTimeout(50)
+			assert.ok(fetched, 'the list asked for')
+			// meanwhile: marked unread
+			await page.click(row + ' .wm-check')
+			await page.click('.wm-bulk button:has-text("Non lu")')
+			await page.waitForSelector(row + '.unread')
+			await page.waitForFunction(() => !document.querySelector('.wm-list .icon-loading'))
+			await page.waitForTimeout(1800)
+			assert.ok(held > 0, 'a list answer was held back')
+			assert.ok(await page.$(row + '.unread'), 'still unread after the late answer')
+		} finally {
+			await page.unroute('**/api/accounts/*/messages?*', hold)
+		}
+		await page.click(row + ' .wm-check')
+		await page.click('.wm-bulk button:text-is("Lu")')
+		await page.waitForSelector(row + ':not(.unread)')
 	})
 
 	await step('touch: a message swiped to the right is read / unread, to the left goes to the trash (with « Annuler »)', async () => {

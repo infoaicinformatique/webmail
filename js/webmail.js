@@ -32,6 +32,8 @@
 		showFilters: false,
 		// the list grouped by conversation (one row each), remembered
 		grouped: (() => { try { return localStorage.getItem('webmail.grouped') === '1' } catch (e) { return false } })(),
+		/** « Trier par »: « date-desc » (the default), « from-asc », « subject-asc », « size-desc »… */
+		sort: (() => { try { return localStorage.getItem('webmail.sort') || 'date-desc' } catch (e) { return 'date-desc' } })(),
 		selectedId: null,
 		checked: new Set(), // messages ticked for a grouped action
 		current: null, // opened message
@@ -69,7 +71,17 @@
 	let listSeq = 0
 	let listObserver = null
 
-	const listKey = () => state.accountId + '|' + state.folderId + (grouped() ? '|conversations' : '')
+	const listKey = () => state.accountId + '|' + state.folderId + (grouped() ? '|conversations' : (state.sort !== 'date-desc' ? '|' + state.sort : ''))
+	/** The orders offered: value, label. */
+	const SORTS = [
+		['date-desc', () => _('Plus récents')],
+		['date-asc', () => _('Plus anciens')],
+		['from-asc', () => _('Expéditeur (A → Z)')],
+		['from-desc', () => _('Expéditeur (Z → A)')],
+		['subject-asc', () => _('Objet (A → Z)')],
+		['size-desc', () => _('Plus volumineux')],
+	]
+	const sortField = () => (SORTS.some(([v]) => v === state.sort) ? state.sort : 'date-desc').split('-')
 	/** The list shows conversations (not while searching: the results are messages). */
 	const grouped = () => state.grouped && !isSearching()
 	const listEndpoint = () => '/accounts/' + state.accountId + (grouped() ? '/conversations' : '/messages')
@@ -77,6 +89,30 @@
 	const filtersOn = () => ['unread', 'attachments', 'flagged', 'since'].filter((k) => state.filters[k]).length
 	/** a search or a filter is active: the list is not the folder's content */
 	const isSearching = () => !!state.query || filtersOn() > 0
+
+	/**
+	 * Changes made here to messages of the list (read, flag, categories…, or taken out of it), with
+	 * their time: a list asked for before them, answered after, must not undo them on screen.
+	 * id -> { changes, at }
+	 */
+	const localEdits = new Map()
+	const LOCAL_EDIT_TTL = 120000
+	function noteEdit(id, changes) {
+		const e = localEdits.get(id)
+		localEdits.set(id, { changes: Object.assign(e ? e.changes : {}, changes), at: Date.now() })
+	}
+	/** The list items of an answer to a request sent at $sentAt, with the changes made since. */
+	function withLocalEdits(items, sentAt) {
+		const now = Date.now()
+		localEdits.forEach((e, id) => { if (now - e.at > LOCAL_EDIT_TTL) localEdits.delete(id) })
+		const after = (m) => { const e = localEdits.get(m.id); return e && e.at >= sentAt ? e.changes : null }
+		return items.filter((m) => { const c = after(m); return !(c && c.gone) }).map((m) => {
+			const c = after(m)
+			if (!c) return m
+			const { gone, ...rest } = c
+			return Object.assign(m, rest)
+		})
+	}
 
 	function resetSearch() {
 		state.query = ''
@@ -128,6 +164,8 @@
 			flagged: f.flagged ? 1 : undefined,
 			since: since ? since.getFullYear() + '-' + String(since.getMonth() + 1).padStart(2, '0') + '-' + String(since.getDate()).padStart(2, '0') : undefined,
 			scope: f.all && isSearching() ? 'all' : undefined,
+			sort: state.sort !== 'date-desc' && sortField()[0] !== 'date' ? sortField()[0] : undefined,
+			order: state.sort === 'date-desc' ? undefined : sortField()[1],
 		}
 	}
 	const msgKey = (id) => state.accountId + '|' + id
@@ -861,6 +899,36 @@
 		const sel = accountSelector()
 		if (sel) navEl.appendChild(sel)
 
+		// the favorite folders first (those still there), one click away whatever the depth
+		const favs = favorites().map((id) => state.folders.find((f) => f.id === id)).filter(Boolean)
+		if (favs.length) {
+			const favUl = h('ul', { class: 'wm-folders wm-favorites', 'aria-label': _('Favoris') })
+			favs.forEach((f) => {
+				const active = f.id === state.folderId || f.role === state.folderId
+				const link = h('a', {
+					href: '#',
+					class: 'wm-folder' + (active ? ' active' : '') + (f.unread ? ' has-unread' : ''),
+					onclick: (e) => { e.preventDefault(); selectFolder(f.id) },
+					dataset: { folderId: f.id },
+				},
+				h('span', { class: 'wm-folder-icon', 'aria-hidden': 'true' }, '★'),
+				h('span', { class: 'wm-folder-name' }, f.name),
+				f.unread && f.role !== 'sentitems' && f.role !== 'deleteditems' ? h('span', { class: 'wm-badge' }, String(f.unread)) : null)
+				folderDropTarget(link, f)
+				favUl.appendChild(h('li', { class: 'wm-folder-row' }, link,
+					h('button', {
+						type: 'button',
+						class: 'wm-folder-menu-btn wm-unfavorite',
+						title: _('Retirer des favoris'),
+						'aria-label': _('Retirer {name} des favoris', { name: f.name }),
+						onclick: (e) => { e.stopPropagation(); setFavorite(f, false) },
+					}, '✕')))
+			})
+			navEl.appendChild(h('div', { class: 'wm-nav-section' }, _('Favoris')))
+			navEl.appendChild(favUl)
+			navEl.appendChild(h('div', { class: 'wm-nav-section' }, _('Dossiers')))
+		}
+
 		const ul = h('ul', { class: 'wm-folders' })
 		const byParent = {}
 		state.folders.forEach((f) => { (byParent[f.parentId || ''] = byParent[f.parentId || ''] || []).push(f) })
@@ -1269,12 +1337,14 @@
 			}
 		}
 		try {
+			const sentAt = Date.now()
 			const data = await api(listEndpoint(), {
 				query: listQuery(reset ? 0 : state.messages.length, limit),
 			})
 			// a newer load (another folder, a search) replaced this one; the folder id
 			// itself may change meanwhile ("inbox" becomes its real id)
 			if (seq !== listSeq) return
+			data.items = withLocalEdits(data.items, sentAt)
 			state.messages = reset ? data.items : state.messages.concat(data.items)
 			state.total = data.total
 			state.hasMore = data.hasMore
@@ -1354,11 +1424,12 @@
 		if (state.messages.length <= 100 && !state.loadingList) {
 			const seq = listSeq
 			try {
+				const sentAt = Date.now()
 				const data = await api(listEndpoint(), {
 					query: listQuery(0, Math.max(PAGE_SIZE, state.messages.length)),
 				})
 				if (seq !== listSeq || state.module !== 'mail') return
-				state.messages = data.items
+				state.messages = withLocalEdits(data.items, sentAt)
 				state.total = data.total
 				state.hasMore = data.hasMore
 				renderList(false)
@@ -1411,6 +1482,17 @@
 			'aria-expanded': state.showFilters ? 'true' : 'false',
 			onclick: () => { state.showFilters = !state.showFilters; renderList(state.loadingList && !state.messages.length) },
 		}, '⏷' + (filtersOn() ? ' ' + filtersOn() : '')),
+		state.grouped ? null : h('select', {
+			class: 'wm-sort' + (state.sort !== 'date-desc' ? ' active' : ''),
+			title: _('Trier par'),
+			'aria-label': _('Trier par'),
+			onchange: (e) => {
+				state.sort = e.target.value
+				try { localStorage.setItem('webmail.sort', state.sort) } catch (ex) { /* not kept */ }
+				state.checked.clear()
+				loadMessages(true)
+			},
+		}, SORTS.map(([v, label]) => h('option', { value: v, selected: v === state.sort }, label()))),
 		h('button', {
 			type: 'button',
 			class: 'wm-icon-btn wm-group-toggle' + (state.grouped ? ' active' : ''),
@@ -1464,10 +1546,13 @@
 		const conv = grouped()
 		const ul = h('ul', { class: 'wm-messages' + (conv ? ' wm-conversations' : ''), role: 'list' })
 		// « Aujourd'hui », « Hier », « Cette semaine »…: a heading where the period changes
+		// (only in date order; sorted otherwise, the size where the date usually is)
+		const byDate = conv || sortField()[0] === 'date'
+		const bySize = !conv && sortField()[0] === 'size'
 		const period = dayPeriods()
 		let lastPeriod = null
 		state.messages.forEach((m) => {
-			const p = period(m.date)
+			const p = byDate ? period(m.date) : null
 			if (p && p !== lastPeriod) {
 				lastPeriod = p
 				ul.appendChild(h('li', { class: 'wm-list-period', role: 'presentation' }, p))
@@ -1516,7 +1601,7 @@
 				h('span', { class: 'wm-message-from' }, who),
 				conv && m.count > 1 ? h('span', { class: 'wm-thread-count', title: !m.unreadCount ? _('{count} messages', { count: m.count }) : m.unreadCount > 1 ? _('{count} messages, dont {unread} non lus', { count: m.count, unread: m.unreadCount }) : _('{count} messages, dont {unread} non lu', { count: m.count, unread: m.unreadCount }) }, String(m.count)) : null,
 				m.folderId && state.filters.all ? h('span', { class: 'wm-message-folder' }, folderName(m.folderId)) : null,
-				h('span', { class: 'wm-message-date' }, formatDate(m.date))),
+				h('span', { class: 'wm-message-date' }, bySize && m.size ? formatSize(m.size) : formatDate(m.date))),
 			h('div', { class: 'wm-message-line2' },
 				m.importance === 'High' ? h('span', { class: 'wm-important', title: _('Importance haute') }, '❗') : null,
 				h('span', { class: 'wm-message-subject' }, m.subject || _('(sans objet)')),
@@ -1627,6 +1712,12 @@
 			h('button', { type: 'button', class: 'wm-small', onclick: () => setReadMany(ids(), false) }, _('Non lu')),
 			h('button', { type: 'button', class: 'wm-small', onclick: () => setFlagMany(ids()) }, '⚑ ' + _('Suivi')),
 			move,
+			h('button', {
+				type: 'button',
+				class: 'wm-small wm-forward-attach',
+				title: _('Transférer les messages sélectionnés en pièces jointes (.eml)'),
+				onclick: () => forwardAsAttachment(state.messages.filter((x) => state.checked.has(x.id))),
+			}, '↪ ' + _('Transférer')),
 			h('button', { type: 'button', class: 'wm-small wm-danger', onclick: () => deleteMessages(ids(), role === 'deleteditems') },
 				role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
 			junkButton(null, role, ids),
@@ -1955,6 +2046,22 @@
 
 	const FIXED_ROLES = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'outbox']
 
+	/** « Favoris »: folders pinned at the top of the pane, in the order chosen (kept per account in this browser). */
+	const favKey = () => 'webmail.favorites.' + state.accountId
+	function favorites() {
+		try {
+			const v = JSON.parse(localStorage.getItem(favKey()) || '[]')
+			return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []
+		} catch (e) { return [] }
+	}
+	function setFavorite(f, on) {
+		const list = favorites().filter((id) => id !== f.id)
+		if (on) list.push(f.id)
+		try { localStorage.setItem(favKey(), JSON.stringify(list)) } catch (e) { /* not kept */ }
+		toast(on ? _('« {name} » ajouté aux favoris', { name: f.name }) : _('« {name} » retiré des favoris', { name: f.name }))
+		renderNav()
+	}
+
 	function openFolderMenu(anchor, f) {
 		document.querySelectorAll('.wm-folder-menu').forEach((m) => m.remove())
 		const fixed = FIXED_ROLES.includes(f.role)
@@ -1965,6 +2072,9 @@
 			onclick: () => { close(); action() },
 		}, label)
 		const menu = h('div', { class: 'wm-folder-menu', role: 'menu', 'aria-label': _('Dossier {name}', { name: f.name }) },
+			favorites().includes(f.id)
+				? item('☆ ' + _('Retirer des favoris'), () => setFavorite(f, false))
+				: item('★ ' + _('Ajouter aux favoris'), () => setFavorite(f, true)),
 			item('＋ ' + _('Nouveau sous-dossier'), () => createFolder(f)),
 			f.unread ? item('✓ ' + _('Tout marquer comme lu'), () => markFolderRead(f)) : null,
 			item('📥 ' + _('Importer des messages (.eml)…'), () => pickEml(f)),
@@ -2104,6 +2214,7 @@
 		const m = state.messages.find((x) => x.id === id)
 		if (!m) return
 		Object.assign(m, changes)
+		noteEdit(id, changes)
 		const li = listItemEl(id)
 		if (!li) return
 		li.classList.toggle('unread', !m.isRead)
@@ -2402,7 +2513,9 @@
 			h('button', { class: 'wm-back wm-mobile-only', onclick: () => setView('list'), 'aria-label': _('Retour') }, '←'),
 			h('button', { onclick: () => openCompose('reply', m) }, '↩ ' + _('Répondre')),
 			h('button', { onclick: () => openCompose('replyAll', m) }, '↩↩ ' + _('Répondre à tous')),
-			h('button', { onclick: () => openCompose('forward', m) }, '↪ ' + _('Transférer')),
+			h('span', { class: 'wm-split' },
+				h('button', { onclick: () => openCompose('forward', m) }, '↪ ' + _('Transférer')),
+				h('button', { class: 'wm-forward-attach', title: _('Transférer en pièce jointe (.eml)'), 'aria-label': _('Transférer en pièce jointe'), onclick: () => forwardAsAttachment([m]) }, '📎')),
 			h('button', { onclick: () => markUnread(m) }, _('Non lu')),
 			h('span', { class: 'wm-split' },
 				h('button', { class: m.flagged ? 'wm-flag-btn on' : 'wm-flag-btn', onclick: () => toggleFlag(m) }, flagButtonText(m)),
@@ -2988,6 +3101,7 @@
 		const before = { messages: state.messages.slice(), total: state.total, selectedId: state.selectedId }
 		const i = state.messages.findIndex((m) => m.id === state.selectedId)
 		state.messages = state.messages.filter((m) => !ids.includes(m.id))
+		ids.forEach((id) => noteEdit(id, { gone: true }))
 		state.total = Math.max(0, state.total - ids.length)
 		ids.forEach((id) => msgCache.delete(msgKey(id)))
 		renderList(false)
@@ -3004,6 +3118,7 @@
 		}
 		return () => {
 			state.messages = before.messages
+			ids.forEach((id) => noteEdit(id, { gone: false }))
 			state.total = before.total
 			renderList(false)
 			saveListCache()
@@ -3637,6 +3752,43 @@
 		loadMessages(true)
 	}
 
+	/** At most this many messages forwarded at once as attachments. */
+	const FORWARD_MAX = 20
+
+	/**
+	 * « Transférer en pièce jointe »: a new message with each message attached whole, as an .eml
+	 * file (with its own attachments; Outlook, Thunderbird… open it as a message).
+	 */
+	async function forwardAsAttachment(messages) {
+		const list = (messages || []).filter((m) => m && m.id && !m.isMeeting)
+		if (!list.length) return
+		if (list.length > FORWARD_MAX) { toast(_('{count} messages au plus à la fois', { count: FORWARD_MAX }), true); return }
+		const accountId = state.accountId
+		toast(list.length > 1 ? _('Préparation de {count} messages…', { count: list.length }) : _('Préparation du message…'))
+		try {
+			const used = new Set()
+			const files = []
+			for (const m of list) {
+				const url = OC.generateUrl('/apps/webmail/api/accounts/' + accountId + '/message/eml') + '?' + new URLSearchParams({ itemId: m.id })
+				const res = await fetch(url, { headers: { requesttoken: OC.requestToken }, credentials: 'same-origin' })
+				if (!res.ok) throw new Error(_('Impossible de joindre « {subject} »', { subject: m.subject || _('(sans objet)') }))
+				// a file name from the subject: no folder separators, unique
+				let base = (m.subject || _('message')).replace(/[\\/:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || _('message')
+				let name = base + '.eml'
+				for (let n = 2; used.has(name.toLowerCase()); n++) name = base + ' (' + n + ').eml'
+				used.add(name.toLowerCase())
+				files.push(new File([await res.blob()], name, { type: 'message/rfc822' }))
+			}
+			if (accountId !== state.accountId) return
+			const subject = list.length === 1
+				? (/^(tr|fw|fwd)\s?:/i.test(list[0].subject || '') ? list[0].subject : _('TR : ') + (list[0].subject || ''))
+				: _('TR : {count} messages', { count: list.length })
+			openCompose('new', null, { subject, files })
+		} catch (e) {
+			toast(e.message, true)
+		}
+	}
+
 	function openCompose(mode, original, prefill) {
 		if (!state.accountId) { openAccountSettings(); return }
 		if (state.module !== 'mail') {
@@ -4009,6 +4161,13 @@
 			}
 		}
 		files.addEventListener('change', () => { renderAttachList(); persistFiles() })
+		if (prefill && prefill.files && prefill.files.length) {
+			// files given with the new message (messages forwarded as attachments)
+			const dt = new DataTransfer()
+			Array.from(files.files).concat(prefill.files).forEach((f) => dt.items.add(f))
+			files.files = dt.files
+			persistFiles()
+		}
 		renderAttachList()
 
 		const pickFromFiles = () => {
@@ -4305,6 +4464,18 @@
 				} catch (e) { toast(_('Ce navigateur refuse : {error}', { error: e.message }), true) }
 			},
 		}, '✉️ ' + _('Ouvrir les liens « mailto: » avec ce webmail')) : null
+		const densitySelect = h('select', {
+			name: 'density',
+			onchange: () => {
+				try { localStorage.setItem('webmail.density', densitySelect.value) } catch (e) { /* not kept */ }
+				applyDensity()
+				toast(_('Affichage enregistré'))
+			},
+		}, DENSITIES.map(([v, label]) => h('option', { value: v, selected: v === density() }, label())))
+		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-display-settings' },
+			h('legend', {}, _('Affichage')),
+			h('label', { class: 'wm-field' }, h('span', {}, _('Liste des messages')), densitySelect),
+			h('p', { class: 'wm-muted' }, _('Plus compact, plus de messages tiennent à l\'écran.'))))
 		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-send-settings' },
 			h('legend', {}, _('Envoi')),
 			h('label', { class: 'wm-field' }, h('span', {}, _('Délai pour annuler l\'envoi')), undo),
@@ -4576,6 +4747,18 @@
 		}).observe(document.body, { childList: true })
 	}
 
+	/** « Affichage de la liste »: with the preview (the default), compact (no preview), one line per message. */
+	const DENSITIES = [['comfortable', () => _('Confortable (avec aperçu)')], ['compact', () => _('Compact (sans aperçu)')], ['line', () => _('Une ligne par message')]]
+	function density() {
+		let v = null
+		try { v = localStorage.getItem('webmail.density') } catch (e) { /* default */ }
+		return DENSITIES.some(([d]) => d === v) ? v : 'comfortable'
+	}
+	function applyDensity() {
+		if (!root) return
+		DENSITIES.forEach(([d]) => root.classList.toggle('wm-density-' + d, d === density()))
+	}
+
 	async function init() {
 		root = document.getElementById('webmail-app')
 		if (!root) return
@@ -4585,6 +4768,7 @@
 		state.isAdmin = root.dataset.isAdmin === '1'
 		restoreTab()
 		window.addEventListener('pagehide', writeTab)
+		applyDensity()
 
 		try {
 			// given with the page (no first request); asked for if not
