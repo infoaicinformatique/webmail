@@ -1231,5 +1231,15 @@
 	"Désabonnement demandé": "Unsubscribe requested",
 	"Ce message vient d'une liste de diffusion.": "This message comes from a mailing list.",
 	"Ouvre la page de désinscription de la liste": "Opens the list's unsubscribe page",
-	"Se désabonner": "Unsubscribe"
+	"Se désabonner": "Unsubscribe",
+	"Date d'anniversaire invalide : %s": "Invalid birthday: %s",
+	"({age} ans)": "({age} years old)",
+	"({age} an)": "({age} year old)",
+	"aujourd'hui": "today",
+	"demain": "tomorrow",
+	"dans {days} jours": "in {days} days",
+	"Anniversaires à venir": "Upcoming birthdays",
+	"{age} ans": "{age} years",
+	"{age} an": "{age} year",
+	"Anniversaire": "Birthday"
 }

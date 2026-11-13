@@ -468,6 +468,39 @@
 		input.click()
 	}
 
+	/** Outlook's year for a birthday without a year. */
+	const NO_YEAR = '1604'
+	/** In how many days a birthday « 1980-05-12 » comes (0: today), and the age then (null without a year). */
+	function nextBirthday(date) {
+		const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date || '')
+		if (!m) return null
+		const now = new Date()
+		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+		// (29 February: the 1st of March in other years)
+		const on = (y) => new Date(y, +m[2] - 1, +m[3])
+		let next = on(today.getFullYear())
+		if (next < today) next = on(today.getFullYear() + 1)
+		const days = Math.round((next - today) / 86400000)
+		return { days, age: m[1] === NO_YEAR ? null : next.getFullYear() - +m[1] }
+	}
+	/** « 12 mai 1980 (46 ans) », « 12 mai » without a year. */
+	function birthdayLabel(date) {
+		const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date || '')
+		if (!m) return null
+		const d = new Date(+m[1] === +NO_YEAR ? 2000 : +m[1], +m[2] - 1, +m[3])
+		const opts = m[1] === NO_YEAR ? { day: 'numeric', month: 'long' } : { day: 'numeric', month: 'long', year: 'numeric' }
+		const text = d.toLocaleDateString(((window.OC && OC.getLanguage && OC.getLanguage()) || 'fr').replace('_', '-'), opts)
+		const n = nextBirthday(date)
+		if (!n || n.age === null) return text
+		// the age now: the next one minus one, unless it is today
+		const age = n.days === 0 ? n.age : n.age - 1
+		return text + ' ' + (age > 1 ? _('({age} ans)', { age }) : _('({age} an)', { age }))
+	}
+	/** « aujourd'hui », « demain », « dans 5 jours » */
+	const inDays = (days) => days === 0 ? _('aujourd\'hui') : days === 1 ? _('demain') : _('dans {days} jours', { days })
+	/** Upcoming birthdays shown above the list. */
+	const BIRTHDAY_DAYS = 14
+
 	function renderList() {
 		if (!core || core.state.module !== 'contacts') return
 		const h = core.h
@@ -515,6 +548,19 @@
 		}
 		if (isDirectory && ct.items.length >= 100) {
 			el.appendChild(h('div', { class: 'wm-search-info' }, _('Exchange limite la recherche à 100 résultats : précisez votre recherche.')))
+		}
+		// the birthdays of the next days (among the contacts loaded), soonest first
+		const soon = ct.query || isDirectory ? [] : ct.items
+			.map((c) => ({ c, n: nextBirthday(c.birthday) }))
+			.filter((x) => x.n && x.n.days <= BIRTHDAY_DAYS)
+			.sort((a, b) => a.n.days - b.n.days)
+		if (soon.length) {
+			el.appendChild(h('div', { class: 'wm-birthdays', role: 'region', 'aria-label': _('Anniversaires à venir') },
+				h('div', { class: 'wm-birthdays-title' }, '🎂 ' + _('Anniversaires à venir')),
+				h('ul', {}, soon.map(({ c, n }) => h('li', {},
+					h('a', { href: '#', onclick: (e) => { e.preventDefault(); openContact(c.id) } }, c.displayName || _('(sans nom)')),
+					' ',
+					h('span', { class: n.days === 0 ? 'wm-birthday-today' : 'wm-muted' }, inDays(n.days) + (n.age !== null ? ' · ' + (n.age > 1 ? _('{age} ans', { age: n.age }) : _('{age} an', { age: n.age })) : '')))))))
 		}
 		const ul = h('ul', { class: 'wm-messages wm-contacts', role: 'list' })
 		let letter = null
@@ -605,6 +651,7 @@
 			row('☎️', _('Bureau'), tel(c.businessPhone)),
 			row('🏠', _('Domicile'), tel(c.homePhone)),
 			row('🏢', _('Site'), c.office || null),
+			row('🎂', _('Anniversaire'), birthdayLabel(c.birthday)),
 			// Matrix (Element…): matrix.to opens the conversation in the app chosen by the person
 			row('💬', _('Matrix'), c.matrix ? h('a', { class: 'wm-matrix-link', href: 'https://matrix.to/#/' + c.matrix, target: '_blank', rel: 'noopener noreferrer', title: _('Écrire sur Matrix (Element)') }, c.matrix) : null),
 			row('📍', _('Adresse'), address ? h('a', { href: 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(address), target: '_blank', rel: 'noopener noreferrer' }, address) : null),
@@ -705,7 +752,7 @@
 	async function copyToMine(c) {
 		const data = {}
 		;['givenName', 'surname', 'displayName', 'company', 'department', 'jobTitle', 'mobilePhone', 'businessPhone', 'homePhone',
-			'street', 'postalCode', 'city', 'country', 'notes', 'matrix'].forEach((k) => { data[k] = c[k] || '' })
+			'street', 'postalCode', 'city', 'country', 'notes', 'matrix', 'birthday'].forEach((k) => { data[k] = c[k] || '' })
 		data.emails = c.emails || []
 		try {
 			await api('/accounts/' + core.accountId + '/contacts', { method: 'POST', body: { contact: data, book: 'contacts' } })
@@ -753,6 +800,7 @@
 			businessPhone: input('businessPhone', _('Tél. bureau'), 'tel'),
 			homePhone: input('homePhone', _('Tél. domicile'), 'tel'),
 			matrix: input('matrix', _('Matrix')),
+			birthday: input('birthday', _('Anniversaire'), 'date'),
 			street: input('street', _('Rue')),
 			postalCode: input('postalCode', _('Code postal')),
 			city: input('city', _('Ville')),
@@ -760,6 +808,7 @@
 		}
 		f.displayName.i.placeholder = _('Calculé à partir du prénom et du nom')
 		f.matrix.i.placeholder = '@prenom.nom:matrix.example.org'
+		f.birthday.i.max = new Date().toISOString().slice(0, 10)
 		const emails = [0, 1, 2].map((i) => h('input', { type: 'email', name: 'email' + (i + 1), value: c.emails[i] || '' }))
 		const notes = h('textarea', { name: 'notes', rows: '4', placeholder: _('Notes') })
 		notes.value = c.notes || ''
@@ -832,7 +881,7 @@
 		photoRow,
 		f.givenName.el, f.surname.el, f.displayName.el, f.company.el, f.department.el, f.jobTitle.el,
 		emails.map((i, n) => h('label', { class: 'wm-field' }, h('span', {}, n === 0 ? _('E-mail') : _('E-mail {n}', { n: n + 1 })), i)),
-		f.mobilePhone.el, f.businessPhone.el, f.homePhone.el, f.matrix.el,
+		f.mobilePhone.el, f.businessPhone.el, f.homePhone.el, f.matrix.el, f.birthday.el,
 		f.street.el, f.postalCode.el, f.city.el, f.country.el,
 		notes,
 		err,
