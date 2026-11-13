@@ -2782,11 +2782,12 @@ async function main() {
 		// another message: the template goes where the cursor is, the signature stays below
 		await page.click('.wm-compose-btn')
 		await page.click('.wm-editor')
+		await page.keyboard.press('Control+Home') // the top of the message, above the signature
 		await page.keyboard.type('Madame, ')
 		await page.click('.wm-editor-btn[title="Modèles de réponse"]')
 		await page.click('.wm-template-item:has-text("Relance devis")')
 		const text = await page.textContent('.wm-editor')
-		assert.ok(/Madame, Bonjour, avez-vous pu consulter notre devis \? Bien cordialement\./.test(text), text)
+		assert.ok(/^Madame, Bonjour, avez-vous pu consulter notre devis \? Bien cordialement\..*--/.test(text), text)
 		await shot('71-templates')
 		await page.click('.wm-compose button:has-text("Annuler")')
 		// managed in « Comptes et signature »
