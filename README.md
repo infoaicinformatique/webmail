@@ -32,6 +32,7 @@ et sur les téléphones, et inversement.
 | Reporter | « ⏰ Reporter » dans la barre d'un message de la boîte de réception : **Plus tard aujourd'hui** (18 h), **Demain matin** (8 h), **Ce week-end** (samedi 9 h), **La semaine prochaine** (lundi 8 h) ou une date et une heure choisies. Le message part dans le dossier « Reportés » (créé la première fois) et **revient dans la boîte de réception, non lu**, à l'heure dite, même webmail fermé (tâche de fond de Nextcloud, toutes les 5 minutes). Dans « Reportés », chaque message affiche quand il revient, avec « Remettre dans la boîte de réception maintenant » |
 | Suivi avec échéance | « ▾ » à côté de « ⚑ Suivi » : **Aujourd'hui**, **Demain**, **Cette semaine** (vendredi), **La semaine prochaine**, sans date ou une date choisie, et « Retirer le suivi ». L'échéance s'affiche dans la liste (« Demain », « En retard » en rouge) ; c'est l'indicateur d'Exchange, le même que dans Outlook (liste « Tâches » / To-Do) et sur le téléphone |
 | Courrier indésirable | « ⛔ Indésirable » déplace le message dans « Courrier indésirable » et **bloque l'expéditeur** (ses prochains messages y iront directement) ; dans ce dossier, « ✔ Pas indésirable » le remet dans la boîte de réception et **fait confiance à l'expéditeur**. Comme dans Outlook, les listes d'expéditeurs bloqués et fiables sont celles d'Exchange. Aussi pour plusieurs messages à la fois |
+| Se désabonner | Sur un message d'une **liste de diffusion** (en-tête `List-Unsubscribe`), un bandeau propose « Se désabonner » : en **un clic** quand la liste le permet (RFC 8058, la demande part du serveur Nextcloud), sinon par un **message de désinscription envoyé** de la boîte (après confirmation), ou en ouvrant la page de désinscription de la liste. Les autres messages de la même liste l'indiquent ensuite |
 | En-têtes Internet | « 🧾 » dans la barre d'un message : les contrôles du serveur de réception (**SPF**, **DKIM**, **DMARC** : réussi, échoué…) avec un **avertissement** si l'expéditeur n'a pas pu être authentifié (usurpation possible), le **trajet** du message de serveur en serveur avec le temps de chaque étape, puis tous les en-têtes et « Copier les en-têtes » pour le support ; comme « Propriétés du message » d'Outlook |
 | Plusieurs messages | Case à cocher devant chaque message (au survol), **Ctrl+clic** pour en ajouter, **Maj+clic** pour une plage, `x` au clavier ; une barre propose alors Tout sélectionner, Lu, Non lu, Suivi, Déplacer vers… et Supprimer, pour tous d'un coup. Échap annule la sélection. **Glisser-déposer** un message (ou la sélection) sur un dossier le déplace |
 | Envoi | Nouveau message, Répondre, Répondre à tous, Transférer (Exchange cite le message d'origine et garde ses pièces jointes), Cc/Cci, importance, signature ; `Ctrl+Entrée` envoie **Réponse rapide** : sous chaque message, « Répondre à … » : quelques lignes, `Ctrl+Entrée` ou « Envoyer » (signature, délai d'annulation et alerte de pièce jointe oubliée compris), « Répondre à tous » s'il y a d'autres destinataires, et « Plus d'options… » pour continuer dans le formulaire complet avec le texte déjà tapé |
@@ -241,7 +242,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.90.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.92.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -284,7 +285,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.90 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.92 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

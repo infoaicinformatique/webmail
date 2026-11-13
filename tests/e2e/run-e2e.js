@@ -3504,6 +3504,43 @@ async function main() {
 		assert.strictEqual(await tracker(), false, 'blocked again')
 	})
 
+	await step('unsubscribe: « Se désabonner » of a mailing list, by a message sent for the user, or on its page', async () => {
+		const open = async (n) => {
+			await page.click('.wm-folder >> nth=0')
+			await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°' + n + '"))')
+			await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°' + n + '")')
+		}
+		// an ordinary message: nothing
+		await page.click('.wm-folder >> nth=0')
+		await page.click('.wm-message:has-text("Réunion de lundi")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Réunion de lundi")')
+		assert.strictEqual(await page.$('.wm-unsub-banner'), null)
+		// a page to open only: in a new tab, nothing sent
+		await page.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(u); return null } })
+		await open(21)
+		await page.waitForSelector('.wm-unsub-banner button.wm-unsub:has-text("Se désabonner ↗")')
+		await page.click('.wm-unsub')
+		assert.deepStrictEqual(await page.evaluate(() => window.__opened), ['https://exemple.org/desinscription?n=21'])
+		// by a message: asked first, then sent from the mailbox
+		await open(20)
+		await page.waitForSelector('.wm-unsub-banner:has-text("Ce message vient d\'une liste de diffusion.") button.wm-unsub:text-is("Se désabonner")')
+		await shot('85-unsubscribe')
+		let question = ''
+		page.once('dialog', (d) => { question = d.message(); d.dismiss() })
+		await page.click('.wm-unsub')
+		await page.waitForFunction(() => !document.querySelector('.wm-unsub').disabled)
+		assert.ok(question.includes('desinscription@exemple.org'), question)
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-unsub')
+		await page.waitForSelector('.wm-toast:has-text("Désabonnement demandé")')
+		await page.waitForSelector('.wm-unsub-banner:has-text("Désabonnement demandé. Il peut falloir quelques jours")')
+		// another message of the same list says so
+		await open(22)
+		await page.waitForSelector('.wm-unsub-banner:has-text("Désabonnement demandé")')
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.waitForSelector('.wm-message:has-text("Desinscription lettre d\'info")')
+	})
+
 	await step('recent recipients: the people written to come first in the completion, from the first letter', async () => {
 		await page.click('.wm-folder >> nth=0')
 		await page.click('.wm-compose-btn')

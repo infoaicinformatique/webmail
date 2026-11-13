@@ -1221,5 +1221,15 @@
 	"Retirer {who}": "Remove {who}",
 	"Images des expéditeurs de confiance": "Images of trusted senders",
 	"Leurs messages affichent leurs images distantes directement ; pour les autres, elles restent bloquées (elles peuvent servir à savoir que vous avez lu le message).": "Their messages show their remote images at once; for the others they stay blocked (they can be used to know you read the message).",
-	"récent": "recent"
+	"récent": "recent",
+	"Ce message ne permet pas de se désabonner": "This message gives no way to unsubscribe",
+	"Le site de la liste de diffusion ne répond pas. Réessayez plus tard.": "The mailing list's website does not answer. Try again later.",
+	"Le site de la liste de diffusion a refusé le désabonnement (erreur %s)": "The mailing list's website refused to unsubscribe you (error %s)",
+	"Désabonnement demandé. Il peut falloir quelques jours pour ne plus rien recevoir.": "Unsubscribe requested. It may take a few days before you stop receiving messages.",
+	"Se désabonner de cette liste de diffusion ? Un message de désinscription sera envoyé de votre part à {to}.": "Unsubscribe from this mailing list? An unsubscribe message will be sent from you to {to}.",
+	"Se désabonner de cette liste de diffusion ? La demande sera envoyée directement à son site.": "Unsubscribe from this mailing list? The request will be sent directly to its website.",
+	"Désabonnement demandé": "Unsubscribe requested",
+	"Ce message vient d'une liste de diffusion.": "This message comes from a mailing list.",
+	"Ouvre la page de désinscription de la liste": "Opens the list's unsubscribe page",
+	"Se désabonner": "Unsubscribe"
 }
