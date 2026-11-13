@@ -49,6 +49,8 @@ class PageController extends Controller {
 			'isAdmin' => $user !== null && $this->groupManager->isAdmin($user->getUID()),
 			// Nextcloud Talk: video meetings in the invitations
 			'talk' => $user !== null && $this->apps->isEnabledForUser('spreed', $user),
+			// video meetings with Element Call (Matrix) or another service, set by the administrator
+			'visio' => $this->servers->getVisio(),
 		]);
 
 		// The message body is rendered in a sandboxed srcdoc iframe which

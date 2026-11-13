@@ -53,6 +53,15 @@ $code = fn (string $text): string => '<code>' . \OCP\Util::sanitizeHTML($text) .
 			<button type="button" class="wm-forget" title="<?php p($l->t('Oublier : le prochain compte de ce domaine le cherchera à nouveau')); ?>"><?php p($l->t('Oublier')); ?></button></li>
 		<?php endforeach; ?>
 	</ul>
+	<h3><?php p($l->t('Visio des réunions (Matrix / Element)')); ?></h3>
+	<p class="settings-hint">
+		<?php print_unescaped($l->t('Adresse de votre serveur Element Call (par ex. %1$s) : le formulaire d\'un événement propose alors « Visio Element », qui met dans l\'invitation le lien d\'une salle chiffrée, propre à la réunion. Une autre visio (Jitsi…) : une adresse avec %2$s à la place du nom de la salle, par ex. %3$s. Laissez vide pour ne rien proposer.',
+			[$code('https://call.element.io'), $code('{room}'), $code('https://meet.example.org/{room}')])); ?>
+	</p>
+	<p>
+		<label for="webmail-visio"><?php p($l->t('Adresse de la visio')); ?></label>
+		<input type="url" id="webmail-visio" value="<?php p($_['visio']); ?>" placeholder="https://call.element.io" size="50">
+	</p>
 	<p>
 		<button type="button" id="webmail-add"><?php p($l->t('Ajouter un domaine')); ?></button>
 		<button type="button" id="webmail-save" class="primary"><?php p($l->t('Enregistrer')); ?></button>
