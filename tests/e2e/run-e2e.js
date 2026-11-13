@@ -2698,6 +2698,30 @@ async function main() {
 		}
 	})
 
+	await step('keyboard: Tab stays in a dialog, the focus goes back to its button, fields have a name', async () => {
+		await page.click('.wm-tab[data-module="calendar"]')
+		await page.focus('.wm-compose-btn')
+		await page.keyboard.press('Enter')
+		await page.waitForSelector('.wm-modal input[name=subject]')
+		const inDialog = () => page.evaluate(() => !!document.activeElement.closest('.wm-modal'))
+		for (let i = 0; i < 30; i++) {
+			await page.keyboard.press('Tab')
+			assert.ok(await inDialog(), 'Tab ' + (i + 1) + ' stays in the dialog')
+		}
+		for (let i = 0; i < 30; i++) {
+			await page.keyboard.press('Shift+Tab')
+			assert.ok(await inDialog(), 'Shift+Tab ' + (i + 1) + ' stays in the dialog')
+		}
+		// the date and the hour of the start and the end each have their own name for a screen reader
+		const names = await page.$$eval('.wm-modal input[type=date], .wm-modal input[type=time]', (els) => els.map((e) => e.getAttribute('aria-label')))
+		assert.deepStrictEqual(names.slice(0, 4), ['Date de début', 'Heure de début', 'Date de fin', 'Heure de fin'])
+		await page.keyboard.press('Escape')
+		await page.waitForSelector('.wm-modal', { state: 'detached' })
+		assert.ok(await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('wm-compose-btn')), 'focus back on « Nouvel événement »')
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')
