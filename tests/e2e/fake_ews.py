@@ -141,7 +141,8 @@ def seed():
     add_message('F-INBOX', 'Réunion de lundi', ('Marie Martin', 'marie.martin@societe-a.fr'),
                 '<html><body><div>Salut,<br><br>On décale la réunion à 14h, ça te va ?<br><br>Marie</div></body></html>', 95, cc=(('Paul', 'paul@societe-a.fr'),))
     add_message('F-INBOX', 'Votre facture OVH', ('OVHcloud', 'noreply@ovh.example'),
-                '<html><body><p>Votre facture est disponible dans votre espace client.</p></body></html>', 60 * 26, is_read=True, flagged=True)
+                '<html><body><p>Votre facture est disponible dans votre espace client.</p>'
+                '<p>Une question ? <a href="mailto:facturation@ovh.example?subject=Facture%20OVH&amp;body=Bonjour%2C">facturation@ovh.example</a></p></body></html>', 60 * 26, is_read=True, flagged=True)
     for i in range(1, 58):
         add_message('F-INBOX', 'Newsletter n°%d' % i, ('Lettre d\'info', 'news@exemple.org'),
                     '<p>Contenu %d</p>' % i, 60 * 24 * (2 + i), is_read=True)

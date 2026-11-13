@@ -1098,5 +1098,9 @@
 	"Modèle trop lourd : réduisez l'image qu'il contient (256 Ko au plus)": "Template too large: reduce the image it contains (256 KB at most)",
 	"%s modèles au plus : supprimez-en un d'abord": "%s templates at most: delete one first",
 	"Modèle introuvable": "Template not found",
-	"Le message parle d'une pièce jointe, mais aucun fichier n'est joint. Envoyer quand même ?": "The message mentions an attachment, but no file is attached. Send anyway?"
+	"Le message parle d'une pièce jointe, mais aucun fichier n'est joint. Envoyer quand même ?": "The message mentions an attachment, but no file is attached. Send anyway?",
+	"Le navigateur vous demande de confirmer": "Your browser asks you to confirm",
+	"Ce navigateur refuse : {error}": "This browser refuses: {error}",
+	"Ouvrir les liens « mailto: » avec ce webmail": "Open “mailto:” links with this webmail",
+	"Les adresses e-mail cliquées sur les autres sites ouvriront un nouveau message ici (le navigateur demande confirmation). Dans les messages reçus, c'est déjà le cas.": "E-mail addresses clicked on other sites will open a new message here (the browser asks for confirmation). In received messages, this is already the case."
 }
