@@ -32,6 +32,7 @@ DIRECTORY_DETAILS = {
     'compta@societe-b.fr': ('Société B', 'Comptabilité', '', '04 92 20 20 20', 'Cannes'),
     'martine.leroy@societe-b.fr': ('Société B', 'Logistique', 'Responsable logistique', '04 92 20 20 21', 'Cannes'),
 }
+MAILBOX_NAMES = {'contact@societe-a.fr': 'Contact Société A', 'direction@societe-a.fr': 'Sophie Direction'}
 DIRECTORY = [
     ('Marie Martin', 'marie.martin@societe-a.fr'),
     ('Paul Durand', 'paul.durand@societe-a.fr'),
@@ -1059,6 +1060,9 @@ def handle(op, el, user, tz, messages, move_message):
         for n, e in DIRECTORY:
             if q in n.lower() or q in e.lower():
                 found.append((n, e, 'Mailbox'))
+        # shared and delegated mailboxes: found by their exact address
+        if q in MAILBOX_NAMES:
+            found.append((MAILBOX_NAMES[q], q, 'Mailbox'))
         if not found:
             return wrap(op, [err(op, 'ErrorNameResolutionNoResults', 'No results were found.')])
         def details(n, e, k):

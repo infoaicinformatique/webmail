@@ -461,6 +461,11 @@ def handle(op, el, user):
                              % QUOTA_KB)
                 if any(u.get('FieldURI') == 'folder:UnreadCount' for u in el.iter(T + 'FieldURI')):
                     quota += '<t:UnreadCount>%d</t:UnreadCount>' % counts(fid)[1]
+                f = next((x for x in FOLDERS if x[0] == fid), None)
+                if f is not None and el.findtext('m:FolderShape/t:BaseShape', default='', namespaces=NS) == 'Default':
+                    # Default shape: name and counts, like Exchange
+                    msgs.append(ok(op, '<m:Folders>%s</m:Folders>' % folder_xml(f)))
+                    continue
                 msgs.append(ok(op, '<m:Folders><t:Folder><t:FolderId Id="%s" ChangeKey="AQ"/>%s</t:Folder></m:Folders>' % (fid, quota)))
         return wrap(op, msgs)
 
