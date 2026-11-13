@@ -294,8 +294,17 @@ def conversation_id(m):
     return 'CONV-' + hashlib.md5(topic.encode('utf-8')).hexdigest()[:12]
 
 
+def preview_text(m):
+    import re
+    text = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', m['body'], flags=re.S)
+    text = html.unescape(re.sub(r'<[^>]+>', ' ', text))
+    return ' '.join(text.split())[:255]
+
+
 def item_full_xml(m):
     xml = _item_full_xml(m).replace('<t:Importance>', categories_xml(m) + '<t:Importance>', 1)
+    # (Exchange gives item:Preview with the other properties)
+    xml = xml.replace('<t:IsRead>', '<t:Preview>%s</t:Preview><t:IsRead>' % esc(preview_text(m)), 1)
     xml = xml.replace('<t:InternetMessageId>', '<t:ConversationId Id="%s"/><t:InternetMessageId>' % conversation_id(m), 1)
     kind = m.get('kind', 'Message')
     head, _, tail = xml.replace('<t:Message>', '<t:%s>' % kind, 1).rpartition('</t:Message>')
