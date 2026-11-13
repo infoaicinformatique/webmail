@@ -3537,7 +3537,7 @@ async function main() {
 	})
 
 	await step('touch: a message swiped to the right is read / unread, to the left goes to the trash (with « Annuler »)', async () => {
-		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°7"))'
+		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°2"))'
 		// a finger on the row, moved by a fraction of its width (touch events, as a phone sends them)
 		const swipe = (fraction) => page.evaluate(([sel, f]) => {
 			const el = document.querySelector(sel)
