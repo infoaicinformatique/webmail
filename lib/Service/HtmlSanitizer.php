@@ -134,6 +134,11 @@ class HtmlSanitizer {
 				$el->setAttribute('target', '_blank');
 				$el->setAttribute('rel', 'noopener noreferrer');
 			}
+			// a long newsletter: its images load as they come into view, decoded aside (the page stays fluid)
+			if (strtolower($el->tagName) === 'img') {
+				$el->setAttribute('loading', 'lazy');
+				$el->setAttribute('decoding', 'async');
+			}
 		}
 
 		foreach (iterator_to_array($xp->query('//style')) as $style) {

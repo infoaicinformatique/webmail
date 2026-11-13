@@ -125,4 +125,13 @@ class HtmlSanitizerTest extends TestCase {
 		$doc->loadHTML('<?xml encoding="UTF-8"?>' . $this->clean('<p style="content:&quot;\\201C&quot;">x</p>')['html']);
 		$this->assertSame('content:"“"', $doc->getElementsByTagName('p')->item(0)->getAttribute('style'));
 	}
+
+	public function testImagesLoadAsTheyComeIntoView(): void {
+		$r = $this->clean('<p>Bonjour</p><img src="cid:logo@x" alt="logo"><img src="https://img.example/a.png" loading="eager">', ['logo@x' => '/attachment?id=1'], true);
+		$this->assertSame(2, substr_count($r['html'], 'loading="lazy"'), $r['html']);
+		$this->assertSame(2, substr_count($r['html'], 'decoding="async"'));
+		$this->assertStringNotContainsString('eager', $r['html']);
+		// nothing else gets the attributes
+		$this->assertStringContainsString('<p>Bonjour</p>', $r['html']);
+	}
 }
