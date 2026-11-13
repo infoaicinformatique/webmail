@@ -23,7 +23,7 @@ class EwsContactsTest extends EwsTestCase {
 		$this->assertSame(250, $res['total']);
 		$this->assertTrue($res['hasMore']);
 		$this->assertSame(['id' => 'C1', 'displayName' => 'Jean Dupont', 'company' => 'Client SA', 'jobTitle' => 'DAF',
-			'email' => 'jean@client.fr', 'phone' => '01 02 03 04 05', 'isGroup' => false], $res['items'][0]);
+			'email' => 'jean@client.fr', 'phone' => '01 02 03 04 05', 'isGroup' => false, 'hasPhoto' => false], $res['items'][0]);
 		$this->assertTrue($res['items'][1]['isGroup']);
 		$req = $this->lastRequest();
 		$this->assertStringContainsString('<t:IndexedFieldURI FieldURI="contacts:EmailAddress" FieldIndex="EmailAddress1"/>', $req);

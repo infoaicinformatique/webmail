@@ -32,6 +32,9 @@ DIRECTORY_DETAILS = {
     'compta@societe-b.fr': ('Société B', 'Comptabilité', '', '04 92 20 20 20', 'Cannes'),
     'martine.leroy@societe-b.fr': ('Société B', 'Logistique', 'Responsable logistique', '04 92 20 20 21', 'Cannes'),
 }
+# photos of the people of the directory (GetUserPhoto): a small PNG
+PNG_BLUE = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEElEQVR4nGNgaDqJHQ0tCQAjaFLBNtJ19gAAAABJRU5ErkJggg==')
+USER_PHOTOS = {'marie.martin@societe-a.fr': PNG_BLUE}
 MAILBOX_NAMES = {'contact@societe-a.fr': 'Contact Société A', 'direction@societe-a.fr': 'Sophie Direction'}
 DIRECTORY = [
     ('Marie Martin', 'marie.martin@societe-a.fr'),
@@ -491,6 +494,8 @@ def seed():
     contact('Lucas', 'Petit', '', 'lucas.petit@exemple.org')
     contact('Émilie', 'Roux', 'Roux Architectes', 'emilie@roux-archi.fr', 'emilie.roux@gmail.example', mobile='07 00 11 22 33')
     contact('', '', 'Plombier Express', 'contact@plombier-express.fr', business='04 92 11 11 11')
+    # a contact with its photo (set in Outlook)
+    next(c for c in CONTACTS.values() if c.get('displayName') == 'Anne Bernard')['photo'] = ('image/png', PNG_BLUE)
     gid = new_id('DL')
     CONTACTS[gid] = dict(id=gid, kind='DistributionList', displayName='Équipe projet', folder='F-CONTACTS',
                          members=[('Anne Bernard', 'anne@cabinet-bernard.fr'), ('Lucas Petit', 'lucas.petit@exemple.org')])
@@ -583,6 +588,11 @@ def contact_xml(c, detail):
         x += '<t:JobTitle>%s</t:JobTitle>' % esc(c['jobTitle'])
     if detail and c['surname']:
         x += '<t:Surname>%s</t:Surname>' % esc(c['surname'])
+    x += '<t:HasPicture>%s</t:HasPicture>' % ('true' if c.get('photo') else 'false')
+    if detail and c.get('photo'):
+        # (an attachment of the contact in Exchange)
+        x = x.replace('<t:ItemId Id="%s"/>' % c['id'], '<t:ItemId Id="%s"/><t:Attachments><t:FileAttachment><t:AttachmentId Id="PH-%s"/>'
+                      '<t:Name>ContactPicture.jpg</t:Name><t:IsContactPhoto>true</t:IsContactPhoto></t:FileAttachment></t:Attachments>' % (c['id'], c['id']), 1)
     return x + '</t:Contact>'
 
 
@@ -1070,6 +1080,34 @@ def handle(op, el, user, tz, messages, move_message):
 
     if op in ('GetDelegate', 'AddDelegate', 'UpdateDelegate', 'RemoveDelegate'):
         return handle_delegates(op, el, user)
+
+    # photos: a contact's own (an attachment marked IsContactPhoto), a directory person's (GetUserPhoto)
+    if op == 'GetUserPhoto':
+        email = text(el, 'm:Email').lower()
+        if email in USER_PHOTOS:
+            return ('<m:GetUserPhotoResponse ResponseClass="Success" xmlns:m="%s" xmlns:t="%s"><m:ResponseCode>NoError</m:ResponseCode>'
+                    '<m:HasChanged>true</m:HasChanged><m:PictureData>%s</m:PictureData></m:GetUserPhotoResponse>'
+                    % (NS['m'], NS['t'], base64.b64encode(USER_PHOTOS[email]).decode()))
+        return ('<m:GetUserPhotoResponse ResponseClass="Error" xmlns:m="%s" xmlns:t="%s"><m:MessageText>No photo</m:MessageText>'
+                '<m:ResponseCode>ErrorItemNotFound</m:ResponseCode><m:DescriptiveLinkKey>0</m:DescriptiveLinkKey></m:GetUserPhotoResponse>' % (NS['m'], NS['t']))
+    if op == 'CreateAttachment' and el.find('m:ParentItemId', NS).get('Id') in CONTACTS:
+        c = CONTACTS[el.find('m:ParentItemId', NS).get('Id')]
+        a = el.find('m:Attachments/t:FileAttachment', NS)
+        if text(a, 't:IsContactPhoto') != 'true':
+            return wrap(op, [err(op, 'ErrorInvalidRequest', 'only contact photos here')])
+        c['photo'] = (text(a, 't:ContentType'), base64.b64decode(text(a, 't:Content')))
+        return wrap(op, [ok(op, '<m:Attachments><t:FileAttachment><t:AttachmentId Id="PH-%s" RootItemId="%s" RootItemChangeKey="CK"/></t:FileAttachment></m:Attachments>' % (c['id'], c['id']))])
+    if op in ('GetAttachment', 'DeleteAttachment'):
+        aid = el.find('m:AttachmentIds/t:AttachmentId', NS).get('Id')
+        if aid.startswith('PH-') and aid[3:] in CONTACTS:
+            c = CONTACTS[aid[3:]]
+            if not c.get('photo'):
+                return wrap(op, [err(op, 'ErrorAttachmentNotFound', 'not found')])
+            if op == 'DeleteAttachment':
+                c['photo'] = None
+                return wrap(op, [ok(op, '<m:RootItemId RootItemId="%s" RootItemChangeKey="CK"/>' % c['id'])])
+            return wrap(op, [ok(op, '<m:Attachments><t:FileAttachment><t:AttachmentId Id="%s"/><t:Name>ContactPicture.jpg</t:Name><t:ContentType>%s</t:ContentType>'
+                                    '<t:Content>%s</t:Content></t:FileAttachment></m:Attachments>' % (aid, c['photo'][0], base64.b64encode(c['photo'][1]).decode()))])
 
     if op == 'ResolveNames':
         q = text(el, 'm:UnresolvedEntry').lower()
