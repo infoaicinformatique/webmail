@@ -1283,5 +1283,7 @@
 	"Expéditeur (Z → A)": "Sender (Z → A)",
 	"Objet (A → Z)": "Subject (A → Z)",
 	"Plus volumineux": "Largest first",
-	"Trier par": "Sort by"
+	"Trier par": "Sort by",
+	"contacts Nextcloud": "Nextcloud contacts",
+	"compte Nextcloud": "Nextcloud account"
 }

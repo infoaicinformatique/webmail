@@ -3807,6 +3807,28 @@ async function main() {
 		assert.ok(!(await page.$eval('.wm-sort', (e) => e.classList.contains('active'))))
 	})
 
+	await step('completion: the people of Nextcloud (an account of this Nextcloud) are offered too', async () => {
+		const occ = (args, env) => execSync((env ? OCC.replace('docker exec ', 'docker exec ' + env + ' ') : OCC) + ' ' + args, { encoding: 'utf8' })
+		try { occ('user:delete sophie') } catch (e) { /* not there */ }
+		occ('user:add --password-from-env --display-name "Sophie Nextcloud" sophie', '-e OC_PASS=Sophie-Pass-2026')
+		try {
+			occ('user:setting sophie settings email sophie@nc.example')
+			occ('dav:sync-system-addressbook')
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('.wm-compose-btn')
+			await page.click('input[name=to]')
+			await page.keyboard.type('Sophie')
+			await page.waitForSelector('.wm-ac-item:has-text("Sophie Nextcloud"):has-text("sophie@nc.example · compte Nextcloud")')
+			await page.keyboard.press('ArrowDown')
+			await page.click('.wm-ac-item:has-text("Sophie Nextcloud")')
+			assert.strictEqual(await page.inputValue('input[name=to]'), 'Sophie Nextcloud <sophie@nc.example>, ')
+			await page.click('.wm-compose button:has-text("Annuler")')
+			await page.waitForSelector('.wm-compose', { state: 'detached' })
+		} finally {
+			occ('user:delete sophie')
+		}
+	})
+
 	await step('recent recipients: the people written to come first in the completion, from the first letter', async () => {
 		await page.click('.wm-folder >> nth=0')
 		await page.click('.wm-compose-btn')

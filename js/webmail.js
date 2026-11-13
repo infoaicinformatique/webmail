@@ -3580,7 +3580,7 @@
 				class: 'wm-ac-item' + (i === active ? ' active' : ''),
 				onmousedown: (e) => { e.preventDefault(); choose(r) },
 			}, h('span', { class: 'wm-ac-name' }, r.name || r.email), ' ',
-			h('span', { class: 'wm-muted' }, r.email + (r.source === 'directory' ? ' · ' + _('annuaire') : r.source === 'recent' ? ' · ' + _('récent') : '')))))
+			h('span', { class: 'wm-muted' }, r.email + ({ directory: ' · ' + _('annuaire'), recent: ' · ' + _('récent'), nextcloud: ' · ' + _('contacts Nextcloud'), 'nextcloud-user': ' · ' + _('compte Nextcloud') }[r.source] || '')))))
 			// a late answer must not reopen the menu once the field is left
 			menu.hidden = items.length === 0 || document.activeElement !== input
 		}
