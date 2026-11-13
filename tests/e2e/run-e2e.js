@@ -2243,7 +2243,8 @@ async function main() {
 		await page.fill('input[name=matrix]', '')
 		await page.click('.wm-contact-form button[type=submit]')
 		await page.waitForSelector('.wm-toast:has-text("Contact enregistré")')
-		await page.locator('.wm-matrix-btn').waitFor({ state: 'detached' })
+		await page.waitForSelector('.wm-contact-card:has-text("Jean Dupont")')
+		assert.strictEqual(await page.locator('.wm-matrix-btn').count(), 0)
 	})
 
 	await step('contacts: create, write to, delete', async () => {
