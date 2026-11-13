@@ -2,6 +2,9 @@
 (function () {
 	'use strict'
 
+	/** Translated text (Nextcloud l10n); the French text is the key. */
+	const _ = (s, vars) => (window.t ? window.t('webmail', s, vars, undefined, { escape: false }) : s)
+
 	/**
 	 * Folder permissions dialog, like Outlook's "Permissions" tab.
 	 *
@@ -24,7 +27,7 @@
 		const body = h('div', { class: 'wm-event-form wm-share' }, h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
 		overlay.appendChild(h('div', { class: 'wm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': opts.title },
 			h('div', { class: 'wm-modal-header' }, h('h2', {}, opts.title),
-				h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
+				h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
 			body))
 		document.body.appendChild(overlay)
 
@@ -42,8 +45,8 @@
 		if (!rows.some((p) => p.user === 'Default')) rows.unshift({ user: 'Default', name: '', level: 'None', original: 'None' })
 
 		const levelSelect = (row) => {
-			const sel = h('select', { name: 'level', 'aria-label': 'Niveau' },
-				offered(row.level) ? null : h('option', { value: 'keep', selected: true }, 'Autre (défini dans Outlook)'),
+			const sel = h('select', { name: 'level', 'aria-label': _('Niveau') },
+				offered(row.level) ? null : h('option', { value: 'keep', selected: true }, _('Autre (défini dans Outlook)')),
 				opts.levels.map(([v, l]) => h('option', { value: v, selected: v === row.level }, l)))
 			sel.addEventListener('change', () => { row.level = sel.value === 'keep' ? row.original : sel.value })
 			return sel
@@ -55,22 +58,22 @@
 				const isDefault = row.user === 'Default'
 				list.appendChild(h('div', { class: 'wm-share-row', dataset: { user: row.user } },
 					h('div', { class: 'wm-share-who' },
-						isDefault ? h('strong', {}, 'Tout le monde dans l\'organisation') : h('strong', {}, row.name || row.user),
-						isDefault ? h('span', { class: 'wm-muted' }, ' (par défaut)') : (row.name ? h('span', { class: 'wm-muted' }, ' ' + row.user) : null)),
+						isDefault ? h('strong', {}, _('Tout le monde dans l\'organisation')) : h('strong', {}, row.name || row.user),
+						isDefault ? h('span', { class: 'wm-muted' }, ' ' + _('(par défaut)')) : (row.name ? h('span', { class: 'wm-muted' }, ' ' + row.user) : null)),
 					levelSelect(row),
 					isDefault ? h('span', { class: 'wm-share-spacer' }) : h('button', {
 						type: 'button',
 						class: 'wm-cal-remove',
-						'aria-label': 'Retirer ' + (row.name || row.user),
-						title: 'Ne plus partager avec cette personne',
+						'aria-label': _('Retirer {name}', { name: row.name || row.user }),
+						title: _('Ne plus partager avec cette personne'),
 						onclick: () => { rows.splice(i, 1); renderRows() },
 					}, '✕')))
 			})
 		}
 		renderRows()
 
-		const email = h('input', { type: 'text', name: 'shareEmail', placeholder: 'Ajouter une personne (adresse e-mail)' })
-		const newLevel = h('select', { name: 'newLevel', 'aria-label': 'Niveau pour la nouvelle personne' },
+		const email = h('input', { type: 'text', name: 'shareEmail', placeholder: _('Ajouter une personne (adresse e-mail)') })
+		const newLevel = h('select', { name: 'newLevel', 'aria-label': _('Niveau pour la nouvelle personne') },
 			opts.levels.filter(([v]) => v !== 'None').map(([v, l]) => h('option', { value: v, selected: v === opts.newLevel }, l)))
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
 		const addPerson = () => {
@@ -78,14 +81,14 @@
 			const value = email.value.trim().replace(/,\s*$/, '')
 			const m = value.match(/<([^>]+)>/)
 			const address = (m ? m[1] : value).trim().toLowerCase()
-			if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) { err.textContent = 'Adresse e-mail invalide'; return }
-			if (rows.some((r) => r.user.toLowerCase() === address)) { err.textContent = 'Cette personne est déjà dans la liste'; return }
+			if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) { err.textContent = _('Adresse e-mail invalide'); return }
+			if (rows.some((r) => r.user.toLowerCase() === address)) { err.textContent = _('Cette personne est déjà dans la liste'); return }
 			rows.push({ user: address, name: m ? value.replace(/<[^>]+>/, '').trim() : '', level: newLevel.value, original: null })
 			email.value = ''
 			renderRows()
 		}
 
-		const save = h('button', { type: 'submit', class: 'primary' }, 'Enregistrer')
+		const save = h('button', { type: 'submit', class: 'primary' }, _('Enregistrer'))
 		const form = h('form', {
 			class: 'wm-event-form',
 			onsubmit: async (e) => {
@@ -109,9 +112,9 @@
 		h('p', { class: 'wm-muted' }, opts.intro),
 		list,
 		h('div', { class: 'wm-share-add' }, h('div', { class: 'wm-ac-wrap' }, core.attachAutocomplete(email)), newLevel,
-			h('button', { type: 'button', onclick: addPerson }, 'Ajouter')),
+			h('button', { type: 'button', onclick: addPerson }, _('Ajouter'))),
 		err,
-		h('div', { class: 'wm-compose-actions' }, save, h('button', { type: 'button', onclick: close }, 'Annuler')))
+		h('div', { class: 'wm-compose-actions' }, save, h('button', { type: 'button', onclick: close }, _('Annuler'))))
 		// after the autocompletion handler: Enter picks a suggestion first
 		email.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.defaultPrevented) { e.preventDefault(); addPerson() } })
 		core.clear(body)

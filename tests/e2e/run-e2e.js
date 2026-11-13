@@ -2635,6 +2635,17 @@ async function main() {
 			await page.waitForSelector('input[name=quickTask][placeholder="Add a task (Enter)"]')
 			await page.waitForSelector('.wm-task.late .wm-task-due:has-text("Overdue")')
 			await shot('69-english')
+			// rules and delegates
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('text=Comptes et signature')
+			await page.click('.wm-account-card:has-text("user@societe-a.fr") button:has-text("Règles")')
+			await page.waitForSelector('.wm-rules h2:has-text("Rules of user@societe-a.fr")')
+			await page.waitForSelector('.wm-rule-tag:has-text("created in Outlook")')
+			await page.waitForSelector('.wm-rule-new:has-text("New rule")')
+			await page.click('text=Comptes et signature')
+			await page.click('.wm-account-card:has-text("user@societe-a.fr") button:has-text("Délégués")')
+			await page.waitForSelector('.wm-delegates h2:has-text("Delegates of user@societe-a.fr")')
+			await page.waitForSelector('.wm-delegates h3:has-text("Meeting requests")')
 		} finally {
 			occ('user:setting admin core lang fr')
 		}
