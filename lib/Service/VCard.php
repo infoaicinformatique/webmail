@@ -12,6 +12,12 @@ namespace OCA\Webmail\Service;
 class VCard {
 	private const PHONE_TYPES = ['mobilePhone' => 'CELL', 'businessPhone' => 'WORK', 'homePhone' => 'HOME'];
 
+	/** The name of an exported file (without « .vcf »): the book's, without what a file name cannot have. */
+	public static function fileName(string $name): string {
+		$name = trim((string)preg_replace(['~[\\\\/:*?"<>|\x00-\x1f]+~', '~\s+~u'], ' ', $name));
+		return $name !== '' ? mb_substr($name, 0, 100) : 'Contacts';
+	}
+
 	/** @param array<int, array<string, mixed>> $contacts */
 	public static function export(array $contacts): string {
 		$out = '';
