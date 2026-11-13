@@ -1994,7 +1994,14 @@
 		detailEl.appendChild(h('header', { class: 'wm-message-header' },
 			h('h2', { class: 'wm-subject' }, m.subject || _('(sans objet)')),
 			h('div', { class: 'wm-header-cats' }, categoryPills(m.categories, true)),
-			h('div', { class: 'wm-header-line' }, h('span', { class: 'wm-header-label' }, _('De')), h('strong', {}, personLabel(m.from))),
+			h('div', { class: 'wm-header-line' }, h('span', { class: 'wm-header-label' }, _('De')), h('strong', {}, personLabel(m.from)),
+				m.from && /@/.test(m.from.email || '') ? h('button', {
+					type: 'button',
+					class: 'wm-small wm-add-contact',
+					title: _('Ajouter {email} à mes contacts', { email: m.from.email }),
+					'aria-label': _('Ajouter {email} à mes contacts', { email: m.from.email }),
+					onclick: (e) => addSenderToContacts(m.from, e.currentTarget),
+				}, '👤＋') : null),
 			recipients(_('À'), m.to),
 			recipients('Cc', m.cc),
 			recipients(_('Cci'), m.bcc),
@@ -2200,6 +2207,35 @@
 			setTimeout(resize, 500)
 		})
 		return h('div', { class: 'wm-body' }, frame)
+	}
+
+	/**
+	 * The sender of a message in « Contacts » (the default address book), unless an
+	 * own contact already has this address.
+	 */
+	async function addSenderToContacts(person, button) {
+		const email = person.email.trim().toLowerCase()
+		button.disabled = true
+		try {
+			const found = await api('/accounts/' + state.accountId + '/contacts', { query: { q: email, book: 'contacts', offset: 0, limit: 20 } })
+			const known = (found.items || []).find((c) => [c.email].concat(c.emails || []).filter(Boolean).some((x) => x.toLowerCase() === email))
+			if (known) { toast(_('{name} est déjà dans vos contacts', { name: known.displayName || email })); return }
+			// « Jean Dupont » → first name and last name; an address alone stays the display name
+			const name = (person.name || '').replace(/^"|"$/g, '').trim()
+			const words = name && name.toLowerCase() !== email ? name.split(/\s+/) : []
+			const contact = {
+				displayName: name || email,
+				givenName: words.length > 1 ? words.slice(0, -1).join(' ') : '',
+				surname: words.length > 1 ? words[words.length - 1] : '',
+				emails: [email],
+			}
+			await api('/accounts/' + state.accountId + '/contacts', { method: 'POST', body: { contact, book: 'contacts' } })
+			toast(_('{name} ajouté à vos contacts', { name: contact.displayName }))
+		} catch (e) {
+			toast(e.message, true)
+		} finally {
+			button.disabled = false
+		}
 	}
 
 	/** Print a message: its headers and its (already cleaned) content, in a page of its own. */

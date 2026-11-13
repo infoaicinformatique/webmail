@@ -32,6 +32,7 @@ et sur les téléphones, et inversement.
 | Courrier indésirable | « ⛔ Indésirable » déplace le message dans « Courrier indésirable » et **bloque l'expéditeur** (ses prochains messages y iront directement) ; dans ce dossier, « ✔ Pas indésirable » le remet dans la boîte de réception et **fait confiance à l'expéditeur**. Comme dans Outlook, les listes d'expéditeurs bloqués et fiables sont celles d'Exchange. Aussi pour plusieurs messages à la fois |
 | Plusieurs messages | Case à cocher devant chaque message (au survol), **Ctrl+clic** pour en ajouter, **Maj+clic** pour une plage, `x` au clavier ; une barre propose alors Tout sélectionner, Lu, Non lu, Suivi, Déplacer vers… et Supprimer, pour tous d'un coup. Échap annule la sélection. **Glisser-déposer** un message (ou la sélection) sur un dossier le déplace |
 | Envoi | Nouveau message, Répondre, Répondre à tous, Transférer (Exchange cite le message d'origine et garde ses pièces jointes), Cc/Cci, importance, signature ; `Ctrl+Entrée` envoie |
+| Ajouter l'expéditeur | « 👤＋ » à côté de l'expéditeur d'un message l'ajoute à « Contacts » (prénom et nom tirés du nom affiché) ; s'il y est déjà avec cette adresse, rien n'est créé en double |
 | Liens « mailto: » | Une adresse e-mail cliquée dans un message reçu ouvre un **nouveau message** dans le webmail (destinataires, copie, objet et texte du lien repris). « Comptes et signature » → « Ouvrir les liens « mailto: » avec ce webmail » en fait le programme de messagerie du navigateur : les adresses cliquées sur les autres sites arrivent ici (`…/apps/webmail/?mailto=…`) |
 | Modèles de réponse | Le bouton 📄 de l'éditeur insère un **modèle** là où se trouve le curseur, ou enregistre le texte écrit comme modèle (nom au choix ; la signature n'en fait pas partie). Les modèles appartiennent à l'utilisateur Nextcloud (tous ses comptes) et se renomment ou se suppriment dans « Comptes et signature » ; ils sont nettoyés comme une signature (images comprises, 256 Ko et 50 modèles au plus) ([capture](docs/capture-modeles.png)) |
 | Options d'envoi | « Demander un accusé de lecture », et « **Envoyer plus tard** » à la date et l'heure choisies (demain 8 h proposé) : Exchange garde le message dans « Boîte d'envoi » jusque-là, même si Nextcloud est fermé. « 🖨 » imprime un message (en-têtes et contenu) ; « ⬇ » le télécharge en **.eml** (ouvert par Outlook, Thunderbird, Apple Mail…, pièces jointes comprises) et « ☁️ » l'enregistre en .eml dans Fichiers. Dans l'autre sens, « Tout marquer comme lu » du menu d'un dossier (s'il a des non-lus) le fait en une seule requête Exchange, sans accusé de lecture, quel que soit le nombre de messages. « Importer des messages (.eml)… » du même menu (ou des fichiers .eml déposés sur le dossier) y range des messages venant d'Outlook, de Thunderbird ou d'une autre boîte, comme des messages reçus et lus. **Annuler l'envoi** : après « Envoyer », le message attend quelques secondes (5 par défaut, réglable dans « Comptes et signature » : aucun, 5, 10, 20 ou 30 s) avec « Annuler l'envoi », qui le rouvre tel quel, et « Envoyer maintenant » ; fermer la page pendant ce délai demande confirmation ([capture](docs/capture-annuler-envoi.png)). **Pièce jointe oubliée** : si le texte parle d'une pièce jointe (« ci-joint », « en PJ », « pièce jointe », « attached »…, hors signature et citation) et qu'aucun fichier n'est joint, l'envoi demande confirmation |
@@ -234,7 +235,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.69.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.70.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -277,7 +278,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.69 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.70 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

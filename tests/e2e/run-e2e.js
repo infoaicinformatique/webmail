@@ -2912,6 +2912,25 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('the sender of a message added to the contacts in one click (not twice)', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-folder >> nth=0')
+		// already a contact
+		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+		await page.waitForSelector('.wm-message-header .wm-add-contact')
+		await page.click('.wm-message-header .wm-add-contact')
+		await page.waitForSelector('.wm-toast:has-text("Jean Dupont est déjà dans vos contacts")')
+		// a new one
+		await page.click('.wm-message:has-text("Votre facture OVH")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Votre facture OVH")')
+		await page.click('.wm-message-header .wm-add-contact')
+		await page.waitForSelector('.wm-toast:has-text("OVHcloud ajouté à vos contacts")')
+		await page.click('.wm-tab[data-module="contacts"]')
+		await page.waitForSelector('.wm-contact:has-text("OVHcloud") :text("noreply@ovh.example")')
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')
