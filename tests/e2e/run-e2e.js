@@ -631,7 +631,7 @@ async function main() {
 		await page.hover(row('Boîte de réception'))
 		await page.click(row('Boîte de réception') + ' .wm-folder-menu-btn')
 		const items = await page.$$eval('.wm-folder-menu button', (els) => els.map((e) => e.textContent))
-		assert.deepStrictEqual(items, ['＋ Nouveau sous-dossier'])
+		assert.deepStrictEqual(items, ['＋ Nouveau sous-dossier', '📥 Importer des messages (.eml)…'])
 		await page.keyboard.press('Escape')
 		await page.click(row('Boîte de réception') + ' .wm-folder')
 		await page.waitForSelector('.wm-message')
