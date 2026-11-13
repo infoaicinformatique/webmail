@@ -373,6 +373,9 @@ make test
   et l'affichage mobile. `validate_logged_requests.php` vérifie ensuite chaque requête reçue par le serveur factice
   (corps et en-têtes) avec le même schéma. L'étape Autodiscover suppose une seconde instance du serveur factice sur le port 443 et,
   dans le conteneur Nextcloud, `autodiscover.societe-c.fr` dirigé vers elle (`/etc/hosts`).
+- Intégration continue (`.github/workflows/tests.yml`, à chaque pull request et sur `main`) : tests unitaires
+  sur PHP 8.1 à 8.5, syntaxe des scripts, traductions générées à jour, `info.xml` validé avec le schéma de la
+  boutique d'apps. Le scénario e2e, qui demande un Nextcloud et le serveur EWS factice, se lance à la main.
 - Versions testées : le scénario complet passe sur **Nextcloud 31** (PHP 8.3) et **Nextcloud 34** (PHP 8.5),
   et les tests unitaires sur PHP 8.3 et 8.5. Pour viser une autre instance : `NC_URL=http://localhost:8081
   OCC='docker exec -u www-data nc34 php occ' node tests/e2e/run-e2e.js`.
