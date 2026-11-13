@@ -989,4 +989,5 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 .wm-message.wm-swiping::after { content: attr(data-swipe); position: absolute; top: 50%; transform: translateY(-50%); font-weight: bold; white-space: nowrap; }
 .wm-message.wm-swipe-left::after { right: 12px; }
 .wm-message.wm-swipe-right::after { left: 12px; }
-.wm-messages { overflow-x: hidden; }
+/* (on the list pane, already scrolling: a list itself clipping would shrink in its flex column) */
+.wm-list { overflow-x: hidden; }
