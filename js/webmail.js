@@ -2074,7 +2074,8 @@
 			moveSelect,
 			h('button', { class: 'wm-danger', onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
 			junkButton([m.id], role),
-			role === 'inbox' || state.snoozes.has(m.id)
+			// (the folder shown: a message back from « Reportés » may still be remembered there)
+			role === 'inbox' || folderRole() === 'inbox' || state.snoozes.has(m.id)
 				? h('button', { class: 'wm-snooze-btn', title: _('Ne plus voir ce message jusqu\'à l\'heure choisie : il revient alors dans la boîte de réception, non lu'), 'aria-haspopup': 'menu', onclick: (e) => snoozeMenu(e.currentTarget, m) }, '⏰ ' + _('Reporter'))
 				: null,
 			h('button', { class: 'wm-cat-btn', title: _('Catégoriser'), 'aria-label': _('Catégoriser'), onclick: (e) => categoryMenu(e.currentTarget, () => [m]) }, '🏷'),
@@ -2667,6 +2668,7 @@
 		try {
 			await api('/accounts/' + state.accountId + '/snooze/back', { method: 'POST', body: { itemId: m.id } })
 			state.snoozes.delete(m.id)
+			msgCache.delete(msgKey(m.id))
 			toast(_('Message remis dans la boîte de réception'))
 			const inbox = state.folders.find((f) => f.role === 'inbox')
 			if (inbox) listCache.delete(state.accountId + '|' + inbox.id)
