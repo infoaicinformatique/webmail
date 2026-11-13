@@ -353,7 +353,7 @@ make test
 
 Traductions : l'app est écrite en français ; chaque texte de la page passe par `_('…')` (la fonction `t` de Nextcloud), le texte français servant de clé (le fichier `fr` est vide, mais nécessaire : sans lui, Nextcloud chargerait l'anglais pour un compte en français). Les traductions sont dans `l10n/source/<langue>.json` (texte français → traduction) ; `php l10n/build.php` produit les fichiers que Nextcloud charge (`l10n/<langue>.js` et `.json`, `en` et `en_GB` pour l'anglais). La langue suivie est celle du compte Nextcloud (Paramètres personnels → Langue) :
 
-![Tâches en anglais](docs/capture-anglais.png)
+![Le courrier en anglais](docs/capture-anglais.png)
 
 Le test `L10nTest` vérifie que chaque texte a sa traduction et qu'il ne reste pas de texte français hors de `_()` dans les fichiers traduits.
 
