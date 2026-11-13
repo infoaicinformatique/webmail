@@ -24,6 +24,7 @@ et sur les téléphones, et inversement.
 | Dossiers | Arborescence Exchange (Boîte de réception, Envoyés, Brouillons, Indésirables, Supprimés, dossiers personnels) avec le nombre de non-lus. « ＋ Nouveau dossier » sous la liste ; le bouton « ⋯ » d'un dossier propose **Nouveau sous-dossier, Renommer, Déplacer** (dans un autre dossier ou en haut de la boîte) et **Supprimer** (le dossier et son contenu vont dans « Éléments supprimés »). Les dossiers indispensables à Exchange (Boîte de réception, Brouillons, Envoyés, Supprimés, Indésirables) ne peuvent être que complétés de sous-dossiers |
 | Espace utilisé | Sous les dossiers : espace occupé par la boîte et limite fixée dans Exchange (« 1,2 Go sur 2 Go (60 %) »), en orange à 75 %, en rouge à 90 % avec un avertissement : au-delà de la limite, Exchange bloque l'envoi. Sans limite connue, seul l'espace occupé est affiché |
 | Liste | Défilement continu (50 messages à la fois), aperçu, pièce jointe, importance, suivi (drapeau), actualisation toutes les 2 minutes Des **intertitres** séparent les périodes : « Aujourd'hui », « Hier », « Cette semaine », « La semaine dernière », « Ce mois-ci », puis chaque mois (« Octobre 2026 ») |
+| Affichage | Dans « Comptes et signature », la liste des messages peut être **confortable** (avec l'aperçu du texte), **compacte** (sans aperçu) ou sur **une ligne par message** (expéditeur, objet, date côte à côte, sur grand écran) : plus de messages à l'écran. Mémorisé dans le navigateur |
 | Trier | Le menu de la liste trie les messages par **date** (récents ou anciens d'abord), par **expéditeur**, par **objet** ou par **taille** (la taille s'affiche alors à la place de la date) ; le tri est fait par Exchange, aussi pour les résultats de recherche, et mémorisé. Les intertitres de période ne s'affichent qu'en tri par date |
 | Fluidité | Un dossier déjà ouvert s'affiche **immédiatement**, à la même position, puis se met à jour. Les messages voisins de celui que vous lisez (et celui que survole la souris) sont chargés à l'avance, **sans être marqués comme lus**. Supprimer, déplacer, marquer ou suivre un message est **instantané** (annulé si Exchange refuse) ; après une suppression, le message suivant s'ouvre. L'agenda charge aussi à l'avance la semaine ou le mois précédent et suivant, et les carnets d'adresses déjà vus s'affichent tout de suite. Côté serveur, une seule connexion HTTPS vers Exchange par requête, réponses compressées **Onglets instantanés** : pendant les temps morts de la boîte de réception, l'agenda (la période qui s'ouvre en premier), les tâches à faire et les contacts sont chargés à l'avance, l'un après l'autre ; leur onglet s'affiche alors aussitôt, puis se met à jour (une fois par compte, à nouveau après 10 minutes ; jamais en mode économie de données) Les identifiants des dossiers fixes (boîte de réception, envoyés, agenda, contacts…) sont gardés en cache par Nextcloud : chaque mise à jour de la liste des dossiers, de l'agenda ou des carnets fait **une requête Exchange de moins** Au démarrage, la liste des comptes arrive **avec la page** : les dossiers et les messages sont demandés à Exchange aussitôt, sans requête préalable Les images d'un message (une longue infolettre…) se chargent **au fil du défilement** et sont décodées en arrière-plan : le message s'affiche plus vite et la page reste fluide |
 | Clavier | `j`/`k` (ou ↓/↑) message suivant/précédent, `r` répondre, `a` répondre à tous, `f` transférer, `n` nouveau message, `Suppr` supprimer, `u` non lu, `s` suivi, `/` rechercher, `Échap` revenir à la liste, `?` aide (aussi dans « Raccourcis clavier » en bas à gauche) **Palette de commandes** : `Ctrl+K` (`⌘K` sur Mac), depuis n'importe quel onglet, ou « 🔎 Commandes » en bas à gauche : quelques lettres (sans accents) pour aller à un dossier (« fact » → Factures), au courrier, à l'agenda, aux contacts ou aux tâches, créer un message, un événement, un contact ou une tâche, changer de compte, ou rechercher le texte tapé dans tout le courrier ; ↑/↓ puis Entrée |
@@ -243,7 +244,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.93.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.94.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -286,7 +287,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.93 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.94 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
