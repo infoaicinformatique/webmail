@@ -3238,9 +3238,55 @@
 	// boot
 	// ------------------------------------------------------------------
 
+	// ------------------------------------------------------------------
+	// dialogs and the keyboard (all modules): Tab stays in the open dialog, and
+	// when it closes, the focus goes back to what opened it
+	// ------------------------------------------------------------------
+
+	const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
+	/** the dialog in front, if any */
+	const openDialog = () => { const all = document.querySelectorAll('.wm-overlay'); return all.length ? all[all.length - 1] : null }
+	const visibleIn = (el) => [...el.querySelectorAll(FOCUSABLE)].filter((x) => x.getClientRects().length > 0)
+
+	function keepFocusInDialogs() {
+		let opener = null // last element focused outside the dialogs
+		document.addEventListener('focusin', (e) => { if (!e.target.closest('.wm-overlay')) opener = e.target }, true)
+		document.addEventListener('keydown', (e) => {
+			const dialog = e.key === 'Tab' ? openDialog() : null
+			if (!dialog) return
+			const items = visibleIn(dialog)
+			if (!items.length) { e.preventDefault(); return }
+			const first = items[0]
+			const last = items[items.length - 1]
+			const inside = dialog.contains(document.activeElement)
+			if (e.shiftKey && (document.activeElement === first || !inside)) { e.preventDefault(); last.focus() }
+			else if (!e.shiftKey && (document.activeElement === last || !inside)) { e.preventDefault(); first.focus() }
+		}, true)
+		new MutationObserver((changes) => {
+			changes.forEach((c) => {
+				c.addedNodes.forEach((n) => {
+					// a dialog that does not focus anything itself: its first field or button
+					if (n.nodeType === 1 && n.classList.contains('wm-overlay')) {
+						setTimeout(() => { if (n.isConnected && !n.contains(document.activeElement) && visibleIn(n).length) visibleIn(n)[0].focus() }, 0)
+					}
+				})
+				c.removedNodes.forEach((n) => {
+					if (n.nodeType !== 1 || !n.classList.contains('wm-overlay') || openDialog()) return
+					const lost = !document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected
+					if (!lost || !opener) return
+					// the opener itself, or the one that replaced it when its pane was redrawn meanwhile
+					const same = opener.isConnected ? opener : [...document.querySelectorAll(opener.tagName)]
+						.find((x) => x.className === opener.className && x.textContent === opener.textContent && x.getClientRects().length > 0)
+					if (same) same.focus()
+				})
+			})
+		}).observe(document.body, { childList: true })
+	}
+
 	async function init() {
 		root = document.getElementById('webmail-app')
 		if (!root) return
+		keepFocusInDialogs()
 		try { state.domains = JSON.parse(root.dataset.domains || '[]') } catch (e) { state.domains = [] }
 		state.autodiscover = root.dataset.autodiscover === '1'
 		state.isAdmin = root.dataset.isAdmin === '1'

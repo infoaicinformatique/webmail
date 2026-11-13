@@ -1065,5 +1065,9 @@
 	"disponibilités non partagées": "availability not shared",
 	"Enregistrement…": "Saving…",
 	"Erreur": "Error",
-	"Enregistré": "Saved"
+	"Enregistré": "Saved",
+	"Date de début": "Start date",
+	"Heure de début": "Start time",
+	"Date de fin": "End date",
+	"Heure de fin": "End time"
 }

@@ -1357,10 +1357,10 @@
 				c.kind === 'shared' ? _('Agenda de {name}', { name: c.name }) : c.name)))
 			: null
 		const allDay = h('input', { type: 'checkbox', name: 'allDay', checked: ev ? ev.allDay : false })
-		const startDate = h('input', { type: 'date', name: 'startDate', required: true, value: ymd(start) })
-		const startTime = h('input', { type: 'time', name: 'startTime', value: hm(start), step: '300' })
-		const endDate = h('input', { type: 'date', name: 'endDate', required: true, value: ymd(end) })
-		const endTime = h('input', { type: 'time', name: 'endTime', value: hm(end), step: '300' })
+		const startDate = h('input', { type: 'date', name: 'startDate', required: true, value: ymd(start), 'aria-label': _('Date de début') })
+		const startTime = h('input', { type: 'time', name: 'startTime', value: hm(start), step: '300', 'aria-label': _('Heure de début') })
+		const endDate = h('input', { type: 'date', name: 'endDate', required: true, value: ymd(end), 'aria-label': _('Date de fin') })
+		const endTime = h('input', { type: 'time', name: 'endTime', value: hm(end), step: '300', 'aria-label': _('Heure de fin') })
 		const location = h('input', { type: 'text', name: 'location', value: ev ? ev.location : '', placeholder: _('Salle, adresse ou lien visio') })
 		const attendees = h('input', { type: 'text', name: 'attendees', placeholder: _('Inviter des participants (adresses e-mail)'),
 			value: ev ? ev.attendees.map((a) => a.email).filter((e) => e && !e.startsWith('/')).join(', ') : '' })

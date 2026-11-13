@@ -32,7 +32,8 @@ async function main() {
 	})
 	const errors = []
 	page.on('pageerror', (e) => errors.push('pageerror: ' + e.message))
-	page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()) })
+	// with the address of the resource, to tell the errors of other Nextcloud apps from ours
+	page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text() + (m.location().url ? ' @ ' + m.location().url : '')) })
 
 	const step = async (name, fn) => {
 		process.stdout.write('• ' + name + ' … ')
@@ -1710,7 +1711,7 @@ async function main() {
 		await page.waitForSelector('.wm-toast:has-text("Salle de visio créée")')
 		assert.deepStrictEqual(asked, { method: 'POST', body: { roomType: 3, roomName: 'Point visio client' }, ocs: 'true' })
 		const url = await page.inputValue('.wm-modal input[name=location]')
-		assert(/^http:\/\/localhost:8080\/(index\.php\/)?call\/k3tq7wzp$/.test(url), url)
+		assert(new RegExp('^' + NC.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/(index\\.php/)?call/k3tq7wzp$').test(url), url)
 		assert.strictEqual(await page.inputValue('.wm-modal textarea[name=body]'), 'Rejoindre la visio Nextcloud Talk : ' + url)
 		assert(await page.isHidden('.wm-modal .wm-talk-btn'), 'one room per event')
 		await shot('54-talk')
@@ -2697,6 +2698,30 @@ async function main() {
 		}
 	})
 
+	await step('keyboard: Tab stays in a dialog, the focus goes back to its button, fields have a name', async () => {
+		await page.click('.wm-tab[data-module="calendar"]')
+		await page.focus('.wm-compose-btn')
+		await page.keyboard.press('Enter')
+		await page.waitForSelector('.wm-modal input[name=subject]')
+		const inDialog = () => page.evaluate(() => !!document.activeElement.closest('.wm-modal'))
+		for (let i = 0; i < 30; i++) {
+			await page.keyboard.press('Tab')
+			assert.ok(await inDialog(), 'Tab ' + (i + 1) + ' stays in the dialog')
+		}
+		for (let i = 0; i < 30; i++) {
+			await page.keyboard.press('Shift+Tab')
+			assert.ok(await inDialog(), 'Shift+Tab ' + (i + 1) + ' stays in the dialog')
+		}
+		// the date and the hour of the start and the end each have their own name for a screen reader
+		const names = await page.$$eval('.wm-modal input[type=date], .wm-modal input[type=time]', (els) => els.map((e) => e.getAttribute('aria-label')))
+		assert.deepStrictEqual(names.slice(0, 4), ['Date de début', 'Heure de début', 'Date de fin', 'Heure de fin'])
+		await page.keyboard.press('Escape')
+		await page.waitForSelector('.wm-modal', { state: 'detached' })
+		assert.ok(await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('wm-compose-btn')), 'focus back on « Nouvel événement »')
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')
@@ -2864,7 +2889,8 @@ async function main() {
 	await step('Nextcloud unified search: messages and events, the link opens them', async () => {
 		const search = async (term, section) => {
 			await page.goto(NC + '/apps/files/')
-			await page.click('header button[aria-label="Recherche unifiée"]')
+			// up to Nextcloud 33: a button that opens the search; Nextcloud 34: a field in the header
+			await page.click('header button[aria-label="Recherche unifiée"], .unified-search-input__button')
 			await page.keyboard.type(term)
 			await page.waitForSelector('text=' + section)
 		}
@@ -2951,7 +2977,7 @@ async function main() {
 	// expected: deliberate 400s (bad domain/password, missing recipient) and the fake tracker pixel
 	// errors of other Nextcloud apps (Files, Text… where the unified search is tried) are not ours
 	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED/.test(e)
-		&& !/\/apps\/(?!webmail\/)[a-z_]+\/js\//.test(e))
+		&& !/\/apps\/(?!webmail\/)[a-z_]+\//.test(e))
 	await browser.close()
 	if (relevant.length) {
 		console.log('\nBrowser errors:\n' + relevant.join('\n'))
