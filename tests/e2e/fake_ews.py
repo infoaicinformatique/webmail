@@ -146,6 +146,10 @@ def seed():
                     dict(name='archive.zip', content_type='application/zip', content=b'PK\x05\x06' + b'\x00' * 18, inline=False),
                 ])
     add_message('F-CLIENTS', 'Commande 4521', ('Client B', 'contact@client-b.fr'), '<p>Merci pour la livraison, le devis est signé.</p>', 60 * 50, is_read=True)
+    # a conversation in this folder: the order, two answers (« grouped by conversation »)
+    add_message('F-CLIENTS', 'RE: Commande 4521', ('Utilisateur', 'user@societe-a.fr'), '<p>Merci, la facture suit.</p>', 60 * 49, is_read=True,
+                to=(('Client B', 'contact@client-b.fr'),))
+    add_message('F-CLIENTS', 'RE: Commande 4521', ('Client B', 'contact@client-b.fr'), '<p>Facture bien reçue.</p>', 60 * 48)
     add_message('F-SENT', 'Re: Planning', ('Utilisateur', 'user@societe-a.fr'), '<p>OK pour moi.</p>', 300, is_read=True,
                 to=(('Marie Martin', 'marie.martin@societe-a.fr'),))
 
@@ -426,6 +430,37 @@ def handle_user_configuration(op, el, user):
 def handle(op, el, user):
     global CURRENT_USER
     CURRENT_USER = user
+    if op == 'FindConversation':
+        fid = folder_id(el.find('m:ParentFolderId', NS)[0])
+        if fid is None:
+            return '<m:FindConversationResponse ResponseClass="Error" xmlns:m="%s" xmlns:t="%s"><m:MessageText>not found</m:MessageText><m:ResponseCode>ErrorFolderNotFound</m:ResponseCode><m:DescriptiveLinkKey>0</m:DescriptiveLinkKey></m:FindConversationResponse>' % (NS['m'], NS['t'])
+        view = el.find('m:IndexedPageItemView', NS)
+        offset, limit = int(view.get('Offset', '0')), int(view.get('MaxEntriesReturned', '50'))
+        groups = {}
+        for m in MESSAGES.values():
+            if m['folder'] == fid:
+                groups.setdefault(conversation_id(m), []).append(m)
+        convs = sorted(groups.items(), key=lambda kv: max(x['date'] for x in kv[1]), reverse=True)
+        out = ''
+        for cid, msgs in convs[offset:offset + limit]:
+            msgs.sort(key=lambda x: x['date'], reverse=True)
+            senders = []
+            for x in msgs:
+                if x['sender'][0] not in senders:
+                    senders.append(x['sender'][0])
+            import re as _re
+            topic = _re.sub(r'^\s*((re|tr|fw|fwd)\s*:\s*)+', '', msgs[-1]['subject'], flags=_re.I).strip()
+            out += ('<t:Conversation><t:ConversationId Id="%s"/><t:ConversationTopic>%s</t:ConversationTopic>'
+                    '<t:UniqueSenders>%s</t:UniqueSenders><t:LastDeliveryTime>%s</t:LastDeliveryTime><t:HasAttachments>%s</t:HasAttachments>'
+                    '<t:MessageCount>%d</t:MessageCount><t:UnreadCount>%d</t:UnreadCount><t:ItemIds>%s</t:ItemIds></t:Conversation>'
+                    % (cid, esc(topic), ''.join('<t:String>%s</t:String>' % esc(n) for n in senders), msgs[0]['date'],
+                       'true' if any(not ATTACHMENTS[a].get('inline') for x in msgs for a in x['attachments']) else 'false',
+                       len(msgs), sum(1 for x in msgs if not x['is_read']),
+                       ''.join('<t:ItemId Id="%s" ChangeKey="%s"/>' % (x['id'], x['ck']) for x in msgs)))
+        return ('<m:FindConversationResponse ResponseClass="Success" xmlns:m="%s" xmlns:t="%s"><m:ResponseCode>NoError</m:ResponseCode>'
+                '<m:Conversations>%s</m:Conversations><m:TotalConversationsInView>%d</m:TotalConversationsInView><m:IndexedOffset>%d</m:IndexedOffset></m:FindConversationResponse>'
+                % (NS['m'], NS['t'], out, len(convs), offset + min(limit, max(0, len(convs) - offset))))
+
     if op == 'GetConversationItems':
         cid = el.find('m:Conversations/t:Conversation/t:ConversationId', NS).get('Id')
         skip = el.find('m:FoldersToIgnore', NS)

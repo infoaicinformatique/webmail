@@ -20,6 +20,8 @@
 		// search filters; all: every folder instead of the current one
 		filters: { unread: false, attachments: false, flagged: false, since: '', all: false },
 		showFilters: false,
+		// the list grouped by conversation (one row each), remembered
+		grouped: (() => { try { return localStorage.getItem('webmail.grouped') === '1' } catch (e) { return false } })(),
 		selectedId: null,
 		checked: new Set(), // messages ticked for a grouped action
 		current: null, // opened message
@@ -57,7 +59,10 @@
 	let listSeq = 0
 	let listObserver = null
 
-	const listKey = () => state.accountId + '|' + state.folderId
+	const listKey = () => state.accountId + '|' + state.folderId + (grouped() ? '|conversations' : '')
+	/** The list shows conversations (not while searching: the results are messages). */
+	const grouped = () => state.grouped && !isSearching()
+	const listEndpoint = () => '/accounts/' + state.accountId + (grouped() ? '/conversations' : '/messages')
 	const NO_FILTERS = { unread: false, attachments: false, flagged: false, since: '', all: false }
 	const filtersOn = () => ['unread', 'attachments', 'flagged', 'since'].filter((k) => state.filters[k]).length
 	/** a search or a filter is active: the list is not the folder's content */
@@ -924,7 +929,7 @@
 			}
 		}
 		try {
-			const data = await api('/accounts/' + state.accountId + '/messages', {
+			const data = await api(listEndpoint(), {
 				query: listQuery(reset ? 0 : state.messages.length, limit),
 			})
 			// a newer load (another folder, a search) replaced this one; the folder id
@@ -952,7 +957,7 @@
 		if (state.messages.length <= 100 && !state.loadingList) {
 			const seq = listSeq
 			try {
-				const data = await api('/accounts/' + state.accountId + '/messages', {
+				const data = await api(listEndpoint(), {
 					query: listQuery(0, Math.max(PAGE_SIZE, state.messages.length)),
 				})
 				if (seq !== listSeq || state.module !== 'mail') return
@@ -998,6 +1003,19 @@
 			'aria-expanded': state.showFilters ? 'true' : 'false',
 			onclick: () => { state.showFilters = !state.showFilters; renderList(state.loadingList && !state.messages.length) },
 		}, '⏷' + (filtersOn() ? ' ' + filtersOn() : '')),
+		h('button', {
+			type: 'button',
+			class: 'wm-icon-btn wm-group-toggle' + (state.grouped ? ' active' : ''),
+			title: state.grouped ? 'Afficher chaque message' : 'Regrouper par conversation',
+			'aria-label': 'Regrouper par conversation',
+			'aria-pressed': state.grouped ? 'true' : 'false',
+			onclick: () => {
+				state.grouped = !state.grouped
+				try { localStorage.setItem('webmail.grouped', state.grouped ? '1' : '0') } catch (e) { /* ignore */ }
+				state.checked.clear()
+				loadMessages(true)
+			},
+		}, '🗨'),
 		h('button', { type: 'button', class: 'wm-icon-btn', title: 'Actualiser', 'aria-label': 'Actualiser', onclick: () => { loadFolders(); loadMessages(true) } }, '⟳'),
 		)
 		listEl.appendChild(form)
@@ -1030,18 +1048,20 @@
 		}
 
 		const showRecipients = folderRole() === 'sentitems' || folderRole() === 'drafts'
-		const ul = h('ul', { class: 'wm-messages', role: 'list' })
+		// conversations: one row each, opened on their newest message (no ticks nor drag and drop)
+		const conv = grouped()
+		const ul = h('ul', { class: 'wm-messages' + (conv ? ' wm-conversations' : ''), role: 'list' })
 		state.messages.forEach((m) => {
 			const who = showRecipients ? ('À : ' + (m.displayTo || '')) : (personShort(m.from) || '(expéditeur inconnu)')
 			const li = h('li', {
 				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : '') + (state.checked.has(m.id) ? ' checked' : ''),
 				tabindex: '0',
-				draggable: 'true',
+				draggable: conv ? 'false' : 'true',
 				dataset: { id: m.id },
 				onclick: (e) => {
 					// Ctrl/Cmd+click: tick; Shift+click: tick a range; click: open
-					if (e.ctrlKey || e.metaKey) toggleChecked(m.id)
-					else if (e.shiftKey) checkRange(m.id)
+					if (!conv && (e.ctrlKey || e.metaKey)) toggleChecked(m.id)
+					else if (!conv && e.shiftKey) checkRange(m.id)
 					else openMessage(m.id)
 				},
 				ondragstart: (e) => {
@@ -1063,7 +1083,7 @@
 				onmouseenter: () => { clearTimeout(hoverTimer); hoverTimer = setTimeout(() => prefetchMessage(m.id), 150) },
 				onmouseleave: () => clearTimeout(hoverTimer),
 			},
-			h('input', {
+			conv ? null : h('input', {
 				type: 'checkbox',
 				class: 'wm-check',
 				checked: state.checked.has(m.id),
@@ -1072,6 +1092,7 @@
 			}),
 			h('div', { class: 'wm-message-line1' },
 				h('span', { class: 'wm-message-from' }, who),
+				conv && m.count > 1 ? h('span', { class: 'wm-thread-count', title: m.count + ' messages' + (m.unreadCount ? ', dont ' + m.unreadCount + ' non lu' + (m.unreadCount > 1 ? 's' : '') : '') }, String(m.count)) : null,
 				m.folderId && state.filters.all ? h('span', { class: 'wm-message-folder' }, folderName(m.folderId)) : null,
 				h('span', { class: 'wm-message-date' }, formatDate(m.date))),
 			h('div', { class: 'wm-message-line2' },

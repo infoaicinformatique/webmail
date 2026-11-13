@@ -16,6 +16,7 @@ return [
 		['name' => 'mail#addMailbox', 'url' => '/api/accounts/{id}/mailboxes', 'verb' => 'POST'],
 		['name' => 'mail#removeMailbox', 'url' => '/api/accounts/{id}/mailboxes/delete', 'verb' => 'POST'],
 		['name' => 'mail#messages', 'url' => '/api/accounts/{id}/messages', 'verb' => 'GET'],
+		['name' => 'mail#conversations', 'url' => '/api/accounts/{id}/conversations', 'verb' => 'GET'],
 		['name' => 'mail#message', 'url' => '/api/accounts/{id}/message', 'verb' => 'GET'],
 		['name' => 'mail#conversation', 'url' => '/api/accounts/{id}/conversation', 'verb' => 'GET'],
 		['name' => 'mail#junk', 'url' => '/api/accounts/{id}/junk', 'verb' => 'POST'],

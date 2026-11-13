@@ -132,6 +132,14 @@ class MailController extends Controller {
 	}
 
 	/**
+	 * The list grouped by conversation: one row per conversation of the folder.
+	 */
+	#[NoAdminRequired]
+	public function conversations(int $id, string $folder = 'inbox', int $offset = 0, int $limit = 50): Response {
+		return $this->handle(fn () => $this->client($id)->findConversations($folder, max(0, $offset), max(1, min(100, $limit))));
+	}
+
+	/**
 	 * New unread messages of the inbox since a date (polled for notifications).
 	 */
 	#[NoAdminRequired]
