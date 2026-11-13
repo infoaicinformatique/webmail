@@ -437,26 +437,64 @@ class EwsClient {
 	}
 
 	public function distinguishedFolderIds(array $names, ?string $mailbox = null): array {
-		$ids = '';
-		foreach ($names as $n) {
-			$ids .= $this->distinguishedXml($n, $mailbox);
-		}
-		$xp = $this->request(
-			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape></m:FolderShape>'
-			. '<m:FolderIds>' . $ids . '</m:FolderIds></m:GetFolder>',
-			false
-		);
-		$out = [];
-		$messages = $xp->query('//m:ResponseMessages/m:GetFolderResponseMessage');
-		foreach ($messages as $i => $msg) {
-			if ($msg instanceof \DOMElement && $msg->getAttribute('ResponseClass') === 'Success') {
-				$id = $this->attr($xp, './/t:FolderId', 'Id', $msg);
-				if ($id !== null && isset($names[$i])) {
-					$out[$names[$i]] = $id;
+		$names = array_values($names);
+		// the ids of the well-known folders never change: asked once, then remembered (one request less each time)
+		$key = 'dist_' . sha1(strtolower($this->username) . '|' . $this->url . '|' . strtolower($mailbox ?? ''));
+		$known = $this->idCacheGet !== null ? ($this->idCacheGet)($key) : null;
+		$known = is_array($known) ? array_filter($known, 'is_string') : [];
+		$missing = array_values(array_diff($names, array_keys($known)));
+		if ($missing !== []) {
+			$ids = '';
+			foreach ($missing as $n) {
+				$ids .= $this->distinguishedXml($n, $mailbox);
+			}
+			$xp = $this->request(
+				'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape></m:FolderShape>'
+				. '<m:FolderIds>' . $ids . '</m:FolderIds></m:GetFolder>',
+				false
+			);
+			$found = [];
+			$messages = $xp->query('//m:ResponseMessages/m:GetFolderResponseMessage');
+			foreach ($messages as $i => $msg) {
+				if ($msg instanceof \DOMElement && $msg->getAttribute('ResponseClass') === 'Success') {
+					$id = $this->attr($xp, './/t:FolderId', 'Id', $msg);
+					if ($id !== null && isset($missing[$i])) {
+						$found[$missing[$i]] = $id;
+					}
+				}
+			}
+			// (a folder not found, or not shared with us, is asked again next time)
+			if ($found !== []) {
+				$known += $found;
+				if ($this->idCacheSet !== null) {
+					($this->idCacheSet)($key, $known, self::ID_CACHE_TTL);
 				}
 			}
 		}
+		$out = [];
+		foreach ($names as $n) {
+			if (isset($known[$n])) {
+				$out[$n] = $known[$n];
+			}
+		}
 		return $out;
+	}
+
+	/** How long the ids of the well-known folders are remembered (seconds). */
+	public const ID_CACHE_TTL = 86400;
+
+	private ?\Closure $idCacheGet = null;
+	private ?\Closure $idCacheSet = null;
+
+	/**
+	 * Where the ids of the well-known folders are remembered between requests (Nextcloud's cache).
+	 *
+	 * @param \Closure(string): mixed $get
+	 * @param \Closure(string, array<string, string>, int): void $set
+	 */
+	public function setIdCache(\Closure $get, \Closure $set): void {
+		$this->idCacheGet = $get;
+		$this->idCacheSet = $set;
 	}
 
 	/** A well-known folder (inbox…) of the account's mailbox, or of another one (a shared mailbox). */
