@@ -4436,7 +4436,6 @@
 				} catch (e) { toast(_('Ce navigateur refuse : {error}', { error: e.message }), true) }
 			},
 		}, '✉️ ' + _('Ouvrir les liens « mailto: » avec ce webmail')) : null
-		wrap.appendChild(matrixSettings())
 		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-send-settings' },
 			h('legend', {}, _('Envoi')),
 			h('label', { class: 'wm-field' }, h('span', {}, _('Délai pour annuler l\'envoi')), undo),
@@ -4469,6 +4468,8 @@
 		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-template-settings' },
 			h('legend', {}, _('Modèles de réponse')), templateList))
 		loadTemplates(true).then(showTemplates, (e) => toast(e.message, true))
+		// (last: the account cards stay first)
+		wrap.appendChild(matrixSettings())
 
 		// senders whose remote images show at once
 		const trustedList = h('ul', { class: 'wm-trusted-list' })
