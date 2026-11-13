@@ -279,6 +279,9 @@ async function main() {
 		const pre = fetched.find((q) => q.get('itemId') === ids[1])
 		assert(pre && pre.get('markRead') === '0', 'next message prefetched without marking it read')
 		assert(await page.$(`.wm-message.unread[data-id="${ids[1]}"]`), 'still unread until opened')
+		// and the one after it (reading down the list)
+		for (let i = 0; i < 50 && !fetched.some((q) => q.get('itemId') === ids[2]); i++) await page.waitForTimeout(100)
+		assert(fetched.some((q) => q.get('itemId') === ids[2] && q.get('markRead') === '0'), 'second next message prefetched too')
 
 		// j / k: next and previous message, the prefetched one opens without asking the server again
 		const before = fetched.length
@@ -2622,6 +2625,31 @@ async function main() {
 		await page.locator(devis).waitFor({ state: 'detached' })
 		await page.click('.wm-task-filter[data-filter="todo"]')
 		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
+	})
+
+	await step('tab memory: after a reload, the mailbox shows before Exchange answers', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+		await page.waitForTimeout(800) // written half a second after the list
+		const stored = await page.evaluate(() => sessionStorage.getItem('webmail.tab.v1'))
+		assert.ok(stored && stored.includes('"lists"') && stored.includes('"folders"'), 'lists and folders kept for the tab')
+		assert.ok(!/"body"\s*:/.test(stored), 'never the content of the messages')
+		// Exchange does not answer the list (yet): the remembered list shows anyway
+		const listCall = /\/apps\/webmail\/api\/accounts\/\d+\/(messages|conversations)\?/
+		let release
+		const held = new Promise((resolve) => { release = resolve })
+		await page.route(listCall, async (route) => { await held; await route.continue() })
+		try {
+			const t0 = Date.now()
+			await page.reload()
+			await page.waitForSelector('.wm-message', { timeout: 5000 })
+			await page.waitForSelector('.wm-folder.active')
+			console.log('    mailbox shown ' + (Date.now() - t0) + ' ms after the reload, list request still pending')
+		} finally {
+			release()
+			await page.unroute(listCall)
+		}
+		await page.waitForSelector('.wm-message')
 	})
 
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {

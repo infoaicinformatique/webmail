@@ -57,7 +57,7 @@
 	const listCache = new Map()
 	/** "account|item id" -> message (without remote images), most recent last */
 	const msgCache = new Map()
-	const MSG_CACHE_MAX = 40
+	const MSG_CACHE_MAX = 100
 	/** "account|item id" -> pending fetch (prefetch, not marked as read) */
 	const msgPending = new Map()
 	let listSeq = 0
@@ -105,7 +105,63 @@
 
 	function saveListCache() {
 		if (isSearching() || !state.accountId) return
-		listCache.set(listKey(), { messages: state.messages.slice(), total: state.total, hasMore: state.hasMore, scrollTop: listEl ? listEl.scrollTop : 0 })
+		const key = listKey()
+		listCache.delete(key) // most recent last
+		listCache.set(key, { messages: state.messages.slice(), total: state.total, hasMore: state.hasMore, scrollTop: listEl ? listEl.scrollTop : 0 })
+		persistTab()
+	}
+
+	// ------------------------------------------------------------------
+	// tab memory: the lists seen (their summaries: sender, subject, date,
+	// preview; never the content of the messages) and the folders, kept for
+	// this tab only (sessionStorage, emptied when the tab is closed). After a
+	// reload, the mailbox shows at once, then is refreshed from Exchange.
+	// ------------------------------------------------------------------
+
+	const TAB_KEY = 'webmail.tab.v1'
+	const TAB_LISTS_MAX = 6 // folders kept
+	const TAB_LIST_ITEMS = 100 // rows kept per folder
+	/** account id -> { folders, usage } */
+	const folderCache = new Map()
+	let tabTimer = null
+	const tabUser = () => (window.OC && OC.getCurrentUser && OC.getCurrentUser() && OC.getCurrentUser().uid) || ''
+
+	function restoreTab() {
+		try {
+			const data = JSON.parse(sessionStorage.getItem(TAB_KEY) || 'null')
+			if (!data) return
+			// another Nextcloud user in this tab: nothing of the previous one is shown
+			if (data.user !== tabUser()) { sessionStorage.removeItem(TAB_KEY); return }
+			;(data.lists || []).forEach(([key, list]) => listCache.set(key, list))
+			Object.entries(data.folders || {}).forEach(([id, f]) => folderCache.set(id, f))
+		} catch (e) { /* storage blocked or damaged: start from Exchange */ }
+	}
+
+	/** A removed account: nothing of it is kept, in memory or in the tab. */
+	function forgetAccount(id) {
+		const prefix = id + '|'
+		;[...listCache.keys()].filter((k) => k.startsWith(prefix)).forEach((k) => listCache.delete(k))
+		;[...msgCache.keys()].filter((k) => k.startsWith(prefix)).forEach((k) => msgCache.delete(k))
+		folderCache.delete(String(id))
+		writeTab()
+	}
+
+	function persistTab() {
+		clearTimeout(tabTimer)
+		tabTimer = setTimeout(writeTab, 500)
+	}
+
+	function writeTab() {
+		clearTimeout(tabTimer)
+		try {
+			const lists = [...listCache.entries()].slice(-TAB_LISTS_MAX).map(([key, list]) => [key, {
+				messages: list.messages.slice(0, TAB_LIST_ITEMS),
+				total: list.total,
+				hasMore: list.hasMore || list.messages.length > TAB_LIST_ITEMS,
+				scrollTop: list.scrollTop,
+			}])
+			sessionStorage.setItem(TAB_KEY, JSON.stringify({ user: tabUser(), lists, folders: Object.fromEntries(folderCache) }))
+		} catch (e) { /* storage full or blocked: memory only */ }
 	}
 
 	function isMobile() {
@@ -710,6 +766,8 @@
 			const data = await api('/accounts/' + state.accountId + '/folders')
 			state.folders = data.folders
 			state.usage = data.usage || null
+			folderCache.set(String(state.accountId), { folders: data.folders, usage: state.usage })
+			persistTab()
 			warnIfFull()
 			// switch from the "inbox" alias to the real id so the active state works
 			const inbox = state.folders.find((f) => f.role === 'inbox')
@@ -726,6 +784,15 @@
 		state.accountId = id
 		state.folderId = 'inbox'
 		state.folders = []
+		// folders seen before in this tab: shown at once (with the real inbox id,
+		// so that its remembered list shows too), then refreshed
+		const known = folderCache.get(String(id))
+		if (known) {
+			state.folders = known.folders
+			state.usage = known.usage
+			const inbox = known.folders.find((f) => f.role === 'inbox')
+			if (inbox) state.folderId = inbox.id
+		}
 		resetSearch()
 		try { localStorage.setItem('webmail.account', String(id)) } catch (e) { /* ignore */ }
 		if (currentModule()) {
@@ -1643,7 +1710,8 @@
 	function prefetchAround(id) {
 		const i = state.messages.findIndex((m) => m.id === id)
 		if (i < 0) return
-		const ids = [state.messages[i + 1], state.messages[i - 1]].filter(Boolean).map((m) => m.id)
+		// the next two (reading down the list), then the previous one
+		const ids = [state.messages[i + 1], state.messages[i + 2], state.messages[i - 1]].filter(Boolean).map((m) => m.id)
 		setTimeout(() => ids.reduce((p, next) => p.then(() => (state.selectedId === id ? prefetchMessage(next) : null)).catch(() => null), Promise.resolve()), 300)
 	}
 
@@ -3007,6 +3075,7 @@
 				if (!window.confirm(_('Retirer le compte {email} du webmail ? (aucun e-mail n\'est supprimé)', { email: a.email }))) return
 				try {
 					await api('/accounts/' + a.id, { method: 'DELETE' })
+					forgetAccount(a.id)
 					state.accounts = state.accounts.filter((x) => x.id !== a.id)
 					if (state.accountId === a.id) {
 						state.accountId = state.accounts.length ? state.accounts[0].id : null
@@ -3132,6 +3201,8 @@
 		try { state.domains = JSON.parse(root.dataset.domains || '[]') } catch (e) { state.domains = [] }
 		state.autodiscover = root.dataset.autodiscover === '1'
 		state.isAdmin = root.dataset.isAdmin === '1'
+		restoreTab()
+		window.addEventListener('pagehide', writeTab)
 
 		try {
 			state.accounts = await api('/accounts')

@@ -88,6 +88,8 @@
 	cursor: pointer;
 	position: relative;
 }
+/* long lists: rows off screen are not laid out nor painted (their height is kept once seen) */
+.wm-messages > .wm-message { content-visibility: auto; contain-intrinsic-size: auto 76px; }
 .wm-message:hover, .wm-message:focus-visible { background: var(--color-background-hover); outline: none; }
 .wm-message.selected { background: var(--color-primary-element-light); }
 .wm-message.unread::before {
