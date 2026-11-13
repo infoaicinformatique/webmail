@@ -150,6 +150,23 @@
 	const SEARCH_MIN = 2
 	let searchTimer = null
 
+	/** The searches made recently (per account, in this browser): offered again under the field. */
+	const RECENT_SEARCHES = 8
+	const searchKey = () => 'webmail.searches.' + state.accountId
+	function recentSearches() {
+		try {
+			const v = JSON.parse(localStorage.getItem(searchKey()) || '[]')
+			return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []
+		} catch (e) { return [] }
+	}
+	function rememberSearch(q) {
+		q = (q || '').trim()
+		// (a category chosen from its menu is not a search typed)
+		if (q.length < SEARCH_MIN || /^category:"/.test(q)) return
+		const list = [q].concat(recentSearches().filter((x) => x.toLowerCase() !== q.toLowerCase())).slice(0, RECENT_SEARCHES)
+		try { localStorage.setItem(searchKey(), JSON.stringify(list)) } catch (e) { /* not kept */ }
+	}
+
 	/** Query parameters of the list request (folder, search words, filters). */
 	function listQuery(offset, limit) {
 		const f = state.filters
@@ -1450,9 +1467,12 @@
 		if (listObserver) { listObserver.disconnect(); listObserver = null }
 		clear(listEl)
 		const f = currentFolder()
+		// the recent searches, offered by the browser under the field
+		const recentList = h('datalist', { id: 'wm-recent-searches' }, recentSearches().map((q) => h('option', { value: q })))
 		const searchInput = h('input', {
 			type: 'search',
 			class: 'wm-search',
+			list: 'wm-recent-searches',
 			placeholder: state.filters.all ? _('Rechercher dans tous les dossiers') : _('Rechercher dans {folder}', { folder: f ? f.name : _('le dossier') }),
 			value: typing ? typing.value : state.query,
 			'aria-label': _('Rechercher'),
@@ -1470,10 +1490,11 @@
 		})
 		const form = h('form', {
 			class: 'wm-list-header',
-			onsubmit: (e) => { e.preventDefault(); clearTimeout(searchTimer); state.query = searchInput.value.trim(); loadMessages(true) },
+			onsubmit: (e) => { e.preventDefault(); clearTimeout(searchTimer); state.query = searchInput.value.trim(); rememberSearch(state.query); loadMessages(true) },
 		},
 		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Dossiers'), onclick: () => setView('nav') }, '☰'),
 		searchInput,
+		recentList,
 		h('button', {
 			type: 'button',
 			class: 'wm-icon-btn wm-filter-toggle' + (state.showFilters || filtersOn() ? ' active' : ''),
@@ -2388,6 +2409,8 @@
 	}
 
 	async function openMessage(id, remote) {
+		// a result opened: the search was useful, kept among the recent ones
+		if (state.query) rememberSearch(state.query)
 		state.selectedId = id
 		markSelected(id)
 		setView('detail')
