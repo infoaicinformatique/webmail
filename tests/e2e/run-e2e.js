@@ -3573,6 +3573,42 @@ async function main() {
 		await page.waitForSelector('.wm-compose', { state: 'detached' })
 	})
 
+	await step('list: an answer asked for before a change, arriving after it, does not undo it', async () => {
+		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°30"))'
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector(row + ':not(.unread)')
+		// the next list answer held back 1.5 s (a slow Exchange)
+		let held = 0
+		let fetched = false
+		const hold = async (route) => {
+			held++
+			// asked now, answered late: the answer is the folder as it was before the change
+			const response = await route.fetch()
+			fetched = true
+			await new Promise((r) => setTimeout(r, 1500))
+			await route.fulfill({ response })
+		}
+		await page.route('**/api/accounts/*/messages?*', hold)
+		try {
+			await page.click('.wm-list-header button[title="Actualiser"]')
+			for (let i = 0; i < 100 && !fetched; i++) await page.waitForTimeout(50)
+			assert.ok(fetched, 'the list asked for')
+			// meanwhile: marked unread
+			await page.click(row + ' .wm-check')
+			await page.click('.wm-bulk button:has-text("Non lu")')
+			await page.waitForSelector(row + '.unread')
+			await page.waitForFunction(() => !document.querySelector('.wm-list .icon-loading'))
+			await page.waitForTimeout(1800)
+			assert.ok(held > 0, 'a list answer was held back')
+			assert.ok(await page.$(row + '.unread'), 'still unread after the late answer')
+		} finally {
+			await page.unroute('**/api/accounts/*/messages?*', hold)
+		}
+		await page.click(row + ' .wm-check')
+		await page.click('.wm-bulk button:text-is("Lu")')
+		await page.waitForSelector(row + ':not(.unread)')
+	})
+
 	await step('touch: a message swiped to the right is read / unread, to the left goes to the trash (with « Annuler »)', async () => {
 		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°2"))'
 		// a finger on the row, moved by a fraction of its width (touch events, as a phone sends them)
