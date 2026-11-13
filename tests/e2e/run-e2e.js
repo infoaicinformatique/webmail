@@ -2787,7 +2787,7 @@ async function main() {
 		await page.click('.wm-editor-btn[title="Modèles de réponse"]')
 		await page.click('.wm-template-item:has-text("Relance devis")')
 		const text = await page.textContent('.wm-editor')
-		assert.ok(/^Madame, Bonjour, avez-vous pu consulter notre devis \? Bien cordialement\..*--/.test(text), text)
+		assert.ok(/^Madame, Bonjour, avez-vous pu consulter notre devis \? Bien cordialement\.[\s\S]*--/.test(text), text)
 		await shot('71-templates')
 		await page.click('.wm-compose button:has-text("Annuler")')
 		// managed in « Comptes et signature »
