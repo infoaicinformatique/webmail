@@ -1119,7 +1119,7 @@
 			await loadMessages(false, PAGE_SIZE - state.messages.length)
 			return
 		}
-		if (reset) prefetchUnreadWhenIdle()
+		if (reset) { prefetchUnreadWhenIdle(); prefetchModulesWhenIdle() }
 	}
 
 	/**
@@ -1140,6 +1140,35 @@
 		const next = (i) => {
 			if (i >= ids.length || !current()) return
 			idle(() => (current() ? prefetchMessage(ids[i]).catch(() => null).then(() => next(i + 1)) : null), { timeout: 4000 })
+		}
+		next(0)
+	}
+
+	/** account id -> when its calendar, contacts and tasks were last loaded ahead */
+	const modulesPrefetched = new Map()
+	const MODULES_PREFETCH_EVERY = 10 * 60 * 1000
+
+	/**
+	 * The calendar, the contacts and the tasks loaded while the browser has nothing else
+	 * to do, one after the other, so that their tab shows at once (then refreshes).
+	 * Once per account (again after 10 minutes); not on a connection that asks to save data,
+	 * nor in a hidden tab; stops when the account changes.
+	 */
+	function prefetchModulesWhenIdle() {
+		if (folderRole() !== 'inbox' || document.hidden || state.module !== 'mail') return
+		if (navigator.connection && navigator.connection.saveData) return
+		const accountId = state.accountId
+		if (Date.now() - (modulesPrefetched.get(accountId) || 0) < MODULES_PREFETCH_EVERY) return
+		modulesPrefetched.set(accountId, Date.now())
+		const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500))
+		const mods = ['calendar', 'tasks', 'contacts'].map((k) => window.WebmailModules[k]).filter((m) => m && m.prefetch)
+		const next = (i) => {
+			if (i >= mods.length || accountId !== state.accountId) return
+			idle(() => {
+				if (accountId !== state.accountId) return
+				// (a failure is not shown: the tab loads again when opened)
+				Promise.resolve().then(() => mods[i].prefetch(core)).catch(() => null).then(() => next(i + 1))
+			}, { timeout: 5000 })
 		}
 		next(0)
 	}

@@ -2785,6 +2785,36 @@ async function main() {
 		}
 	})
 
+	await step('instant tabs: the calendar, the tasks and the contacts are loaded while the mail is idle, then show at once', async () => {
+		const ahead = ['/calendar/events', '/tasks?', '/contacts?'].map((part) => page.waitForResponse((r) => r.url().includes(part) && r.status() === 200, { timeout: 30000 }))
+		await page.goto(NC + '/apps/webmail/?module=mail')
+		await page.waitForSelector('.wm-message')
+		await Promise.all(ahead)
+		// from now on, Exchange is slow: what shows at once was loaded ahead
+		const slow = async (route) => { await new Promise((r) => setTimeout(r, 4000)); await route.continue().catch(() => null) }
+		await page.route(/\/calendar\/(events|calendars)/, slow)
+		await page.route(/\/apps\/webmail\/api\/accounts\/\d+\/(tasks|contacts)(\?|\/books|$)/, slow)
+		try {
+			const shown = async (tab, selector) => {
+				const t0 = Date.now()
+				await page.click('.wm-tab[data-module="' + tab + '"]')
+				await page.waitForSelector(selector, { timeout: 2000 })
+				return Date.now() - t0
+			}
+			const times = {
+				calendar: await shown('calendar', '.wm-event, .wm-agenda-item'),
+				tasks: await shown('tasks', '.wm-task:has-text("Renouveler le nom de domaine")'),
+				contacts: await shown('contacts', '.wm-contact'),
+			}
+			process.stdout.write('    shown in ' + JSON.stringify(times) + ' ms (Exchange answering in 4 s)\n')
+		} finally {
+			await page.unroute(/\/calendar\/(events|calendars)/)
+			await page.unroute(/\/apps\/webmail\/api\/accounts\/\d+\/(tasks|contacts)(\?|\/books|$)/)
+		}
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('keyboard: Tab stays in a dialog, the focus goes back to its button, fields have a name', async () => {
 		await page.click('.wm-tab[data-module="calendar"]')
 		await page.focus('.wm-compose-btn')
