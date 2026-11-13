@@ -1220,5 +1220,6 @@
 	"Tout le domaine {domain}": "The whole domain {domain}",
 	"Retirer {who}": "Remove {who}",
 	"Images des expéditeurs de confiance": "Images of trusted senders",
-	"Leurs messages affichent leurs images distantes directement ; pour les autres, elles restent bloquées (elles peuvent servir à savoir que vous avez lu le message).": "Their messages show their remote images at once; for the others they stay blocked (they can be used to know you read the message)."
+	"Leurs messages affichent leurs images distantes directement ; pour les autres, elles restent bloquées (elles peuvent servir à savoir que vous avez lu le message).": "Their messages show their remote images at once; for the others they stay blocked (they can be used to know you read the message).",
+	"récent": "recent"
 }

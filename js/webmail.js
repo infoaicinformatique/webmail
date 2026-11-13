@@ -2473,6 +2473,7 @@
 				try {
 					await api('/accounts/' + state.accountId + '/send', { method: 'POST', body: fd })
 					threadCache.clear()
+					rememberRecipients(personLabel(sender))
 					toast(_('Message envoyé'))
 					if (folderRole() === 'sentitems') setTimeout(() => loadMessages(true), 1500)
 				} catch (err) {
@@ -3265,6 +3266,60 @@
 	 * Address autocompletion (Exchange contacts + company directory) on a
 	 * comma-separated recipients field.
 	 */
+	// ------------------------------------------------------------------
+	// recent recipients: the people written to, first in the completion (this browser, per account)
+	// ------------------------------------------------------------------
+
+	const RECENT_MAX = 100
+	const recentKey = () => 'webmail.recent.' + state.accountId
+
+	function recentRecipients() {
+		try {
+			const list = JSON.parse(localStorage.getItem(recentKey()) || '[]')
+			return Array.isArray(list) ? list.filter((r) => r && typeof r.email === 'string') : []
+		} catch (e) { return [] }
+	}
+
+	/** « Jean Dupont <jean@x.fr>, marie@y.fr » → each address, with its name. */
+	function parseAddresses(text) {
+		return String(text || '').split(/[,;]/).map((part) => {
+			const m = part.match(/^\s*"?([^"<]*?)"?\s*<([^<>\s]+@[^<>\s]+)>\s*$/)
+			if (m) return { name: m[1].trim(), email: m[2].trim() }
+			const e = part.trim()
+			return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(e) ? { name: '', email: e } : null
+		}).filter(Boolean)
+	}
+
+	/** After a message is sent: its recipients counted, the latest first. */
+	function rememberRecipients(text) {
+		const people = parseAddresses(text)
+		if (!people.length) return
+		const me = ((state.accounts.find((a) => a.id === state.accountId) || {}).email || '').toLowerCase()
+		const list = recentRecipients()
+		const now = Date.now()
+		people.forEach((p) => {
+			const key = p.email.toLowerCase()
+			if (key === me) return
+			const known = list.find((r) => r.email.toLowerCase() === key)
+			if (known) { known.n = (known.n || 0) + 1; known.t = now; if (p.name) known.name = p.name } else list.push({ name: p.name, email: p.email, n: 1, t: now })
+		})
+		list.sort((a, b) => (b.t || 0) - (a.t || 0))
+		try { localStorage.setItem(recentKey(), JSON.stringify(list.slice(0, RECENT_MAX))) } catch (e) { /* private mode: not remembered */ }
+	}
+
+	/** The recent recipients matching what is typed: a name or address that starts with it first, then the most used. */
+	function recentMatches(token) {
+		const t = fold(token)
+		if (!t) return []
+		const words = (r) => fold(r.name + ' ' + r.email).split(/[\s@._<>-]+/)
+		return recentRecipients()
+			.filter((r) => fold(r.name + ' ' + r.email).includes(t))
+			.map((r) => [words(r).some((w) => w.startsWith(t)) ? 0 : 1, -(r.n || 0), -(r.t || 0), r])
+			.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2])
+			.slice(0, 5)
+			.map((x) => ({ name: x[3].name, email: x[3].email, source: 'recent' }))
+	}
+
 	function attachAutocomplete(input) {
 		const wrap = h('div', { class: 'wm-ac' })
 		const menu = h('ul', { class: 'wm-ac-menu', role: 'listbox', hidden: true })
@@ -3292,7 +3347,7 @@
 				class: 'wm-ac-item' + (i === active ? ' active' : ''),
 				onmousedown: (e) => { e.preventDefault(); choose(r) },
 			}, h('span', { class: 'wm-ac-name' }, r.name || r.email), ' ',
-			h('span', { class: 'wm-muted' }, r.email + (r.source === 'directory' ? ' · ' + _('annuaire') : '')))))
+			h('span', { class: 'wm-muted' }, r.email + (r.source === 'directory' ? ' · ' + _('annuaire') : r.source === 'recent' ? ' · ' + _('récent') : '')))))
 			// a late answer must not reopen the menu once the field is left
 			menu.hidden = items.length === 0 || document.activeElement !== input
 		}
@@ -3300,13 +3355,21 @@
 		input.addEventListener('input', () => {
 			clearTimeout(timer)
 			const { token } = lastToken()
-			if (token.length < 2) { items = []; close(); return }
+			// the people written to recently: at once, from the first letter
+			const recent = recentMatches(token)
+			if (!token || (token.length < 2 && !recent.length)) { items = []; close(); return }
+			items = recent
+			active = items.length ? 0 : -1
+			render()
+			if (token.length < 2) return
 			timer = setTimeout(async () => {
 				const mine = ++seq
 				try {
 					const data = await api('/accounts/' + state.accountId + '/contacts/resolve', { query: { q: token } })
 					if (mine !== seq) return
-					items = data.results
+					// the recent ones first, then the contacts and the directory (each address once)
+					const seen = new Set(recent.map((r) => r.email.toLowerCase()))
+					items = recent.concat(data.results.filter((r) => !seen.has(String(r.email).toLowerCase())))
 					active = items.length ? 0 : -1
 					render()
 				} catch (e) { /* autocompletion is best effort */ }
@@ -3958,6 +4021,7 @@
 				try {
 					const sent = await api('/accounts/' + state.accountId + '/send', { method: 'POST', body: fd })
 					threadCache.clear() // the reply now belongs to its conversation
+					rememberRecipients([to.value, cc.value, bcc.value].concat(isResponse ? [personLabel((original.replyTo && original.replyTo[0]) || original.from)] : []).join(','))
 					toast(sent && sent.sendAt
 						? _('Envoi programmé le {date} (dans « Boîte d\'envoi » d\'ici là)', { date: new Date(sent.sendAt).toLocaleString(locale(), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) })
 						: _('Message envoyé'))
