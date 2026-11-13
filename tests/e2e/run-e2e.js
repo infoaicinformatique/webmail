@@ -3034,7 +3034,8 @@ async function main() {
 			await page.waitForSelector('text=' + section)
 		}
 		await search('facture', 'Courrier Exchange')
-		const result = page.locator('a:has-text("Votre facture OVH")').first()
+		// the message (Files may list a saved « Votre facture OVH.eml » first)
+		const result = page.locator('a:has-text("Votre facture OVH"):has-text("OVHcloud")').first()
 		assert((await result.textContent()).includes('OVHcloud'))
 		await shot('47-unified-search')
 		await result.click()
