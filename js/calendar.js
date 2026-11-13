@@ -724,9 +724,14 @@
 				dataset: { date: ymd(d) },
 				style: 'background-size: 100% ' + HOUR_PX + 'px',
 			})
+			// press and drag on empty slots: a new event over that time (snapped to 15 minutes)
+			col.addEventListener('pointerdown', (e) => {
+				if (e.target !== col || e.button !== 0 || e.pointerType === 'touch') return
+				drawSlot(e, col, d)
+			})
 			// click on an empty slot: new event at that half hour
 			col.addEventListener('click', (e) => {
-				if (e.target !== col) return
+				if (e.target !== col || col.dataset.drawn) return
 				const minutes = Math.min(23 * 60 + 30, Math.floor(e.offsetY / HOUR_PX * 2) * 30)
 				openForm(null, new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(minutes / 60), minutes % 60), true)
 			})
@@ -816,6 +821,48 @@
 
 	function daysBetween(a, b) {
 		return Math.round((startOfDay(b) - startOfDay(a)) / 86400000)
+	}
+
+	/** A slot drawn with the mouse in a day column: shown as it is drawn, then the form with its start and end. */
+	function drawSlot(down, col, day) {
+		const h = core.h
+		const rect = col.getBoundingClientRect()
+		const at = (y) => Math.max(0, Math.min(24 * 60, Math.round((y - rect.top) / HOUR_PX * 60 / SNAP_MIN) * SNAP_MIN))
+		const from = Math.min(at(down.clientY), 24 * 60 - SNAP_MIN)
+		let to = from
+		let ghost = null
+		const time = (min) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(min / 60), min % 60)
+		const onMove = (m) => {
+			const now = at(m.clientY)
+			if (!ghost && Math.abs(now - from) < SNAP_MIN) return
+			m.preventDefault()
+			to = now
+			const a = Math.min(from, to)
+			const b = Math.max(from, to, a + SNAP_MIN)
+			if (!ghost) {
+				ghost = h('div', { class: 'wm-week-event wm-slot-ghost', 'aria-hidden': 'true' }, h('span', { class: 'wm-week-event-time' }))
+				col.appendChild(ghost)
+				document.body.classList.add('wm-drag-active', 'wm-drag-resize')
+			}
+			ghost.style.top = (a * HOUR_PX / 60) + 'px'
+			ghost.style.height = ((b - a) * HOUR_PX / 60 - 2) + 'px'
+			ghost.firstChild.textContent = timeLabel(time(a)) + ' – ' + timeLabel(time(b))
+		}
+		const onUp = () => {
+			document.removeEventListener('pointermove', onMove)
+			document.removeEventListener('pointerup', onUp)
+			document.body.classList.remove('wm-drag-active', 'wm-drag-resize')
+			if (!ghost) return // a click: the click handler opens a half hour
+			ghost.remove()
+			// (the click that follows the release is not a click on a slot)
+			col.dataset.drawn = '1'
+			setTimeout(() => { delete col.dataset.drawn }, 0)
+			const a = Math.min(from, to)
+			const b = Math.max(from, to, a + SNAP_MIN)
+			openForm(null, time(a), true, { prefill: { end: time(b) } })
+		}
+		document.addEventListener('pointermove', onMove)
+		document.addEventListener('pointerup', onUp)
 	}
 
 	function dateOfCell(cell) {
@@ -1390,7 +1437,8 @@
 				const hour = sameDay(base, now) ? Math.min(now.getHours() + 1, 23) : 9
 				start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hour, 0)
 			}
-			end = new Date(start.getTime() + 3600000)
+			// a slot drawn in the week grid: its end; else one hour
+			end = prefill.end && prefill.end > start ? new Date(prefill.end) : new Date(start.getTime() + 3600000)
 		}
 
 		const subject = h('input', { type: 'text', name: 'subject', required: true, value: ev ? ev.subject : (prefill.subject || ''), placeholder: _('Titre') })

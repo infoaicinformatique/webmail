@@ -1802,6 +1802,36 @@ async function main() {
 		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
 	})
 
+	await step('calendar: a new event drawn with the mouse over its time in the week grid', async () => {
+		await page.click('.wm-segmented button:has-text("Semaine")')
+		await page.waitForSelector('.wm-week-col')
+		const ymd = (x) => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0')
+		const col = '.wm-week-col[data-date="' + ymd(new Date()) + '"]'
+		// early in the morning (no event there): 06:00 to 07:30
+		await page.$eval(col, (c) => { let p = c.parentElement; while (p && p.scrollHeight <= p.clientHeight) p = p.parentElement; if (p) p.scrollTop = 5 * 48 })
+		const box = await page.locator(col).boundingBox()
+		const x = box.x + box.width / 2
+		await page.mouse.move(x, box.y + 6 * 48 + 3)
+		await page.mouse.down()
+		await page.mouse.move(x, box.y + 6.5 * 48, { steps: 4 })
+		await page.mouse.move(x, box.y + 7.5 * 48 - 2, { steps: 6 })
+		await page.waitForSelector(col + ' .wm-slot-ghost:has-text("06:00 – 07:30")')
+		await shot('82-draw-slot')
+		await page.mouse.up()
+		await page.waitForSelector('.wm-modal input[name=startTime]')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=startTime]'), '06:00')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=endTime]'), '07:30')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=startDate]'), ymd(new Date()))
+		assert.strictEqual(await page.locator('.wm-slot-ghost').count(), 0)
+		await page.click('.wm-modal-close')
+		// a plain click still opens a half hour
+		await page.mouse.click(x, box.y + 6 * 48 + 30)
+		await page.waitForSelector('.wm-modal input[name=startTime]')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=startTime]'), '06:30')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=endTime]'), '07:30')
+		await page.click('.wm-modal-close')
+	})
+
 	await step('calendar: an Element (Matrix) video room set by the administrator, instead of Talk', async () => {
 		const setVisio = async (value) => {
 			await page.goto(NC + '/settings/admin/webmail')
