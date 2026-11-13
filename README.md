@@ -188,6 +188,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Fiche | Société, fonction, jusqu'à 3 e-mails, mobile, téléphone du bureau et du domicile, **adresse Matrix** (`@prenom.nom:serveur`, ou un lien matrix.to collé ; « 💬 Écrire sur Matrix » ouvre la discussion dans Element ou l'application Matrix de la personne ; gardée dans la 1re adresse de messagerie instantanée d'Exchange, donc aussi dans Outlook, et en `IMPP:matrix:` dans les vCard), adresse (lien vers la carte), notes |
 | Actions | Créer (dans le carnet choisi), modifier, supprimer, **écrire** (ouvre un nouveau message), appeler (lien `tel:`) |
 | Import / export | « ⬇ » au-dessus de la liste : tout le carnet affiché dans un fichier **vCard** (.vcf) pour Outlook, un téléphone, Nextcloud Contacts… « ⬆ » : les contacts d'un fichier vCard (2.1, 3.0 ou 4.0, celui d'Outlook ou d'un téléphone) sont ajoutés au carnet ; ceux déjà présents (même adresse e-mail) sont ignorés, et le bilan s'affiche |
+| Anniversaires | Champ « Anniversaire » de la fiche (celui d'Outlook, aussi sans l'année), affiché avec l'âge ; les **anniversaires des 14 prochains jours** s'affichent au-dessus de la liste des contacts (« Anne Bernard · dans 3 jours · 46 ans »). Exporté et importé en vCard (`BDAY`) |
 | Groupes | Les **groupes de contacts** d'Outlook (listes de distribution personnelles) : leurs membres s'affichent, « ✉️ Écrire au groupe » adresse le message à tous. « 👥 Nouveau groupe » en crée un, « ✏️ Modifier » ajoute des membres (complétion depuis les contacts et l'annuaire, ou adresse saisie) ou en retire. Les groupes sont enregistrés dans Exchange et retrouvés dans Outlook |
 | Photos | La **photo** d'un contact (celle mise dans Outlook) s'affiche dans la liste et sur sa fiche ; « 📷 Choisir une photo » dans « Modifier » en met une (recadrée en carré, réduite à 256 pixels), « Retirer la photo » l'enlève. Dans l'annuaire de l'entreprise, chaque collègue apparaît avec la **photo de son compte Exchange**. Sans photo, ses initiales sur une couleur |
 
@@ -247,7 +248,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.97.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.98.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -290,7 +291,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.97 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.98 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

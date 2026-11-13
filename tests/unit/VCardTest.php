@@ -12,7 +12,7 @@ class VCardTest extends TestCase {
 		'displayName' => 'Jean Dupont', 'givenName' => 'Jean', 'surname' => 'Dupont', 'company' => 'Client, Exemple & Cie', 'department' => 'Achats',
 		'jobTitle' => 'Acheteur', 'emails' => ['jean.dupont@client-exemple.fr', 'jd@perso.fr'], 'mobilePhone' => '+33 6 12 34 56 78',
 		'businessPhone' => '04 93 00 00 00', 'homePhone' => '', 'street' => "12 rue de la Paix\nBâtiment B", 'city' => 'Nice', 'postalCode' => '06000',
-		'country' => 'France', 'notes' => "Préfère le téléphone ; rappeler le matin.\nClient depuis 2019.", 'matrix' => '@jean.dupont:matrix.client-exemple.fr',
+		'country' => 'France', 'notes' => "Préfère le téléphone ; rappeler le matin.\nClient depuis 2019.", 'matrix' => '@jean.dupont:matrix.client-exemple.fr', 'birthday' => '1975-03-21',
 	];
 
 	public function testRoundTrip(): void {
@@ -21,6 +21,7 @@ class VCardTest extends TestCase {
 		$this->assertStringContainsString("EMAIL;TYPE=INTERNET,PREF:jean.dupont@client-exemple.fr\r\n", $vcf);
 		$this->assertStringContainsString("TEL;TYPE=CELL:+33 6 12 34 56 78\r\n", $vcf);
 		$this->assertStringContainsString("IMPP;X-SERVICE-TYPE=Matrix:matrix:u/jean.dupont:matrix.client-exemple.fr\r\n", $vcf);
+		$this->assertStringContainsString("BDAY;VALUE=date:19750321\r\n", $vcf);
 		foreach (explode("\r\n", $vcf) as $line) {
 			$this->assertLessThanOrEqual(75, strlen($line), $line);
 		}
