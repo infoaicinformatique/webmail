@@ -3274,6 +3274,37 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('forward as attachment: one message as an .eml, several from the selection', async () => {
+		const msg = (n) => '.wm-message:has(.wm-message-subject:text-is("Newsletter n°' + n + '"))'
+		await page.click('.wm-folder >> nth=0')
+		await page.click(msg(25))
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°25")')
+		await page.click('.wm-toolbar .wm-forward-attach')
+		await page.waitForSelector('.wm-compose .wm-compose-attachments li:has-text("Newsletter n°25.eml")')
+		assert.strictEqual(await page.inputValue('.wm-compose input[name=subject]'), 'TR : Newsletter n°25')
+		await page.fill('input[name=to]', 'paul@societe-a.fr')
+		await page.fill('.wm-editor', 'Pour info, la lettre de la semaine.')
+		await submitCompose()
+		// sent with the message attached
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.click('.wm-message:has-text("TR : Newsletter n°25")')
+		await page.waitForSelector('.wm-attachment-name:has-text("Newsletter n°25.eml")')
+		// several, from the selection: one new message, each attached
+		await page.click('.wm-folder >> nth=0')
+		await page.click(msg(26) + ' .wm-check')
+		await page.click(msg(27) + ' .wm-check')
+		await page.click('.wm-bulk .wm-forward-attach')
+		await page.waitForSelector('.wm-compose .wm-compose-attachments li:has-text("Newsletter n°27.eml")')
+		await page.waitForSelector('.wm-compose .wm-compose-attachments li:has-text("Newsletter n°26.eml")')
+		assert.strictEqual(await page.inputValue('.wm-compose input[name=subject]'), 'TR : 2 messages')
+		await shot('89-forward-attachment')
+		await page.waitForSelector('.wm-draft-status:has-text("Pièces jointes enregistrées dans le brouillon")')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-compose button:has-text("Supprimer le brouillon")')
+		await page.waitForSelector('.wm-toast:has-text("Brouillon supprimé")')
+		await page.click('.wm-folder >> nth=0')
+	})
+
 	await step('Internet headers: the SPF, DKIM and DMARC checks, the way of the message, every header', async () => {
 		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')

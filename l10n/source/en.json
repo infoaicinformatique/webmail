@@ -1231,5 +1231,14 @@
 	"Désabonnement demandé": "Unsubscribe requested",
 	"Ce message vient d'une liste de diffusion.": "This message comes from a mailing list.",
 	"Ouvre la page de désinscription de la liste": "Opens the list's unsubscribe page",
-	"Se désabonner": "Unsubscribe"
+	"Se désabonner": "Unsubscribe",
+	"Transférer en pièce jointe (.eml)": "Forward as attachment (.eml)",
+	"Transférer en pièce jointe": "Forward as attachment",
+	"Transférer les messages sélectionnés en pièces jointes (.eml)": "Forward the selected messages as attachments (.eml)",
+	"{count} messages au plus à la fois": "At most {count} messages at a time",
+	"Préparation de {count} messages…": "Preparing {count} messages…",
+	"Préparation du message…": "Preparing the message…",
+	"Impossible de joindre « {subject} »": "Could not attach “{subject}”",
+	"message": "message",
+	"TR : {count} messages": "FW: {count} messages"
 }

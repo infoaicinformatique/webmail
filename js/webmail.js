@@ -1627,6 +1627,12 @@
 			h('button', { type: 'button', class: 'wm-small', onclick: () => setReadMany(ids(), false) }, _('Non lu')),
 			h('button', { type: 'button', class: 'wm-small', onclick: () => setFlagMany(ids()) }, '⚑ ' + _('Suivi')),
 			move,
+			h('button', {
+				type: 'button',
+				class: 'wm-small wm-forward-attach',
+				title: _('Transférer les messages sélectionnés en pièces jointes (.eml)'),
+				onclick: () => forwardAsAttachment(state.messages.filter((x) => state.checked.has(x.id))),
+			}, '↪ ' + _('Transférer')),
 			h('button', { type: 'button', class: 'wm-small wm-danger', onclick: () => deleteMessages(ids(), role === 'deleteditems') },
 				role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
 			junkButton(null, role, ids),
@@ -2402,7 +2408,9 @@
 			h('button', { class: 'wm-back wm-mobile-only', onclick: () => setView('list'), 'aria-label': _('Retour') }, '←'),
 			h('button', { onclick: () => openCompose('reply', m) }, '↩ ' + _('Répondre')),
 			h('button', { onclick: () => openCompose('replyAll', m) }, '↩↩ ' + _('Répondre à tous')),
-			h('button', { onclick: () => openCompose('forward', m) }, '↪ ' + _('Transférer')),
+			h('span', { class: 'wm-split' },
+				h('button', { onclick: () => openCompose('forward', m) }, '↪ ' + _('Transférer')),
+				h('button', { class: 'wm-forward-attach', title: _('Transférer en pièce jointe (.eml)'), 'aria-label': _('Transférer en pièce jointe'), onclick: () => forwardAsAttachment([m]) }, '📎')),
 			h('button', { onclick: () => markUnread(m) }, _('Non lu')),
 			h('span', { class: 'wm-split' },
 				h('button', { class: m.flagged ? 'wm-flag-btn on' : 'wm-flag-btn', onclick: () => toggleFlag(m) }, flagButtonText(m)),
@@ -3607,6 +3615,43 @@
 		}
 	}
 
+	/** At most this many messages forwarded at once as attachments. */
+	const FORWARD_MAX = 20
+
+	/**
+	 * « Transférer en pièce jointe »: a new message with each message attached whole, as an .eml
+	 * file (with its own attachments; Outlook, Thunderbird… open it as a message).
+	 */
+	async function forwardAsAttachment(messages) {
+		const list = (messages || []).filter((m) => m && m.id && !m.isMeeting)
+		if (!list.length) return
+		if (list.length > FORWARD_MAX) { toast(_('{count} messages au plus à la fois', { count: FORWARD_MAX }), true); return }
+		const accountId = state.accountId
+		toast(list.length > 1 ? _('Préparation de {count} messages…', { count: list.length }) : _('Préparation du message…'))
+		try {
+			const used = new Set()
+			const files = []
+			for (const m of list) {
+				const url = OC.generateUrl('/apps/webmail/api/accounts/' + accountId + '/message/eml') + '?' + new URLSearchParams({ itemId: m.id })
+				const res = await fetch(url, { headers: { requesttoken: OC.requestToken }, credentials: 'same-origin' })
+				if (!res.ok) throw new Error(_('Impossible de joindre « {subject} »', { subject: m.subject || _('(sans objet)') }))
+				// a file name from the subject: no folder separators, unique
+				let base = (m.subject || _('message')).replace(/[\\/:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || _('message')
+				let name = base + '.eml'
+				for (let n = 2; used.has(name.toLowerCase()); n++) name = base + ' (' + n + ').eml'
+				used.add(name.toLowerCase())
+				files.push(new File([await res.blob()], name, { type: 'message/rfc822' }))
+			}
+			if (accountId !== state.accountId) return
+			const subject = list.length === 1
+				? (/^(tr|fw|fwd)\s?:/i.test(list[0].subject || '') ? list[0].subject : _('TR : ') + (list[0].subject || ''))
+				: _('TR : {count} messages', { count: list.length })
+			openCompose('new', null, { subject, files })
+		} catch (e) {
+			toast(e.message, true)
+		}
+	}
+
 	function openCompose(mode, original, prefill) {
 		if (!state.accountId) { openAccountSettings(); return }
 		if (state.module !== 'mail') {
@@ -3979,6 +4024,13 @@
 			}
 		}
 		files.addEventListener('change', () => { renderAttachList(); persistFiles() })
+		if (prefill && prefill.files && prefill.files.length) {
+			// files given with the new message (messages forwarded as attachments)
+			const dt = new DataTransfer()
+			Array.from(files.files).concat(prefill.files).forEach((f) => dt.items.add(f))
+			files.files = dt.files
+			persistFiles()
+		}
 		renderAttachList()
 
 		const pickFromFiles = () => {
