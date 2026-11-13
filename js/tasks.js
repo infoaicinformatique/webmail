@@ -29,14 +29,27 @@
 		return due < today ? _('En retard · {date}', { date: label }) : label
 	}
 
+	/** "account|filter" -> tasks: a list seen before (or loaded ahead) shows at once, then is refreshed */
+	const listCache = new Map()
+
+	async function fetchTasks(filter) {
+		const r = await api(base() + '/tasks', { query: { completed: filter === 'done' ? 1 : 0 } })
+		return filter === 'done' ? r.tasks.filter((t) => t.done) : r.tasks
+	}
+
 	async function load() {
 		const mine = ++tk.seq
-		tk.loading = true
+		const key = core.accountId + '|' + tk.filter
+		const cached = listCache.get(key)
+		// shown at once while it is refreshed (not « loading »: the list is there)
+		if (cached) { tk.tasks = cached; tk.accountId = core.accountId }
+		tk.loading = !cached
 		renderList()
 		try {
-			const r = await api(base() + '/tasks', { query: { completed: tk.filter === 'done' ? 1 : 0 } })
+			const tasks = await fetchTasks(tk.filter)
 			if (mine !== tk.seq) return
-			tk.tasks = tk.filter === 'done' ? r.tasks.filter((t) => t.done) : r.tasks
+			tk.tasks = tasks
+			listCache.set(key, tasks)
 			tk.accountId = core.accountId
 		} catch (e) {
 			if (mine === tk.seq) core.toast(e.message, true)
@@ -247,6 +260,15 @@
 
 	window.WebmailModules = window.WebmailModules || {}
 	window.WebmailModules.tasks = {
+		/** Loaded ahead, while the mail is shown and the browser is idle: the tasks to do. */
+		async prefetch(c) {
+			core = c
+			const key = core.accountId + '|todo'
+			if (listCache.has(key)) return
+			const accountId = core.accountId
+			const tasks = await fetchTasks('todo')
+			if (accountId === core.accountId) listCache.set(key, tasks)
+		},
 		activate(c) {
 			core = c
 			if (tk.accountId !== core.accountId) { tk.tasks = []; tk.selectedId = null }

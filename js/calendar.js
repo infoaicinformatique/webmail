@@ -114,13 +114,15 @@
 
 	function hiddenKey() { return 'webmail.calhidden.' + core.accountId }
 
-	async function loadCalendars(force) {
+	/** @param {boolean} quiet loaded ahead, while another module is shown: no message, no redraw */
+	async function loadCalendars(force, quiet) {
 		if (!force && cal.calendarsFor === core.accountId && cal.calendars.length) return
 		const accountId = core.accountId
 		let list = [{ key: 'calendar', name: _('Calendrier'), kind: 'own', canEdit: true, mode: 'full' }]
 		try {
 			list = (await api('/accounts/' + accountId + '/calendar/calendars')).calendars
 		} catch (e) {
+			if (quiet) throw e
 			core.toast(e.message, true)
 		}
 		if (accountId !== core.accountId) return
@@ -132,7 +134,7 @@
 		try {
 			cal.hidden = new Set(JSON.parse(localStorage.getItem(hiddenKey()) || '[]'))
 		} catch (e) { cal.hidden = new Set() }
-		core.renderNav()
+		if (core.state.module === 'calendar') core.renderNav()
 	}
 
 	function calendarOf(ev) {
@@ -1793,18 +1795,38 @@
 		load()
 	}
 
+	/** The view remembered, and the calendars of the account shown. */
+	function prepare() {
+		if (!cal.view) {
+			let saved = null
+			try { saved = localStorage.getItem('webmail.calview') } catch (e) { /* ignore */ }
+			cal.view = ['list', 'month', 'week', 'day'].includes(saved) ? saved : (window.matchMedia('(max-width: 800px)').matches ? 'list' : 'month')
+		}
+		if (cal.calendarsFor !== core.accountId) {
+			cal.calendars = []
+			cal.events = []
+		}
+	}
+
 	window.WebmailModules.calendar = {
+		/**
+		 * Loaded ahead, while the mail is shown and the browser is idle: the calendars and the
+		 * events of the period that opens first, so that the calendar shows at once.
+		 */
+		async prefetch(c) {
+			core = c
+			prepare()
+			await loadCalendars(false, true)
+			const [start, end] = visibleRange()
+			const key = rangeKey(start, end)
+			if (eventCache.has(key)) return
+			const accountId = core.accountId
+			const { events, errors } = await fetchRange(start, end)
+			if (!errors.length && accountId === core.accountId) remember(key, events)
+		},
 		activate(c) {
 			core = c
-			if (!cal.view) {
-				let saved = null
-				try { saved = localStorage.getItem('webmail.calview') } catch (e) { /* ignore */ }
-				cal.view = ['list', 'month', 'week', 'day'].includes(saved) ? saved : (window.matchMedia('(max-width: 800px)').matches ? 'list' : 'month')
-			}
-			if (cal.calendarsFor !== core.accountId) {
-				cal.calendars = []
-				cal.events = []
-			}
+			prepare()
 			core.setView('detail')
 			core.renderNav()
 			load()

@@ -30,20 +30,24 @@
 		return ct.books.find((b) => b.key === ct.book) || { key: 'contacts', name: _('Contacts'), kind: 'own', canEdit: true }
 	}
 
-	async function loadBooks(force) {
+	/** @param {boolean} quiet loaded ahead, while another module is shown: no message, no redraw */
+	async function loadBooks(force, quiet) {
 		if (!force && ct.booksFor === core.accountId && ct.books.length) return
 		const accountId = core.accountId
 		let books = [{ key: 'contacts', name: _('Contacts'), kind: 'own', canEdit: true }]
 		try {
 			books = (await api('/accounts/' + accountId + '/contacts/books')).books
-		} catch (e) { core.toast(e.message, true) }
+		} catch (e) {
+			if (quiet) throw e
+			core.toast(e.message, true)
+		}
 		if (accountId !== core.accountId) return
 		ct.books = books
 		ct.booksFor = accountId
 		let saved = null
 		try { saved = localStorage.getItem('webmail.book.' + accountId) } catch (e) { /* ignore */ }
 		ct.book = books.some((b) => b.key === saved) ? saved : (books.some((b) => b.key === ct.book) ? ct.book : 'contacts')
-		core.renderNav()
+		if (core.state.module === 'contacts') core.renderNav()
 	}
 
 	function selectBook(key) {
@@ -826,6 +830,20 @@
 
 	window.WebmailModules = window.WebmailModules || {}
 	window.WebmailModules.contacts = {
+		/** Loaded ahead, while the mail is shown and the browser is idle: the books and the first contacts. */
+		async prefetch(c) {
+			core = c
+			if (ct.booksFor !== core.accountId) {
+				ct.books = []
+				ct.book = 'contacts'
+			}
+			await loadBooks(false, true)
+			const accountId = core.accountId
+			const key = accountId + '|' + ct.book
+			if (listCache.has(key) || ct.book === 'directory') return
+			const data = await core.api('/accounts/' + accountId + '/contacts', { query: { offset: 0, limit: PAGE, q: '', book: ct.book } })
+			if (accountId === core.accountId) listCache.set(key, { items: data.items, total: data.total, hasMore: data.hasMore })
+		},
 		activate(c) {
 			core = c
 			if (ct.booksFor !== core.accountId) {
