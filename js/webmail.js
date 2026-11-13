@@ -1598,6 +1598,25 @@
 		} catch (e) { toast(e.message, true) }
 	}
 
+	/** Every message of a folder read, at once on screen, in one request to Exchange. */
+	async function markFolderRead(folder) {
+		const before = folder.unread
+		folder.unread = 0
+		if (folder.id === state.folderId) state.messages.forEach((m) => { if (!m.isRead) updateListItem(m.id, { isRead: true }) })
+		listCache.delete(state.accountId + '|' + folder.id)
+		renderNav()
+		try {
+			await api('/accounts/' + state.accountId + '/folders/read', { method: 'POST', body: { folderId: folder.id } })
+			toast(_('Tous les messages de « {folder} » sont lus', { folder: folder.name }))
+			saveListCache()
+		} catch (e) {
+			folder.unread = before
+			toast(e.message, true)
+			if (folder.id === state.folderId) loadMessages(true)
+			renderNav()
+		}
+	}
+
 	function pickEml(folder) {
 		const input = h('input', { type: 'file', multiple: true, accept: '.eml,message/rfc822', hidden: true, class: 'wm-eml-input' })
 		input.addEventListener('change', () => { const list = Array.from(input.files); input.remove(); importEml(folder, list) })
@@ -1646,6 +1665,7 @@
 		}, label)
 		const menu = h('div', { class: 'wm-folder-menu', role: 'menu', 'aria-label': _('Dossier {name}', { name: f.name }) },
 			item('＋ ' + _('Nouveau sous-dossier'), () => createFolder(f)),
+			f.unread ? item('✓ ' + _('Tout marquer comme lu'), () => markFolderRead(f)) : null,
 			item('📥 ' + _('Importer des messages (.eml)…'), () => pickEml(f)),
 			fixed ? null : item('✏️ ' + _('Renommer'), () => renameFolder(f)),
 			fixed ? null : item('↪ ' + _('Déplacer…'), () => moveFolder(f)),

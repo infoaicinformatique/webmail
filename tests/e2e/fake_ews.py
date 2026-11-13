@@ -659,6 +659,15 @@ def handle(op, el, user):
                 msgs.append(ok(op, '<m:Items>%s</m:Items>' % item_full_xml(m)))
         return wrap(op, msgs)
 
+    if op == 'MarkAllItemsAsRead':
+        read = el.findtext('m:ReadFlag', default='true', namespaces=NS) == 'true'
+        for f in el.find('m:FolderIds', NS):
+            fid = folder_id(f)
+            for m in MESSAGES.values():
+                if m['folder'] == fid:
+                    m['is_read'] = read
+        return wrap(op, [ok(op, '')])
+
     if op == 'GetAttachment':
         msgs = []
         for a in el.find('m:AttachmentIds', NS):
