@@ -238,6 +238,77 @@
 		setTimeout(() => t.remove(), 4600)
 	}
 
+	// ------------------------------------------------------------------
+	// undo send: a few seconds to change one's mind (this browser's setting)
+	// ------------------------------------------------------------------
+
+	// ------------------------------------------------------------------
+	// reply templates (of the Nextcloud user, for all accounts)
+	// ------------------------------------------------------------------
+
+	let templatesLoad = null
+	function loadTemplates(force) {
+		if (force || !templatesLoad) {
+			templatesLoad = api('/templates').then((r) => r.templates).catch((e) => { templatesLoad = null; throw e })
+		}
+		return templatesLoad
+	}
+	async function saveTemplate(body) {
+		const r = await api('/templates', { method: 'POST', body })
+		templatesLoad = Promise.resolve(r.templates)
+		return r.templates
+	}
+	async function deleteTemplate(id) {
+		const r = await api('/templates/delete', { method: 'POST', body: { id } })
+		templatesLoad = Promise.resolve(r.templates)
+		return r.templates
+	}
+
+	/**
+	 * Does the text written (not the signature nor a quotation) speak of an attachment?
+	 * In French and in English, whatever the language of the page.
+	 */
+	const ATTACHMENT_WORDS = /\b(ci[-\s]?joint(e|s|es)?|pi[eè]ces?[-\s]jointes?|en\s+p\.?\s?j\.?|joint(e|s|es)?\s+(à|a)\s+(ce|cet|mon|notre)\s+(message|mail|e-?mail|courriel)|attached|attachments?|enclosed)\b/i
+	function mentionsAttachment(editor) {
+		const copy = editor.cloneNode(true)
+		copy.querySelectorAll('.wm-signature, blockquote').forEach((n) => n.remove())
+		return ATTACHMENT_WORDS.test(copy.textContent || '')
+	}
+
+	const UNDO_DELAYS = [0, 5, 10, 20, 30]
+	function undoDelay() {
+		let v = null
+		try { v = localStorage.getItem('webmail.undoSend') } catch (e) { /* default */ }
+		const n = v === null ? 5 : parseInt(v, 10)
+		return UNDO_DELAYS.includes(n) ? n : 5
+	}
+	let pendingSends = 0
+	window.addEventListener('beforeunload', (e) => { if (pendingSends) { e.preventDefault(); e.returnValue = '' } })
+
+	/** « Sending in N s — Undo »: resolves true to send, false when undone. */
+	function undoCountdown(seconds) {
+		let box = document.getElementById('wm-toasts')
+		if (!box) {
+			box = h('div', { id: 'wm-toasts', 'aria-live': 'polite' })
+			document.body.appendChild(box)
+		}
+		return new Promise((resolve) => {
+			let left = seconds
+			const label = h('span', {}, _('Envoi dans {seconds} s', { seconds: left }))
+			const finish = (send) => { clearInterval(timer); t.remove(); pendingSends--; resolve(send) }
+			const undo = h('button', { type: 'button', class: 'wm-toast-action', onclick: () => finish(false) }, _('Annuler l\'envoi'))
+			const now = h('button', { type: 'button', class: 'wm-toast-action', onclick: () => finish(true) }, _('Envoyer maintenant'))
+			const t = h('div', { class: 'wm-toast wm-toast-undo', role: 'status' }, label, undo, now)
+			pendingSends++
+			box.appendChild(t)
+			const timer = setInterval(() => {
+				left--
+				if (left <= 0) finish(true)
+				else label.textContent = _('Envoi dans {seconds} s', { seconds: left })
+			}, 1000)
+		})
+	}
+
 	function formatDate(iso, long) {
 		if (!iso) return ''
 		const d = new Date(iso)
@@ -2615,7 +2686,71 @@
 				imagePicker.click()
 			}),
 			tool('⌫', _('Effacer la mise en forme'), () => { exec('removeFormat'); exec('unlink') }),
+			tool('📄', _('Modèles de réponse'), (e) => openTemplateMenu(e.currentTarget)),
 			imagePicker)
+
+		// ---- reply templates: insert one where the cursor is, or keep this text as one
+		const editorText = () => {
+			const copy = body.cloneNode(true)
+			copy.querySelectorAll('.wm-signature').forEach((n) => n.remove())
+			return copy.innerHTML
+		}
+		let templateMenu = null
+		const closeTemplateMenu = () => {
+			if (!templateMenu) return
+			templateMenu.remove()
+			templateMenu = null
+			document.removeEventListener('mousedown', outsideMenu, true)
+		}
+		const outsideMenu = (e) => { if (templateMenu && !templateMenu.contains(e.target) && !e.target.closest('.wm-editor-btn')) closeTemplateMenu() }
+		async function openTemplateMenu(button) {
+			if (templateMenu) { closeTemplateMenu(); return }
+			const sel = window.getSelection()
+			const range = sel && sel.rangeCount && body.contains(sel.anchorNode) ? sel.getRangeAt(0) : null
+			const menu = templateMenu = h('div', { class: 'wm-template-menu', role: 'menu', 'aria-label': _('Modèles de réponse') },
+				h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading-small' })))
+			menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeTemplateMenu(); button.focus() } })
+			button.parentNode.appendChild(menu)
+			document.addEventListener('mousedown', outsideMenu, true)
+			let list = []
+			try { list = await loadTemplates() } catch (e) { toast(e.message, true) }
+			if (templateMenu !== menu) return
+			clear(menu)
+			if (!list.length) menu.appendChild(h('p', { class: 'wm-muted' }, _('Aucun modèle pour l\'instant : écrivez un texte, puis « Enregistrer ce texte comme modèle ».')))
+			list.forEach((t) => menu.appendChild(h('button', {
+				type: 'button',
+				role: 'menuitem',
+				class: 'wm-template-item',
+				title: _('Insérer « {name} »', { name: t.name }),
+				onclick: () => {
+					closeTemplateMenu()
+					body.focus()
+					if (range) { const s2 = window.getSelection(); s2.removeAllRanges(); s2.addRange(range) }
+					document.execCommand('insertHTML', false, t.html)
+					changed()
+				},
+			}, t.name)))
+			menu.appendChild(h('hr'))
+			menu.appendChild(h('button', {
+				type: 'button',
+				role: 'menuitem',
+				class: 'wm-template-save',
+				onclick: async () => {
+					const html = editorText()
+					if (!html.replace(/<[^>]*>|&nbsp;|\s/g, '') && !/<img/i.test(html)) { toast(_('Écrivez d\'abord le texte du modèle'), true); return }
+					const name = (window.prompt(_('Nom du modèle'), subject.value || '') || '').trim()
+					if (!name) return
+					closeTemplateMenu()
+					try {
+						await saveTemplate({ name, html })
+						toast(_('Modèle « {name} » enregistré', { name }))
+					} catch (e) { toast(e.message, true) }
+				},
+			}, '＋ ' + _('Enregistrer ce texte comme modèle')))
+			menu.appendChild(h('button', { type: 'button', role: 'menuitem', class: 'wm-template-manage', onclick: () => { closeTemplateMenu(); openAccountSettings() } }, '⚙️ ' + _('Gérer les modèles')))
+			const first = menu.querySelector('button')
+			if (first) first.focus()
+		}
 		body.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit() }
 		})
@@ -2879,6 +3014,8 @@
 			closed = true
 			clearTimeout(draftTimer)
 			if (folderRole() === 'drafts') loadMessages(true)
+			// while the draft was being saved, another message or a new one was opened: leave it
+			if (!form.isConnected) return
 			if (state.current && !isDraft) renderMessage(); else renderEmptyDetail()
 			setView(state.current && !isDraft ? 'detail' : 'list')
 		}
@@ -2940,6 +3077,29 @@
 				}
 				Array.from(files.files).forEach((f) => fd.append('files[]', f, f.name))
 				ncFiles.forEach((p) => fd.append('filePaths[]', p))
+				// « ci-joint » in the text, but nothing attached: one question before it goes
+				if (mode !== 'forward' && !files.files.length && !ncFiles.length && !savedAtts.length && mentionsAttachment(body)
+					&& !window.confirm(_('Le message parle d\'une pièce jointe, mais aucun fichier n\'est joint. Envoyer quand même ?'))) {
+					body.focus()
+					return
+				}
+				// a few seconds to undo (not for a later delivery: it can be cancelled in « Boîte d'envoi »)
+				const delay = later.checked ? 0 : undoDelay()
+				if (delay) {
+					closed = true
+					form.remove()
+					if (state.current && !isDraft) renderMessage(); else renderEmptyDetail()
+					if (!await undoCountdown(delay)) {
+						// back to the message, as it was
+						closed = false
+						clear(detailEl)
+						detailEl.appendChild(form)
+						setView('detail')
+						body.focus()
+						toast(_('Envoi annulé : le message est de nouveau ouvert'))
+						return
+					}
+				}
 				sendBtn.disabled = true
 				sendBtn.textContent = _('Envoi…')
 				closed = true
@@ -2958,6 +3118,8 @@
 					toast(err.message, true)
 					sendBtn.disabled = false
 					sendBtn.textContent = _('Envoyer')
+					// put away during the undo delay: back on screen, nothing is lost
+					if (!form.isConnected) { clear(detailEl); detailEl.appendChild(form); setView('detail') }
 				}
 			},
 		},
@@ -3064,6 +3226,43 @@
 		const wrap = h('div', { class: 'wm-settings' },
 			h('button', { class: 'wm-back wm-mobile-only', onclick: () => setView('list'), 'aria-label': _('Retour') }, '←'),
 			h('h2', {}, _('Comptes Exchange')))
+		// this browser's settings
+		const undo = h('select', { name: 'undoSend' }, UNDO_DELAYS.map((n) => h('option', { value: String(n), selected: n === undoDelay() },
+			n ? _('{seconds} secondes', { seconds: n }) : _('Aucun (envoi immédiat)'))))
+		undo.addEventListener('change', () => {
+			try { localStorage.setItem('webmail.undoSend', undo.value) } catch (e) { /* not kept */ }
+			toast(_('Réglage enregistré pour ce navigateur'))
+		})
+		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-send-settings' },
+			h('legend', {}, _('Envoi')),
+			h('label', { class: 'wm-field' }, h('span', {}, _('Délai pour annuler l\'envoi')), undo),
+			h('p', { class: 'wm-muted' }, _('Pendant ce délai, « Annuler » rouvre le message au lieu de l\'envoyer.'))))
+
+		// reply templates: renamed, removed (they are written from a message, button 📄)
+		const templateList = h('ul', { class: 'wm-template-list' })
+		const showTemplates = (list) => {
+			clear(templateList)
+			if (!list.length) templateList.appendChild(h('li', { class: 'wm-muted' }, _('Aucun modèle. Dans un message, le bouton 📄 enregistre le texte écrit comme modèle.')))
+			list.forEach((t) => {
+				// its text, as an excerpt (an inert document: nothing in it runs or loads)
+				const preview = (new DOMParser().parseFromString(t.html, 'text/html').body.textContent || '').replace(/\s+/g, ' ').trim()
+				templateList.appendChild(h('li', { dataset: { id: t.id } },
+					h('strong', {}, t.name),
+					h('span', { class: 'wm-muted wm-template-preview' }, preview.slice(0, 80) + (preview.length > 80 ? '…' : '')),
+					h('button', { type: 'button', class: 'wm-small', onclick: async () => {
+						const name = (window.prompt(_('Nouveau nom du modèle'), t.name) || '').trim()
+						if (!name || name === t.name) return
+						try { showTemplates(await saveTemplate({ id: t.id, name, html: t.html })) } catch (e) { toast(e.message, true) }
+					} }, _('Renommer')),
+					h('button', { type: 'button', class: 'wm-small wm-danger', onclick: async () => {
+						if (!window.confirm(_('Supprimer le modèle « {name} » ?', { name: t.name }))) return
+						try { showTemplates(await deleteTemplate(t.id)); toast(_('Modèle supprimé')) } catch (e) { toast(e.message, true) }
+					} }, _('Supprimer'))))
+			})
+		}
+		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-template-settings' },
+			h('legend', {}, _('Modèles de réponse')), templateList))
+		loadTemplates(true).then(showTemplates, (e) => toast(e.message, true))
 
 		state.accounts.forEach((a) => {
 			const name = h('input', { type: 'text', value: a.displayName === a.email ? '' : a.displayName, placeholder: _('Nom affiché (facultatif)') })

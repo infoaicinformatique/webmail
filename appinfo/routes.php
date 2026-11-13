@@ -11,6 +11,10 @@ return [
 		['name' => 'account#update', 'url' => '/api/accounts/{id}', 'verb' => 'PUT'],
 		['name' => 'account#destroy', 'url' => '/api/accounts/{id}', 'verb' => 'DELETE'],
 
+		['name' => 'template#index', 'url' => '/api/templates', 'verb' => 'GET'],
+		['name' => 'template#save', 'url' => '/api/templates', 'verb' => 'POST'],
+		['name' => 'template#delete', 'url' => '/api/templates/delete', 'verb' => 'POST'],
+
 		['name' => 'mail#folders', 'url' => '/api/accounts/{id}/folders', 'verb' => 'GET'],
 		['name' => 'mail#mailboxes', 'url' => '/api/accounts/{id}/mailboxes', 'verb' => 'GET'],
 		['name' => 'mail#addMailbox', 'url' => '/api/accounts/{id}/mailboxes', 'verb' => 'POST'],

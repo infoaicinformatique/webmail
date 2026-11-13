@@ -68,6 +68,8 @@ async function main() {
 		await page.fill('#password', process.env.NC_PASS || 'admin-Pass-123')
 		await page.click('button[type=submit]')
 		await page.waitForURL(/apps/)
+		// messages are sent at once in the other steps: the undo delay has its own step
+		await page.evaluate(() => localStorage.setItem('webmail.undoSend', '0'))
 	})
 
 	await step('admin settings page lists both servers', async () => {
@@ -2719,6 +2721,100 @@ async function main() {
 		await page.waitForSelector('.wm-modal', { state: 'detached' })
 		assert.ok(await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('wm-compose-btn')), 'focus back on « Nouvel événement »')
 		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+	})
+
+	await step('undo send: a few seconds to change one\'s mind, then the message is back as it was', async () => {
+		await page.evaluate(() => localStorage.removeItem('webmail.undoSend')) // the default: 5 s
+		await page.click('.wm-tab[data-module="mail"]')
+		const sends = []
+		const cleanups = []
+		const onRequest = (r) => { if (r.url().endsWith('/send') && r.method() === 'POST') sends.push(r) }
+		page.on('request', onRequest)
+		try {
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'user@societe-a.fr')
+			await page.fill('input[name=subject]', 'Finalement non')
+			await page.fill('.wm-editor', 'Il manque la pièce jointe.')
+			// « pièce jointe » but no file: a question first; « no » keeps the message open
+			let asked = null
+			page.once('dialog', (d) => { asked = d.message(); d.dismiss() })
+			await page.click('.wm-compose button[type=submit]')
+			await page.waitForFunction(() => document.activeElement && document.activeElement.classList.contains('wm-editor'))
+			assert.ok(asked && asked.includes('aucun fichier n\'est joint'), String(asked))
+			assert.ok(await page.$('.wm-compose'), 'still open')
+			assert.strictEqual(sends.length, 0)
+			// « send anyway », for the rest of this step
+			const yes = (d) => d.accept()
+			page.on('dialog', yes)
+			cleanups.push(() => page.off('dialog', yes))
+			await page.click('.wm-compose button[type=submit]')
+			await page.waitForSelector('.wm-toast-undo:has-text("Envoi dans")')
+			assert.strictEqual(await page.$('.wm-compose'), null, 'the message leaves the screen')
+			await shot('70-undo-send')
+			await page.click('.wm-toast-undo button:has-text("Annuler l\'envoi")')
+			await page.waitForSelector('.wm-compose')
+			assert.strictEqual(await page.inputValue('input[name=subject]'), 'Finalement non')
+			assert.ok((await page.textContent('.wm-editor')).includes('Il manque la pièce jointe.'))
+			await page.waitForTimeout(6000)
+			assert.strictEqual(sends.length, 0, 'nothing sent')
+			// sent once the delay is over… or at once
+			const [sent] = await Promise.all([
+				page.waitForResponse((r) => r.url().endsWith('/send') && r.request().method() === 'POST'),
+				(async () => {
+					await page.click('.wm-compose button[type=submit]')
+					await page.click('.wm-toast-undo button:has-text("Envoyer maintenant")')
+				})(),
+			])
+			assert.ok(sent.ok())
+			await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+			assert.strictEqual(sends.length, 1, 'sent once')
+			// the setting, in « Comptes et signature »
+			await page.click('text=Comptes et signature')
+			assert.strictEqual(await page.inputValue('select[name=undoSend]'), '5')
+			await page.selectOption('select[name=undoSend]', '0')
+			assert.strictEqual(await page.evaluate(() => localStorage.getItem('webmail.undoSend')), '0')
+		} finally {
+			page.off('request', onRequest)
+			cleanups.forEach((f) => f())
+			await page.evaluate(() => localStorage.setItem('webmail.undoSend', '0'))
+		}
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-message')
+	})
+
+	await step('reply templates: a text kept as a template, inserted in another message, renamed, deleted', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-compose-btn')
+		await page.fill('.wm-editor', 'Bonjour, avez-vous pu consulter notre devis ? Bien cordialement.')
+		await page.click('.wm-editor-btn[title="Modèles de réponse"]')
+		await page.waitForSelector('.wm-template-menu p:has-text("Aucun modèle")')
+		page.once('dialog', (d) => d.accept('Relance devis'))
+		await page.click('.wm-template-save')
+		await page.waitForSelector('.wm-toast:has-text("Modèle « Relance devis » enregistré")')
+		await page.click('.wm-compose button:has-text("Annuler")')
+		// another message: the template goes where the cursor is, the signature stays below
+		await page.click('.wm-compose-btn')
+		await page.click('.wm-editor')
+		await page.keyboard.press('Control+Home') // the top of the message, above the signature
+		await page.keyboard.type('Madame, ')
+		await page.click('.wm-editor-btn[title="Modèles de réponse"]')
+		await page.click('.wm-template-item:has-text("Relance devis")')
+		// spaces typed in an editor may come out as non-breaking ones
+		const text = (await page.textContent('.wm-editor')).replace(/\s+/g, ' ')
+		assert.ok(/^Madame, Bonjour, avez-vous pu consulter notre devis \? Bien cordialement\. ?--/.test(text), JSON.stringify(text))
+		await shot('71-templates')
+		await page.click('.wm-compose button:has-text("Annuler")')
+		// managed in « Comptes et signature »
+		await page.click('text=Comptes et signature')
+		await page.waitForSelector('.wm-template-list li:has-text("Relance devis") .wm-template-preview:has-text("avez-vous pu consulter")')
+		page.once('dialog', (d) => d.accept('Relance du devis'))
+		await page.click('.wm-template-list li:has-text("Relance devis") button:has-text("Renommer")')
+		await page.waitForSelector('.wm-template-list li:has-text("Relance du devis")')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-template-list li:has-text("Relance du devis") button:has-text("Supprimer")')
+		await page.waitForSelector('.wm-template-list li:has-text("Aucun modèle")')
+		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector('.wm-message')
 	})
 
