@@ -889,9 +889,12 @@ async function main() {
 		assert.strictEqual((await bell()).filter((n) => n.message.startsWith('« Budget du chantier »')).length, 1)
 		// through the subscription to the inbox; Exchange forgot it (no check for a long while): announced all the same,
 		// by the dates, and subscribed again
-		const settings = occ('user:setting admin webmail')
-		const subKey = (settings.match(/bell_sub_\d+/) || [])[0]
-		assert(subKey && /SUB-\d+/.test(settings), settings)
+		const accountId = await page.evaluate(async () => {
+			const r = await fetch(OC.generateUrl('/apps/webmail/api/accounts'), { headers: { requesttoken: OC.requestToken } })
+			return (await r.json()).find((a) => a.email === 'user@societe-a.fr').id
+		})
+		const subKey = 'bell_sub_' + accountId
+		assert(/SUB-\d+/.test(occ('user:setting admin webmail ' + subKey)), 'subscribed')
 		occ('user:setting admin webmail ' + subKey + ' \'{"id":"SUB-gone","watermark":"W0"}\'')
 		await sendToSelf('Devis après une coupure')
 		runJob()
