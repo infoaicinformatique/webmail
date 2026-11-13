@@ -1102,5 +1102,9 @@
 	"Le navigateur vous demande de confirmer": "Your browser asks you to confirm",
 	"Ce navigateur refuse : {error}": "This browser refuses: {error}",
 	"Ouvrir les liens « mailto: » avec ce webmail": "Open “mailto:” links with this webmail",
-	"Les adresses e-mail cliquées sur les autres sites ouvriront un nouveau message ici (le navigateur demande confirmation). Dans les messages reçus, c'est déjà le cas.": "E-mail addresses clicked on other sites will open a new message here (the browser asks for confirmation). In received messages, this is already the case."
+	"Les adresses e-mail cliquées sur les autres sites ouvriront un nouveau message ici (le navigateur demande confirmation). Dans les messages reçus, c'est déjà le cas.": "E-mail addresses clicked on other sites will open a new message here (the browser asks for confirmation). In received messages, this is already the case.",
+	"Télécharger le message (.eml, pour Outlook, Thunderbird…)": "Download the message (.eml, for Outlook, Thunderbird…)",
+	"Télécharger le message": "Download the message",
+	"Enregistrer le message dans Fichiers (.eml)": "Save the message in Files (.eml)",
+	"Enregistrer le message dans Fichiers": "Save the message in Files"
 }

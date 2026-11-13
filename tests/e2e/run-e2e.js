@@ -2847,6 +2847,20 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('a message as an .eml file: downloaded, or saved in Files', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-folder >> nth=0')
+		await page.click('.wm-message:has-text("Votre facture OVH")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Votre facture OVH")')
+		const [download] = await Promise.all([page.waitForEvent('download'), page.click('.wm-eml-btn')])
+		assert.strictEqual(download.suggestedFilename(), 'Votre facture OVH.eml')
+		const eml = fs.readFileSync(await download.path(), 'utf8')
+		assert.ok(/^Subject: Votre facture OVH$/m.test(eml) && /^From: OVHcloud <noreply@ovh\.example>$/m.test(eml), eml.slice(0, 300))
+		await page.evaluate(() => { OC.dialogs.filepicker = (t, cb) => cb('/Documents') })
+		await page.click('.wm-eml-save-btn')
+		await page.waitForSelector('.wm-toast:has-text("Enregistré dans /Documents/Votre facture OVH.eml")')
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')

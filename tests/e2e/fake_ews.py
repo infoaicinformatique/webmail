@@ -302,6 +302,18 @@ def preview_text(m):
     return ' '.join(text.split())[:255]
 
 
+def mime_of(m):
+    from email.message import EmailMessage
+    from email.utils import formataddr
+    msg = EmailMessage()
+    msg['From'] = formataddr(m['sender'])
+    msg['To'] = ', '.join(formataddr(t) for t in m.get('to', []))
+    msg['Subject'] = m['subject']
+    msg['Date'] = m['date']
+    msg.set_content(m['body'], subtype='html')
+    return bytes(msg)
+
+
 def item_full_xml(m):
     xml = _item_full_xml(m).replace('<t:Importance>', categories_xml(m) + '<t:Importance>', 1)
     # (Exchange gives item:Preview with the other properties)
@@ -636,6 +648,11 @@ def handle(op, el, user):
             m = MESSAGES.get(i.get('Id'))
             if not m:
                 msgs.append(err(op, 'ErrorItemNotFound', 'The specified object was not found in the store.'))
+            elif el.findtext('m:ItemShape/t:IncludeMimeContent', default='', namespaces=NS) == 'true':
+                # the whole message, as an .eml (what Exchange gives with IncludeMimeContent)
+                msgs.append(ok(op, '<m:Items><t:Message><t:MimeContent CharacterSet="UTF-8">%s</t:MimeContent>'
+                                   '<t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject></t:Message></m:Items>'
+                               % (base64.b64encode(mime_of(m)).decode(), m['id'], m['ck'], esc(m['subject']))))
             elif shape == 'IdOnly' and el.find('m:ItemShape/t:AdditionalProperties', NS) is None:
                 msgs.append(ok(op, '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/></t:Message></m:Items>' % (m['id'], m['ck'])))
             else:

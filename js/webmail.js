@@ -1921,6 +1921,14 @@
 			junkButton([m.id], role),
 			h('button', { class: 'wm-cat-btn', title: _('Catégoriser'), 'aria-label': _('Catégoriser'), onclick: (e) => categoryMenu(e.currentTarget, () => [m]) }, '🏷'),
 			h('button', { class: 'wm-print-btn', title: _('Imprimer'), 'aria-label': _('Imprimer'), onclick: () => printMessage(m) }, '🖨'),
+			h('a', {
+				class: 'button wm-eml-btn',
+				href: OC.generateUrl('/apps/webmail/api/accounts/' + state.accountId + '/message/eml') + '?' + new URLSearchParams({ itemId: m.id }),
+				download: '',
+				title: _('Télécharger le message (.eml, pour Outlook, Thunderbird…)'),
+				'aria-label': _('Télécharger le message'),
+			}, '⬇\uFE0E'),
+			h('button', { class: 'wm-eml-save-btn', title: _('Enregistrer le message dans Fichiers (.eml)'), 'aria-label': _('Enregistrer le message dans Fichiers'), onclick: () => saveMessageToFiles(m) }, '☁️'),
 			h('button', { class: 'wm-rule-from-msg', title: _('Créer une règle pour les messages de cet expéditeur'), onclick: () => ruleFromMessage(m) }, '📋 ' + _('Règle…')),
 		)
 		detailEl.appendChild(toolbar)
@@ -2425,6 +2433,21 @@
 			}
 			const folder = lastPath.replace(/\/[^/]*$/, '/')
 			if (done) toast(done > 1 ? _('{count} pièces jointes enregistrées dans {path}', { count: done, path: folder }) : _('{count} pièce jointe enregistrée dans {path}', { count: done, path: folder }))
+		}
+		if (OC.dialogs && typeof OC.dialogs.filepicker === 'function') {
+			OC.dialogs.filepicker(_('Choisir le dossier de destination'), (dir) => doSave(dir || '/'), false, 'httpd/unix-directory', true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
+		} else {
+			doSave('/' + _('Pièces jointes'))
+		}
+	}
+
+	/** The whole message as an .eml file, in a Files folder chosen by the user. */
+	function saveMessageToFiles(m) {
+		const doSave = async (dir) => {
+			try {
+				const res = await api('/accounts/' + state.accountId + '/message/eml/save', { method: 'POST', body: { itemId: m.id, path: dir } })
+				toast(_('Enregistré dans {path}', { path: res.path }))
+			} catch (e) { toast(e.message, true) }
 		}
 		if (OC.dialogs && typeof OC.dialogs.filepicker === 'function') {
 			OC.dialogs.filepicker(_('Choisir le dossier de destination'), (dir) => doSave(dir || '/'), false, 'httpd/unix-directory', true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)

@@ -975,6 +975,35 @@ class EwsClient {
 		throw new MailException('Pièce jointe introuvable');
 	}
 
+	/**
+	 * A whole message as an .eml file (its MIME content, as Exchange keeps it):
+	 * opened by Outlook, Thunderbird, Apple Mail…
+	 *
+	 * @return array{name: string, contentType: string, content: string}
+	 * @throws MailException
+	 */
+	public function getMime(string $itemId): array {
+		$xp = $this->request(
+			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:IncludeMimeContent>true</t:IncludeMimeContent>'
+			. '<t:AdditionalProperties><t:FieldURI FieldURI="item:Subject"/></t:AdditionalProperties></m:ItemShape>'
+			. '<m:ItemIds><t:ItemId Id="' . $this->esc($itemId) . '"/></m:ItemIds></m:GetItem>'
+		);
+		$item = $xp->query('//m:Items/*')->item(0);
+		$mime = $item !== null ? $this->text($xp, 't:MimeContent', $item) : null;
+		if ($item === null || $mime === null || $mime === '') {
+			throw new MailException('Message introuvable');
+		}
+		$subject = trim((string)$this->text($xp, 't:Subject', $item));
+		// a file name of the subject: no path, no control or reserved character, not too long
+		$name = trim((string)preg_replace('~[\\\\/:*?"<>|\x00-\x1f]+~u', ' ', $subject), ' .');
+		$name = mb_substr((string)preg_replace('/\s+/u', ' ', $name), 0, 80);
+		return [
+			'name' => ($name !== '' ? $name : 'message') . '.eml',
+			'contentType' => 'message/rfc822',
+			'content' => (string)base64_decode($mime),
+		];
+	}
+
 	/** @param string[] $itemIds */
 	public function setRead(array $itemIds, bool $read): void {
 		$this->updateItems($itemIds, 'message:IsRead',

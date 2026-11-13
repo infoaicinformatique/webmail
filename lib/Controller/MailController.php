@@ -15,6 +15,7 @@ use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataDisplayResponse;
+use OCP\AppFramework\Http\DataDownloadResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\Files\File;
 use OCP\Files\Folder;
@@ -293,28 +294,57 @@ class MailController extends Controller {
 		});
 	}
 
+	/** A message as an .eml file, to download. */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function eml(int $id, string $itemId): Response {
+		return $this->handle(function () use ($id, $itemId) {
+			$mail = $this->client($id)->getMime($itemId);
+			return new DataDownloadResponse($mail['content'], $mail['name'], 'message/rfc822');
+		});
+	}
+
+	/** A message as an .eml file, saved in Nextcloud Files. */
+	#[NoAdminRequired]
+	public function saveEml(int $id, string $itemId, string $path = '/Pièces jointes'): Response {
+		return $this->handle(function () use ($id, $itemId, $path) {
+			$mail = $this->client($id)->getMime($itemId);
+			return ['path' => $this->saveToFiles($path, $mail['name'], $mail['content'])];
+		});
+	}
+
 	#[NoAdminRequired]
 	public function saveAttachment(int $id, string $attachmentId, string $path = '/Pièces jointes'): Response {
 		return $this->handle(function () use ($id, $attachmentId, $path) {
 			$att = $this->client($id)->getAttachment($attachmentId);
-			$userFolder = $this->rootFolder->getUserFolder((string)$this->userId);
-			$path = '/' . trim($path, '/');
-			try {
-				$folder = $userFolder->get($path);
-			} catch (NotFoundException) {
-				$folder = $userFolder->newFolder($path);
-			}
-			if (!$folder instanceof Folder) {
-				throw new MailException('Le chemin de destination n\'est pas un dossier');
-			}
-			if (!$folder->isCreatable()) {
-				throw new MailException('Vous n\'avez pas le droit d\'écrire dans ce dossier');
-			}
-			$name = self::safeFileName($att['name']);
-			$name = $folder->getNonExistingName($name);
-			$file = $folder->newFile($name, $att['content']);
-			return ['path' => $userFolder->getRelativePath($file->getPath())];
+			return ['path' => $this->saveToFiles($path, $att['name'], $att['content'])];
 		});
+	}
+
+	/**
+	 * A file in a folder of the user's Files (created if missing), under a free name.
+	 *
+	 * @return string its path in the user's Files
+	 * @throws MailException
+	 */
+	private function saveToFiles(string $path, string $fileName, string $content): string {
+		$userFolder = $this->rootFolder->getUserFolder((string)$this->userId);
+		$path = '/' . trim($path, '/');
+		try {
+			$folder = $userFolder->get($path);
+		} catch (NotFoundException) {
+			$folder = $userFolder->newFolder($path);
+		}
+		if (!$folder instanceof Folder) {
+			throw new MailException('Le chemin de destination n\'est pas un dossier');
+		}
+		if (!$folder->isCreatable()) {
+			throw new MailException('Vous n\'avez pas le droit d\'écrire dans ce dossier');
+		}
+		$name = self::safeFileName($fileName);
+		$name = $folder->getNonExistingName($name);
+		$file = $folder->newFile($name, $content);
+		return (string)$userFolder->getRelativePath($file->getPath());
 	}
 
 	/**
