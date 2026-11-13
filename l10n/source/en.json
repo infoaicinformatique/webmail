@@ -1262,5 +1262,12 @@
 	"Le serveur Matrix n'a pas reconnu ce jeton": "The Matrix server did not recognise this token",
 	"Le serveur Matrix ne répond pas": "The Matrix server is not answering",
 	"Matrix refuse : %s": "Matrix refuses: %s",
-	"Salon Matrix introuvable : %s": "Matrix room not found: %s"
+	"Salon Matrix introuvable : %s": "Matrix room not found: %s",
+	"Plus d'alertes sur Matrix": "No more alerts on Matrix",
+	"Les nouveaux messages seront signalés dans votre salon Matrix": "New messages will be announced in your Matrix room",
+	"Messages importants seulement": "Important messages only",
+	"Tous les nouveaux messages": "Every new message",
+	"Alertes des nouveaux messages": "New message alerts",
+	"Choix invalide": "Invalid choice",
+	"Indiquez d'abord votre compte Matrix et un salon par défaut": "First enter your Matrix account and a default room"
 }

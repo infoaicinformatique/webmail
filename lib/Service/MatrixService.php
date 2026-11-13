@@ -64,6 +64,22 @@ class MatrixService {
 		return $this->settings($userId) + ['user' => $user];
 	}
 
+	/**
+	 * Alerts of new messages in the default room: « off », « important », « all ».
+	 *
+	 * @throws MailException
+	 */
+	public function setAlerts(string $userId, string $mode): array {
+		if (!in_array($mode, ['off', 'important', 'all'], true)) {
+			throw new MailException('Choix invalide');
+		}
+		if ($mode !== 'off' && ($this->token($userId) === '' || $this->config->getUserValue($userId, Application::APP_ID, 'matrix_room', '') === '')) {
+			throw new MailException('Indiquez d\'abord votre compte Matrix et un salon par défaut');
+		}
+		$this->config->setUserValue($userId, Application::APP_ID, 'matrix_alerts', $mode);
+		return $this->settings($userId);
+	}
+
 	public function forget(string $userId): void {
 		foreach (['matrix_homeserver', 'matrix_token', 'matrix_room', 'matrix_alerts', 'matrix_alerts_seen'] as $k) {
 			$this->config->deleteUserValue($userId, Application::APP_ID, $k);

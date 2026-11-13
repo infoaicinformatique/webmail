@@ -17,6 +17,7 @@ return [
 		['name' => 'matrix#index', 'url' => '/api/matrix', 'verb' => 'GET'],
 		['name' => 'matrix#save', 'url' => '/api/matrix', 'verb' => 'POST'],
 		['name' => 'matrix#forget', 'url' => '/api/matrix/forget', 'verb' => 'POST'],
+		['name' => 'matrix#alerts', 'url' => '/api/matrix/alerts', 'verb' => 'POST'],
 		['name' => 'matrix#rooms', 'url' => '/api/matrix/rooms', 'verb' => 'GET'],
 		['name' => 'matrix#send', 'url' => '/api/matrix/send', 'verb' => 'POST'],
 		['name' => 'trusted_images#index', 'url' => '/api/trusted-images', 'verb' => 'GET'],

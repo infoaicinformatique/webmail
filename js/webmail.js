@@ -4302,7 +4302,26 @@
 		const roomList = h('datalist', { id: 'wm-matrix-rooms' })
 		const status = h('p', { class: 'wm-muted wm-matrix-status' })
 		const forget = h('button', { type: 'button', class: 'wm-small wm-danger', hidden: true }, _('Déconnecter'))
+		// alerts of new messages in the default room (sent by Nextcloud, even with no webmail open)
+		const alerts = h('select', {
+			name: 'matrixAlerts',
+			onchange: async () => {
+				try {
+					matrix.settings = await api('/matrix/alerts', { method: 'POST', body: { alerts: alerts.value } })
+					toast(alerts.value === 'off' ? _('Plus d\'alertes sur Matrix') : _('Les nouveaux messages seront signalés dans votre salon Matrix'))
+				} catch (ex) {
+					toast(ex.message, true)
+					alerts.value = (matrix.settings && matrix.settings.alerts) || 'off'
+				}
+			},
+		},
+		h('option', { value: 'off' }, _('Aucune')),
+		h('option', { value: 'important' }, _('Messages importants seulement')),
+		h('option', { value: 'all' }, _('Tous les nouveaux messages')))
+		const alertsRow = h('label', { class: 'wm-field', hidden: true }, h('span', {}, _('Alertes des nouveaux messages')), alerts)
 		const show = (st) => {
+			alerts.value = st.alerts || 'off'
+			alertsRow.hidden = !st.hasToken
 			homeserver.value = st.homeserver || ''
 			room.value = st.room || ''
 			token.value = ''
@@ -4335,6 +4354,7 @@
 		h('label', { class: 'wm-field' }, h('span', {}, _('Serveur')), homeserver),
 		h('label', { class: 'wm-field' }, h('span', {}, _('Jeton d\'accès')), token),
 		h('label', { class: 'wm-field' }, h('span', {}, _('Salon par défaut')), room, roomList),
+		alertsRow,
 		h('p', { class: 'wm-muted' }, _('Le jeton se trouve dans Element : Paramètres › Aide et à propos › Avancé › Jeton d\'accès. Il est gardé chiffré et ne sert qu\'à poster ce que vous envoyez sur Matrix.')),
 		status,
 		h('div', { class: 'wm-compose-actions' }, save, forget))
