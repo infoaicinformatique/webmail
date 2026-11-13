@@ -62,7 +62,8 @@ def err(op, code, text):
 
 def task_xml(t, detail=False):
     return ('<t:Task><t:ItemId Id="%s" ChangeKey="CK"/><t:Subject>%s</t:Subject>%s<t:Importance>%s</t:Importance>'
-            '<t:DateTimeCreated>%s</t:DateTimeCreated>%s%s<t:IsRecurring>false</t:IsRecurring>'
+            + ('<t:ReminderDueBy>%s</t:ReminderDueBy><t:ReminderIsSet>true</t:ReminderIsSet>' % t['reminder'] if t.get('reminder') else '<t:ReminderIsSet>false</t:ReminderIsSet>')
+            + '<t:DateTimeCreated>%s</t:DateTimeCreated>%s%s<t:IsRecurring>false</t:IsRecurring>'
             '<t:PercentComplete>%d</t:PercentComplete><t:Status>%s</t:Status></t:Task>'
             % (t['id'], esc(t['subject']), '<t:Body BodyType="Text">%s</t:Body>' % esc(t['body']) if detail else '',
                t['importance'], t['created'], '<t:CompleteDate>%s</t:CompleteDate>' % t['completed'] if t['completed'] else '',
@@ -90,6 +91,12 @@ def apply(t, f):
         t['importance'] = f['Importance']
     if 'DueDate' in f:
         t['due'] = f['DueDate']
+    if 'ReminderDueBy' in f:
+        t['reminder_at'] = f['ReminderDueBy']
+    if 'ReminderIsSet' in f:
+        t['reminder_on'] = f['ReminderIsSet'] == 'true'
+    if 'ReminderDueBy' in f or 'ReminderIsSet' in f:
+        t['reminder'] = t.get('reminder_at') if t.get('reminder_on') else None
     if 'PercentComplete' in f:
         t['percent'] = int(float(f['PercentComplete']))
     if 'Status' in f:

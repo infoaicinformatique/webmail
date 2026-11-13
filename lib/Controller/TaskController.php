@@ -7,6 +7,7 @@ namespace OCA\Webmail\Controller;
 use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Ews\EwsTasks;
 use OCA\Webmail\Service\AccountService;
+use OCA\Webmail\Service\MeetingReminderService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Response;
@@ -22,6 +23,7 @@ class TaskController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private AccountService $accounts,
+		private MeetingReminderService $reminders,
 		private LoggerInterface $logger,
 		private ?string $userId,
 	) {
@@ -49,7 +51,11 @@ class TaskController extends Controller {
 	/** @param array<string, mixed> $task */
 	#[NoAdminRequired]
 	public function create(int $id, array $task): Response {
-		return $this->handle(fn () => ['id' => $this->tasks($id)->create($task)]);
+		return $this->handle(function () use ($id, $task) {
+			$taskId = $this->tasks($id)->create($task);
+			$this->reminders->tasksChanged($id);
+			return ['id' => $taskId];
+		});
 	}
 
 	/** @param array<string, mixed> $task */
@@ -57,6 +63,7 @@ class TaskController extends Controller {
 	public function update(int $id, string $taskId, array $task): Response {
 		return $this->handle(function () use ($id, $taskId, $task) {
 			$this->tasks($id)->update($taskId, $task);
+			$this->reminders->tasksChanged($id);
 			return ['status' => 'ok'];
 		});
 	}
@@ -65,6 +72,7 @@ class TaskController extends Controller {
 	public function complete(int $id, string $taskId, bool $done = true): Response {
 		return $this->handle(function () use ($id, $taskId, $done) {
 			$this->tasks($id)->complete($taskId, $done);
+			$this->reminders->tasksChanged($id);
 			return ['status' => 'ok'];
 		});
 	}
@@ -73,6 +81,7 @@ class TaskController extends Controller {
 	public function delete(int $id, string $taskId): Response {
 		return $this->handle(function () use ($id, $taskId) {
 			$this->tasks($id)->delete($taskId);
+			$this->reminders->tasksChanged($id);
 			return ['status' => 'ok'];
 		});
 	}

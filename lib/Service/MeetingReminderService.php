@@ -8,6 +8,7 @@ use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Db\Account;
 use OCA\Webmail\Db\AccountMapper;
 use OCA\Webmail\Ews\EwsCalendar;
+use OCA\Webmail\Ews\EwsTasks;
 use OCA\Webmail\Exception\MailException;
 use OCP\ICacheFactory;
 use OCP\IConfig;
@@ -64,6 +65,76 @@ class MeetingReminderService {
 		return $events;
 	}
 
+	/** The tasks to do with a reminder, asked to Exchange every 5 minutes at most (and again when changed here). */
+	private function tasks(Account $account): array {
+		$cache = $this->cacheFactory->createDistributed('webmail-reminders');
+		$key = 'tk_' . $account->getId();
+		$hit = $cache->get($key);
+		if (is_array($hit)) {
+			return $hit;
+		}
+		$tasks = array_values(array_filter(
+			(new EwsTasks($this->accounts->getClient($account, AccountService::BACKGROUND_TIMEOUT)))->list(false),
+			fn ($t) => $t['reminder'] !== null));
+		// only what a reminder needs
+		$tasks = array_map(fn ($t) => ['id' => $t['id'], 'subject' => $t['subject'], 'reminder' => $t['reminder'], 'due' => $t['due'], 'done' => $t['done']], $tasks);
+		$cache->set($key, $tasks, self::EVENTS_TTL);
+		return $tasks;
+	}
+
+	/** The tasks were changed in the webmail: asked again at the next check. */
+	public function tasksChanged(int $accountId): void {
+		$this->cacheFactory->createDistributed('webmail-reminders')->remove('tk_' . $accountId);
+	}
+
+	/**
+	 * Task reminders in the bell, one per task and reminder time; gone when the task is done,
+	 * deleted, or its reminder changed.
+	 */
+	private function checkTasks(Account $account, \DateTimeImmutable $now): int {
+		$userId = $account->getUserId();
+		$key = 'remind_tasks_' . $account->getId();
+		$seen = json_decode($this->config->getUserValue($userId, Application::APP_ID, $key, '{}'), true);
+		$seen = is_array($seen) ? $seen : [];
+		$tasks = $this->tasks($account);
+		$pending = [];
+		foreach ($tasks as $t) {
+			$pending[self::objectId((string)$t['id'], (string)$t['reminder'])] = true;
+		}
+		foreach (array_keys($seen) as $objectId) {
+			if (!isset($pending[$objectId])) {
+				$n = $this->notifications->createNotification();
+				$n->setApp(Application::APP_ID)->setUser($userId)->setObject('task', $objectId);
+				$this->notifications->markProcessed($n);
+				unset($seen[$objectId]);
+			}
+		}
+		$sent = 0;
+		foreach (EwsTasks::dueReminders($tasks, $now) as $t) {
+			$objectId = self::objectId((string)$t['id'], (string)$t['reminder']);
+			if (isset($seen[$objectId])) {
+				continue;
+			}
+			$n = $this->notifications->createNotification();
+			$n->setApp(Application::APP_ID)
+				->setUser($userId)
+				->setDateTime(\DateTime::createFromImmutable($now))
+				->setObject('task', $objectId)
+				->setSubject('task_reminder', [
+					'account' => $account->getId(),
+					'email' => $account->getEmail(),
+					'taskId' => (string)$t['id'],
+					'subject' => mb_substr((string)$t['subject'], 0, 200),
+					'due' => (string)($t['due'] ?? ''),
+				]);
+			$this->notifications->notify($n);
+			$seen[$objectId] = (string)$t['reminder'];
+			$sent++;
+		}
+		$this->config->setUserValue($userId, Application::APP_ID, $key, json_encode($seen));
+		return $sent;
+	}
+
 	public function isEnabled(string $userId, int $accountId): bool {
 		return $this->config->getUserValue($userId, Application::APP_ID, 'remind_' . $accountId, '1') === '1';
 	}
@@ -74,6 +145,7 @@ class MeetingReminderService {
 
 	public function forget(string $userId, int $accountId): void {
 		$this->config->deleteUserValue($userId, Application::APP_ID, 'remind_seen_' . $accountId);
+		$this->config->deleteUserValue($userId, Application::APP_ID, 'remind_tasks_' . $accountId);
 	}
 
 	public function checkAll(?\DateTimeImmutable $now = null): int {
@@ -135,6 +207,12 @@ class MeetingReminderService {
 			$sent++;
 		}
 		$this->config->setUserValue($userId, Application::APP_ID, $key, json_encode($seen));
+		try {
+			$sent += $this->checkTasks($account, $now);
+		} catch (MailException $e) {
+			// (a mailbox without the tasks folder, a server refusing: the meeting reminders still work)
+			$this->logger->info('Webmail: task reminders of ' . $account->getEmail() . ' not checked: ' . $e->getMessage(), ['app' => Application::APP_ID]);
+		}
 		return $sent;
 	}
 

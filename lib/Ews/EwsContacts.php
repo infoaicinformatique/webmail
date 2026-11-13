@@ -323,7 +323,7 @@ class EwsContacts {
 	 */
 	public function listContacts(int $offset = 0, int $limit = 100, ?string $query = null, string $book = 'contacts'): array {
 		$props = '<t:FieldURI FieldURI="contacts:DisplayName"/><t:FieldURI FieldURI="contacts:CompanyName"/>'
-			. '<t:FieldURI FieldURI="contacts:JobTitle"/><t:FieldURI FieldURI="contacts:HasPicture"/>'
+			. '<t:FieldURI FieldURI="contacts:JobTitle"/><t:FieldURI FieldURI="contacts:HasPicture"/><t:FieldURI FieldURI="contacts:Birthday"/>'
 			. '<t:IndexedFieldURI FieldURI="contacts:EmailAddress" FieldIndex="EmailAddress1"/>'
 			. '<t:IndexedFieldURI FieldURI="contacts:PhoneNumber" FieldIndex="MobilePhone"/>'
 			. '<t:IndexedFieldURI FieldURI="contacts:PhoneNumber" FieldIndex="BusinessPhone"/>';
@@ -367,6 +367,7 @@ class EwsContacts {
 					?? $c->text($xp, 't:PhoneNumbers/t:Entry[@Key="BusinessPhone"]', $node) ?? ''),
 				'isGroup' => $node->localName === 'DistributionList',
 				'hasPhoto' => $c->text($xp, 't:HasPicture', $node) === 'true',
+				'birthday' => self::birthdayFromEws((string)$c->text($xp, 't:Birthday', $node)),
 			];
 		}
 		return [
@@ -451,7 +452,7 @@ class EwsContacts {
 	private static function detailFields(): string {
 		$fields = '';
 		foreach (['contacts:DisplayName', 'contacts:GivenName', 'contacts:Surname', 'contacts:CompanyName', 'contacts:Department',
-			'contacts:JobTitle', 'contacts:EmailAddresses', 'contacts:PhoneNumbers', 'contacts:PhysicalAddresses', 'contacts:ImAddresses', 'item:Body', 'contacts:HasPicture'] as $f) {
+			'contacts:JobTitle', 'contacts:EmailAddresses', 'contacts:PhoneNumbers', 'contacts:PhysicalAddresses', 'contacts:ImAddresses', 'item:Body', 'contacts:HasPicture', 'contacts:Birthday'] as $f) {
 			$fields .= '<t:FieldURI FieldURI="' . $f . '"/>';
 		}
 		return $fields;
@@ -711,6 +712,7 @@ class EwsContacts {
 		$contact['office'] = (string)$c->text($xp, 't:OfficeLocation', $node);
 		// the Matrix address (« @alice:example.org »), kept in Exchange's first IM address (also shown by Outlook)
 		$contact['matrix'] = self::matrixId((string)$c->text($xp, 't:ImAddresses/t:Entry[@Key="ImAddress1"]', $node)) ?? '';
+		$contact['birthday'] = self::birthdayFromEws((string)$c->text($xp, 't:Birthday', $node));
 		return $contact;
 	}
 
@@ -747,6 +749,7 @@ class EwsContacts {
 			. ($emails !== '' ? '<t:EmailAddresses>' . $emails . '</t:EmailAddresses>' : '')
 			. ($address !== '' ? '<t:PhysicalAddresses><t:Entry Key="Business">' . $address . '</t:Entry></t:PhysicalAddresses>' : '')
 			. ($phones !== '' ? '<t:PhoneNumbers>' . $phones . '</t:PhoneNumbers>' : '')
+			. ($d['birthday'] !== '' ? '<t:Birthday>' . self::birthdayToEws($d['birthday']) . '</t:Birthday>' : '')
 			. $el('Department', $d['department'])
 			. ($d['matrix'] !== '' ? '<t:ImAddresses><t:Entry Key="ImAddress1">' . $c->esc($d['matrix']) . '</t:Entry></t:ImAddresses>' : '')
 			. $el('JobTitle', $d['jobTitle'])
@@ -794,6 +797,10 @@ class EwsContacts {
 				? $set($path, '<t:PhoneNumbers><t:Entry Key="' . $k . '">' . $c->esc($d[$key]) . '</t:Entry></t:PhoneNumbers>')
 				: $del($path);
 		}
+		$path = '<t:FieldURI FieldURI="contacts:Birthday"/>';
+		$updates .= $d['birthday'] !== ''
+			? $set($path, '<t:Birthday>' . self::birthdayToEws($d['birthday']) . '</t:Birthday>')
+			: $del($path);
 		$path = '<t:IndexedFieldURI FieldURI="contacts:ImAddress" FieldIndex="ImAddress1"/>';
 		$updates .= $d['matrix'] !== ''
 			? $set($path, '<t:ImAddresses><t:Entry Key="ImAddress1">' . $c->esc($d['matrix']) . '</t:Entry></t:ImAddresses>')
@@ -875,6 +882,38 @@ class EwsContacts {
 		return $v;
 	}
 
+	/** Outlook's year for a birthday without a year. */
+	public const NO_YEAR = 1604;
+
+	/** A birthday « 1980-05-12 »: a real date, from 1900 to today (or in 1604: day and month only). */
+	public static function birthday(string $value, ?int $now = null): ?string {
+		if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $value, $m) || !checkdate((int)$m[2], (int)$m[3], (int)$m[1])) {
+			return null;
+		}
+		if (((int)$m[1] < 1900 && (int)$m[1] !== self::NO_YEAR) || $value > gmdate('Y-m-d', $now ?? time())) {
+			return null;
+		}
+		return $value;
+	}
+
+	/**
+	 * Exchange keeps a birthday as a time, midnight where the contact was saved (« 1980-05-11T22:00:00Z »
+	 * from Paris): the nearest day. The year 1604 is a birthday without a year (Outlook).
+	 */
+	public static function birthdayFromEws(string $value): string {
+		$t = $value !== '' ? strtotime($value) : false;
+		if ($t === false) {
+			return '';
+		}
+		// (noon UTC: as written here, its own day)
+		return gmdate('Y-m-d', gmdate('H:i:s', $t) === '12:00:00' ? $t : $t + 12 * 3600);
+	}
+
+	/** Written at noon UTC: the same day wherever Outlook shows it (UTC-11 to UTC+11). */
+	public static function birthdayToEws(string $date): string {
+		return $date . 'T12:00:00Z';
+	}
+
 	/**
 	 * @param array<string, mixed> $data
 	 * @return array<string, mixed>
@@ -885,6 +924,8 @@ class EwsContacts {
 			$d[$key] = trim((string)($data[$key] ?? ''));
 		}
 		$d['notes'] = (string)($data['notes'] ?? '');
+		$birthday = trim((string)($data['birthday'] ?? ''));
+		$d['birthday'] = $birthday === '' ? '' : (self::birthday($birthday) ?? throw new MailException('Date d\'anniversaire invalide : %s', [$birthday]));
 		$matrix = trim((string)($data['matrix'] ?? ''));
 		$d['matrix'] = $matrix === '' ? '' : (self::matrixId($matrix) ?? throw new MailException('Adresse Matrix invalide : %s (par exemple %s)', [$matrix, '@alice:example.org']));
 

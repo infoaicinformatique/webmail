@@ -126,16 +126,18 @@ class MailController extends Controller {
 	 */
 	#[NoAdminRequired]
 	public function messages(int $id, string $folder = 'inbox', int $offset = 0, int $limit = 50, string $q = '',
-		bool $unread = false, bool $attachments = false, bool $flagged = false, string $since = '', string $scope = 'folder'): Response {
+		bool $unread = false, bool $attachments = false, bool $flagged = false, string $since = '', string $scope = 'folder',
+		string $sort = 'date', string $order = 'desc'): Response {
 		$limit = max(1, min(100, $limit));
-		return $this->handle(function () use ($id, $folder, $offset, $limit, $q, $unread, $attachments, $flagged, $since, $scope) {
+		$desc = $order !== 'asc';
+		return $this->handle(function () use ($id, $folder, $offset, $limit, $q, $unread, $attachments, $flagged, $since, $scope, $sort, $desc) {
 			$client = $this->client($id);
 			$query = EwsClient::searchQuery($q, ['unread' => $unread, 'attachments' => $attachments, 'flagged' => $flagged, 'since' => $since]);
 			if ($scope === 'all' && $query !== null) {
 				$ids = array_column($client->listFolders(), 'id');
-				return $client->searchFolders($ids, max(0, $offset), $limit, $query);
+				return $client->searchFolders($ids, max(0, $offset), $limit, $query, $sort, $desc);
 			}
-			return $client->findItems($folder, max(0, $offset), $limit, $query);
+			return $client->findItems($folder, max(0, $offset), $limit, $query, $sort, $desc);
 		});
 	}
 
@@ -373,6 +375,18 @@ class MailController extends Controller {
 	#[NoAdminRequired]
 	public function headers(int $id, string $itemId): Response {
 		return $this->handle(fn () => $this->client($id)->getHeaders($itemId));
+	}
+
+	/** « Ignorer la conversation »: its messages, and the next ones, to « Éléments supprimés » (or back). */
+	#[NoAdminRequired]
+	public function ignoreConversation(int $id, string $conversationId, bool $ignore = true): Response {
+		return $this->handle(function () use ($id, $conversationId, $ignore) {
+			if ($conversationId === '') {
+				throw new MailException('Conversation introuvable');
+			}
+			$this->client($id)->ignoreConversation($conversationId, $ignore);
+			return ['ignored' => $ignore];
+		});
 	}
 
 	/** « Se désabonner » of the mailing list a message comes from (List-Unsubscribe). */

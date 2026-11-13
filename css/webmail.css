@@ -31,6 +31,10 @@
 .wm-account-select { width: 100%; margin: 0; }
 .wm-account-name { padding: 4px 12px; color: var(--color-text-maxcontrast); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wm-folders { list-style: none; margin: 0; padding: 0; flex: 1; }
+/* « Favoris »: pinned folders above the tree */
+.wm-folders.wm-favorites { flex: 0 0 auto; }
+.wm-favorites .wm-folder-icon { color: var(--color-warning, #c28900); }
+.wm-nav-section { padding: 10px 12px 2px; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: .03em; color: var(--color-text-maxcontrast); }
 .wm-folder {
 	display: flex;
 	align-items: center;
@@ -80,6 +84,9 @@
 }
 .wm-search { flex: 1; margin: 0; min-width: 0; }
 .wm-icon-btn { min-width: 36px; margin: 0; font-size: 18px; padding: 0 8px; }
+/* « Trier par »: narrow, the chosen order readable when it is not the default */
+.wm-sort { margin: 0; max-width: 112px; min-width: 0; flex: 0 1 auto; font-size: 13px; padding: 0 4px; }
+.wm-sort.active { border-color: var(--color-primary-element); }
 .wm-search-info { padding: 6px 12px; font-size: 13px; color: var(--color-text-maxcontrast); }
 .wm-messages { list-style: none; margin: 0; padding: 0; }
 .wm-message {
@@ -113,6 +120,19 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	margin-top: 2px;
+}
+/* « Affichage » of the list: compact (no preview), one line (sender and subject side by side) */
+.wm-density-compact .wm-message, .wm-density-line .wm-message { padding-top: 5px; padding-bottom: 5px; }
+.wm-density-compact .wm-message-preview, .wm-density-line .wm-message-preview { display: none; }
+.wm-density-line .wm-message:not(.wm-list-period) { display: flex; gap: 10px; align-items: center; }
+/* (the first line's sender, counts and date become items of the row: the date goes to the end) */
+.wm-density-line .wm-message-line1 { display: contents; }
+.wm-density-line .wm-message-from { flex: 0 0 28%; min-width: 0; }
+.wm-density-line .wm-message-line2 { flex: 1; min-width: 0; order: 1; }
+.wm-density-line .wm-message-date { order: 2; min-width: 64px; text-align: right; }
+@media (max-width: 1024px) {
+	/* too narrow for one line: compact */
+	.wm-density-line .wm-message:not(.wm-list-period) { display: block; }
 }
 .wm-flag {
 	background: none !important;
@@ -996,3 +1016,30 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 .wm-matrix-send textarea { width: 100%; font-family: inherit; }
 .wm-matrix-send select { max-width: 100%; }
 .wm-matrix-form input { min-width: 0; }
+
+/* « Hors connexion »: above the panes, under the Nextcloud header */
+.wm-offline {
+	position: fixed;
+	top: calc(var(--header-height, 50px) + 6px);
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 2000;
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	max-width: calc(100vw - 32px);
+	padding: 6px 8px 6px 14px;
+	border-radius: var(--border-radius-pill, 20px);
+	background: var(--color-warning, #c28900);
+	color: var(--color-primary-element-text, #fff);
+	box-shadow: 0 2px 8px var(--color-box-shadow, rgba(0, 0, 0, .2));
+	font-size: 14px;
+}
+.wm-offline button { margin: 0; }
+
+/* « Anniversaires à venir » above the contacts */
+.wm-birthdays { margin: 8px; padding: 8px 12px; border-radius: var(--border-radius-large, 10px); background: var(--color-background-hover); }
+.wm-birthdays-title { font-weight: bold; margin-bottom: 4px; }
+.wm-birthdays ul { list-style: none; margin: 0; padding: 0; }
+.wm-birthdays li { padding: 2px 0; }
+.wm-birthday-today { color: var(--color-primary-element); font-weight: bold; }
