@@ -237,8 +237,18 @@ class ServerConfigService {
 	}
 
 	public function isReachableHost(string $host): bool {
+		return $this->reachableIps($host) !== null;
+	}
+
+	/**
+	 * The public addresses of a host, to connect to exactly those (a second DNS answer,
+	 * given to the connection, could otherwise point to the local network).
+	 *
+	 * @return ?string[] null: not to be reached; []: local servers allowed, no restriction
+	 */
+	public function reachableIps(string $host): ?array {
 		if ($this->config->getSystemValueBool('allow_local_remote_servers', false)) {
-			return true;
+			return [];
 		}
 		$ips = @gethostbynamel($host) ?: [];
 		foreach (@dns_get_record($host, DNS_AAAA) ?: [] as $r) {
@@ -246,7 +256,7 @@ class ServerConfigService {
 				$ips[] = $r['ipv6'];
 			}
 		}
-		return self::arePublicIps($ips);
+		return self::arePublicIps($ips) ? $ips : null;
 	}
 
 	/** @return string[] */

@@ -509,7 +509,13 @@ class EwsContacts {
 			return null;
 		}
 		$att = $this->client->getAttachment($ids[0]);
-		return ['contentType' => $att['contentType'], 'content' => $att['content']];
+		// the type comes from the image itself, never from the attachment (anyone who can
+		// write the contact chooses that one: text/html would then be served by Nextcloud)
+		try {
+			return ['contentType' => self::imageType($att['content']), 'content' => $att['content']];
+		} catch (MailException) {
+			return null; // not a JPEG, PNG or GIF image: shown as no photo
+		}
 	}
 
 	/** A new photo for a contact (the former one is replaced), or none ($content === ''). */

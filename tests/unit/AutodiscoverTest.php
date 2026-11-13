@@ -59,4 +59,10 @@ class AutodiscoverTest extends EwsTestCase {
 	public function testDomainOf(): void {
 		$this->assertSame('societe-c.fr', ServerConfigService::domainOf('Jean@Societe-C.fr'));
 	}
+
+	public function testConnectionPinnedToTheCheckedAddresses(): void {
+		$this->assertSame([], \OCA\Webmail\Ews\EwsClient::pinOptions('autodiscover.x.fr', []), 'local servers allowed: no restriction');
+		$this->assertSame([CURLOPT_RESOLVE => ['autodiscover.x.fr:443:203.0.113.7,[2001:db8::1]', 'autodiscover.x.fr:80:203.0.113.7,[2001:db8::1]']],
+			\OCA\Webmail\Ews\EwsClient::pinOptions('autodiscover.x.fr', ['203.0.113.7', '2001:db8::1']));
+	}
 }

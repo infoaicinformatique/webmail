@@ -29,6 +29,19 @@ class ContactPhotoTest extends EwsTestCase {
 		$this->assertStringContainsString('<t:AttachmentId Id="A1"/>', $this->lastRequest());
 	}
 
+	public function testPhotoTypeComesFromTheImage(): void {
+		// a contact whose « photo » says text/html (anyone who can write the contact chooses it)
+		$photo = fn (string $type, string $content) => [
+			$this->attachments('<t:FileAttachment><t:AttachmentId Id="A1"/><t:Name>ContactPicture.jpg</t:Name><t:IsContactPhoto>true</t:IsContactPhoto></t:FileAttachment>'),
+			self::ok('GetAttachment', '<m:Attachments><t:FileAttachment><t:AttachmentId Id="A1"/><t:Name>ContactPicture.jpg</t:Name>'
+				. '<t:ContentType>' . $type . '</t:ContentType><t:Content>' . base64_encode($content) . '</t:Content></t:FileAttachment></m:Attachments>'),
+		];
+		array_map(fn ($r) => $this->queue($r), $photo('text/html', '<script>alert(1)</script>'));
+		$this->assertNull($this->contacts()->contactPhoto('C1'), 'not an image: no photo');
+		array_map(fn ($r) => $this->queue($r), $photo('text/html', base64_decode(self::PNG)));
+		$this->assertSame('image/png', $this->contacts()->contactPhoto('C1')['contentType'], 'the type of the image, not the declared one');
+	}
+
 	public function testNoPhoto(): void {
 		$this->queue($this->attachments(''));
 		$this->assertNull($this->contacts()->contactPhoto('C1'));

@@ -75,6 +75,28 @@ class EwsClient {
 	}
 
 	/**
+	 * Connect to these addresses only for $host (those checked before), whatever the
+	 * DNS answers at connection time. Nothing changes when $ips is empty.
+	 *
+	 * @param string[] $ips
+	 */
+	public function pinHost(string $host, array $ips): void {
+		$this->network += self::pinOptions($host, $ips);
+	}
+
+	/**
+	 * @param string[] $ips
+	 * @return array<int, mixed> curl options
+	 */
+	public static function pinOptions(string $host, array $ips): array {
+		if ($host === '' || $ips === []) {
+			return [];
+		}
+		$list = implode(',', array_map(fn (string $ip) => str_contains($ip, ':') ? '[' . $ip . ']' : $ip, $ips));
+		return [CURLOPT_RESOLVE => [$host . ':443:' . $list, $host . ':80:' . $list]];
+	}
+
+	/**
 	 * @param string[] $noProxy
 	 * @return array<int, mixed> curl options
 	 */
