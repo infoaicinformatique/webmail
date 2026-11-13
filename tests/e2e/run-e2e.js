@@ -2824,6 +2824,51 @@ async function main() {
 		assert.ok(asked.some(([, , p]) => /\/api\/accounts\/\d+\/folders$/.test(p)) && asked.some(([, , p]) => /\/api\/accounts\/\d+\/(messages|conversations)$/.test(p)), asked.map((a) => a[2]).join(' '))
 	})
 
+	await step('command palette (Ctrl+K): a folder, a module, a new message, a search, with a few letters', async () => {
+		const palette = async (text) => {
+			await page.keyboard.press('Control+k')
+			await page.waitForSelector('.wm-palette-input')
+			assert.ok(await page.evaluate(() => document.activeElement.classList.contains('wm-palette-input')), 'typed at once')
+			await page.keyboard.type(text)
+		}
+		// a folder, accents left out
+		await palette('fact')
+		assert.strictEqual((await page.textContent('.wm-palette-item.active .wm-palette-label')).trim(), 'Factures')
+		await shot('79-palette')
+		await page.keyboard.press('Enter')
+		await page.locator('.wm-palette-overlay').waitFor({ state: 'detached' })
+		await page.waitForSelector('.wm-folder.active:has-text("Factures")')
+		// a module, from the arrows
+		await palette('a')
+		const labels = await page.locator('.wm-palette-item .wm-palette-label').allTextContents()
+		const i = labels.indexOf('Agenda')
+		assert.ok(i >= 0, labels.join(' | '))
+		for (let k = 0; k < i; k++) await page.keyboard.press('ArrowDown')
+		await page.keyboard.press('Enter')
+		await page.waitForSelector('.wm-tab.active[data-module="calendar"]')
+		// from the calendar: a new message
+		await palette('nouveau mes')
+		await page.keyboard.press('Enter')
+		await page.waitForSelector('.wm-compose input[name=to]')
+		assert.strictEqual(await page.getAttribute('#webmail-app', 'data-module'), 'mail')
+		await page.click('.wm-compose button:has-text("Annuler")')
+		// words of no command: « search for it in all the mail »
+		await palette('maintenance annuelle')
+		await page.waitForSelector('.wm-palette-empty:has-text("Aucune commande")')
+		await page.waitForSelector('.wm-palette-item.active:has-text("Rechercher « maintenance annuelle » dans tout le courrier")')
+		await page.keyboard.press('Enter')
+		await page.waitForSelector('.wm-message:has-text("Devis pour la maintenance annuelle")')
+		assert.strictEqual(await page.inputValue('.wm-search'), 'maintenance annuelle')
+		// Escape closes, nothing done
+		await palette('tach')
+		await page.keyboard.press('Escape')
+		await page.locator('.wm-palette-overlay').waitFor({ state: 'detached' })
+		assert.strictEqual(await page.getAttribute('#webmail-app', 'data-module'), 'mail')
+		// back to the inbox, no search
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('instant tabs: the calendar, the tasks and the contacts are loaded while the mail is idle, then show at once', async () => {
 		const ahead = ['/calendar/events', '/tasks?', '/contacts?'].map((part) => page.waitForResponse((r) => r.url().includes(part) && r.status() === 200, { timeout: 30000 }))
 		await page.goto(NC + '/apps/webmail/?module=mail')

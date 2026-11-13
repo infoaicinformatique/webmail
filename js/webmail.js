@@ -445,6 +445,7 @@
 	function navFooter() {
 		return h('div', { class: 'wm-nav-footer' },
 			h('a', { href: '#', onclick: (e) => { e.preventDefault(); openAccountSettings() } }, '⚙️  ' + _('Comptes et signature')),
+			h('a', { href: '#', class: 'wm-palette-link', onclick: (e) => { e.preventDefault(); openPalette() } }, '🔎  ' + _('Commandes'), h('kbd', { class: 'wm-desktop-only' }, /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘K' : 'Ctrl+K')),
 			h('a', { href: '#', class: 'wm-shortcuts-link wm-desktop-only', onclick: (e) => { e.preventDefault(); showShortcuts() } }, '⌨️  ' + _('Raccourcis clavier')),
 			'Notification' in window
 				? h('a', { href: '#', class: 'wm-notify-toggle', onclick: (e) => { e.preventDefault(); toggleNotifications() } },
@@ -585,6 +586,7 @@
 		['/', _('Rechercher dans le dossier')],
 		[_('Échap'), _('Revenir à la liste')],
 		['?', _('Afficher cette aide')],
+		[_('Ctrl+K'), _('Palette de commandes : aller à un dossier, créer, rechercher')],
 	]
 
 	function showShortcuts() {
@@ -599,6 +601,132 @@
 				h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
 			h('table', {}, h('tbody', {}, SHORTCUTS().map(([k, label]) => h('tr', {}, h('td', {}, h('kbd', {}, k)), h('td', {}, label)))))))
 		document.body.appendChild(overlay)
+	}
+
+	// ------------------------------------------------------------------
+	// command palette (Ctrl+K / ⌘K): go anywhere, do anything, with a few letters
+	// ------------------------------------------------------------------
+
+	/** Lower case, without accents: « Éléments » matches « elem ». */
+	const fold = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+	/** What the palette offers now: modules, actions, the folders of the account, the other accounts. */
+	function paletteCommands() {
+		const mods = window.WebmailModules
+		const go = (id) => () => { if (state.module !== id) selectModule(id) }
+		// (the « new » button of a module: first in its pane)
+		const create = (id) => () => {
+			if (state.module !== id) selectModule(id)
+			setTimeout(() => { const b = navEl.querySelector('.wm-compose-btn'); if (b) b.click() }, 0)
+		}
+		const out = [
+			{ group: _('Aller à'), icon: '✉️', label: _('Courrier'), run: go('mail') },
+			mods.calendar ? { group: _('Aller à'), icon: '📅', label: _('Agenda'), run: go('calendar') } : null,
+			mods.contacts ? { group: _('Aller à'), icon: '👤', label: _('Contacts'), run: go('contacts') } : null,
+			mods.tasks ? { group: _('Aller à'), icon: '✅', label: _('Tâches'), run: go('tasks') } : null,
+			{ group: _('Créer'), icon: '✉️', label: _('Nouveau message'), keys: 'n', run: () => { if (state.module !== 'mail') selectModule('mail'); openCompose('new') } },
+			mods.calendar ? { group: _('Créer'), icon: '📅', label: _('Nouvel événement'), run: create('calendar') } : null,
+			mods.contacts ? { group: _('Créer'), icon: '👤', label: _('Nouveau contact'), run: create('contacts') } : null,
+			mods.tasks ? { group: _('Créer'), icon: '✅', label: _('Nouvelle tâche'), run: create('tasks') } : null,
+			{ group: _('Réglages'), icon: '⚙️', label: _('Comptes et signature'), run: () => openAccountSettings() },
+			{ group: _('Réglages'), icon: '⌨️', label: _('Raccourcis clavier'), keys: '?', run: () => showShortcuts() },
+		]
+		state.folders.forEach((f) => out.push({ group: _('Dossiers'), icon: '📁', label: f.name, hint: f.unread ? String(f.unread) : '', run: () => { if (state.module !== 'mail') selectModule('mail'); selectFolder(f.id) } }))
+		if (state.accounts.length > 1) {
+			state.accounts.forEach((a) => { if (a.id !== state.accountId) out.push({ group: _('Comptes'), icon: '👥', label: a.email, run: () => selectAccount(a.id) }) })
+		}
+		return out.filter(Boolean)
+	}
+
+	/** The commands whose words all start a word of the label (or appear in it), the best first. */
+	function paletteMatch(commands, query) {
+		const words = fold(query).split(/\s+/).filter(Boolean)
+		if (!words.length) return commands
+		const scored = []
+		commands.forEach((c, i) => {
+			const label = fold(c.label)
+			const starts = label.split(/[^a-z0-9]+/)
+			if (!words.every((w) => label.includes(w))) return
+			const score = (label.startsWith(words[0]) ? 0 : starts.some((x) => x.startsWith(words[0])) ? 1 : 2)
+			scored.push([score, i, c])
+		})
+		return scored.sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2])
+	}
+
+	function openPalette() {
+		if (document.querySelector('.wm-overlay')) return
+		const opener = document.activeElement
+		const overlay = h('div', { class: 'wm-overlay wm-palette-overlay' })
+		const input = h('input', {
+			type: 'text',
+			class: 'wm-palette-input',
+			placeholder: _('Aller à un dossier, créer, rechercher…'),
+			'aria-label': _('Commande'),
+			role: 'combobox',
+			'aria-expanded': 'true',
+			'aria-controls': 'wm-palette-list',
+			autocomplete: 'off',
+			spellcheck: 'false',
+		})
+		const list = h('ul', { class: 'wm-palette-list', id: 'wm-palette-list', role: 'listbox' })
+		const all = paletteCommands()
+		let shown = []
+		let active = 0
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true); if (opener && opener.isConnected) opener.focus() }
+		const run = (c) => { close(); if (c) c.run() }
+		const paint = () => {
+			const q = input.value.trim()
+			const matched = paletteMatch(all, q)
+			shown = matched
+			// typed text: also « search for it in all the mail »
+			if (q) shown = shown.concat([{ group: _('Rechercher'), icon: '🔍', label: _('Rechercher « {text} » dans tout le courrier', { text: q }), run: () => {
+				if (state.module !== 'mail') selectModule('mail')
+				state.filters.all = true
+				state.query = q
+				setView('list')
+				loadMessages(true)
+			} }])
+			active = Math.min(active, Math.max(0, shown.length - 1))
+			clear(list)
+			let group = null
+			shown.slice(0, 30).forEach((c, i) => {
+				if (c.group !== group) {
+					group = c.group
+					list.appendChild(h('li', { class: 'wm-palette-group', role: 'presentation' }, group))
+				}
+				list.appendChild(h('li', {
+					class: 'wm-palette-item' + (i === active ? ' active' : ''),
+					role: 'option',
+					id: 'wm-palette-' + i,
+					'aria-selected': i === active ? 'true' : 'false',
+					onmousedown: (e) => { e.preventDefault(); run(c) },
+					onmousemove: () => { if (active !== i) { active = i; paint() } },
+				}, h('span', { class: 'wm-palette-icon', 'aria-hidden': 'true' }, c.icon), h('span', { class: 'wm-palette-label' }, c.label),
+				c.hint ? h('span', { class: 'wm-badge' }, c.hint) : null, c.keys ? h('kbd', {}, c.keys) : null))
+			})
+			if (!matched.length) list.prepend(h('li', { class: 'wm-palette-empty' }, _('Aucune commande')))
+			input.setAttribute('aria-activedescendant', shown.length ? 'wm-palette-' + active : '')
+			const el = list.querySelector('.wm-palette-item.active')
+			if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' })
+		}
+		const onKey = (e) => {
+			if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close() } else if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(active + 1, Math.min(shown.length, 30) - 1); paint() } else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(active - 1, 0); paint() } else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); run(shown[active]) }
+		}
+		document.addEventListener('keydown', onKey, true)
+		input.addEventListener('input', () => { active = 0; paint() })
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		overlay.appendChild(h('div', { class: 'wm-modal wm-palette', role: 'dialog', 'aria-modal': 'true', 'aria-label': _('Palette de commandes') }, input, list))
+		document.body.appendChild(overlay)
+		paint()
+		input.focus()
+	}
+
+	/** Ctrl+K (⌘K on a Mac): the palette, from any module, even while typing. */
+	function onPaletteKey(e) {
+		if (!root || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || (e.key !== 'k' && e.key !== 'K')) return
+		e.preventDefault()
+		if (document.querySelector('.wm-palette-overlay')) return
+		openPalette()
 	}
 
 	function onShortcut(e) {
@@ -4080,6 +4208,7 @@
 		lastCheck = Date.now()
 		checkNewMessages()
 		document.addEventListener('keydown', onShortcut)
+		document.addEventListener('keydown', onPaletteKey)
 	}
 
 	if (document.readyState === 'loading') {
