@@ -57,7 +57,7 @@ class SharedFolderService {
 				$out[] = [
 					'email' => strtolower((string)($c['email'] ?? '')),
 					'name' => (string)($c['name'] ?? $c['email'] ?? ''),
-					'mode' => ($c['mode'] ?? '') === 'freebusy' ? 'freebusy' : 'full',
+					'mode' => in_array($c['mode'] ?? '', ['freebusy', 'delegate'], true) ? (string)$c['mode'] : 'full',
 					'canEdit' => !empty($c['canEdit']),
 					'folder' => (string)($c['folder'] ?? ''),
 					'folderName' => (string)($c['folderName'] ?? ''),

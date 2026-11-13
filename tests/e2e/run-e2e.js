@@ -881,9 +881,9 @@ async function main() {
 		await page.click('text=Comptes et signature')
 		const card = '.wm-account-card:has-text("user@societe-a.fr")'
 		// no access: a clear message
-		await page.fill(card + ' input[name=sharedMailbox]', 'direction@societe-a.fr')
+		await page.fill(card + ' input[name=sharedMailbox]', 'secretariat@societe-a.fr')
 		await page.click(card + ' .wm-shared-editor button:has-text("Ajouter")')
-		await page.waitForSelector(card + ' .wm-shared-editor .wm-form-error:has-text("Vous n\'avez pas accès à la boîte direction@societe-a.fr")')
+		await page.waitForSelector(card + ' .wm-shared-editor .wm-form-error:has-text("Vous n\'avez pas accès à la boîte secretariat@societe-a.fr")')
 		await page.fill(card + ' input[name=sharedMailbox]', 'contact@societe-a.fr')
 		await page.click(card + ' .wm-shared-editor button:has-text("Ajouter")')
 		await page.waitForSelector('.wm-toast:has-text("Boîte partagée ajoutée")')
@@ -922,6 +922,40 @@ async function main() {
 		// removed from the webmail: nothing deleted in Exchange
 		await page.click('text=Comptes et signature')
 		await page.click(card + ' .wm-shared-list li:has-text("contact@societe-a.fr") button')
+		await page.waitForSelector(card + ' .wm-shared-list li:has-text("Aucune")')
+		await page.waitForSelector(mb, { state: 'detached' })
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.waitForSelector('.wm-message')
+	})
+
+	await step('mail of a colleague who made us their delegate (inbox only)', async () => {
+		await page.click('text=Comptes et signature')
+		const card = '.wm-account-card:has-text("user@societe-a.fr")'
+		await page.fill(card + ' input[name=sharedMailbox]', 'direction@societe-a.fr')
+		await page.click(card + ' .wm-shared-editor button:has-text("Ajouter")')
+		await page.waitForSelector('.wm-toast:has-text("Boîte partagée ajoutée")')
+		await page.waitForSelector(card + ' .wm-shared-list li:has-text("direction@societe-a.fr") .wm-delegate-tag')
+		// only the folders shared with us: the inbox and its sub-folder, nothing else
+		const mb = '.wm-shared-mailbox[data-mailbox="direction@societe-a.fr"]'
+		await page.waitForSelector(mb + ' .wm-shared-mailbox-title:has-text("👥 Sophie Direction")')
+		await page.waitForSelector(mb + ' .wm-folder:has-text("Boîte de réception") .wm-badge:text-is("1")')
+		await page.waitForSelector(mb + ' .wm-folder:has-text("Rapports mensuels")')
+		assert(!(await page.$(mb + ' .wm-folder:has-text("Éléments envoyés")')), 'not shared with the delegate')
+		await page.click(mb + ' .wm-folder:has-text("Boîte de réception")')
+		await page.click('.wm-message:has-text("Point budget du trimestre")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Point budget du trimestre")')
+		await shot('64-delegate-mailbox')
+		// answered on her behalf
+		await page.click('.wm-toolbar button:has-text("↩ Répondre")')
+		assert.strictEqual(await page.inputValue('.wm-compose select[name=from]'), 'direction@societe-a.fr')
+		await page.fill('.wm-editor', 'Bonjour Paul, c\'est validé.')
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		await page.click(mb + ' .wm-folder:has-text("Rapports mensuels")')
+		await page.waitForSelector('.wm-message:has-text("Rapport mensuel d\'octobre")')
+		// removed
+		await page.click('text=Comptes et signature')
+		await page.click(card + ' .wm-shared-list li:has-text("direction@societe-a.fr") button')
 		await page.waitForSelector(card + ' .wm-shared-list li:has-text("Aucune")')
 		await page.waitForSelector(mb, { state: 'detached' })
 		await page.click('.wm-folder:has-text("Boîte de réception")')

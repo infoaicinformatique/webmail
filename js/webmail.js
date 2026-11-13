@@ -594,14 +594,14 @@
 			type: 'button',
 			class: 'wm-shared-mailbox-title',
 			'aria-expanded': String(mb.open),
-			title: 'Boîte partagée ' + mb.email,
+			title: (mb.delegate ? 'Boîte dont vous êtes délégué (les dossiers qu\'on vous a partagés) : ' : 'Boîte partagée ') + mb.email,
 			onclick: () => {
 				mb.open = !mb.open
 				try { localStorage.setItem('webmail.shared.' + mb.email, mb.open ? '1' : '0') } catch (e) { /* ignore */ }
 				if (mb.open && !mb.folders) loadSharedFolders(mb)
 				renderNav()
 			},
-		}, (mb.open ? '▾ ' : '▸ ') + '📮 ' + mb.name)
+		}, (mb.open ? '▾ ' : '▸ ') + (mb.delegate ? '👥 ' : '📮 ') + mb.name)
 		box.appendChild(toggle)
 		if (!mb.open) return box
 		if (mb.error) {
@@ -2874,6 +2874,7 @@
 		const show = (mailboxes) => {
 			clear(list)
 			mailboxes.forEach((m) => list.appendChild(h('li', {}, m.name !== m.email ? m.name + ' <' + m.email + '>' : m.email, ' ',
+				m.delegate ? h('span', { class: 'wm-muted wm-delegate-tag', title: 'Vous êtes délégué : seuls les dossiers qu\'on vous a partagés sont affichés' }, '(délégué) ') : null,
 				h('button', {
 					type: 'button',
 					class: 'wm-small wm-icon-btn',
@@ -2886,7 +2887,7 @@
 						} catch (e) { toast(e.message, true) }
 					},
 				}, '✕'))))
-			if (!mailboxes.length) list.appendChild(h('li', { class: 'wm-muted' }, 'Aucune : ajoutez une boîte commune (contact@, accueil@…) dont l\'administrateur Exchange vous a donné l\'accès.'))
+			if (!mailboxes.length) list.appendChild(h('li', { class: 'wm-muted' }, 'Aucune : ajoutez une boîte commune (contact@, accueil@…) dont l\'administrateur Exchange vous a donné l\'accès, ou celle d\'un collègue qui vous a fait délégué de sa boîte de réception dans Outlook.'))
 		}
 		add.addEventListener('click', async () => {
 			err.textContent = ''
