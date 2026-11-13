@@ -1143,14 +1143,76 @@ class EwsClient {
 	}
 
 	/** @param string[] $itemIds */
-	public function moveItems(array $itemIds, string $targetFolderId): void {
+	/**
+	 * @param string[] $itemIds
+	 * @return list<?string> the id of each message in its new folder (null when Exchange does not say it)
+	 */
+	public function moveItems(array $itemIds, string $targetFolderId): array {
 		if ($itemIds === []) {
-			return;
+			return [];
 		}
-		$this->request(
+		$xp = $this->request(
 			'<m:MoveItem><m:ToFolderId>' . $this->folderIdXml($targetFolderId) . '</m:ToFolderId>'
 			. '<m:ItemIds>' . $this->itemIdsXml($itemIds) . '</m:ItemIds></m:MoveItem>'
 		);
+		$ids = [];
+		foreach ($xp->query('//m:MoveItemResponseMessage') as $msg) {
+			$ids[] = $this->attr($xp, 'm:Items/*/t:ItemId', 'Id', $msg);
+		}
+		return $ids;
+	}
+
+	/**
+	 * The folder each message is in (null: the message is gone).
+	 *
+	 * @param string[] $itemIds
+	 * @return array<string, ?string>
+	 */
+	public function parentFolders(array $itemIds): array {
+		if ($itemIds === []) {
+			return [];
+		}
+		$xp = $this->request(
+			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties><t:FieldURI FieldURI="item:ParentFolderId"/></t:AdditionalProperties></m:ItemShape>'
+			. '<m:ItemIds>' . $this->itemIdsXml($itemIds) . '</m:ItemIds></m:GetItem>',
+			false
+		);
+		$out = [];
+		// one answer per message, in the order asked
+		foreach ($xp->query('//m:GetItemResponseMessage') as $i => $msg) {
+			if (!isset($itemIds[$i])) {
+				break;
+			}
+			$out[$itemIds[$i]] = $msg instanceof \DOMElement && $msg->getAttribute('ResponseClass') === 'Success'
+				? $this->attr($xp, 'm:Items/*/t:ParentFolderId', 'Id', $msg)
+				: null;
+		}
+		return $out;
+	}
+
+	/** Whether this folder is still there. */
+	public function folderExists(string $folderId): bool {
+		$xp = $this->request(
+			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape></m:FolderShape>'
+			. '<m:FolderIds>' . $this->folderIdXml($folderId) . '</m:FolderIds></m:GetFolder>',
+			false
+		);
+		return $xp->query('//m:GetFolderResponseMessage[@ResponseClass="Success"]')->length > 0;
+	}
+
+	/** The mail folder with this name at the top of the mailbox, or null. */
+	public function findTopFolder(string $name): ?string {
+		$xp = $this->request(
+			'<m:FindFolder Traversal="Shallow"><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:FieldURI FieldURI="folder:DisplayName"/></t:AdditionalProperties></m:FolderShape>'
+			. '<m:ParentFolderIds>' . $this->folderIdXml('msgfolderroot') . '</m:ParentFolderIds></m:FindFolder>'
+		);
+		foreach ($xp->query('//t:Folders/*') as $node) {
+			if (mb_strtolower(trim((string)$this->text($xp, 't:DisplayName', $node))) === mb_strtolower(trim($name))) {
+				return $this->attr($xp, 't:FolderId', 'Id', $node);
+			}
+		}
+		return null;
 	}
 
 	/**

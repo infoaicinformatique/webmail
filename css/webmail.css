@@ -944,3 +944,7 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 .wm-flag-choice.current { font-weight: bold; }
 .wm-flag-custom { display: flex; gap: 6px; margin: 6px 0 2px; }
 .wm-flag-custom input { flex: 1; min-width: 0; }
+
+/* messages put aside (« Reporter ») */
+.wm-snooze-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; padding: 8px 12px; border-radius: var(--border-radius-large, 10px); background: var(--color-primary-element-light, var(--color-background-dark)); }
+.wm-snooze-due { font-size: 0.8em; padding: 0 6px; border-radius: var(--border-radius-pill, 10px); background: var(--color-background-dark); color: var(--color-text-maxcontrast); white-space: nowrap; }

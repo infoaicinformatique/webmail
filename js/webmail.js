@@ -27,6 +27,8 @@
 		query: '',
 		// search filters; all: every folder instead of the current one
 		filters: { unread: false, attachments: false, flagged: false, since: '', all: false },
+		// messages put aside (« Reporter »): id in « Reportés » → when it comes back (UTC)
+		snoozes: new Map(),
 		showFilters: false,
 		// the list grouped by conversation (one row each), remembered
 		grouped: (() => { try { return localStorage.getItem('webmail.grouped') === '1' } catch (e) { return false } })(),
@@ -836,7 +838,16 @@
 		toast(_('Votre boîte aux lettres est presque pleine ({percent} %) : videz les éléments supprimés ou archivez des messages, sinon l\'envoi sera bloqué.', { percent: Math.round((u.used / u.limit) * 100) }), true)
 	}
 
+	async function loadSnoozes() {
+		const account = state.accountId
+		try {
+			const r = await api('/accounts/' + account + '/snoozes')
+			if (account === state.accountId) state.snoozes = new Map(r.snoozes.map((x) => [x.id, x.until]))
+		} catch (e) { /* the messages are shown without their time */ }
+	}
+
 	async function loadFolders() {
+		loadSnoozes()
 		try {
 			const data = await api('/accounts/' + state.accountId + '/folders')
 			state.folders = data.folders
@@ -1286,6 +1297,7 @@
 				h('span', { class: 'wm-message-subject' }, m.subject || _('(sans objet)')),
 				categoryPills(m.categories),
 				m.hasAttachments ? h('span', { class: 'wm-attach-icon', title: _('Pièce jointe') }, '📎') : null,
+				state.snoozes.has(m.id) ? h('span', { class: 'wm-snooze-due', title: _('Revient dans la boîte de réception') }, '⏰ ' + snoozeLabel(state.snoozes.get(m.id))) : null,
 				flagDueBadge(m),
 				h('button', {
 					class: 'wm-flag' + (m.flagged ? ' on' : ''),
@@ -2062,6 +2074,10 @@
 			moveSelect,
 			h('button', { class: 'wm-danger', onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
 			junkButton([m.id], role),
+			// (the folder shown: a message back from « Reportés » may still be remembered there)
+			role === 'inbox' || folderRole() === 'inbox' || state.snoozes.has(m.id)
+				? h('button', { class: 'wm-snooze-btn', title: _('Ne plus voir ce message jusqu\'à l\'heure choisie : il revient alors dans la boîte de réception, non lu'), 'aria-haspopup': 'menu', onclick: (e) => snoozeMenu(e.currentTarget, m) }, '⏰ ' + _('Reporter'))
+				: null,
 			h('button', { class: 'wm-cat-btn', title: _('Catégoriser'), 'aria-label': _('Catégoriser'), onclick: (e) => categoryMenu(e.currentTarget, () => [m]) }, '🏷'),
 			h('button', { class: 'wm-print-btn', title: _('Imprimer'), 'aria-label': _('Imprimer'), onclick: () => printMessage(m) }, '🖨'),
 			h('button', { class: 'wm-headers-btn', title: _('En-têtes Internet : expéditeur réel, serveurs traversés, contrôles SPF, DKIM et DMARC'), 'aria-label': _('Afficher les en-têtes Internet'), onclick: () => showHeaders(m) }, '🧾'),
@@ -2107,6 +2123,12 @@
 
 		if (m.meeting) {
 			detailEl.appendChild(meetingBanner(m))
+		}
+
+		if (state.snoozes.has(m.id)) {
+			detailEl.appendChild(h('div', { class: 'wm-snooze-banner' },
+				'⏰ ' + _('Reporté : revient dans la boîte de réception {date}', { date: snoozeLabel(state.snoozes.get(m.id)) }) + ' ',
+				h('button', { class: 'wm-unsnooze-btn', onclick: () => unsnooze(m) }, _('Remettre dans la boîte de réception maintenant'))))
 		}
 
 		if (m.hasRemoteContent && !m.remoteAllowed) {
@@ -2564,6 +2586,92 @@
 				? (count > 1 ? _('{count} messages dans « Courrier indésirable » ; leurs expéditeurs sont bloqués', { count }) : _('Message dans « Courrier indésirable » ; l\'expéditeur est bloqué'))
 				: (count > 1 ? _('{count} messages remis dans la boîte de réception ; leurs expéditeurs sont considérés comme fiables', { count }) : _('Message remis dans la boîte de réception ; l\'expéditeur est considéré comme fiable')))
 			state.folders.filter((f) => f.role === (junk ? 'junkemail' : 'inbox')).forEach((f) => listCache.delete(state.accountId + '|' + f.id))
+			loadFolders()
+		} catch (e) {
+			undo()
+			toast(e.message, true)
+		}
+	}
+
+	/** « demain à 08:00 », « lun. 16 nov. à 08:00 »: when a message put aside comes back. */
+	function snoozeLabel(until) {
+		const d = new Date(until)
+		if (isNaN(d)) return ''
+		const now = new Date()
+		const day = (n) => ymdLocal(new Date(now.getFullYear(), now.getMonth(), now.getDate() + n))
+		const time = d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })
+		if (ymdLocal(d) === day(0)) return _('aujourd\'hui à {time}', { time })
+		if (ymdLocal(d) === day(1)) return _('demain à {time}', { time })
+		return _('{day} à {time}', { day: d.toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' }), time })
+	}
+
+	/** The times offered, as Outlook and Gmail do: later today, tomorrow morning, this weekend, next week. */
+	function snoozeChoices() {
+		const now = new Date()
+		const at = (days, hour) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + days, hour, 0, 0)
+		const wd = now.getDay() // 0 = Sunday
+		return [
+			now.getHours() < 17 ? ['today', _('Plus tard aujourd\'hui'), at(0, 18)] : null,
+			['tomorrow', _('Demain matin'), at(1, 8)],
+			wd >= 1 && wd <= 4 ? ['weekend', _('Ce week-end'), at(6 - wd, 9)] : null,
+			['nextweek', _('La semaine prochaine'), at(((8 - wd) % 7) || 7, 8)],
+		].filter(Boolean)
+	}
+
+	function snoozeMenu(anchor, m) {
+		document.querySelectorAll('.wm-cat-menu').forEach((x) => x.remove())
+		const menu = h('div', { class: 'wm-cat-menu wm-flag-menu wm-snooze-menu', role: 'menu', 'aria-label': _('Reporter') })
+		const close = () => { menu.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', esc, true); if (anchor.isConnected) anchor.focus() }
+		const outside = (e) => { if (!menu.contains(e.target) && e.target !== anchor) close() }
+		const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close() } }
+		document.addEventListener('mousedown', outside, true)
+		document.addEventListener('keydown', esc, true)
+		const pick = (date) => { close(); snooze(m, date) }
+		menu.appendChild(h('div', { class: 'wm-cat-title' }, _('Reporter jusqu\'à…')))
+		snoozeChoices().forEach(([key, label, date]) => menu.appendChild(h('button', {
+			type: 'button', role: 'menuitem', class: 'wm-flag-choice', dataset: { choice: key }, onclick: () => pick(date),
+		}, h('span', {}, label), h('span', { class: 'wm-muted' }, snoozeLabel(date.toISOString())))))
+		const pad = (n) => String(n).padStart(2, '0')
+		const local = (d) => ymdLocal(d) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes())
+		const tomorrow = new Date(Date.now() + 86400000)
+		tomorrow.setHours(8, 0, 0, 0)
+		const input = h('input', { type: 'datetime-local', name: 'snoozeUntil', 'aria-label': _('Date et heure'), min: local(new Date()), value: local(tomorrow) })
+		menu.appendChild(h('form', {
+			class: 'wm-flag-custom',
+			onsubmit: (e) => { e.preventDefault(); const d = new Date(input.value); if (!isNaN(d)) pick(d) },
+		}, input, h('button', { type: 'submit', class: 'primary' }, _('OK'))))
+		document.body.appendChild(menu)
+		const r = anchor.getBoundingClientRect()
+		menu.style.top = Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8) + 'px'
+		menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px'
+		const first = menu.querySelector('button')
+		if (first) first.focus()
+	}
+
+	/** The message leaves the list now, for « Reportés », and comes back to the inbox (unread) at the time chosen. */
+	async function snooze(m, date) {
+		const undo = removeFromList([m.id])
+		try {
+			const r = await api('/accounts/' + state.accountId + '/snooze', { method: 'POST', body: { itemIds: [m.id], until: date.toISOString() } })
+			state.snoozes.delete(m.id)
+			r.ids.forEach((id) => state.snoozes.set(id, r.until))
+			toast(_('Message reporté : il reviendra {date}', { date: snoozeLabel(r.until) }))
+			loadFolders()
+		} catch (e) {
+			undo()
+			toast(e.message, true)
+		}
+	}
+
+	async function unsnooze(m) {
+		const undo = removeFromList([m.id])
+		try {
+			await api('/accounts/' + state.accountId + '/snooze/back', { method: 'POST', body: { itemId: m.id } })
+			state.snoozes.delete(m.id)
+			msgCache.delete(msgKey(m.id))
+			toast(_('Message remis dans la boîte de réception'))
+			const inbox = state.folders.find((f) => f.role === 'inbox')
+			if (inbox) listCache.delete(state.accountId + '|' + inbox.id)
 			loadFolders()
 		} catch (e) {
 			undo()
