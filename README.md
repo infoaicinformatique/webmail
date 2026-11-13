@@ -351,7 +351,11 @@ make test
   (corps et en-têtes) avec le même schéma. L'étape Autodiscover suppose une seconde instance du serveur factice sur le port 443 et,
   dans le conteneur Nextcloud, `autodiscover.societe-c.fr` dirigé vers elle (`/etc/hosts`).
 
-Traductions : l'app est écrite en français ; chaque texte de la page passe par `_('…')` (la fonction `t` de Nextcloud), le texte français servant de clé. Les traductions sont dans `l10n/source/<langue>.json` (texte français → traduction) ; `php l10n/build.php` produit les fichiers que Nextcloud charge (`l10n/<langue>.js` et `.json`, `en` et `en_GB` pour l'anglais). Le test `L10nTest` vérifie que chaque texte a sa traduction et qu'il ne reste pas de texte français hors de `_()` dans les fichiers traduits.
+Traductions : l'app est écrite en français ; chaque texte de la page passe par `_('…')` (la fonction `t` de Nextcloud), le texte français servant de clé (le fichier `fr` est vide, mais nécessaire : sans lui, Nextcloud chargerait l'anglais pour un compte en français). Les traductions sont dans `l10n/source/<langue>.json` (texte français → traduction) ; `php l10n/build.php` produit les fichiers que Nextcloud charge (`l10n/<langue>.js` et `.json`, `en` et `en_GB` pour l'anglais). La langue suivie est celle du compte Nextcloud (Paramètres personnels → Langue) :
+
+![Tâches en anglais](docs/capture-anglais.png)
+
+Le test `L10nTest` vérifie que chaque texte a sa traduction et qu'il ne reste pas de texte français hors de `_()` dans les fichiers traduits.
 
 Structure :
 
@@ -369,4 +373,4 @@ templates/          page principale et page d'administration
 ## Évolutions possibles
 
 **Nextcloud et serveur**
-- Traduction anglaise : en cours (l'onglet Tâches est traduit ; le courrier, l'agenda, les contacts, les règles, les délégués et les messages du serveur suivent)
+- Traduction anglaise : en cours (les tâches, les règles, les délégués et le partage sont traduits ; le courrier, l'agenda, les contacts et les messages du serveur suivent)
