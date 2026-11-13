@@ -105,6 +105,10 @@ PNG_1PX = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlE
 
 MESSAGES = {}
 ATTACHMENTS = {}
+# the Matrix rooms of @user:fake.test: id -> name ('' : no name), the aliases, what was posted
+MATRIX_ROOMS = {'!equipe:fake.test': 'Équipe chantier', '!notes:fake.test': 'Mes notes', '!dm:fake.test': ''}
+MATRIX_ALIASES = {'#equipe:fake.test': '!equipe:fake.test'}
+MATRIX_SENT = []
 
 
 # pull subscriptions to the inbox: id -> True; the new messages of the inbox, in order (watermark = their count)
@@ -956,6 +960,53 @@ class Handler(BaseHTTPRequestHandler):
                 '<ErrorCode>NoError</ErrorCode><UserSettings>%s</UserSettings></UserResponse></UserResponses>'
                 '</Response></GetUserSettingsResponseMessage></s:Body></s:Envelope>' % (ad, found))
         self.send(200, body)
+
+    # ------------------------------------------------------------------
+    # a Matrix homeserver (client-server API), for « Envoyer sur Matrix »
+    def matrix(self, method):
+        import json
+        import re
+        from urllib.parse import unquote
+        path = self.path.split('?')[0]
+        reply = lambda status, data: self.send(status, json.dumps(data), {'Content-Type': 'application/json'})
+        if path == '/_matrix/test/sent':
+            # (for the test: what was posted)
+            return reply(200, MATRIX_SENT)
+        if self.headers.get('Authorization', '') != 'Bearer syt_test_token':
+            return reply(401, {'errcode': 'M_UNKNOWN_TOKEN', 'error': 'Invalid access token'})
+        api = '/_matrix/client/v3'
+        if method == 'GET' and path == api + '/account/whoami':
+            return reply(200, {'user_id': '@user:fake.test'})
+        if method == 'GET' and path == api + '/joined_rooms':
+            return reply(200, {'joined_rooms': list(MATRIX_ROOMS)})
+        m = re.match(re.escape(api) + r'/rooms/([^/]+)/state/m\.room\.name$', path)
+        if method == 'GET' and m:
+            name = MATRIX_ROOMS.get(unquote(m.group(1)))
+            return reply(200, {'name': name}) if name else reply(404, {'errcode': 'M_NOT_FOUND', 'error': 'no name'})
+        m = re.match(re.escape(api) + r'/directory/room/([^/]+)$', path)
+        if method == 'GET' and m:
+            room = MATRIX_ALIASES.get(unquote(m.group(1)))
+            return reply(200, {'room_id': room, 'servers': ['fake.test']}) if room else reply(404, {'errcode': 'M_NOT_FOUND', 'error': 'Room alias not found'})
+        m = re.match(re.escape(api) + r'/rooms/([^/]+)/send/m\.room\.message/([^/]+)$', path)
+        if method == 'PUT' and m:
+            room, txn = unquote(m.group(1)), unquote(m.group(2))
+            if room not in MATRIX_ROOMS:
+                return reply(403, {'errcode': 'M_FORBIDDEN', 'error': 'not in the room'})
+            body = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))) or b'{}')
+            if not any(x['txn'] == txn for x in MATRIX_SENT):
+                MATRIX_SENT.append({'room': room, 'txn': txn, 'content': body})
+            return reply(200, {'event_id': '$%s' % txn})
+        return reply(404, {'errcode': 'M_UNRECOGNIZED', 'error': 'Unrecognized request'})
+
+    def do_GET(self):
+        if self.path.startswith('/_matrix/'):
+            return self.matrix('GET')
+        self.send(404, '')
+
+    def do_PUT(self):
+        if self.path.startswith('/_matrix/'):
+            return self.matrix('PUT')
+        self.send(404, '')
 
     def do_POST(self):
         length = int(self.headers.get('Content-Length', 0))
