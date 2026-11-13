@@ -268,7 +268,7 @@ async function main() {
 		const fetched = []
 		const onRequest = (r) => { if (r.url().includes('/message?')) fetched.push(new URL(r.url()).searchParams) }
 		page.on('request', onRequest)
-		// start with empty caches
+		// start with empty message caches (the lists are kept for the tab)
 		await page.reload()
 		await page.waitForSelector('.wm-message')
 		const ids = await page.$$eval('.wm-message', (els) => els.slice(0, 3).map((e) => e.dataset.id))
@@ -315,13 +315,14 @@ async function main() {
 
 		// a folder already seen is shown at once, scrolled where it was left
 		await page.$eval('.wm-list', (el) => { el.scrollTop = 600 })
+		const shown = await page.$$eval('.wm-message', (els) => els.length)
 		await page.click('.wm-folder:has-text("Clients")')
 		await page.waitForSelector('.wm-message:has-text("Commande 4521")')
 		const instant = await page.evaluate(() => {
 			document.querySelector('.wm-folder[data-folder-id]').click()
 			return { count: document.querySelectorAll('.wm-message').length, spinner: !!document.querySelector('.wm-list .icon-loading'), top: document.querySelector('.wm-list').scrollTop }
 		})
-		assert.deepStrictEqual(instant, { count: 50, spinner: false, top: 600 }, JSON.stringify(instant))
+		assert.deepStrictEqual(instant, { count: shown, spinner: false, top: 600 }, JSON.stringify(instant))
 
 		// delete: gone at once, the next message opens
 		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°3"))')
