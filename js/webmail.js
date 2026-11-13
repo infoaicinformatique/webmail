@@ -8,6 +8,10 @@
 
 	const BASE = '/apps/webmail/api'
 	const PAGE_SIZE = 50
+	/** first rows of a folder never seen: shown sooner, the rest of the page follows at once */
+	const FIRST_PAGE = 25
+	/** unread messages at the top of the inbox loaded in advance while the browser is idle */
+	const IDLE_PREFETCH = 5
 	const REFRESH_MS = 120000
 	const ROLE_ORDER = ['inbox', 'drafts', 'sentitems', 'junkemail', 'deleteditems', 'outbox']
 	const ROLE_ICON = { inbox: '📥', drafts: '📝', sentitems: '📤', junkemail: '⚠️', deleteditems: '🗑️', outbox: '📮' }
@@ -978,11 +982,16 @@
 	 * at once from the cache and refreshed in the background. A newer call
 	 * (another folder clicked meanwhile) wins over an older one.
 	 */
-	async function loadMessages(reset) {
+	/**
+	 * @param {boolean} reset
+	 * @param {number} [count] rows to add (default: a page)
+	 */
+	async function loadMessages(reset, count) {
 		if (state.module !== 'mail') return
 		if (!reset && (state.loadingList || !state.hasMore)) return
 		const seq = ++listSeq
-		let limit = PAGE_SIZE
+		let limit = count || PAGE_SIZE
+		let firstPage = false
 		state.loadingList = true
 		if (reset) {
 			const cached = !isSearching() && listCache.get(listKey())
@@ -997,6 +1006,9 @@
 				state.total = 0
 				state.hasMore = false
 				renderList(true)
+				// a folder never seen: its first rows, then the rest of the page
+				limit = FIRST_PAGE
+				firstPage = true
 			}
 		}
 		try {
@@ -1020,6 +1032,32 @@
 				}
 			}
 		}
+		if (seq !== listSeq || state.module !== 'mail') return
+		if (firstPage && state.hasMore && state.messages.length < PAGE_SIZE) {
+			await loadMessages(false, PAGE_SIZE - state.messages.length)
+			return
+		}
+		if (reset) prefetchUnreadWhenIdle()
+	}
+
+	/**
+	 * The first unread messages of the inbox, loaded while the browser has
+	 * nothing else to do (not marked as read): the first click opens at once.
+	 * Not on a connection that asks to save data, nor in a hidden tab.
+	 */
+	function prefetchUnreadWhenIdle() {
+		if (folderRole() !== 'inbox' || isSearching() || document.hidden) return
+		if (navigator.connection && navigator.connection.saveData) return
+		const seq = listSeq
+		const ids = state.messages.filter((m) => !m.isRead && !msgCache.has(msgKey(m.id))).slice(0, IDLE_PREFETCH).map((m) => m.id)
+		if (!ids.length) return
+		const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500))
+		const next = (i) => {
+			// stop when the user moved to another folder or another account
+			if (i >= ids.length || seq !== listSeq || state.module !== 'mail') return
+			idle(() => prefetchMessage(ids[i]).catch(() => null).then(() => next(i + 1)), { timeout: 4000 })
+		}
+		next(0)
 	}
 
 	async function refresh() {
