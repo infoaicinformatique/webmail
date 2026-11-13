@@ -15,6 +15,7 @@ use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataDisplayResponse;
+use OCP\AppFramework\Http\DataDownloadResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\Files\File;
 use OCP\Files\Folder;
@@ -293,28 +294,104 @@ class MailController extends Controller {
 		});
 	}
 
+	/** A message as an .eml file, to download. */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function eml(int $id, string $itemId): Response {
+		return $this->handle(function () use ($id, $itemId) {
+			$mail = $this->client($id)->getMime($itemId);
+			return new DataDownloadResponse($mail['content'], $mail['name'], 'message/rfc822');
+		});
+	}
+
+	/**
+	 * .eml files put into a folder of the mailbox (sent from the computer or picked in Files).
+	 *
+	 * @param string[] $filePaths
+	 */
+	#[NoAdminRequired]
+	public function importEml(int $id, string $folderId, array $filePaths = []): Response {
+		return $this->handle(function () use ($id, $folderId, $filePaths) {
+			$client = $this->client($id);
+			$files = [];
+			$uploads = $this->request->getUploadedFile('files');
+			if (is_array($uploads) && isset($uploads['name'])) {
+				foreach ((array)$uploads['name'] as $i => $name) {
+					$error = ((array)$uploads['error'])[$i] ?? UPLOAD_ERR_NO_FILE;
+					$tmp = (string)(((array)$uploads['tmp_name'])[$i] ?? '');
+					$files[] = ['name' => (string)$name, 'content' => $error === UPLOAD_ERR_OK && is_uploaded_file($tmp) ? (string)file_get_contents($tmp) : null];
+				}
+			}
+			$userFolder = $this->rootFolder->getUserFolder((string)$this->userId);
+			foreach ($filePaths as $path) {
+				try {
+					$node = $userFolder->get((string)$path);
+					$files[] = ['name' => $node->getName(), 'content' => $node instanceof File && $node->isReadable() && $node->getSize() <= EwsClient::MAX_EML_BYTES ? $node->getContent() : null];
+				} catch (NotFoundException) {
+					$files[] = ['name' => basename((string)$path), 'content' => null];
+				}
+			}
+			if ($files === []) {
+				throw new MailException('Aucun fichier à importer');
+			}
+			$imported = 0;
+			$failed = [];
+			foreach ($files as $f) {
+				try {
+					if ($f['content'] === null) {
+						throw new MailException('Fichier illisible ou trop lourd');
+					}
+					$client->importMime($f['content'], $folderId);
+					$imported++;
+				} catch (MailException $e) {
+					$failed[] = ['name' => $f['name'], 'error' => $this->errorMessage($e)];
+				}
+			}
+			return ['imported' => $imported, 'failed' => $failed];
+		});
+	}
+
+	/** A message as an .eml file, saved in Nextcloud Files. */
+	#[NoAdminRequired]
+	public function saveEml(int $id, string $itemId, string $path = '/Pièces jointes'): Response {
+		return $this->handle(function () use ($id, $itemId, $path) {
+			$mail = $this->client($id)->getMime($itemId);
+			return ['path' => $this->saveToFiles($path, $mail['name'], $mail['content'])];
+		});
+	}
+
 	#[NoAdminRequired]
 	public function saveAttachment(int $id, string $attachmentId, string $path = '/Pièces jointes'): Response {
 		return $this->handle(function () use ($id, $attachmentId, $path) {
 			$att = $this->client($id)->getAttachment($attachmentId);
-			$userFolder = $this->rootFolder->getUserFolder((string)$this->userId);
-			$path = '/' . trim($path, '/');
-			try {
-				$folder = $userFolder->get($path);
-			} catch (NotFoundException) {
-				$folder = $userFolder->newFolder($path);
-			}
-			if (!$folder instanceof Folder) {
-				throw new MailException('Le chemin de destination n\'est pas un dossier');
-			}
-			if (!$folder->isCreatable()) {
-				throw new MailException('Vous n\'avez pas le droit d\'écrire dans ce dossier');
-			}
-			$name = self::safeFileName($att['name']);
-			$name = $folder->getNonExistingName($name);
-			$file = $folder->newFile($name, $att['content']);
-			return ['path' => $userFolder->getRelativePath($file->getPath())];
+			return ['path' => $this->saveToFiles($path, $att['name'], $att['content'])];
 		});
+	}
+
+	/**
+	 * A file in a folder of the user's Files (created if missing), under a free name.
+	 *
+	 * @return string its path in the user's Files
+	 * @throws MailException
+	 */
+	private function saveToFiles(string $path, string $fileName, string $content): string {
+		$userFolder = $this->rootFolder->getUserFolder((string)$this->userId);
+		$path = '/' . trim($path, '/');
+		try {
+			$folder = $userFolder->get($path);
+		} catch (NotFoundException) {
+			$folder = $userFolder->newFolder($path);
+		}
+		if (!$folder instanceof Folder) {
+			throw new MailException('Le chemin de destination n\'est pas un dossier');
+		}
+		if (!$folder->isCreatable()) {
+			throw new MailException('Vous n\'avez pas le droit d\'écrire dans ce dossier');
+		}
+		$name = self::safeFileName($fileName);
+		$name = $folder->getNonExistingName($name);
+		$file = $folder->newFile($name, $content);
+		return (string)$userFolder->getRelativePath($file->getPath());
 	}
 
 	/**
