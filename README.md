@@ -62,6 +62,8 @@ et sur les téléphones, et inversement.
 
 ![Signature mise en forme](docs/capture-signature.png)
 
+![Pièces jointes enregistrées avec le brouillon](docs/capture-pj-brouillon.png)
+
 ![Réponse automatique](docs/capture-absence.png)
 
 ![Règles](docs/capture-regles.png)
