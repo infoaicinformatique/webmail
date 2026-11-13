@@ -27,7 +27,7 @@
 * Contacts Exchange : plusieurs carnets, contacts partagés par les collègues (tous leurs carnets partagés), partage de ses carnets sans délégation, carnets des dossiers publics, annuaire de l'entreprise, consultation, recherche, création, modification, groupes de contacts, photos, import et export vCard ; complétion des adresses (contacts + annuaire).
 * Tâches Exchange : liste à faire / terminées, échéances (en retard en rouge), importance, état, notes ; ajout rapide, case pour terminer, modification, suppression.
 * En français ou en anglais, selon la langue du compte Nextcloud.]]></description>
-	<version>1.85.0</version>
+	<version>1.86.0</version>
 	<licence>agpl</licence>
 	<author>AIC Informatique</author>
 	<namespace>Webmail</namespace>

@@ -132,6 +132,8 @@ async function main() {
 		assert(!bodyHtml.includes('onclick'), 'handlers removed')
 		assert(!bodyHtml.includes('tracker.example'), 'remote image blocked')
 		assert(bodyHtml.includes('/apps/webmail/api/accounts/'), 'cid image rewritten')
+		// images as they come into view (this one is in view: it loads, below)
+		assert(bodyHtml.includes('loading="lazy"') && bodyHtml.includes('decoding="async"'), 'images loaded lazily')
 		// (checked from the parent page: no script can run inside the sandboxed iframe)
 		const imgLoaded = await page.waitForFunction(() => {
 			const img = document.querySelector('.wm-body-frame').contentDocument.querySelector('img[alt=logo]')
