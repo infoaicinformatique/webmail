@@ -798,6 +798,8 @@
 				const data = { emails: emails.map((i) => i.value), notes: notes.value }
 				Object.entries(f).forEach(([k, v]) => { data[k] = v.i.value })
 				save.disabled = true
+				// (the form shown now: the card opens after saving only if nothing else was opened meanwhile)
+				const formSeq = ct.detailSeq
 				try {
 					let id = c.id
 					if (isNew) {
@@ -816,7 +818,7 @@
 					}
 					core.toast(isNew ? _('Contact créé') : _('Contact enregistré'))
 					await load(true)
-					openContact(id)
+					if (ct.detailSeq === formSeq) openContact(id)
 				} catch (ex) {
 					err.textContent = ex.message
 					save.disabled = false
