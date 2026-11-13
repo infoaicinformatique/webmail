@@ -232,7 +232,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.56.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.57.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -254,7 +254,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.56 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.57 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -303,6 +303,7 @@ Les requêtes vers Exchange suivent les réglages réseau de Nextcloud, comme se
 - Les nouveaux messages passent par un **abonnement Exchange** à la boîte de réception (« pull subscription ») : Exchange garde les nouveaux messages entre deux vérifications, et une vérification sans nouveau message ne coûte qu'une petite requête. Si Exchange a oublié l'abonnement (plus d'une heure sans vérification), le webmail se réabonne et rattrape par les dates, sans annoncer deux fois un message.
 - Les rappels ne demandent les prochains rendez-vous à Exchange qu'une fois toutes les 5 minutes par compte. Le calcul se refait chaque minute sans requête, et immédiatement après une modification de l'agenda dans le webmail.
 - Un cache partagé est recommandé, par exemple **Redis** dans `memcache.distributed`. Le tableau de bord, les rappels, l'espace utilisé et la boîte des dossiers publics y sont gardés. APCu seul ne sert pas aux tâches de fond, qui tournent chacune dans un nouveau processus. Sans cache, tout fonctionne, avec plus de requêtes vers Exchange.
+- **Dans le navigateur**, ce qui a déjà été vu s'affiche aussitôt puis se met à jour : les listes des dossiers, les 100 derniers messages ouverts, le message survolé et les deux suivants pendant la lecture (préchargés sans être marqués lus). Les listes des 6 derniers dossiers vus et les dossiers de chaque compte sont aussi gardés **pour l'onglet** (`sessionStorage`, vidé à sa fermeture) : après un rechargement, la boîte s'affiche avant la réponse d'Exchange. Seuls les résumés y sont gardés (expéditeur, objet, date, aperçu), jamais le contenu des messages ; un autre utilisateur Nextcloud dans le même onglet ne voit rien du précédent, et retirer un compte efface ce qui le concerne. Les lignes hors écran des longues listes ne sont pas dessinées (`content-visibility`), ce qui garde le défilement fluide.
 
 ## Utilisation
 
@@ -372,4 +373,6 @@ templates/          page principale et page d'administration
 
 ## Évolutions possibles
 
-Toutes les évolutions envisagées sont réalisées ; la dernière est la traduction anglaise (version 1.56 : la page, les messages du serveur, les notifications, les widgets et la page d'administration suivent la langue du compte Nextcloud).
+Toutes les évolutions envisagées sont réalisées, jusqu'à la traduction anglaise (1.56) et la mémoire d'onglet pour un affichage plus fluide (1.57).
+
+Pistes de fluidité restantes : précharger les premiers non-lus de la boîte de réception quand le navigateur est inactif ; afficher d'abord une trentaine de messages puis compléter la page.
