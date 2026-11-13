@@ -32,7 +32,8 @@ async function main() {
 	})
 	const errors = []
 	page.on('pageerror', (e) => errors.push('pageerror: ' + e.message))
-	page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()) })
+	// with the address of the resource, to tell the errors of other Nextcloud apps from ours
+	page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text() + (m.location().url ? ' @ ' + m.location().url : '')) })
 
 	const step = async (name, fn) => {
 		process.stdout.write('• ' + name + ' … ')
@@ -2952,7 +2953,7 @@ async function main() {
 	// expected: deliberate 400s (bad domain/password, missing recipient) and the fake tracker pixel
 	// errors of other Nextcloud apps (Files, Text… where the unified search is tried) are not ours
 	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED/.test(e)
-		&& !/\/apps\/(?!webmail\/)[a-z_]+\/js\//.test(e))
+		&& !/\/apps\/(?!webmail\/)[a-z_]+\//.test(e))
 	await browser.close()
 	if (relevant.length) {
 		console.log('\nBrowser errors:\n' + relevant.join('\n'))
