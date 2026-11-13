@@ -218,6 +218,8 @@ class AccountService {
 		$verify = $this->config->getAppValue('webmail', 'verify_tls', 'yes') !== 'no';
 		$client = new EwsClient($url, $email, $password, $timeout ?? 60, $verify);
 		$client->setNetwork(...$this->network());
+		$ids = $this->cacheFactory->createDistributed('webmail-ids');
+		$client->setIdCache(fn (string $key) => $ids->get($key), fn (string $key, array $value, int $ttl) => $ids->set($key, $value, $ttl));
 		return $client;
 	}
 
