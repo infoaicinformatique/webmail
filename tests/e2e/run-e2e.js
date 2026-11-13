@@ -3092,6 +3092,60 @@ async function main() {
 		assert.ok(!(await page.$(row + ' .wm-flag.on')))
 	})
 
+	await step('snooze: a message leaves the inbox for « Reportés », then comes back unread at its time (background job)', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\SnoozeJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		assert(jobId, 'background job registered')
+		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°4"))'
+		await page.click('.wm-folder >> nth=0')
+		await page.click(row)
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°4")')
+		await page.click('.wm-snooze-btn')
+		await page.waitForSelector('.wm-snooze-menu [data-choice="tomorrow"]:has-text("demain à 08:00")')
+		await shot('76-snooze-menu')
+		await page.click('.wm-snooze-menu [data-choice="tomorrow"]')
+		await page.waitForSelector('.wm-toast:has-text("Message reporté : il reviendra demain à 08:00")')
+		await page.locator(row).waitFor({ state: 'detached' })
+
+		// in « Reportés », with the time it comes back
+		await page.click('.wm-folder:has-text("Reportés")')
+		await page.waitForSelector(row + ' .wm-snooze-due:has-text("demain à 08:00")')
+		await page.click(row)
+		await page.waitForSelector('.wm-snooze-banner:has-text("revient dans la boîte de réception demain à 08:00")')
+
+		// its time has come: the background job puts it back, unread
+		const key = (occ('user:setting admin webmail').match(/(snooze_\d+):/) || [])[1]
+		assert(key, 'kept in the preferences: ' + occ('user:setting admin webmail'))
+		const list = JSON.parse(occ('user:setting admin webmail ' + key).trim())
+		assert.strictEqual(list.length, 1)
+		list[0].until = '2020-01-01T00:00:00Z'
+		occ('user:setting admin webmail ' + key + " '" + JSON.stringify(list) + "'")
+		occ('background-job:execute ' + jobId + ' --force-execute')
+		assert.ok(!occ('user:setting admin webmail').includes(key + ':'), 'forgotten once back')
+		await page.click('.wm-folder >> nth=0')
+		await page.click('button[aria-label="Actualiser"]')
+		await page.waitForSelector(row + '.unread')
+
+		// put aside till a date of one's own, then back now
+		await page.click(row)
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°4")')
+		await page.click('.wm-snooze-btn')
+		const d = new Date(Date.now() + 3 * 86400000)
+		const pad = (n) => String(n).padStart(2, '0')
+		await page.fill('.wm-snooze-menu input[name=snoozeUntil]', d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T14:30')
+		await page.click('.wm-snooze-menu button:has-text("OK")')
+		await page.waitForSelector('.wm-toast:has-text("à 14:30")')
+		await page.locator(row).waitFor({ state: 'detached' })
+		await page.click('.wm-folder:has-text("Reportés")')
+		await page.click(row)
+		await page.click('.wm-unsnooze-btn')
+		await page.waitForSelector('.wm-toast:has-text("Message remis dans la boîte de réception")')
+		await page.locator(row).waitFor({ state: 'detached' })
+		assert.ok(!occ('user:setting admin webmail').includes(key + ':'))
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector(row)
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')

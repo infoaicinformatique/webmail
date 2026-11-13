@@ -599,7 +599,10 @@ def handle(op, el, user):
         root = folder_id(el.find('m:ParentFolderIds', NS)[0])
         if root is None:
             return wrap(op, [err(op, 'ErrorFolderNotFound', 'The specified folder could not be found in the store.')])
-        if any(f[0] == root and f[3] == 'msgfolderroot' for f in FOLDERS):
+        if el.get('Traversal') == 'Shallow':
+            # only the folders right under it
+            mine = [f for f in FOLDERS if f[2] == root and f[3] != 'msgfolderroot']
+        elif any(f[0] == root and f[3] == 'msgfolderroot' for f in FOLDERS):
             mine = [f for f in FOLDERS if f[3] != 'msgfolderroot' and root_of(f[0]) == root]
         else:
             # under a folder (a delegate's inbox): its sub-folders
@@ -781,7 +784,9 @@ def handle(op, el, user):
                 del MESSAGES[m['id']]
             else:
                 m['folder'] = target
-            msgs.append(ok(op, '<m:Items/>' if op == 'MoveItem' else ''))
+            # (Exchange gives the id of the message in its new folder)
+            msgs.append(ok(op, ('<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/></t:Message></m:Items>' % (m['id'], m['ck'])
+                                if not hard else '<m:Items/>') if op == 'MoveItem' else ''))
         return wrap(op, msgs)
 
     if op == 'CreateItem':

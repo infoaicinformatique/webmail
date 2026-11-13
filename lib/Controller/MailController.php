@@ -12,6 +12,7 @@ use OCA\Webmail\Service\AttachmentZip;
 use OCA\Webmail\Service\HtmlSanitizer;
 use OCA\Webmail\Service\MailNotificationService;
 use OCA\Webmail\Service\SharedFolderService;
+use OCA\Webmail\Service\SnoozeService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
@@ -38,6 +39,7 @@ class MailController extends Controller {
 		private HtmlSanitizer $sanitizer,
 		private MailNotificationService $bell,
 		private SharedFolderService $shared,
+		private SnoozeService $snooze,
 		private IRootFolder $rootFolder,
 		private IURLGenerator $urlGenerator,
 		private LoggerInterface $logger,
@@ -316,6 +318,38 @@ class MailController extends Controller {
 			}
 			$zipName = AttachmentZip::safeName($name, 'pieces-jointes') . '.zip';
 			return new DataDownloadResponse(AttachmentZip::build($files), $zipName, 'application/zip');
+		});
+	}
+
+	/** The messages put aside (« Reporter ») and when each comes back. */
+	#[NoAdminRequired]
+	public function snoozes(int $id): Response {
+		return $this->handle(function () use ($id) {
+			$account = $this->accounts->find((string)$this->userId, $id);
+			return ['snoozes' => $this->snooze->list($account->getUserId(), $account->getId())];
+		});
+	}
+
+	/**
+	 * Messages put aside until a time: they come back to the inbox, unread.
+	 *
+	 * @param string[] $itemIds
+	 */
+	#[NoAdminRequired]
+	public function snooze(int $id, array $itemIds, string $until): Response {
+		return $this->handle(function () use ($id, $itemIds, $until) {
+			$r = $this->snooze->snooze($this->accounts->find((string)$this->userId, $id), $itemIds, $until);
+			$this->dismiss($itemIds);
+			return $r;
+		});
+	}
+
+	/** A message put aside back in the inbox now. */
+	#[NoAdminRequired]
+	public function unsnooze(int $id, string $itemId): Response {
+		return $this->handle(function () use ($id, $itemId) {
+			$this->snooze->wakeNow($this->accounts->find((string)$this->userId, $id), $itemId);
+			return ['status' => 'ok'];
 		});
 	}
 

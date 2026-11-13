@@ -29,6 +29,7 @@ et sur les téléphones, et inversement.
 | Recherche | Recherche Exchange (AQS) dans le dossier courant **ou dans tous les dossiers** (le dossier de chaque résultat est indiqué, 200 résultats au plus). Bouton ⏷ : filtres **Non lus**, **Pièces jointes**, **Suivis** et **période** (7 jours, 30 jours, 12 mois), seuls ou avec des mots |
 | Lecture | Le HTML est nettoyé côté serveur et affiché dans une iframe isolée, sans aucun script. Les images intégrées (`cid:`) s'affichent. Les images distantes sont bloquées tant que l'utilisateur ne clique pas sur « Afficher les images » |
 | Actions | Marquer comme lu ou non lu, suivi, déplacer, supprimer (vers « Éléments supprimés », puis suppression définitive) |
+| Reporter | « ⏰ Reporter » dans la barre d'un message de la boîte de réception : **Plus tard aujourd'hui** (18 h), **Demain matin** (8 h), **Ce week-end** (samedi 9 h), **La semaine prochaine** (lundi 8 h) ou une date et une heure choisies. Le message part dans le dossier « Reportés » (créé la première fois) et **revient dans la boîte de réception, non lu**, à l'heure dite, même webmail fermé (tâche de fond de Nextcloud, toutes les 5 minutes). Dans « Reportés », chaque message affiche quand il revient, avec « Remettre dans la boîte de réception maintenant » |
 | Suivi avec échéance | « ▾ » à côté de « ⚑ Suivi » : **Aujourd'hui**, **Demain**, **Cette semaine** (vendredi), **La semaine prochaine**, sans date ou une date choisie, et « Retirer le suivi ». L'échéance s'affiche dans la liste (« Demain », « En retard » en rouge) ; c'est l'indicateur d'Exchange, le même que dans Outlook (liste « Tâches » / To-Do) et sur le téléphone |
 | Courrier indésirable | « ⛔ Indésirable » déplace le message dans « Courrier indésirable » et **bloque l'expéditeur** (ses prochains messages y iront directement) ; dans ce dossier, « ✔ Pas indésirable » le remet dans la boîte de réception et **fait confiance à l'expéditeur**. Comme dans Outlook, les listes d'expéditeurs bloqués et fiables sont celles d'Exchange. Aussi pour plusieurs messages à la fois |
 | En-têtes Internet | « 🧾 » dans la barre d'un message : les contrôles du serveur de réception (**SPF**, **DKIM**, **DMARC** : réussi, échoué…) avec un **avertissement** si l'expéditeur n'a pas pu être authentifié (usurpation possible), le **trajet** du message de serveur en serveur avec le temps de chaque étape, puis tous les en-têtes et « Copier les en-têtes » pour le support ; comme « Propriétés du message » d'Outlook |
@@ -240,7 +241,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.75.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.76.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -283,7 +284,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.75 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.76 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -327,7 +328,7 @@ Les requêtes vers Exchange suivent les réglages réseau de Nextcloud, comme se
 
 ### Tâches de fond et performances
 
-- Réglez les tâches de fond de Nextcloud sur **Cron** : les notifications de nouveaux messages (toutes les 5 minutes) et les rappels des rendez-vous (chaque minute) en dépendent.
+- Réglez les tâches de fond de Nextcloud sur **Cron** : les notifications de nouveaux messages et le retour des messages reportés (toutes les 5 minutes), et les rappels des rendez-vous (chaque minute) en dépendent.
 - Une exécution encore en cours n'est pas relancée à côté d'elle. Chaque requête faite en tâche de fond abandonne au bout de 20 secondes, pour qu'un serveur injoignable ne retarde pas les autres comptes.
 - Les nouveaux messages passent par un **abonnement Exchange** à la boîte de réception (« pull subscription ») : Exchange garde les nouveaux messages entre deux vérifications, et une vérification sans nouveau message ne coûte qu'une petite requête. Si Exchange a oublié l'abonnement (plus d'une heure sans vérification), le webmail se réabonne et rattrape par les dates, sans annoncer deux fois un message.
 - Les rappels ne demandent les prochains rendez-vous à Exchange qu'une fois toutes les 5 minutes par compte. Le calcul se refait chaque minute sans requête, et immédiatement après une modification de l'agenda dans le webmail.
