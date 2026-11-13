@@ -2362,6 +2362,96 @@
 		}
 
 		detailEl.appendChild(bodyFrame(m.body))
+		if (role !== 'drafts' && role !== 'outbox') detailEl.appendChild(quickReply(m))
+	}
+
+	/**
+	 * A few lines under the message, sent without the full form (with the signature,
+	 * the delay to undo, and the question about a forgotten attachment, as the form does).
+	 * « Plus d'options » opens the full form with what was typed.
+	 */
+	/** message → what was typed in its quick reply, not sent yet */
+	const quickTexts = new Map()
+
+	function quickReply(m) {
+		const sender = (m.replyTo && m.replyTo[0]) || m.from
+		const me = ((state.accounts.find((a) => a.id === state.accountId) || {}).email || '').toLowerCase()
+		const others = [m.from].concat(m.to || [], m.cc || []).filter((p) => p && p.email && p.email.toLowerCase() !== me)
+		const text = h('textarea', {
+			name: 'quickReply',
+			class: 'wm-quick-text',
+			rows: '1',
+			placeholder: _('Répondre à {name}…', { name: personShort(sender) || _('l\'expéditeur') }),
+			'aria-label': _('Réponse rapide'),
+		})
+		const all = others.length > 1 ? h('input', { type: 'checkbox', name: 'quickReplyAll' }) : null
+		const send = h('button', { type: 'submit', class: 'primary', title: _('Envoyer (Ctrl+Entrée)') }, _('Envoyer'))
+		const box = h('form', {
+			class: 'wm-quick-reply',
+			onsubmit: async (e) => {
+				e.preventDefault()
+				const typed = text.value.trim()
+				if (!typed) { text.focus(); return }
+				const probe = h('div', {}, typed)
+				if (mentionsAttachment(probe) && !window.confirm(_('Le message parle d\'une pièce jointe, mais aucun fichier n\'est joint. Envoyer quand même ?'))) return
+				const mode = all && all.checked ? 'replyAll' : 'reply'
+				const account = state.accounts.find((a) => a.id === state.accountId)
+				// from the shared mailbox the message is in, as the full form does
+				const mailboxes = shared.accountId === state.accountId ? shared.list : []
+				const fromMailbox = mailboxes.find((mb) => (mb.folders || []).some((f) => f.id === m.folderId))
+				const html = '<div>' + escapeHtml(typed).replace(/\n/g, '<br>') + '</div>'
+					+ (account && account.signature ? '<div><br></div><div class="wm-signature">-- <br>' + signatureHtml(account.signature) + '</div>' : '')
+				const fd = new FormData()
+				Object.entries({
+					mode, to: '', cc: '', bcc: '',
+					subject: /^(re|tr|fw|fwd)\s?:/i.test(m.subject || '') ? m.subject : _('RE : ') + (m.subject || ''),
+					bodyHtml: html, importance: 'Normal', referenceId: m.id, draftId: '', from: fromMailbox ? fromMailbox.email : '',
+				}).forEach(([k, v]) => fd.append(k, v))
+				text.value = ''
+				quickTexts.delete(msgKey(m.id))
+				box.classList.remove('open')
+				const delay = undoDelay()
+				if (delay && !await undoCountdown(delay)) {
+					text.value = typed
+					box.classList.add('open')
+					if (box.isConnected) text.focus()
+					toast(_('Envoi annulé'))
+					return
+				}
+				send.disabled = true
+				try {
+					await api('/accounts/' + state.accountId + '/send', { method: 'POST', body: fd })
+					threadCache.clear()
+					toast(_('Message envoyé'))
+					if (folderRole() === 'sentitems') setTimeout(() => loadMessages(true), 1500)
+				} catch (err) {
+					toast(err.message, true)
+					// nothing lost: the text is put back (in the message shown, if it is still this one)
+					text.value = typed
+					box.classList.add('open')
+				} finally {
+					send.disabled = false
+				}
+			},
+		},
+		text,
+		h('div', { class: 'wm-quick-actions' },
+			send,
+			all ? h('label', { class: 'wm-radio' }, all, ' ' + _('Répondre à tous')) : null,
+			h('button', {
+				type: 'button',
+				class: 'wm-quick-more',
+				onclick: () => { quickTexts.delete(msgKey(m.id)); openCompose(all && all.checked ? 'replyAll' : 'reply', m, { body: text.value }) },
+			}, _('Plus d\'options…'))))
+		text.addEventListener('focus', () => box.classList.add('open'))
+		text.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); box.requestSubmit() }
+		})
+		// what was typed survives a redraw of the message (images shown, flag…)
+		const kept = quickTexts.get(msgKey(m.id))
+		if (kept) { text.value = kept; box.classList.add('open') }
+		text.addEventListener('input', () => { if (text.value) quickTexts.set(msgKey(m.id), text.value); else quickTexts.delete(msgKey(m.id)) })
+		return box
 	}
 
 	const threadCache = new Map()
