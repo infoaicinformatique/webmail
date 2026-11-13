@@ -16,6 +16,7 @@
 		booksFor: null, // account id the list belongs to
 		book: 'contacts', // displayed address book
 		photoV: {}, // contact id -> version of its photo (changed here: not the cached one)
+		detailSeq: 0, // what the right pane shows: a card still loading does not replace a form opened since
 	}
 
 	/** "account|book" -> { items, total, hasMore }: a book seen before shows at once, then is refreshed */
@@ -543,6 +544,7 @@
 	}
 
 	function renderEmpty() {
+		ct.detailSeq++
 		const h = core.h
 		core.clear(core.detailEl)
 		core.detailEl.appendChild(h('div', { class: 'wm-empty wm-empty-detail' }, h('div', { class: 'wm-empty-icon' }, '👤'), _('Sélectionnez un contact')))
@@ -550,6 +552,7 @@
 
 	async function openContact(id) {
 		const h = core.h
+		const mine = ++ct.detailSeq
 		ct.selectedId = id
 		renderList()
 		core.setView('detail')
@@ -564,11 +567,13 @@
 				: await api('/accounts/' + core.accountId + '/contact', { query: { contactId: id, book: book.key } })
 			if (!c) throw new Error(_('Contact introuvable'))
 		} catch (e) {
+			if (mine !== ct.detailSeq) return
 			core.clear(el)
 			el.appendChild(h('div', { class: 'wm-empty' }, e.message))
 			return
 		}
-		if (ct.selectedId !== id) return
+		// another contact, or a form, opened meanwhile (« Nouveau contact » right after « Enregistrer »)
+		if (ct.selectedId !== id || mine !== ct.detailSeq) return
 		core.clear(el)
 
 		const row = (icon, label, value) => value ? h('div', { class: 'wm-contact-row' }, h('span', { class: 'wm-contact-icon', 'aria-hidden': 'true' }, icon),
@@ -617,6 +622,7 @@
 	 * added from the contacts and the directory (completion) or by address.
 	 */
 	function openGroupForm(g) {
+		ct.detailSeq++
 		const h = core.h
 		const isNew = !g
 		const members = ((g && g.members) || []).map((m) => ({ name: m.name, email: m.email }))
@@ -725,6 +731,7 @@
 	}
 
 	function openForm(c) {
+		ct.detailSeq++
 		const h = core.h
 		const isNew = !c
 		c = c || { emails: [] }
