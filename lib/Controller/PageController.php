@@ -15,6 +15,7 @@ use OCP\App\IAppManager;
 use OCP\IGroupManager;
 use OCP\IRequest;
 use OCP\IUserSession;
+use OCP\L10N\IFactory;
 use OCP\Util;
 
 class PageController extends Controller {
@@ -24,6 +25,7 @@ class PageController extends Controller {
 		private IUserSession $userSession,
 		private IGroupManager $groupManager,
 		private IAppManager $apps,
+		private IFactory $l10nFactory,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -32,6 +34,11 @@ class PageController extends Controller {
 	#[NoCSRFRequired]
 	public function index(): TemplateResponse {
 		// modules first: they register themselves in window.WebmailModules
+		// the translations of the user's language (French, the app's language, has none)
+		$lang = $this->l10nFactory->findLanguage(Application::APP_ID);
+		if (preg_match('/^[a-z]{2,3}(_[A-Z]{2})?$/', $lang) && is_file(__DIR__ . '/../../l10n/' . $lang . '.js')) {
+			Util::addTranslations(Application::APP_ID, $lang);
+		}
 		Util::addScript(Application::APP_ID, 'sharing');
 		Util::addScript(Application::APP_ID, 'calendar');
 		Util::addScript(Application::APP_ID, 'contacts');

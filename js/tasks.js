@@ -2,8 +2,11 @@
 (function () {
 	'use strict'
 
-	const STATUS = [['NotStarted', 'Non commencée'], ['InProgress', 'En cours'], ['WaitingOnOthers', 'En attente de quelqu\'un'], ['Deferred', 'Reportée'], ['Completed', 'Terminée']]
-	const IMPORTANCE = [['Normal', 'Normale'], ['High', 'Haute'], ['Low', 'Basse']]
+	/** Translated text (Nextcloud l10n: l10n/<language>.js); the French text is the key. */
+	const _ = (s, vars) => (window.t ? window.t('webmail', s, vars, undefined, { escape: false }) : s)
+	const locale = () => (window.OC && OC.getLanguage && OC.getLanguage()) || 'fr'
+	const STATUS = [['NotStarted', _('Non commencée')], ['InProgress', _('En cours')], ['WaitingOnOthers', _('En attente de quelqu\'un')], ['Deferred', _('Reportée')], ['Completed', _('Terminée')]]
+	const IMPORTANCE = [['Normal', _('Normale')], ['High', _('Haute')], ['Low', _('Basse')]]
 
 	let core = null
 	const tk = { accountId: null, filter: 'todo', tasks: [], loading: false, selectedId: null, seq: 0 }
@@ -20,10 +23,10 @@
 		const today = ymd(new Date())
 		const tomorrow = ymd(new Date(Date.now() + 86400000))
 		const d = new Date(due + 'T12:00')
-		const label = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined })
-		if (due === today) return 'Aujourd\'hui'
-		if (due === tomorrow) return 'Demain'
-		return due < today ? 'En retard · ' + label : label
+		const label = d.toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short', year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined })
+		if (due === today) return _('Aujourd\'hui')
+		if (due === tomorrow) return _('Demain')
+		return due < today ? _('En retard · {date}', { date: label }) : label
 	}
 
 	async function load() {
@@ -44,7 +47,7 @@
 
 	function renderNav(navEl) {
 		const h = core.h
-		navEl.appendChild(h('button', { class: 'wm-compose-btn primary', onclick: () => openForm(null) }, '＋  Nouvelle tâche'))
+		navEl.appendChild(h('button', { class: 'wm-compose-btn primary', onclick: () => openForm(null) }, '＋  ' + _('Nouvelle tâche')))
 		const sel = core.accountSelector()
 		if (sel) navEl.appendChild(sel)
 		const item = (key, icon, label) => h('li', {}, h('a', {
@@ -54,7 +57,7 @@
 			onclick: (e) => { e.preventDefault(); tk.filter = key; tk.selectedId = null; core.renderNav(); renderEmpty(); load() },
 		}, h('span', { class: 'wm-folder-icon', 'aria-hidden': 'true' }, icon), h('span', { class: 'wm-folder-name' }, label),
 		key === 'todo' && tk.filter === 'todo' && tk.tasks.length ? h('span', { class: 'wm-badge' }, String(tk.tasks.length)) : null))
-		navEl.appendChild(h('ul', { class: 'wm-folders' }, item('todo', '☐', 'À faire'), item('done', '☑', 'Terminées')))
+		navEl.appendChild(h('ul', { class: 'wm-folders' }, item('todo', '☐', _('À faire')), item('done', '☑', _('Terminées'))))
 		navEl.appendChild(h('div', { style: 'flex:1' }))
 		navEl.appendChild(core.navFooter())
 	}
@@ -64,7 +67,7 @@
 		const h = core.h
 		const el = core.listEl
 		core.clear(el)
-		const quick = h('input', { type: 'text', class: 'wm-search wm-task-quick', name: 'quickTask', placeholder: 'Ajouter une tâche (Entrée)', 'aria-label': 'Ajouter une tâche' })
+		const quick = h('input', { type: 'text', class: 'wm-search wm-task-quick', name: 'quickTask', placeholder: _('Ajouter une tâche (Entrée)'), 'aria-label': _('Ajouter une tâche') })
 		el.appendChild(h('form', {
 			class: 'wm-list-header',
 			onsubmit: async (e) => {
@@ -75,20 +78,20 @@
 				try {
 					await api(base() + '/tasks', { method: 'POST', body: { task: { subject } } })
 					quick.value = ''
-					core.toast('Tâche ajoutée')
+					core.toast(_('Tâche ajoutée'))
 					if (tk.filter !== 'todo') tk.filter = 'todo'
 					await load()
 				} catch (ex) { core.toast(ex.message, true) } finally { quick.disabled = false; quick.focus() }
 			},
 		},
-		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': 'Menu', onclick: () => core.setView('nav') }, '☰'),
-		tk.filter === 'todo' ? quick : h('div', { class: 'wm-muted wm-task-title' }, 'Tâches terminées')))
+		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Menu'), onclick: () => core.setView('nav') }, '☰'),
+		tk.filter === 'todo' ? quick : h('div', { class: 'wm-muted wm-task-title' }, _('Tâches terminées'))))
 		if (tk.loading && !tk.tasks.length) {
 			el.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
 			return
 		}
 		if (!tk.tasks.length) {
-			el.appendChild(h('div', { class: 'wm-empty' }, tk.filter === 'todo' ? 'Rien à faire 🎉' : 'Aucune tâche terminée'))
+			el.appendChild(h('div', { class: 'wm-empty' }, tk.filter === 'todo' ? _('Rien à faire') + ' 🎉' : _('Aucune tâche terminée')))
 			return
 		}
 		const today = ymd(new Date())
@@ -98,7 +101,7 @@
 				type: 'checkbox',
 				class: 'wm-task-done',
 				checked: t.done,
-				'aria-label': (t.done ? 'Remettre à faire « ' : 'Terminer « ') + t.subject + ' »',
+				'aria-label': t.done ? _('Remettre à faire « {subject} »', { subject: t.subject }) : _('Terminer « {subject} »', { subject: t.subject }),
 				onclick: (e) => e.stopPropagation(),
 				onchange: () => complete(t, box.checked),
 			})
@@ -111,12 +114,12 @@
 			},
 			box,
 			h('div', { class: 'wm-task-text' },
-				h('div', { class: 'wm-task-subject' }, t.importance === 'High' ? h('span', { class: 'wm-important', title: 'Importance haute' }, '❗ ') : null, t.subject || '(sans titre)'),
+				h('div', { class: 'wm-task-subject' }, t.importance === 'High' ? h('span', { class: 'wm-important', title: _('Importance haute') }, '❗ ') : null, t.subject || _('(sans titre)')),
 				h('div', { class: 'wm-task-meta' },
 					t.due ? h('span', { class: 'wm-task-due' }, '📅 ' + dueLabel(t.due)) : null,
 					t.status === 'InProgress' || t.status === 'WaitingOnOthers' || t.status === 'Deferred'
 						? h('span', { class: 'wm-task-status' }, (STATUS.find(([v]) => v === t.status) || [0, ''])[1]) : null,
-					t.recurring ? h('span', { title: 'Tâche périodique' }, '🔁') : null))))
+					t.recurring ? h('span', { title: _('Tâche périodique') }, '🔁') : null))))
 		})
 		el.appendChild(ul)
 	}
@@ -129,7 +132,7 @@
 		if (li) li.classList.toggle('done', done)
 		try {
 			await api(base() + '/tasks/complete', { method: 'POST', body: { taskId: t.id, done } })
-			core.toast(done ? 'Tâche terminée' : 'Tâche remise à faire')
+			core.toast(done ? _('Tâche terminée') : _('Tâche remise à faire'))
 			// it leaves the list it no longer belongs to
 			setTimeout(() => { if ((tk.filter === 'todo') === done) load() }, 600)
 			if (tk.selectedId === t.id) openTask(t.id)
@@ -143,7 +146,7 @@
 	function renderEmpty() {
 		const h = core.h
 		core.clear(core.detailEl)
-		core.detailEl.appendChild(h('div', { class: 'wm-empty-detail' }, h('div', { class: 'wm-empty-icon', 'aria-hidden': 'true' }, '☑'), h('p', {}, 'Sélectionnez une tâche')))
+		core.detailEl.appendChild(h('div', { class: 'wm-empty-detail' }, h('div', { class: 'wm-empty-icon', 'aria-hidden': 'true' }, '☑'), h('p', {}, _('Sélectionnez une tâche'))))
 	}
 
 	async function openTask(id) {
@@ -168,16 +171,16 @@
 		const isNew = !t
 		core.setView('detail')
 		core.clear(el)
-		const subject = h('input', { type: 'text', name: 'subject', required: true, placeholder: 'Titre' })
+		const subject = h('input', { type: 'text', name: 'subject', required: true, placeholder: _('Titre') })
 		subject.value = t ? t.subject : ''
 		const due = h('input', { type: 'date', name: 'due' })
 		due.value = t && t.due ? t.due : ''
 		const status = h('select', { name: 'status' }, STATUS.map(([v, l]) => h('option', { value: v, selected: (t ? t.status : 'NotStarted') === v }, l)))
 		const importance = h('select', { name: 'importance' }, IMPORTANCE.map(([v, l]) => h('option', { value: v, selected: (t ? t.importance : 'Normal') === v }, l)))
-		const notes = h('textarea', { name: 'notes', rows: '8', placeholder: 'Notes' })
+		const notes = h('textarea', { name: 'notes', rows: '8', placeholder: _('Notes') })
 		notes.value = t && t.notes ? t.notes : ''
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
-		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? 'Créer' : 'Enregistrer')
+		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? _('Créer') : _('Enregistrer'))
 		const field = (label, ...inputs) => h('label', { class: 'wm-field' }, h('span', {}, label), ...inputs)
 		const quickDue = (days, label) => h('button', {
 			type: 'button',
@@ -195,10 +198,10 @@
 					if (isNew) {
 						const r = await api(base() + '/tasks', { method: 'POST', body: { task } })
 						tk.selectedId = r.id
-						core.toast('Tâche créée')
+						core.toast(_('Tâche créée'))
 					} else {
 						await api(base() + '/tasks/update', { method: 'POST', body: { taskId: t.id, task } })
-						core.toast('Tâche enregistrée')
+						core.toast(_('Tâche enregistrée'))
 					}
 					await load()
 					save.disabled = false
@@ -209,36 +212,36 @@
 			},
 		},
 		h('div', { class: 'wm-compose-title' },
-			h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': 'Retour', onclick: () => core.setView('list') }, '←'),
-			h('h2', {}, isNew ? 'Nouvelle tâche' : 'Tâche')),
-		field('Titre', subject),
-		field('Échéance', due, quickDue(0, 'Aujourd\'hui'), quickDue(1, 'Demain'), quickDue(7, 'Dans une semaine'),
-			h('button', { type: 'button', class: 'wm-small', onclick: () => { due.value = '' } }, 'Aucune')),
-		field('État', status),
-		field('Importance', importance),
-		h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Notes'), notes),
+			h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Retour'), onclick: () => core.setView('list') }, '←'),
+			h('h2', {}, isNew ? _('Nouvelle tâche') : _('Tâche'))),
+		field(_('Titre'), subject),
+		field(_('Échéance'), due, quickDue(0, _('Aujourd\'hui')), quickDue(1, _('Demain')), quickDue(7, _('Dans une semaine')),
+			h('button', { type: 'button', class: 'wm-small', onclick: () => { due.value = '' } }, _('Aucune'))),
+		field(_('État'), status),
+		field(_('Importance'), importance),
+		h('label', { class: 'wm-field wm-field-top' }, h('span', {}, _('Notes')), notes),
 		err,
 		h('div', { class: 'wm-compose-actions' }, save,
 			!isNew ? h('button', {
 				type: 'button',
 				class: 'wm-task-toggle',
 				onclick: () => complete(tk.tasks.find((x) => x.id === t.id) || t, !t.done),
-			}, t.done ? '↺ Remettre à faire' : '✓ Marquer comme terminée') : null,
+			}, t.done ? '↺ ' + _('Remettre à faire') : '✓ ' + _('Marquer comme terminée')) : null,
 			!isNew ? h('button', {
 				type: 'button',
 				class: 'wm-danger',
 				onclick: async () => {
-					if (!window.confirm('Supprimer la tâche « ' + t.subject + ' » ?')) return
+					if (!window.confirm(_('Supprimer la tâche « {subject} » ?', { subject: t.subject }))) return
 					try {
 						await api(base() + '/tasks/delete', { method: 'POST', body: { taskId: t.id } })
-						core.toast('Tâche supprimée')
+						core.toast(_('Tâche supprimée'))
 						tk.selectedId = null
 						renderEmpty()
 						load()
 					} catch (ex) { core.toast(ex.message, true) }
 				},
-			}, '🗑 Supprimer') : null,
-			isNew ? h('button', { type: 'button', onclick: () => { renderEmpty(); core.setView('list') } }, 'Annuler') : null)))
+			}, '🗑 ' + _('Supprimer')) : null,
+			isNew ? h('button', { type: 'button', onclick: () => { renderEmpty(); core.setView('list') } }, _('Annuler')) : null)))
 		subject.focus()
 	}
 

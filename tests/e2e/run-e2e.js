@@ -2624,6 +2624,27 @@ async function main() {
 		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
 	})
 
+	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		occ('user:setting admin core lang en')
+		try {
+			await page.reload()
+			await page.click('.wm-tab[data-module="tasks"]')
+			await page.waitForSelector('.wm-compose-btn:has-text("New task")')
+			await page.waitForSelector('.wm-task-filter:has-text("To do")')
+			await page.waitForSelector('input[name=quickTask][placeholder="Add a task (Enter)"]')
+			await page.waitForSelector('.wm-task.late .wm-task-due:has-text("Overdue")')
+			await shot('69-english')
+		} finally {
+			occ('user:setting admin core lang fr')
+		}
+		await page.reload()
+		await page.click('.wm-tab[data-module="tasks"]')
+		await page.waitForSelector('.wm-compose-btn:has-text("Nouvelle tâche")')
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('module choice is remembered', async () => {
 		await page.click('.wm-tab[data-module="calendar"]')
 		await page.reload()
