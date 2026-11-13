@@ -232,7 +232,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.58.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.59.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -243,8 +243,29 @@ sudo chown -R www-data:www-data /var/www/nextcloud/custom_apps/webmail
 sudo -u www-data php /var/www/nextcloud/occ app:enable webmail
 ```
 
-Vous pouvez aussi copier les dossiers `appinfo lib templates js css img` dans
-`custom_apps/webmail`.
+Vous pouvez aussi copier les dossiers `appinfo lib templates js css img` et les
+fichiers `l10n/*.js` et `l10n/*.json` dans `custom_apps/webmail`. L'archive de
+`make dist` contient exactement cela, traductions comprises (avant la 1.59, elle
+oubliait le dossier `l10n` : l'app restait en français pour tout le monde).
+
+### Publication sur la boutique d'apps Nextcloud
+
+`appinfo/info.xml` suit le schéma de la boutique (résumé et description en anglais
+et en français, dépôt, captures). Pour publier une version :
+
+1. Obtenir un certificat pour l'identifiant `webmail` (une seule fois, voir la
+   documentation « App Store » de Nextcloud) et garder la clé privée hors du dépôt.
+2. Construire l'archive et sa signature :
+
+```bash
+make appstore APP_KEY=~/.nextcloud/certificates/webmail.key
+```
+
+3. Publier l'archive à une adresse publique (par exemple une « release » GitHub),
+   puis la déclarer sur apps.nextcloud.com avec le contenu de `build/webmail-<version>.tar.gz.sig`.
+
+Les captures déclarées dans `info.xml` sont lues sur GitHub : le dépôt doit être
+public au moment de la publication.
 
 ### Mise à jour
 
@@ -254,7 +275,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.58 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.59 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

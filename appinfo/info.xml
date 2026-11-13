@@ -3,8 +3,20 @@
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
 	<id>webmail</id>
 	<name>Webmail</name>
-	<summary>Courrier, agenda et contacts Exchange (EWS) pour OVH Hosted Exchange, un serveur par domaine</summary>
-	<description><![CDATA[Webmail intégré à Nextcloud pour les boîtes OVH Hosted Exchange, via Exchange Web Services (EWS).
+	<summary lang="en">Exchange (EWS) mail, calendar, contacts and tasks for OVH Hosted Exchange, one server per domain</summary>
+	<summary lang="fr">Courrier, agenda et contacts Exchange (EWS) pour OVH Hosted Exchange, un serveur par domaine</summary>
+	<description lang="en"><![CDATA[Webmail built into Nextcloud for OVH Hosted Exchange mailboxes, through Exchange Web Services (EWS).
+
+* The administrator links each e-mail domain to its OVH server (e.g. https://ex3.mail.ovh.net/EWS/Exchange.asmx).
+* Users only enter their address and password: the right server is chosen automatically (or found by Autodiscover, among the allowed servers).
+* Mail: reading, search (folder or whole mailbox, unread / attachments / flagged / period filters), folders, rich text editor (pasted images and screenshots, formatted signature with logo), drafts saved automatically (with their attachments), reply, forward, attachments (from/to Files, preview of images, PDF and text, Nextcloud share links for large files); instant navigation (folders and messages loaded in advance, lists kept for the tab), keyboard shortcuts, mailbox usage, new message notifications, out-of-office replies, inbox rules, Outlook colour categories, conversations, shared mailboxes (contact@…, sending on their behalf), mail of colleagues you are a delegate for, multiple selection and drag and drop, folder management, junk mail (block / trust the sender), scheduled sending, read receipts, printing.
+* Exchange calendar: day, week, month and list views, mini calendar, event search, several calendars, calendars shared by colleagues, public folder calendars, sharing your calendars without delegation, creating and editing (recurring series too, “the 2nd Tuesday of the month”), drag and drop, invitations (with a Nextcloud Talk room, attendee availability and first free slot, meeting room booking), meeting responses, also on behalf of a colleague (delegation).
+* Nextcloud dashboard: “Unread mail” and “Exchange calendar” widgets; new messages in Nextcloud notifications, even with the webmail closed; Exchange messages and events in the unified search; event reminders in Nextcloud notifications.
+* Delegates: delegate access of each mailbox (calendar, mail, contacts and tasks rights, copy of meeting requests).
+* Exchange contacts: several address books, address books shared by colleagues, sharing your address books without delegation, public folder address books, company directory, search, creating and editing, contact groups, photos, vCard import and export; address completion (contacts + directory).
+* Exchange tasks: to do / completed, due dates (overdue in red), importance, status, notes; quick add, tick to complete, editing, deleting.
+* In English or French, following the language of the Nextcloud account.]]></description>
+	<description lang="fr"><![CDATA[Webmail intégré à Nextcloud pour les boîtes OVH Hosted Exchange, via Exchange Web Services (EWS).
 
 * L'administrateur associe chaque domaine e-mail à son serveur OVH (ex. https://ex3.mail.ovh.net/EWS/Exchange.asmx).
 * L'utilisateur saisit seulement son adresse et son mot de passe : le bon serveur est choisi automatiquement (ou trouvé par Autodiscover, sur les serveurs autorisés).
@@ -15,13 +27,20 @@
 * Contacts Exchange : plusieurs carnets, contacts partagés par les collègues (tous leurs carnets partagés), partage de ses carnets sans délégation, carnets des dossiers publics, annuaire de l'entreprise, consultation, recherche, création, modification, groupes de contacts, photos, import et export vCard ; complétion des adresses (contacts + annuaire).
 * Tâches Exchange : liste à faire / terminées, échéances (en retard en rouge), importance, état, notes ; ajout rapide, case pour terminer, modification, suppression.
 * En français ou en anglais, selon la langue du compte Nextcloud.]]></description>
-	<version>1.58.0</version>
+	<version>1.59.0</version>
 	<licence>agpl</licence>
 	<author>AIC Informatique</author>
 	<namespace>Webmail</namespace>
 	<category>social</category>
 	<category>office</category>
+	<website>https://github.com/infoaicinformatique/webmail</website>
 	<bugs>https://github.com/infoaicinformatique/webmail/issues</bugs>
+	<repository type="git">https://github.com/infoaicinformatique/webmail.git</repository>
+	<screenshot>https://raw.githubusercontent.com/infoaicinformatique/webmail/main/docs/capture-lecture.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/infoaicinformatique/webmail/main/docs/capture-agenda.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/infoaicinformatique/webmail/main/docs/capture-contacts.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/infoaicinformatique/webmail/main/docs/capture-taches.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/infoaicinformatique/webmail/main/docs/capture-anglais.png</screenshot>
 	<dependencies>
 		<php min-version="8.1"/>
 		<nextcloud min-version="28" max-version="32"/>
