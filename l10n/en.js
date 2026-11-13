@@ -467,6 +467,7 @@ OC.L10N.register(
     "Le marquer comme lu": "Mark it as read",
     "Le message d'origine et ses pièces jointes seront ajoutés automatiquement sous votre texte.": "The original message and its attachments will be added automatically below your text.",
     "Le message d'origine sera cité automatiquement sous votre réponse.": "The original message will be quoted automatically below your reply.",
+    "Le message parle d'une pièce jointe, mais aucun fichier n'est joint. Envoyer quand même ?": "The message mentions an attachment, but no file is attached. Send anyway?",
     "Le modèle est vide": "The template is empty",
     "Le navigateur a bloqué la fenêtre d'impression": "The browser blocked the print window",
     "Le navigateur refuse les notifications pour ce site : autorisez-les dans les réglages du site (icône à gauche de l'adresse).": "The browser blocks notifications for this site: allow them in the site settings (icon to the left of the address).",

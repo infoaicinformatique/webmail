@@ -33,7 +33,7 @@ et sur les téléphones, et inversement.
 | Plusieurs messages | Case à cocher devant chaque message (au survol), **Ctrl+clic** pour en ajouter, **Maj+clic** pour une plage, `x` au clavier ; une barre propose alors Tout sélectionner, Lu, Non lu, Suivi, Déplacer vers… et Supprimer, pour tous d'un coup. Échap annule la sélection. **Glisser-déposer** un message (ou la sélection) sur un dossier le déplace |
 | Envoi | Nouveau message, Répondre, Répondre à tous, Transférer (Exchange cite le message d'origine et garde ses pièces jointes), Cc/Cci, importance, signature ; `Ctrl+Entrée` envoie |
 | Modèles de réponse | Le bouton 📄 de l'éditeur insère un **modèle** là où se trouve le curseur, ou enregistre le texte écrit comme modèle (nom au choix ; la signature n'en fait pas partie). Les modèles appartiennent à l'utilisateur Nextcloud (tous ses comptes) et se renomment ou se suppriment dans « Comptes et signature » ; ils sont nettoyés comme une signature (images comprises, 256 Ko et 50 modèles au plus) ([capture](docs/capture-modeles.png)) |
-| Options d'envoi | « Demander un accusé de lecture », et « **Envoyer plus tard** » à la date et l'heure choisies (demain 8 h proposé) : Exchange garde le message dans « Boîte d'envoi » jusque-là, même si Nextcloud est fermé. « 🖨 » imprime un message (en-têtes et contenu). **Annuler l'envoi** : après « Envoyer », le message attend quelques secondes (5 par défaut, réglable dans « Comptes et signature » : aucun, 5, 10, 20 ou 30 s) avec « Annuler l'envoi », qui le rouvre tel quel, et « Envoyer maintenant » ; fermer la page pendant ce délai demande confirmation ([capture](docs/capture-annuler-envoi.png)) |
+| Options d'envoi | « Demander un accusé de lecture », et « **Envoyer plus tard** » à la date et l'heure choisies (demain 8 h proposé) : Exchange garde le message dans « Boîte d'envoi » jusque-là, même si Nextcloud est fermé. « 🖨 » imprime un message (en-têtes et contenu). **Annuler l'envoi** : après « Envoyer », le message attend quelques secondes (5 par défaut, réglable dans « Comptes et signature » : aucun, 5, 10, 20 ou 30 s) avec « Annuler l'envoi », qui le rouvre tel quel, et « Envoyer maintenant » ; fermer la page pendant ce délai demande confirmation ([capture](docs/capture-annuler-envoi.png)). **Pièce jointe oubliée** : si le texte parle d'une pièce jointe (« ci-joint », « en PJ », « pièce jointe », « attached »…, hors signature et citation) et qu'aucun fichier n'est joint, l'envoi demande confirmation |
 | Éditeur | Texte **mis en forme** : gras, italique, souligné, listes à puces et numérotées, liens, citations ; les adresses web tapées deviennent des liens. Le contenu est nettoyé sur le serveur avant l'envoi (aucun script ne peut passer) |
 | Images dans le texte | Une **capture d'écran collée** (Ctrl+V), une image **glissée** dans le texte ou ajoutée avec « 🖼 » s'insère à l'endroit du curseur. Les photos de plus de 1600 pixels sont réduites (JPEG), les captures restent nettes (PNG). À l'envoi, chaque image devient une **image intégrée** (`cid:`), comme avec Outlook : elle s'affiche chez tous les destinataires sans apparaître en pièce jointe, et une même image collée deux fois n'est jointe qu'une fois. Les images comptent dans la limite de 25 Mo |
 | Signature | Dans « Comptes et signature », une signature **mise en forme** pour chaque compte : gras, italique, souligné, liens, et un **logo** (image ajoutée avec « 🖼 » ou collée, réduite à 400 pixels). Elle s'ajoute sous chaque nouveau message et chaque réponse, le logo étant envoyé en image intégrée. Une signature écrite avant en texte simple est reprise telle quelle |
@@ -233,7 +233,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.64.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.65.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -276,7 +276,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.64 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.65 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

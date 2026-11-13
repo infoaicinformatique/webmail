@@ -264,6 +264,17 @@
 		return r.templates
 	}
 
+	/**
+	 * Does the text written (not the signature nor a quotation) speak of an attachment?
+	 * In French and in English, whatever the language of the page.
+	 */
+	const ATTACHMENT_WORDS = /\b(ci[-\s]?joint(e|s|es)?|pi[eè]ces?[-\s]jointes?|en\s+p\.?\s?j\.?|joint(e|s|es)?\s+(à|a)\s+(ce|cet|mon|notre)\s+(message|mail|e-?mail|courriel)|attached|attachments?|enclosed)\b/i
+	function mentionsAttachment(editor) {
+		const copy = editor.cloneNode(true)
+		copy.querySelectorAll('.wm-signature, blockquote').forEach((n) => n.remove())
+		return ATTACHMENT_WORDS.test(copy.textContent || '')
+	}
+
 	const UNDO_DELAYS = [0, 5, 10, 20, 30]
 	function undoDelay() {
 		let v = null
@@ -3066,6 +3077,12 @@
 				}
 				Array.from(files.files).forEach((f) => fd.append('files[]', f, f.name))
 				ncFiles.forEach((p) => fd.append('filePaths[]', p))
+				// « ci-joint » in the text, but nothing attached: one question before it goes
+				if (mode !== 'forward' && !files.files.length && !ncFiles.length && !savedAtts.length && mentionsAttachment(body)
+					&& !window.confirm(_('Le message parle d\'une pièce jointe, mais aucun fichier n\'est joint. Envoyer quand même ?'))) {
+					body.focus()
+					return
+				}
 				// a few seconds to undo (not for a later delivery: it can be cancelled in « Boîte d'envoi »)
 				const delay = later.checked ? 0 : undoDelay()
 				if (delay) {

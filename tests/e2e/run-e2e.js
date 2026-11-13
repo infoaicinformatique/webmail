@@ -2728,6 +2728,7 @@ async function main() {
 		await page.evaluate(() => localStorage.removeItem('webmail.undoSend')) // the default: 5 s
 		await page.click('.wm-tab[data-module="mail"]')
 		const sends = []
+		const cleanups = []
 		const onRequest = (r) => { if (r.url().endsWith('/send') && r.method() === 'POST') sends.push(r) }
 		page.on('request', onRequest)
 		try {
@@ -2735,6 +2736,18 @@ async function main() {
 			await page.fill('input[name=to]', 'user@societe-a.fr')
 			await page.fill('input[name=subject]', 'Finalement non')
 			await page.fill('.wm-editor', 'Il manque la pièce jointe.')
+			// « pièce jointe » but no file: a question first; « no » keeps the message open
+			let asked = null
+			page.once('dialog', (d) => { asked = d.message(); d.dismiss() })
+			await page.click('.wm-compose button[type=submit]')
+			await page.waitForFunction(() => document.activeElement && document.activeElement.classList.contains('wm-editor'))
+			assert.ok(asked && asked.includes('aucun fichier n\'est joint'), String(asked))
+			assert.ok(await page.$('.wm-compose'), 'still open')
+			assert.strictEqual(sends.length, 0)
+			// « send anyway », for the rest of this step
+			const yes = (d) => d.accept()
+			page.on('dialog', yes)
+			cleanups.push(() => page.off('dialog', yes))
 			await page.click('.wm-compose button[type=submit]')
 			await page.waitForSelector('.wm-toast-undo:has-text("Envoi dans")')
 			assert.strictEqual(await page.$('.wm-compose'), null, 'the message leaves the screen')
@@ -2763,6 +2776,7 @@ async function main() {
 			assert.strictEqual(await page.evaluate(() => localStorage.getItem('webmail.undoSend')), '0')
 		} finally {
 			page.off('request', onRequest)
+			cleanups.forEach((f) => f())
 			await page.evaluate(() => localStorage.setItem('webmail.undoSend', '0'))
 		}
 		await page.click('.wm-folder >> nth=0')

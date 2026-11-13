@@ -1097,5 +1097,6 @@
 	"Le modèle est vide": "The template is empty",
 	"Modèle trop lourd : réduisez l'image qu'il contient (256 Ko au plus)": "Template too large: reduce the image it contains (256 KB at most)",
 	"%s modèles au plus : supprimez-en un d'abord": "%s templates at most: delete one first",
-	"Modèle introuvable": "Template not found"
+	"Modèle introuvable": "Template not found",
+	"Le message parle d'une pièce jointe, mais aucun fichier n'est joint. Envoyer quand même ?": "The message mentions an attachment, but no file is attached. Send anyway?"
 }
