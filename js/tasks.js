@@ -132,7 +132,8 @@
 					t.due ? h('span', { class: 'wm-task-due' }, '📅 ' + dueLabel(t.due)) : null,
 					t.status === 'InProgress' || t.status === 'WaitingOnOthers' || t.status === 'Deferred'
 						? h('span', { class: 'wm-task-status' }, (STATUS.find(([v]) => v === t.status) || [0, ''])[1]) : null,
-					t.recurring ? h('span', { title: _('Tâche périodique') }, '🔁') : null))))
+					t.recurring ? h('span', { title: _('Tâche périodique') }, '🔁') : null,
+					t.reminder ? h('span', { class: 'wm-task-reminder', title: _('Rappel le {date}', { date: new Date(t.reminder).toLocaleString(locale(), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }) }, '🔔') : null))))
 		})
 		el.appendChild(ul)
 	}
@@ -192,6 +193,13 @@
 		const importance = h('select', { name: 'importance' }, IMPORTANCE.map(([v, l]) => h('option', { value: v, selected: (t ? t.importance : 'Normal') === v }, l)))
 		const notes = h('textarea', { name: 'notes', rows: '8', placeholder: _('Notes') })
 		notes.value = t ? (t.notes || '') : ((prefill && prefill.notes) || '')
+		// the reminder: a local date and time (the bell of Nextcloud rings then, and Outlook)
+		const localInput = (d) => ymd(d) + 'T' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
+		const reminder = h('input', { type: 'datetime-local', name: 'reminder' })
+		reminder.value = t && t.reminder ? localInput(new Date(t.reminder)) : ''
+		// « Demain 9:00 », « Le jour de l'échéance 9:00 »
+		const quickReminder = (label, at) => h('button', { type: 'button', class: 'wm-small', onclick: () => { const d = at(); if (d) reminder.value = localInput(d) } }, label)
+		const nineOn = (dayStr) => { const d = new Date(dayStr + 'T09:00:00'); return isNaN(d) ? null : d }
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
 		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? _('Créer') : _('Enregistrer'))
 		const field = (label, ...inputs) => h('label', { class: 'wm-field' }, h('span', {}, label), ...inputs)
@@ -206,7 +214,10 @@
 				e.preventDefault()
 				err.textContent = ''
 				save.disabled = true
-				const task = { subject: subject.value, due: due.value, status: status.value, importance: importance.value, notes: notes.value }
+				// (sent with its offset: the server keeps it in UTC)
+				const remindAt = reminder.value ? new Date(reminder.value) : null
+				const task = { subject: subject.value, due: due.value, status: status.value, importance: importance.value, notes: notes.value,
+					reminder: remindAt && !isNaN(remindAt) ? remindAt.toISOString() : '' }
 				try {
 					if (isNew) {
 						const r = await api(base() + '/tasks', { method: 'POST', body: { task } })
@@ -230,6 +241,10 @@
 		field(_('Titre'), subject),
 		field(_('Échéance'), due, quickDue(0, _('Aujourd\'hui')), quickDue(1, _('Demain')), quickDue(7, _('Dans une semaine')),
 			h('button', { type: 'button', class: 'wm-small', onclick: () => { due.value = '' } }, _('Aucune'))),
+		field(_('Rappel'), reminder,
+			quickReminder(_('Demain 9:00'), () => nineOn(ymd(new Date(Date.now() + 86400000)))),
+			quickReminder(_('Le jour de l\'échéance'), () => (due.value ? nineOn(due.value) : (core.toast(_('Choisissez d\'abord une échéance'), true), null))),
+			h('button', { type: 'button', class: 'wm-small', onclick: () => { reminder.value = '' } }, _('Aucun'))),
 		field(_('État'), status),
 		field(_('Importance'), importance),
 		h('label', { class: 'wm-field wm-field-top' }, h('span', {}, _('Notes')), notes),
@@ -280,6 +295,11 @@
 		renderNav(navEl, c) {
 			core = c
 			renderNav(navEl)
+		},
+		/** A task opened from a link (the reminder in the bell of Nextcloud). */
+		openLinked(c, taskId) {
+			core = c
+			openTask(taskId)
 		},
 		/** A new task with its title and notes filled in (from a message); the tasks module is already shown. */
 		newFromMessage(c, prefill) {

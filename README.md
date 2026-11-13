@@ -198,6 +198,7 @@ L'onglet **✅ Tâches** affiche le dossier « Tâches » de la boîte Exchange,
 | Ajout rapide | Champ « Ajouter une tâche » en haut de la liste : un titre, Entrée, et la tâche est créée |
 | Terminer | La case devant une tâche la marque **terminée** (100 %) ou la remet à faire, tout de suite |
 | Depuis un message | « ✅ » dans la barre d'un message : une nouvelle tâche, titre et notes repris du message |
+| Rappel | Dans la tâche, « Rappel » à une date et une heure (« Demain 9:00 », « Le jour de l'échéance ») : celui d'Exchange, donc aussi dans Outlook et sur le téléphone ; 🔔 dans la liste. À l'heure dite, la **cloche de Nextcloud** sonne (« Tâche : … », avec l'échéance), son lien ouvre la tâche ; la notification part quand la tâche est terminée ou le rappel retiré |
 | Modifier | Un clic ouvre la tâche : titre, **échéance** (raccourcis Aujourd'hui, Demain, Dans une semaine, Aucune), état, importance, notes. « Supprimer » la met dans « Éléments supprimés » |
 
 ### Délégués
@@ -242,7 +243,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.92.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.99.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -285,7 +286,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.92 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.99 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

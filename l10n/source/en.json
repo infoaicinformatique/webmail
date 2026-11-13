@@ -1231,5 +1231,13 @@
 	"Désabonnement demandé": "Unsubscribe requested",
 	"Ce message vient d'une liste de diffusion.": "This message comes from a mailing list.",
 	"Ouvre la page de désinscription de la liste": "Opens the list's unsubscribe page",
-	"Se désabonner": "Unsubscribe"
+	"Se désabonner": "Unsubscribe",
+	"Rappel le {date}": "Reminder on {date}",
+	"Demain 9:00": "Tomorrow 9:00",
+	"Le jour de l'échéance": "On the due date",
+	"Choisissez d'abord une échéance": "Choose a due date first",
+	"Aucun": "None",
+	"Heure de rappel invalide": "Invalid reminder time",
+	"Échéance : %s": "Due: %s",
+	"Tâche : %s": "Task: %s"
 }
