@@ -84,6 +84,11 @@
 		state.showFilters = false
 	}
 
+	/** Search while typing: the pause (ms) and the fewest characters before Exchange is asked. */
+	const SEARCH_DELAY = 350
+	const SEARCH_MIN = 2
+	let searchTimer = null
+
 	/** Query parameters of the list request (folder, search words, filters). */
 	function listQuery(offset, limit) {
 		const f = state.filters
@@ -1339,9 +1344,20 @@
 			value: typing ? typing.value : state.query,
 			'aria-label': _('Rechercher'),
 		})
+		// results while typing: after a short pause, from 2 characters (or the whole folder again when emptied)
+		searchInput.addEventListener('input', (e) => {
+			clearTimeout(searchTimer)
+			if (e.isComposing) return
+			searchTimer = setTimeout(() => {
+				const v = searchInput.value.trim()
+				if (v === state.query || (v.length > 0 && v.length < SEARCH_MIN)) return
+				state.query = v
+				loadMessages(true)
+			}, SEARCH_DELAY)
+		})
 		const form = h('form', {
 			class: 'wm-list-header',
-			onsubmit: (e) => { e.preventDefault(); state.query = searchInput.value.trim(); loadMessages(true) },
+			onsubmit: (e) => { e.preventDefault(); clearTimeout(searchTimer); state.query = searchInput.value.trim(); loadMessages(true) },
 		},
 		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Dossiers'), onclick: () => setView('nav') }, '☰'),
 		searchInput,
