@@ -80,6 +80,9 @@
 }
 .wm-search { flex: 1; margin: 0; min-width: 0; }
 .wm-icon-btn { min-width: 36px; margin: 0; font-size: 18px; padding: 0 8px; }
+/* « Trier par »: narrow, the chosen order readable when it is not the default */
+.wm-sort { margin: 0; max-width: 112px; min-width: 0; flex: 0 1 auto; font-size: 13px; padding: 0 4px; }
+.wm-sort.active { border-color: var(--color-primary-element); }
 .wm-search-info { padding: 6px 12px; font-size: 13px; color: var(--color-text-maxcontrast); }
 .wm-messages { list-style: none; margin: 0; padding: 0; }
 .wm-message {

@@ -1238,5 +1238,12 @@
 	"Affichage enregistré": "Display saved",
 	"Affichage": "Display",
 	"Liste des messages": "Message list",
-	"Plus compact, plus de messages tiennent à l'écran.": "More compact, more messages fit on the screen."
+	"Plus compact, plus de messages tiennent à l'écran.": "More compact, more messages fit on the screen.",
+	"Plus récents": "Newest first",
+	"Plus anciens": "Oldest first",
+	"Expéditeur (A → Z)": "Sender (A → Z)",
+	"Expéditeur (Z → A)": "Sender (Z → A)",
+	"Objet (A → Z)": "Subject (A → Z)",
+	"Plus volumineux": "Largest first",
+	"Trier par": "Sort by"
 }

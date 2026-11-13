@@ -32,6 +32,8 @@
 		showFilters: false,
 		// the list grouped by conversation (one row each), remembered
 		grouped: (() => { try { return localStorage.getItem('webmail.grouped') === '1' } catch (e) { return false } })(),
+		/** « Trier par »: « date-desc » (the default), « from-asc », « subject-asc », « size-desc »… */
+		sort: (() => { try { return localStorage.getItem('webmail.sort') || 'date-desc' } catch (e) { return 'date-desc' } })(),
 		selectedId: null,
 		checked: new Set(), // messages ticked for a grouped action
 		current: null, // opened message
@@ -69,7 +71,17 @@
 	let listSeq = 0
 	let listObserver = null
 
-	const listKey = () => state.accountId + '|' + state.folderId + (grouped() ? '|conversations' : '')
+	const listKey = () => state.accountId + '|' + state.folderId + (grouped() ? '|conversations' : (state.sort !== 'date-desc' ? '|' + state.sort : ''))
+	/** The orders offered: value, label. */
+	const SORTS = [
+		['date-desc', () => _('Plus récents')],
+		['date-asc', () => _('Plus anciens')],
+		['from-asc', () => _('Expéditeur (A → Z)')],
+		['from-desc', () => _('Expéditeur (Z → A)')],
+		['subject-asc', () => _('Objet (A → Z)')],
+		['size-desc', () => _('Plus volumineux')],
+	]
+	const sortField = () => (SORTS.some(([v]) => v === state.sort) ? state.sort : 'date-desc').split('-')
 	/** The list shows conversations (not while searching: the results are messages). */
 	const grouped = () => state.grouped && !isSearching()
 	const listEndpoint = () => '/accounts/' + state.accountId + (grouped() ? '/conversations' : '/messages')
@@ -77,6 +89,30 @@
 	const filtersOn = () => ['unread', 'attachments', 'flagged', 'since'].filter((k) => state.filters[k]).length
 	/** a search or a filter is active: the list is not the folder's content */
 	const isSearching = () => !!state.query || filtersOn() > 0
+
+	/**
+	 * Changes made here to messages of the list (read, flag, categories…, or taken out of it), with
+	 * their time: a list asked for before them, answered after, must not undo them on screen.
+	 * id -> { changes, at }
+	 */
+	const localEdits = new Map()
+	const LOCAL_EDIT_TTL = 120000
+	function noteEdit(id, changes) {
+		const e = localEdits.get(id)
+		localEdits.set(id, { changes: Object.assign(e ? e.changes : {}, changes), at: Date.now() })
+	}
+	/** The list items of an answer to a request sent at $sentAt, with the changes made since. */
+	function withLocalEdits(items, sentAt) {
+		const now = Date.now()
+		localEdits.forEach((e, id) => { if (now - e.at > LOCAL_EDIT_TTL) localEdits.delete(id) })
+		const after = (m) => { const e = localEdits.get(m.id); return e && e.at >= sentAt ? e.changes : null }
+		return items.filter((m) => { const c = after(m); return !(c && c.gone) }).map((m) => {
+			const c = after(m)
+			if (!c) return m
+			const { gone, ...rest } = c
+			return Object.assign(m, rest)
+		})
+	}
 
 	function resetSearch() {
 		state.query = ''
@@ -128,6 +164,8 @@
 			flagged: f.flagged ? 1 : undefined,
 			since: since ? since.getFullYear() + '-' + String(since.getMonth() + 1).padStart(2, '0') + '-' + String(since.getDate()).padStart(2, '0') : undefined,
 			scope: f.all && isSearching() ? 'all' : undefined,
+			sort: state.sort !== 'date-desc' && sortField()[0] !== 'date' ? sortField()[0] : undefined,
+			order: state.sort === 'date-desc' ? undefined : sortField()[1],
 		}
 	}
 	const msgKey = (id) => state.accountId + '|' + id
@@ -1269,12 +1307,14 @@
 			}
 		}
 		try {
+			const sentAt = Date.now()
 			const data = await api(listEndpoint(), {
 				query: listQuery(reset ? 0 : state.messages.length, limit),
 			})
 			// a newer load (another folder, a search) replaced this one; the folder id
 			// itself may change meanwhile ("inbox" becomes its real id)
 			if (seq !== listSeq) return
+			data.items = withLocalEdits(data.items, sentAt)
 			state.messages = reset ? data.items : state.messages.concat(data.items)
 			state.total = data.total
 			state.hasMore = data.hasMore
@@ -1354,11 +1394,12 @@
 		if (state.messages.length <= 100 && !state.loadingList) {
 			const seq = listSeq
 			try {
+				const sentAt = Date.now()
 				const data = await api(listEndpoint(), {
 					query: listQuery(0, Math.max(PAGE_SIZE, state.messages.length)),
 				})
 				if (seq !== listSeq || state.module !== 'mail') return
-				state.messages = data.items
+				state.messages = withLocalEdits(data.items, sentAt)
 				state.total = data.total
 				state.hasMore = data.hasMore
 				renderList(false)
@@ -1411,6 +1452,17 @@
 			'aria-expanded': state.showFilters ? 'true' : 'false',
 			onclick: () => { state.showFilters = !state.showFilters; renderList(state.loadingList && !state.messages.length) },
 		}, '⏷' + (filtersOn() ? ' ' + filtersOn() : '')),
+		state.grouped ? null : h('select', {
+			class: 'wm-sort' + (state.sort !== 'date-desc' ? ' active' : ''),
+			title: _('Trier par'),
+			'aria-label': _('Trier par'),
+			onchange: (e) => {
+				state.sort = e.target.value
+				try { localStorage.setItem('webmail.sort', state.sort) } catch (ex) { /* not kept */ }
+				state.checked.clear()
+				loadMessages(true)
+			},
+		}, SORTS.map(([v, label]) => h('option', { value: v, selected: v === state.sort }, label()))),
 		h('button', {
 			type: 'button',
 			class: 'wm-icon-btn wm-group-toggle' + (state.grouped ? ' active' : ''),
@@ -1464,10 +1516,13 @@
 		const conv = grouped()
 		const ul = h('ul', { class: 'wm-messages' + (conv ? ' wm-conversations' : ''), role: 'list' })
 		// « Aujourd'hui », « Hier », « Cette semaine »…: a heading where the period changes
+		// (only in date order; sorted otherwise, the size where the date usually is)
+		const byDate = conv || sortField()[0] === 'date'
+		const bySize = !conv && sortField()[0] === 'size'
 		const period = dayPeriods()
 		let lastPeriod = null
 		state.messages.forEach((m) => {
-			const p = period(m.date)
+			const p = byDate ? period(m.date) : null
 			if (p && p !== lastPeriod) {
 				lastPeriod = p
 				ul.appendChild(h('li', { class: 'wm-list-period', role: 'presentation' }, p))
@@ -1516,7 +1571,7 @@
 				h('span', { class: 'wm-message-from' }, who),
 				conv && m.count > 1 ? h('span', { class: 'wm-thread-count', title: !m.unreadCount ? _('{count} messages', { count: m.count }) : m.unreadCount > 1 ? _('{count} messages, dont {unread} non lus', { count: m.count, unread: m.unreadCount }) : _('{count} messages, dont {unread} non lu', { count: m.count, unread: m.unreadCount }) }, String(m.count)) : null,
 				m.folderId && state.filters.all ? h('span', { class: 'wm-message-folder' }, folderName(m.folderId)) : null,
-				h('span', { class: 'wm-message-date' }, formatDate(m.date))),
+				h('span', { class: 'wm-message-date' }, bySize && m.size ? formatSize(m.size) : formatDate(m.date))),
 			h('div', { class: 'wm-message-line2' },
 				m.importance === 'High' ? h('span', { class: 'wm-important', title: _('Importance haute') }, '❗') : null,
 				h('span', { class: 'wm-message-subject' }, m.subject || _('(sans objet)')),
@@ -2104,6 +2159,7 @@
 		const m = state.messages.find((x) => x.id === id)
 		if (!m) return
 		Object.assign(m, changes)
+		noteEdit(id, changes)
 		const li = listItemEl(id)
 		if (!li) return
 		li.classList.toggle('unread', !m.isRead)
@@ -2985,6 +3041,7 @@
 		const before = { messages: state.messages.slice(), total: state.total, selectedId: state.selectedId }
 		const i = state.messages.findIndex((m) => m.id === state.selectedId)
 		state.messages = state.messages.filter((m) => !ids.includes(m.id))
+		ids.forEach((id) => noteEdit(id, { gone: true }))
 		state.total = Math.max(0, state.total - ids.length)
 		ids.forEach((id) => msgCache.delete(msgKey(id)))
 		renderList(false)
@@ -3001,6 +3058,7 @@
 		}
 		return () => {
 			state.messages = before.messages
+			ids.forEach((id) => noteEdit(id, { gone: false }))
 			state.total = before.total
 			renderList(false)
 			saveListCache()
