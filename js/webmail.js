@@ -242,6 +242,28 @@
 	// undo send: a few seconds to change one's mind (this browser's setting)
 	// ------------------------------------------------------------------
 
+	// ------------------------------------------------------------------
+	// reply templates (of the Nextcloud user, for all accounts)
+	// ------------------------------------------------------------------
+
+	let templatesLoad = null
+	function loadTemplates(force) {
+		if (force || !templatesLoad) {
+			templatesLoad = api('/templates').then((r) => r.templates).catch((e) => { templatesLoad = null; throw e })
+		}
+		return templatesLoad
+	}
+	async function saveTemplate(body) {
+		const r = await api('/templates', { method: 'POST', body })
+		templatesLoad = Promise.resolve(r.templates)
+		return r.templates
+	}
+	async function deleteTemplate(id) {
+		const r = await api('/templates/delete', { method: 'POST', body: { id } })
+		templatesLoad = Promise.resolve(r.templates)
+		return r.templates
+	}
+
 	const UNDO_DELAYS = [0, 5, 10, 20, 30]
 	function undoDelay() {
 		let v = null
@@ -2653,7 +2675,71 @@
 				imagePicker.click()
 			}),
 			tool('⌫', _('Effacer la mise en forme'), () => { exec('removeFormat'); exec('unlink') }),
+			tool('📄', _('Modèles de réponse'), (e) => openTemplateMenu(e.currentTarget)),
 			imagePicker)
+
+		// ---- reply templates: insert one where the cursor is, or keep this text as one
+		const editorText = () => {
+			const copy = body.cloneNode(true)
+			copy.querySelectorAll('.wm-signature').forEach((n) => n.remove())
+			return copy.innerHTML
+		}
+		let templateMenu = null
+		const closeTemplateMenu = () => {
+			if (!templateMenu) return
+			templateMenu.remove()
+			templateMenu = null
+			document.removeEventListener('mousedown', outsideMenu, true)
+		}
+		const outsideMenu = (e) => { if (templateMenu && !templateMenu.contains(e.target) && !e.target.closest('.wm-editor-btn')) closeTemplateMenu() }
+		async function openTemplateMenu(button) {
+			if (templateMenu) { closeTemplateMenu(); return }
+			const sel = window.getSelection()
+			const range = sel && sel.rangeCount && body.contains(sel.anchorNode) ? sel.getRangeAt(0) : null
+			const menu = templateMenu = h('div', { class: 'wm-template-menu', role: 'menu', 'aria-label': _('Modèles de réponse') },
+				h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading-small' })))
+			menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeTemplateMenu(); button.focus() } })
+			button.parentNode.appendChild(menu)
+			document.addEventListener('mousedown', outsideMenu, true)
+			let list = []
+			try { list = await loadTemplates() } catch (e) { toast(e.message, true) }
+			if (templateMenu !== menu) return
+			clear(menu)
+			if (!list.length) menu.appendChild(h('p', { class: 'wm-muted' }, _('Aucun modèle pour l\'instant : écrivez un texte, puis « Enregistrer ce texte comme modèle ».')))
+			list.forEach((t) => menu.appendChild(h('button', {
+				type: 'button',
+				role: 'menuitem',
+				class: 'wm-template-item',
+				title: _('Insérer « {name} »', { name: t.name }),
+				onclick: () => {
+					closeTemplateMenu()
+					body.focus()
+					if (range) { const s2 = window.getSelection(); s2.removeAllRanges(); s2.addRange(range) }
+					document.execCommand('insertHTML', false, t.html)
+					changed()
+				},
+			}, t.name)))
+			menu.appendChild(h('hr'))
+			menu.appendChild(h('button', {
+				type: 'button',
+				role: 'menuitem',
+				class: 'wm-template-save',
+				onclick: async () => {
+					const html = editorText()
+					if (!html.replace(/<[^>]*>|&nbsp;|\s/g, '') && !/<img/i.test(html)) { toast(_('Écrivez d\'abord le texte du modèle'), true); return }
+					const name = (window.prompt(_('Nom du modèle'), subject.value || '') || '').trim()
+					if (!name) return
+					closeTemplateMenu()
+					try {
+						await saveTemplate({ name, html })
+						toast(_('Modèle « {name} » enregistré', { name }))
+					} catch (e) { toast(e.message, true) }
+				},
+			}, '＋ ' + _('Enregistrer ce texte comme modèle')))
+			menu.appendChild(h('button', { type: 'button', role: 'menuitem', class: 'wm-template-manage', onclick: () => { closeTemplateMenu(); openAccountSettings() } }, '⚙️ ' + _('Gérer les modèles')))
+			const first = menu.querySelector('button')
+			if (first) first.focus()
+		}
 		body.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit() }
 		})
@@ -3132,6 +3218,32 @@
 			h('legend', {}, _('Envoi')),
 			h('label', { class: 'wm-field' }, h('span', {}, _('Délai pour annuler l\'envoi')), undo),
 			h('p', { class: 'wm-muted' }, _('Pendant ce délai, « Annuler » rouvre le message au lieu de l\'envoyer.'))))
+
+		// reply templates: renamed, removed (they are written from a message, button 📄)
+		const templateList = h('ul', { class: 'wm-template-list' })
+		const showTemplates = (list) => {
+			clear(templateList)
+			if (!list.length) templateList.appendChild(h('li', { class: 'wm-muted' }, _('Aucun modèle. Dans un message, le bouton 📄 enregistre le texte écrit comme modèle.')))
+			list.forEach((t) => {
+				// its text, as an excerpt (an inert document: nothing in it runs or loads)
+				const preview = (new DOMParser().parseFromString(t.html, 'text/html').body.textContent || '').replace(/\s+/g, ' ').trim()
+				templateList.appendChild(h('li', { dataset: { id: t.id } },
+					h('strong', {}, t.name),
+					h('span', { class: 'wm-muted wm-template-preview' }, preview.slice(0, 80) + (preview.length > 80 ? '…' : '')),
+					h('button', { type: 'button', class: 'wm-small', onclick: async () => {
+						const name = (window.prompt(_('Nouveau nom du modèle'), t.name) || '').trim()
+						if (!name || name === t.name) return
+						try { showTemplates(await saveTemplate({ id: t.id, name, html: t.html })) } catch (e) { toast(e.message, true) }
+					} }, _('Renommer')),
+					h('button', { type: 'button', class: 'wm-small wm-danger', onclick: async () => {
+						if (!window.confirm(_('Supprimer le modèle « {name} » ?', { name: t.name }))) return
+						try { showTemplates(await deleteTemplate(t.id)); toast(_('Modèle supprimé')) } catch (e) { toast(e.message, true) }
+					} }, _('Supprimer'))))
+			})
+		}
+		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-template-settings' },
+			h('legend', {}, _('Modèles de réponse')), templateList))
+		loadTemplates(true).then(showTemplates, (e) => toast(e.message, true))
 
 		state.accounts.forEach((a) => {
 			const name = h('input', { type: 'text', value: a.displayName === a.email ? '' : a.displayName, placeholder: _('Nom affiché (facultatif)') })
