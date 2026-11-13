@@ -12,9 +12,9 @@
 * Agenda Exchange : vues jour, semaine, mois et liste, mini-calendrier, recherche d'événements, plusieurs agendas, agendas partagés par les collègues, agendas des dossiers publics, partage de ses agendas sans délégation, création, modification (y compris des séries périodiques, « le 2e mardi du mois »), glisser-déposer, invitations (avec salle de visio Nextcloud Talk, disponibilités des participants et premier créneau libre, réservation des salles de réunion), réponses aux réunions, y compris au nom d'un collègue (délégation).
 * Tableau de bord Nextcloud : widgets « Courrier non lu » et « Agenda Exchange » (prochains rendez-vous) ; nouveaux messages signalés dans les notifications Nextcloud, même webmail fermé ; messages et rendez-vous Exchange dans la recherche unifiée ; rappels des rendez-vous dans les notifications Nextcloud.
 * Délégués : gestion de l'accès délégué de chaque boîte (droits sur l'agenda, le courrier, les contacts et les tâches, copie des invitations).
-* Contacts Exchange : plusieurs carnets, contacts partagés par les collègues (tous leurs carnets partagés), partage de ses carnets sans délégation, carnets des dossiers publics, annuaire de l'entreprise, consultation, recherche, création, modification, groupes de contacts, import et export vCard ; complétion des adresses (contacts + annuaire).
+* Contacts Exchange : plusieurs carnets, contacts partagés par les collègues (tous leurs carnets partagés), partage de ses carnets sans délégation, carnets des dossiers publics, annuaire de l'entreprise, consultation, recherche, création, modification, groupes de contacts, photos, import et export vCard ; complétion des adresses (contacts + annuaire).
 * Tâches Exchange : liste à faire / terminées, échéances (en retard en rouge), importance, état, notes ; ajout rapide, case pour terminer, modification, suppression.]]></description>
-	<version>1.47.0</version>
+	<version>1.48.0</version>
 	<licence>agpl</licence>
 	<author>AIC Informatique</author>
 	<namespace>Webmail</namespace>

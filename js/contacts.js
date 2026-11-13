@@ -14,6 +14,7 @@
 		books: [], // own contact folders, shared ones, the company directory
 		booksFor: null, // account id the list belongs to
 		book: 'contacts', // displayed address book
+		photoV: {}, // contact id -> version of its photo (changed here: not the cached one)
 	}
 
 	/** "account|book" -> { items, total, hasMore }: a book seen before shows at once, then is refreshed */
@@ -61,11 +62,50 @@
 		return ((parts[0] || '?')[0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase()
 	}
 
-	function avatar(name) {
+	function avatar(name, photo) {
 		// stable pastel colour from the name
 		let hash = 0
 		for (const ch of name || '') hash = (hash * 31 + ch.charCodeAt(0)) | 0
-		return core.h('span', { class: 'wm-avatar', style: 'background:hsl(' + (Math.abs(hash) % 360) + ',55%,45%)', 'aria-hidden': 'true' }, initials(name))
+		const letters = core.h('span', { class: 'wm-avatar', style: 'background:hsl(' + (Math.abs(hash) % 360) + ',55%,45%)', 'aria-hidden': 'true' }, initials(name))
+		if (!photo) return letters
+		// the photo, or the initials when there is none after all
+		const img = core.h('img', { class: 'wm-avatar wm-avatar-photo', src: photo, alt: '', loading: 'lazy', onerror: () => img.replaceWith(letters) })
+		return img
+	}
+
+	/** Photo URL: a contact's own, or (directory) the one of their Exchange account. */
+	function photoUrl(c) {
+		const base = OC.generateUrl('/apps/webmail/api/accounts/' + core.accountId + '/contacts/')
+		const email = c.email || (c.emails && c.emails[0])
+		if (String(c.id).startsWith('directory:')) return email ? base + 'userphoto?email=' + encodeURIComponent(email) : null
+		if (!c.hasPhoto) return null
+		return base + 'photo?contactId=' + encodeURIComponent(c.id) + '&book=' + encodeURIComponent(ct.book) + (ct.photoV[c.id] ? '&v=' + ct.photoV[c.id] : '')
+	}
+
+	/** An image file as a small JPEG (256 pixels at most), as a data: URL. */
+	function photoDataUrl(file) {
+		return new Promise((resolve, reject) => {
+			const r = new FileReader()
+			r.onerror = () => reject(new Error('Image illisible'))
+			r.onload = () => {
+				const img = new Image()
+				img.onerror = () => reject(new Error('Ce fichier n\'est pas une image'))
+				img.onload = () => {
+					// a centred square, like the avatars
+					const side = Math.min(img.naturalWidth, img.naturalHeight)
+					const size = Math.min(256, side)
+					const canvas = document.createElement('canvas')
+					canvas.width = canvas.height = size
+					const ctx = canvas.getContext('2d')
+					ctx.fillStyle = '#fff'
+					ctx.fillRect(0, 0, size, size)
+					ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size)
+					resolve(canvas.toDataURL('image/jpeg', 0.88))
+				}
+				img.src = r.result
+			}
+			r.readAsDataURL(file)
+		})
 	}
 
 	async function load(reset) {
@@ -486,7 +526,7 @@
 				onclick: () => openContact(c.id),
 				onkeydown: (e) => { if (e.key === 'Enter') openContact(c.id) },
 			},
-			avatar(c.displayName),
+			avatar(c.displayName, photoUrl(c)),
 			h('div', { class: 'wm-contact-text' },
 				h('div', { class: 'wm-contact-name' }, c.displayName || '(sans nom)', c.isGroup ? h('span', { class: 'wm-muted' }, ' · groupe') : null),
 				h('div', { class: 'wm-message-preview' }, [c.email, c.company].filter(Boolean).join(' · ') || c.phone || ''))))
@@ -545,7 +585,7 @@
 			!book.canEdit ? h('span', { class: 'wm-muted' }, book.kind === 'directory' ? '🏢 Annuaire de l\'entreprise' : '🔒 ' + bookTitle(book) + ' (lecture seule)') : null))
 
 		el.appendChild(h('div', { class: 'wm-contact-card' },
-			h('div', { class: 'wm-contact-head' }, avatar(c.displayName),
+			h('div', { class: 'wm-contact-head' }, avatar(c.displayName, photoUrl(c)),
 				h('div', {},
 					h('h2', { class: 'wm-subject' }, c.displayName || '(sans nom)'),
 					h('div', { class: 'wm-muted' }, [c.jobTitle, c.department, c.company].filter(Boolean).join(' · ')))),
@@ -705,6 +745,25 @@
 		const emails = [0, 1, 2].map((i) => h('input', { type: 'email', name: 'email' + (i + 1), value: c.emails[i] || '' }))
 		const notes = h('textarea', { name: 'notes', rows: '4', placeholder: 'Notes' })
 		notes.value = c.notes || ''
+		// the photo: changed with the contact (undefined: unchanged, '': removed, data: URL: new)
+		let pendingPhoto
+		const photoBox = h('span', { class: 'wm-photo-preview' })
+		const showPhoto = () => {
+			core.clear(photoBox)
+			const url = pendingPhoto === undefined ? (isNew ? null : photoUrl(c)) : pendingPhoto || null
+			photoBox.appendChild(avatar(c.displayName || '?', url))
+			removePhoto.hidden = !url
+		}
+		const photoInput = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/gif,image/webp', name: 'photo', hidden: true })
+		photoInput.addEventListener('change', async () => {
+			const file = photoInput.files[0]
+			photoInput.value = ''
+			if (!file) return
+			try { pendingPhoto = await photoDataUrl(file); showPhoto() } catch (e) { core.toast(e.message, true) }
+		})
+		const removePhoto = h('button', { type: 'button', class: 'wm-small', onclick: () => { pendingPhoto = ''; showPhoto() } }, 'Retirer la photo')
+		const photoRow = h('div', { class: 'wm-field wm-photo-field' }, h('span', {}, 'Photo'), photoBox,
+			h('button', { type: 'button', class: 'wm-small', onclick: () => photoInput.click() }, '📷 Choisir une photo'), removePhoto, photoInput)
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
 		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? 'Créer le contact' : 'Enregistrer')
 		const writable = ct.books.filter((b) => b.canEdit)
@@ -733,6 +792,10 @@
 					} else {
 						await api('/accounts/' + core.accountId + '/contacts/update', { method: 'POST', body: { contactId: c.id, contact: data, book: ct.book } })
 					}
+					if (pendingPhoto !== undefined) {
+						await api('/accounts/' + core.accountId + '/contacts/photo', { method: 'POST', body: { contactId: id, photo: pendingPhoto, book: ct.book } })
+						ct.photoV[id] = Date.now()
+					}
 					core.toast(isNew ? 'Contact créé' : 'Contact enregistré')
 					await load(true)
 					openContact(id)
@@ -746,6 +809,7 @@
 			h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': 'Retour', onclick: () => core.setView('list') }, '←'),
 			h('h2', {}, isNew ? 'Nouveau contact' : 'Modifier le contact')),
 		bookSelect ? h('label', { class: 'wm-field' }, h('span', {}, 'Carnet'), bookSelect) : null,
+		photoRow,
 		f.givenName.el, f.surname.el, f.displayName.el, f.company.el, f.department.el, f.jobTitle.el,
 		emails.map((i, n) => h('label', { class: 'wm-field' }, h('span', {}, n === 0 ? 'E-mail' : 'E-mail ' + (n + 1)), i)),
 		f.mobilePhone.el, f.businessPhone.el, f.homePhone.el,
@@ -754,6 +818,7 @@
 		err,
 		h('div', { class: 'wm-compose-actions' }, save,
 			h('button', { type: 'button', onclick: () => (isNew ? (renderEmpty(), core.setView('list')) : openContact(c.id)) }, 'Annuler'))))
+		showPhoto()
 		f.givenName.i.focus()
 	}
 

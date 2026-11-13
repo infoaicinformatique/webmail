@@ -14,6 +14,8 @@ use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\UserRateLimit;
+use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\DataDisplayResponse;
 use OCP\AppFramework\Http\DataDownloadResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\IRequest;
@@ -387,6 +389,61 @@ class ContactController extends Controller {
 	/**
 	 * Address autocompletion (personal contacts + company directory).
 	 */
+	/**
+	 * The photo of a contact (an image), 404 when it has none.
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function photo(int $id, string $contactId, string $book = ''): Response {
+		return $this->handle(function () use ($id, $contactId, $book) {
+			$this->assertKnownBook($id, $book);
+			return self::image($this->contacts($id, $book)->contactPhoto($contactId), 300);
+		});
+	}
+
+	/**
+	 * The photo of a person of the directory (their Exchange account).
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function userPhoto(int $id, string $email): Response {
+		return $this->handle(fn () => self::image($this->contacts($id)->userPhoto($email), 86400));
+	}
+
+	/**
+	 * A new photo for a contact (data: URL of a JPEG, PNG or GIF), or none (photo = '').
+	 */
+	#[NoAdminRequired]
+	#[UserRateLimit(limit: 60, period: 300)]
+	public function setPhoto(int $id, string $contactId, string $photo = '', string $book = ''): Response {
+		return $this->handle(function () use ($id, $contactId, $photo, $book) {
+			$this->assertKnownBook($id, $book);
+			$entry = $this->sharedEntry($id, $book);
+			if (is_array($entry) && !$entry['canEdit']) {
+				throw new MailException('Ce carnet est en lecture seule');
+			}
+			$content = '';
+			if ($photo !== '') {
+				if (!preg_match('#^data:image/(jpeg|png|gif);base64,([A-Za-z0-9+/=]+)$#', $photo, $m)) {
+					throw new MailException('La photo doit être une image JPEG, PNG ou GIF');
+				}
+				$content = (string)base64_decode($m[2], true);
+			}
+			$this->contacts($id, $book)->setContactPhoto($contactId, $content);
+			return ['hasPhoto' => $content !== ''];
+		});
+	}
+
+	/** @param ?array{contentType: string, content: string} $img */
+	private static function image(?array $img, int $seconds): Response {
+		if ($img === null) {
+			return new DataDisplayResponse('', Http::STATUS_NOT_FOUND, ['Content-Type' => 'text/plain']);
+		}
+		$response = new DataDisplayResponse($img['content'], Http::STATUS_OK, ['Content-Type' => $img['contentType']]);
+		$response->cacheFor($seconds);
+		return $response;
+	}
+
 	#[NoAdminRequired]
 	public function resolve(int $id, string $q = ''): Response {
 		return $this->handle(fn () => ['results' => $this->contacts($id)->resolve($q)]);

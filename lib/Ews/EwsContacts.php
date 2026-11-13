@@ -321,7 +321,7 @@ class EwsContacts {
 	 */
 	public function listContacts(int $offset = 0, int $limit = 100, ?string $query = null, string $book = 'contacts'): array {
 		$props = '<t:FieldURI FieldURI="contacts:DisplayName"/><t:FieldURI FieldURI="contacts:CompanyName"/>'
-			. '<t:FieldURI FieldURI="contacts:JobTitle"/>'
+			. '<t:FieldURI FieldURI="contacts:JobTitle"/><t:FieldURI FieldURI="contacts:HasPicture"/>'
 			. '<t:IndexedFieldURI FieldURI="contacts:EmailAddress" FieldIndex="EmailAddress1"/>'
 			. '<t:IndexedFieldURI FieldURI="contacts:PhoneNumber" FieldIndex="MobilePhone"/>'
 			. '<t:IndexedFieldURI FieldURI="contacts:PhoneNumber" FieldIndex="BusinessPhone"/>';
@@ -364,6 +364,7 @@ class EwsContacts {
 				'phone' => (string)($c->text($xp, 't:PhoneNumbers/t:Entry[@Key="MobilePhone"]', $node)
 					?? $c->text($xp, 't:PhoneNumbers/t:Entry[@Key="BusinessPhone"]', $node) ?? ''),
 				'isGroup' => $node->localName === 'DistributionList',
+				'hasPhoto' => $c->text($xp, 't:HasPicture', $node) === 'true',
 			];
 		}
 		return [
@@ -448,7 +449,7 @@ class EwsContacts {
 	private static function detailFields(): string {
 		$fields = '';
 		foreach (['contacts:DisplayName', 'contacts:GivenName', 'contacts:Surname', 'contacts:CompanyName', 'contacts:Department',
-			'contacts:JobTitle', 'contacts:EmailAddresses', 'contacts:PhoneNumbers', 'contacts:PhysicalAddresses', 'item:Body'] as $f) {
+			'contacts:JobTitle', 'contacts:EmailAddresses', 'contacts:PhoneNumbers', 'contacts:PhysicalAddresses', 'item:Body', 'contacts:HasPicture'] as $f) {
 			$fields .= '<t:FieldURI FieldURI="' . $f . '"/>';
 		}
 		return $fields;
@@ -471,10 +472,107 @@ class EwsContacts {
 		$contact = $this->parseContact($xp, $node);
 		$contact['id'] = $this->client->attr($xp, 't:ItemId', 'Id', $node);
 		$contact['isGroup'] = $node->localName === 'DistributionList';
+		$contact['hasPhoto'] = $this->client->text($xp, 't:HasPicture', $node) === 'true';
 		if ($contact['isGroup']) {
 			$contact['members'] = $this->groupMembers((string)$contact['id']);
 		}
 		return $contact;
+	}
+
+	// ------------------------------------------------------------------
+	// Photos: a contact's own (an attachment marked IsContactPhoto, as
+	// Outlook saves it), and the photo of a person of the directory
+	// ------------------------------------------------------------------
+
+	/** Largest photo accepted (the page reduces it to 256 pixels before). */
+	public const MAX_PHOTO_BYTES = 1024 * 1024;
+
+	/** @return string[] ids of the photo attachments of a contact */
+	private function photoAttachmentIds(string $id): array {
+		$xp = $this->client->request(
+			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties><t:FieldURI FieldURI="item:Attachments"/>'
+			. '</t:AdditionalProperties></m:ItemShape><m:ItemIds><t:ItemId Id="' . $this->client->esc($id) . '"/></m:ItemIds></m:GetItem>'
+		);
+		$ids = [];
+		foreach ($xp->query('//m:Items/*/t:Attachments/t:FileAttachment[t:IsContactPhoto="true"]/t:AttachmentId') as $a) {
+			$ids[] = $a instanceof \DOMElement ? $a->getAttribute('Id') : '';
+		}
+		return array_values(array_filter($ids));
+	}
+
+	/** @return ?array{contentType: string, content: string} the photo of a contact, null if it has none */
+	public function contactPhoto(string $id): ?array {
+		$ids = $this->photoAttachmentIds($id);
+		if ($ids === []) {
+			return null;
+		}
+		$att = $this->client->getAttachment($ids[0]);
+		return ['contentType' => $att['contentType'], 'content' => $att['content']];
+	}
+
+	/** A new photo for a contact (the former one is replaced), or none ($content === ''). */
+	public function setContactPhoto(string $id, string $content): void {
+		if ($content !== '') {
+			$type = self::imageType($content);
+		}
+		foreach ($this->photoAttachmentIds($id) as $old) {
+			$this->client->deleteAttachment($old);
+		}
+		if ($content === '') {
+			return;
+		}
+		$this->client->request(
+			'<m:CreateAttachment><m:ParentItemId Id="' . $this->client->esc($id) . '"/><m:Attachments><t:FileAttachment>'
+			. '<t:Name>ContactPicture.jpg</t:Name><t:ContentType>' . $type . '</t:ContentType>'
+			. '<t:IsContactPhoto>true</t:IsContactPhoto><t:Content>' . base64_encode($content) . '</t:Content>'
+			. '</t:FileAttachment></m:Attachments></m:CreateAttachment>'
+		);
+	}
+
+	/** The type of an image given as a photo: only JPEG, PNG and GIF, as Outlook. */
+	public static function imageType(string $content): string {
+		if (strlen($content) > self::MAX_PHOTO_BYTES) {
+			throw new MailException('Photo trop lourde (1 Mo au plus)');
+		}
+		$info = @getimagesizefromstring($content);
+		$types = [IMAGETYPE_JPEG => 'image/jpeg', IMAGETYPE_PNG => 'image/png', IMAGETYPE_GIF => 'image/gif'];
+		if ($info === false || !isset($types[$info[2]])) {
+			throw new MailException('La photo doit être une image JPEG, PNG ou GIF');
+		}
+		return $types[$info[2]];
+	}
+
+	/**
+	 * The photo of a person of the organisation (GetUserPhoto, Exchange
+	 * 2013 and later), null when they have none.
+	 * @return ?array{contentType: string, content: string}
+	 */
+	public function userPhoto(string $email): ?array {
+		if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+			return null;
+		}
+		try {
+			$xp = $this->client->request(
+				'<m:GetUserPhoto><m:Email>' . $this->client->esc($email) . '</m:Email><m:SizeRequested>HR96x96</m:SizeRequested></m:GetUserPhoto>',
+				false
+			);
+		} catch (MailException) {
+			// no photo: some Exchange servers answer with an HTTP error
+			return null;
+		}
+		$node = $xp->query('//m:GetUserPhotoResponse')->item(0);
+		if (!$node instanceof \DOMElement || $node->getAttribute('ResponseClass') !== 'Success') {
+			return null;
+		}
+		$data = base64_decode(trim((string)$this->client->text($xp, 'm:PictureData', $node)), true);
+		if ($data === false || $data === '') {
+			return null;
+		}
+		try {
+			return ['contentType' => self::imageType($data), 'content' => $data];
+		} catch (MailException) {
+			return null;
+		}
 	}
 
 	/**

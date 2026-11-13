@@ -881,3 +881,8 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-group-edit { list-style: none; margin: 0; padding: 0; flex: 1; }
 .wm-group-edit li { display: flex; align-items: center; gap: 6px; padding: 2px 0; overflow-wrap: anywhere; }
 .wm-group-members { margin-top: 12px; }
+
+/* Contact photos */
+img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark); }
+.wm-photo-field { flex-wrap: wrap; }
+.wm-photo-preview .wm-avatar { width: 56px; height: 56px; font-size: 20px; }

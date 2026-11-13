@@ -2082,6 +2082,44 @@ async function main() {
 		await page.waitForSelector('.wm-contact:has-text("Fournisseurs chantier")', { state: 'detached' })
 	})
 
+	await step('contacts: photos (own contacts and directory)', async () => {
+		// a loaded photo: in the row of a contact (by its name), or at a selector
+		const photoOf = (name) => page.waitForFunction((n) => {
+			const li = [...document.querySelectorAll('.wm-contact')].find((e) => e.textContent.includes(n))
+			const i = li && li.querySelector('img.wm-avatar-photo')
+			return i && i.complete && i.naturalWidth > 0
+		}, name)
+		const loaded = (sel) => page.waitForFunction((s) => { const i = document.querySelector(s); return i && i.complete && i.naturalWidth > 0 }, sel)
+		const bookLink = (name) => '.wm-book-row:has-text("' + name + '") .wm-book-link'
+		// a photo set in Outlook
+		await photoOf('Anne Bernard')
+		assert(!(await page.$('.wm-contact:has-text("Lucas Petit") img')), 'initials without a photo')
+		// a photo given to a contact
+		await page.click('.wm-contact:has-text("Lucas Petit")')
+		await page.click('.wm-toolbar button:has-text("Modifier")')
+		await page.setInputFiles('.wm-contact-form input[name=photo]', { name: 'lucas.png', mimeType: 'image/png',
+			buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEElEQVR4nGNgaDqJHQ0tCQAjaFLBNtJ19gAAAABJRU5ErkJggg==', 'base64') })
+		await loaded('.wm-photo-preview img')
+		await shot('66-contact-photo')
+		await page.click('.wm-contact-form button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Contact enregistré")')
+		await loaded('.wm-contact-head img.wm-avatar-photo')
+		await photoOf('Lucas Petit')
+		// and removed
+		await page.click('.wm-toolbar button:has-text("Modifier")')
+		await page.click('.wm-contact-form button:has-text("Retirer la photo")')
+		await page.click('.wm-contact-form button[type=submit]')
+		await page.waitForSelector('.wm-contact-head span.wm-avatar')
+		await page.waitForFunction(() => { const li = [...document.querySelectorAll('.wm-contact')].find((e) => e.textContent.includes('Lucas Petit')); return li && !li.querySelector('img') })
+		// the directory: the photo of the Exchange account
+		await page.click(bookLink('Annuaire'))
+		await page.fill('.wm-list .wm-search', 'mar')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await photoOf('Marie Martin')
+		await page.click(bookLink('Contacts'))
+		await page.waitForSelector('.wm-contact:has-text("Anne Bernard")')
+	})
+
 	await step('contacts: export and import vCard files', async () => {
 		await page.click('.wm-tab[data-module="contacts"]')
 		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
