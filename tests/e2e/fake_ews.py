@@ -144,8 +144,11 @@ def seed():
                 '<html><body><p>Votre facture est disponible dans votre espace client.</p>'
                 '<p>Une question ? <a href="mailto:facturation@ovh.example?subject=Facture%20OVH&amp;body=Bonjour%2C">facturation@ovh.example</a></p></body></html>', 60 * 26, is_read=True, flagged=True)
     for i in range(1, 58):
-        add_message('F-INBOX', 'Newsletter n°%d' % i, ('Lettre d\'info', 'news@exemple.org'),
-                    '<p>Contenu %d</p>' % i, 60 * 24 * (2 + i), is_read=True)
+        mid = add_message('F-INBOX', 'Newsletter n°%d' % i, ('Lettre d\'info', 'news@exemple.org'),
+                          '<p>Contenu %d</p>' % i, 60 * 24 * (2 + i), is_read=True)
+        # how to leave the list (List-Unsubscribe): a message to send; n°21 only a page to open
+        MESSAGES[mid]['list_unsubscribe'] = ('<https://exemple.org/desinscription?n=21>' if i == 21 else
+                                             '<mailto:desinscription@exemple.org?subject=Desinscription%20lettre%20d%27info>, <https://exemple.org/desinscription>')
     add_message('F-CLIENTS', 'Photos du chantier', ('Client B', 'contact@client-b.fr'),
                 '<p>Bonjour, voici les photos et le relevé.</p>', 60 * 30, is_read=True, attachments=[
                     dict(name='facade.png', content_type='image/png', content=make_png(320, 200, (70, 130, 180), (230, 240, 250)), inline=False),
@@ -342,6 +345,10 @@ def item_full_xml(m):
     # (Exchange gives item:Preview with the other properties)
     xml = xml.replace('<t:IsRead>', '<t:Preview>%s</t:Preview><t:IsRead>' % esc(preview_text(m)), 1)
     xml = xml.replace('<t:InternetMessageId>', '<t:ConversationId Id="%s"/><t:InternetMessageId>' % conversation_id(m), 1)
+    if m.get('list_unsubscribe'):
+        # each Internet header asked for (Exchange gives the name in lower case)
+        xml = xml.replace('</t:Message>', '<t:ExtendedProperty><t:ExtendedFieldURI DistinguishedPropertySetId="InternetHeaders" PropertyName="list-unsubscribe" PropertyType="String"/>'
+                                          '<t:Value>%s</t:Value></t:ExtendedProperty></t:Message>' % esc(m['list_unsubscribe']), 1)
     kind = m.get('kind', 'Message')
     head, _, tail = xml.replace('<t:Message>', '<t:%s>' % kind, 1).rpartition('</t:Message>')
     return head + '</t:%s>' % kind + tail
@@ -684,6 +691,12 @@ def handle(op, el, user):
                 raw = headers_of(m)
                 prop = ('<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0x7d" PropertyType="String"/><t:Value>%s</t:Value></t:ExtendedProperty>'
                         % esc(raw)) if raw else ''
+                msgs.append(ok(op, '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/>%s</t:Message></m:Items>' % (m['id'], m['ck'], prop)))
+            elif shape == 'IdOnly' and el.find('m:ItemShape/t:AdditionalProperties/t:FieldURI', NS) is None \
+                    and el.find('m:ItemShape/t:AdditionalProperties/t:ExtendedFieldURI[@DistinguishedPropertySetId="InternetHeaders"]', NS) is not None:
+                # only the List-Unsubscribe headers
+                prop = ('<t:ExtendedProperty><t:ExtendedFieldURI DistinguishedPropertySetId="InternetHeaders" PropertyName="list-unsubscribe" PropertyType="String"/>'
+                        '<t:Value>%s</t:Value></t:ExtendedProperty>' % esc(m['list_unsubscribe'])) if m.get('list_unsubscribe') else ''
                 msgs.append(ok(op, '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/>%s</t:Message></m:Items>' % (m['id'], m['ck'], prop)))
             elif shape == 'IdOnly' and el.find('m:ItemShape/t:AdditionalProperties', NS) is None:
                 msgs.append(ok(op, '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/></t:Message></m:Items>' % (m['id'], m['ck'])))

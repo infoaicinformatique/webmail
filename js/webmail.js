@@ -2334,6 +2334,54 @@
 		if (j >= 0) openMessage(state.messages[j].id)
 	}
 
+	/** Lists left during this session (sender addresses): their other messages say so. */
+	const unsubscribed = new Set()
+
+	/**
+	 * « Se désabonner »: a mailing list's message (List-Unsubscribe) can be left in one click,
+	 * the way the list asks (done by the server), or on its page.
+	 */
+	function unsubscribeBanner(m, senderEmail) {
+		const how = m.unsubscribe
+		const banner = h('div', { class: 'wm-info wm-unsub-banner' })
+		const done = () => {
+			clear(banner)
+			banner.appendChild(document.createTextNode('✓ ' + _('Désabonnement demandé. Il peut falloir quelques jours pour ne plus rien recevoir.')))
+		}
+		if (senderEmail && unsubscribed.has(senderEmail)) {
+			done()
+			return banner
+		}
+		const go = async (e) => {
+			if (how.method === 'link') {
+				// the list's own page: it asks for a confirmation there
+				window.open(how.url, '_blank', 'noopener,noreferrer')
+				return
+			}
+			const question = how.method === 'mailto'
+				? _('Se désabonner de cette liste de diffusion ? Un message de désinscription sera envoyé de votre part à {to}.', { to: how.to })
+				: _('Se désabonner de cette liste de diffusion ? La demande sera envoyée directement à son site.')
+			if (!window.confirm(question)) return
+			const btn = e.currentTarget
+			btn.disabled = true
+			try {
+				await api('/accounts/' + state.accountId + '/message/unsubscribe', { method: 'POST', body: { itemId: m.id } })
+				if (senderEmail) unsubscribed.add(senderEmail)
+				toast(_('Désabonnement demandé'))
+				done()
+			} catch (ex) {
+				btn.disabled = false
+				toast(ex.message, true)
+			}
+		}
+		banner.append(
+			_('Ce message vient d\'une liste de diffusion.') + ' ',
+			how.method === 'link'
+				? h('button', { class: 'wm-unsub', title: _('Ouvre la page de désinscription de la liste'), onclick: go }, _('Se désabonner') + ' ↗')
+				: h('button', { class: 'wm-unsub', onclick: go }, _('Se désabonner')))
+		return banner
+	}
+
 	function renderMessage() {
 		const m = state.current
 		// loaded after a switch to the calendar or the contacts: not shown over them
@@ -2442,6 +2490,8 @@
 				_('Images affichées : {who} fait partie de vos expéditeurs de confiance.', { who: senderEmail }) + ' ',
 				h('button', { class: 'wm-small', onclick: () => openAccountSettings() }, _('Gérer'))))
 		}
+
+		if (m.unsubscribe) detailEl.appendChild(unsubscribeBanner(m, senderEmail))
 
 		if (m.attachments && m.attachments.length) {
 			const list = h('ul', { class: 'wm-attachments' })

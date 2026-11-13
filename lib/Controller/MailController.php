@@ -14,6 +14,7 @@ use OCA\Webmail\Service\MailNotificationService;
 use OCA\Webmail\Service\SharedFolderService;
 use OCA\Webmail\Service\SnoozeService;
 use OCA\Webmail\Service\TrustedImagesService;
+use OCA\Webmail\Service\UnsubscribeService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
@@ -42,6 +43,7 @@ class MailController extends Controller {
 		private SharedFolderService $shared,
 		private SnoozeService $snooze,
 		private TrustedImagesService $trustedImages,
+		private UnsubscribeService $unsubscribe,
 		private IRootFolder $rootFolder,
 		private IURLGenerator $urlGenerator,
 		private LoggerInterface $logger,
@@ -371,6 +373,12 @@ class MailController extends Controller {
 	#[NoAdminRequired]
 	public function headers(int $id, string $itemId): Response {
 		return $this->handle(fn () => $this->client($id)->getHeaders($itemId));
+	}
+
+	/** « Se désabonner » of the mailing list a message comes from (List-Unsubscribe). */
+	#[NoAdminRequired]
+	public function unsubscribe(int $id, string $itemId): Response {
+		return $this->handle(fn () => $this->unsubscribe->unsubscribe($this->client($id), $itemId));
 	}
 
 	/** A message as an .eml file, to download. */

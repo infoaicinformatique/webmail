@@ -6,6 +6,7 @@ namespace OCA\Webmail\Ews;
 
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\MailHeaders;
+use OCA\Webmail\Service\Unsubscribe;
 
 /**
  * Small, dependency-free Exchange Web Services (EWS) SOAP client.
@@ -900,7 +901,7 @@ class EwsClient {
 		}
 		$xp = $this->request(
 			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:BodyType>HTML</t:BodyType>'
-			. '<t:AdditionalProperties>' . $fields . '</t:AdditionalProperties></m:ItemShape>'
+			. '<t:AdditionalProperties>' . $fields . self::LIST_HEADERS . '</t:AdditionalProperties></m:ItemShape>'
 			. '<m:ItemIds><t:ItemId Id="' . $this->esc($itemId) . '"/></m:ItemIds></m:GetItem>'
 		);
 		$node = $xp->query('//m:Items/*')->item(0);
@@ -941,6 +942,7 @@ class EwsClient {
 			'categories' => $this->strings($xp, 't:Categories/t:String', $node),
 			'conversationId' => $this->attr($xp, 't:ConversationId', 'Id', $node),
 			'messageId' => $this->text($xp, 't:InternetMessageId', $node),
+			'unsubscribe' => $this->unsubscribeOf($xp, $node),
 			'attachments' => $attachments,
 			'isMeeting' => $node->localName !== 'Message',
 			'itemType' => $node->localName,
@@ -1064,6 +1066,43 @@ class EwsClient {
 			throw new MailException('Message introuvable');
 		}
 		return MailHeaders::parse((string)$this->text($xp, 't:ExtendedProperty/t:Value', $item));
+	}
+
+	/** The List-Unsubscribe headers of a message (Exchange keeps each Internet header as a property). */
+	private const LIST_HEADERS = '<t:ExtendedFieldURI DistinguishedPropertySetId="InternetHeaders" PropertyName="List-Unsubscribe" PropertyType="String"/>'
+		. '<t:ExtendedFieldURI DistinguishedPropertySetId="InternetHeaders" PropertyName="List-Unsubscribe-Post" PropertyType="String"/>';
+
+	/** @return ?array{method: string, url?: string, to?: string, subject?: string, body?: string} */
+	private function unsubscribeOf(\DOMXPath $xp, \DOMNode $item): ?array {
+		$values = ['list-unsubscribe' => '', 'list-unsubscribe-post' => ''];
+		foreach ($xp->query('t:ExtendedProperty', $item) as $prop) {
+			// (Exchange may give the header name in another case)
+			$name = strtolower((string)$this->attr($xp, 't:ExtendedFieldURI', 'PropertyName', $prop));
+			if (array_key_exists($name, $values)) {
+				$values[$name] = (string)$this->text($xp, 't:Value', $prop);
+			}
+		}
+		return Unsubscribe::parse($values['list-unsubscribe'], $values['list-unsubscribe-post']);
+	}
+
+	/**
+	 * How to leave the mailing list a message comes from (« Se désabonner »), read again
+	 * from Exchange: what the browser says is not trusted.
+	 *
+	 * @return ?array{method: string, url?: string, to?: string, subject?: string, body?: string}
+	 * @throws MailException
+	 */
+	public function unsubscribeInfo(string $itemId): ?array {
+		$xp = $this->request(
+			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape>'
+			. '<t:AdditionalProperties>' . self::LIST_HEADERS . '</t:AdditionalProperties></m:ItemShape>'
+			. '<m:ItemIds><t:ItemId Id="' . $this->esc($itemId) . '"/></m:ItemIds></m:GetItem>'
+		);
+		$item = $xp->query('//m:Items/*')->item(0);
+		if ($item === null) {
+			throw new MailException('Message introuvable');
+		}
+		return $this->unsubscribeOf($xp, $item);
 	}
 
 	/** Largest .eml imported (Exchange refuses bigger messages anyway). */
