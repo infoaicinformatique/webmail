@@ -4551,10 +4551,13 @@
 		const roomList = h('datalist', { id: 'wm-matrix-rooms' })
 		const status = h('p', { class: 'wm-muted wm-matrix-status' })
 		const forget = h('button', { type: 'button', class: 'wm-small wm-danger', hidden: true }, _('Déconnecter'))
+		// (the saved values arriving after the person started typing do not replace what they typed)
+		const typed = new Set()
 		// alerts of new messages in the default room (sent by Nextcloud, even with no webmail open)
 		const alerts = h('select', {
 			name: 'matrixAlerts',
 			onchange: async () => {
+				typed.add(alerts)
 				try {
 					matrix.settings = await api('/matrix/alerts', { method: 'POST', body: { alerts: alerts.value } })
 					toast(alerts.value === 'off' ? _('Plus d\'alertes sur Matrix') : _('Les nouveaux messages seront signalés dans votre salon Matrix'))
@@ -4568,11 +4571,9 @@
 		h('option', { value: 'important' }, _('Messages importants seulement')),
 		h('option', { value: 'all' }, _('Tous les nouveaux messages')))
 		const alertsRow = h('label', { class: 'wm-field', hidden: true }, h('span', {}, _('Alertes des nouveaux messages')), alerts)
-		// (the saved values arriving after the person started typing do not replace what they typed)
-		const typed = new Set()
 		;[homeserver, token, room].forEach((i) => i.addEventListener('input', () => typed.add(i)))
 		const show = (st, initial) => {
-			alerts.value = st.alerts || 'off'
+			if (!initial || !typed.has(alerts)) alerts.value = st.alerts || 'off'
 			alertsRow.hidden = !st.hasToken
 			const set = (i, v) => { if (!initial || !typed.has(i)) i.value = v }
 			set(homeserver, st.homeserver || '')

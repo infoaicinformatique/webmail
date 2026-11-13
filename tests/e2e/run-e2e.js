@@ -3937,6 +3937,8 @@ async function main() {
 			// alerts of new messages in the default room, sent by the background job
 			await page.click('.wm-tab[data-module="mail"]')
 			await page.click('text=Comptes et signature')
+			// (the account loaded: the alerts are offered once it is connected)
+			await page.waitForSelector('.wm-matrix-status:has-text("Compte Matrix enregistré")')
 			await page.selectOption('select[name=matrixAlerts]', 'all')
 			await page.waitForSelector('.wm-toast:has-text("Les nouveaux messages seront signalés dans votre salon Matrix")')
 			await page.click('.wm-compose-btn')
