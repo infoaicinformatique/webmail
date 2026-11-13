@@ -1802,6 +1802,42 @@ async function main() {
 		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
 	})
 
+	await step('calendar: a new event drawn with the mouse over its time in the week grid', async () => {
+		await page.click('.wm-segmented button:has-text("Semaine")')
+		await page.waitForSelector('.wm-week-col')
+		const ymd = (x) => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0')
+		const col = '.wm-week-col[data-date="' + ymd(new Date()) + '"]'
+		const pad = (n) => String(n).padStart(2, '0')
+		// the first hours seen in the grid (it opens scrolled to the working day), where nothing is planned today
+		const box = await page.locator(col).boundingBox()
+		const view = await page.locator('.wm-week-scroll').boundingBox()
+		const busy = await page.$$eval(col + ' .wm-week-event', (els) => els.map((e) => [parseFloat(e.style.top), parseFloat(e.style.top) + parseFloat(e.style.height)]))
+		let hour = Math.ceil((view.y - box.y) / 48) + 1
+		while (busy.some(([t, b]) => t < (hour + 2) * 48 && b > hour * 48)) hour++
+		const x = box.x + box.width / 2
+		await page.mouse.move(x, box.y + hour * 48 + 3)
+		await page.mouse.down()
+		await page.mouse.move(x, box.y + (hour + 0.5) * 48, { steps: 4 })
+		await page.mouse.move(x, box.y + (hour + 1.5) * 48 - 2, { steps: 6 })
+		const from = pad(hour) + ':00'
+		const to = pad(hour + 1) + ':30'
+		await page.waitForSelector(col + ' .wm-slot-ghost:has-text("' + from + ' – ' + to + '")')
+		await shot('82-draw-slot')
+		await page.mouse.up()
+		await page.waitForSelector('.wm-modal input[name=startTime]')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=startTime]'), from)
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=endTime]'), to)
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=startDate]'), ymd(new Date()))
+		assert.strictEqual(await page.locator('.wm-slot-ghost').count(), 0)
+		await page.click('.wm-modal-close')
+		// a plain click still opens a half hour
+		await page.mouse.click(x, box.y + hour * 48 + 30)
+		await page.waitForSelector('.wm-modal input[name=startTime]')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=startTime]'), pad(hour) + ':30')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=endTime]'), pad(hour + 1) + ':30')
+		await page.click('.wm-modal-close')
+	})
+
 	await step('calendar: an Element (Matrix) video room set by the administrator, instead of Talk', async () => {
 		const setVisio = async (value) => {
 			await page.goto(NC + '/settings/admin/webmail')
