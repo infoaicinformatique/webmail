@@ -1112,7 +1112,8 @@ async function main() {
 		runJob()
 		let mine = (await reminders()).filter((n) => n.subject === 'Rappel : Appel fournisseur')
 		assert.strictEqual(mine.length, 1, JSON.stringify(await reminders()))
-		assert(/^Aujourd'hui \d\d:\d\d · Bureau 2 · user@societe-a\.fr$/.test(mine[0].message), mine[0].message)
+		// (« Demain » when the test runs just before midnight)
+		assert(/^(Aujourd'hui|Demain) \d\d:\d\d · Bureau 2 · user@societe-a\.fr$/.test(mine[0].message), mine[0].message)
 		// once only
 		runJob()
 		assert.strictEqual((await reminders()).filter((n) => n.subject === 'Rappel : Appel fournisseur').length, 1)
