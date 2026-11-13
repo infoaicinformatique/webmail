@@ -1222,7 +1222,8 @@ async function main() {
 		const admin = async (enabled, hosts) => {
 			await page.goto(NC + '/settings/admin/webmail')
 			await page.waitForSelector('#webmail-admin')
-			await page.setChecked('#webmail-autodiscover', enabled)
+			// (Nextcloud's styled checkbox: the input itself is hidden behind its label)
+			if (await page.isChecked('#webmail-autodiscover') !== enabled) await page.click('label[for="webmail-autodiscover"]')
 			await page.fill('#webmail-autodiscover-hosts', hosts)
 			await page.click('#webmail-save')
 			await page.waitForSelector('#webmail-admin-msg.success')
