@@ -1240,7 +1240,7 @@
 				return link ? h('div', { class: 'wm-event-join' },
 					h('a', { class: 'button primary wm-join-btn', href: link.url, target: '_blank', rel: 'noopener noreferrer' }, link.talk ? '🎥 ' + _('Rejoindre la visio Nextcloud Talk') : '🎥 ' + _('Rejoindre la réunion en ligne'))) : null
 			})(),
-			ev.isMeeting && ev.organizer ? h('div', {}, '👤 ' + _('Organisateur : {name}', { name: core.personLabel(ev.organizer) })) : null,
+			ev.isMeeting && ev.organizer ? h('div', {}, '👤 ' + _('Organisateur : {name}').replace('{name}', core.personLabel(ev.organizer))) : null,
 			ev.attendees.length ? h('div', {}, h('strong', {}, _('Participants')), h('ul', { class: 'wm-attendees' }, people(ev.attendees))) : null,
 			ev.optionalAttendees.length ? h('div', {}, h('strong', {}, _('Facultatifs')), h('ul', { class: 'wm-attendees' }, people(ev.optionalAttendees))) : null,
 			(ev.resources || []).length ? h('div', { class: 'wm-event-rooms' }, h('strong', {}, _('Salle')), h('ul', { class: 'wm-attendees' }, ev.resources.map((a) => h('li', {}, '🚪 ' + (a.name || a.email),

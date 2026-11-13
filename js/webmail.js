@@ -2541,9 +2541,14 @@
 		const people = [m.from].concat(m.to || [], m.cc || [])
 			.map((p) => (p && p.email ? p.email.trim().toLowerCase() : ''))
 			.filter((e, i, all) => /@/.test(e) && e !== me && all.indexOf(e) === i)
-		const text = (new DOMParser().parseFromString(m.body || '', 'text/html').body.textContent || '')
-			.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
-		const head = _('Message de {sender} du {date} :', { sender: personLabel(m.from), date: formatDate(m.date, true) })
+		// the text of the message, one line per paragraph, line break or table row
+		const doc = new DOMParser().parseFromString(m.body || '', 'text/html')
+		doc.querySelectorAll('script, style, title').forEach((e) => e.remove())
+		doc.querySelectorAll('br').forEach((e) => e.replaceWith('\n'))
+		doc.querySelectorAll('p, div, li, tr, h1, h2, h3, h4, h5, h6, blockquote, pre, table').forEach((e) => e.append('\n'))
+		const text = (doc.body.textContent || '').replace(/[ \t\u00a0]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+		// the values put in afterwards: the translation would take « <address> » for an HTML tag and drop it
+		const head = _('Message de {sender} du {date} :').replace('{sender}', personLabel(m.from)).replace('{date}', formatDate(m.date, true))
 		const prefill = {
 			subject: (m.subject || '').replace(/^((re|tr|fw|fwd)\s?:\s*)+/i, ''),
 			body: head + '\n\n' + (text.length > 4000 ? text.slice(0, 4000) + '…' : text),

@@ -1420,7 +1420,7 @@ async function main() {
 
 	await step('calendar: answer an invitation from the calendar', async () => {
 		await page.click('.wm-agenda-item:has-text("Revue budget")')
-		await page.waitForSelector('.wm-modal:has-text("Organisateur : Marie Martin")')
+		await page.waitForSelector('.wm-modal:has-text("Organisateur : Marie Martin <marie.martin@societe-a.fr>")')
 		assert(!(await page.$('.wm-modal button:has-text("Modifier")')), 'attendee cannot edit')
 		await page.click('.wm-modal button:has-text("Provisoire")')
 		await page.waitForSelector('.wm-toast:has-text("provisoire")')
@@ -2943,7 +2943,7 @@ async function main() {
 		let attendees = (await page.inputValue('.wm-modal input[name=attendees]')).split(/,\s*/)
 		assert.deepStrictEqual(attendees, ['jean.dupont@client-exemple.fr'], 'the sender, not me')
 		const body = await page.inputValue('.wm-modal textarea[name=body]')
-		assert.ok(body.startsWith('Message de Jean Dupont <jean.dupont@client-exemple.fr>') && body.includes('notre devis pour la maintenance 2027'), body)
+		assert.ok(body.startsWith('Message de Jean Dupont <jean.dupont@client-exemple.fr>') && body.includes('Bonjour,\nVeuillez trouver ci-joint notre devis pour la maintenance 2027.'), body)
 		assert.ok(!body.includes('alert('), 'no script text')
 		await shot('72-event-from-message')
 		await page.click('.wm-modal button:has-text("Annuler")')
