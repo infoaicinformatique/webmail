@@ -67,6 +67,7 @@ et sur les téléphones, et inversement.
 | Nouveaux messages | Le nombre de non-lus de la boîte de réception s'affiche dans le **titre de l'onglet** (« (3) Webmail »). Avec « 🔔 Activer les notifications » (en bas à gauche), chaque nouveau message de chaque compte déclenche une **notification du navigateur** quand la fenêtre n'est pas au premier plan (un clic ouvre le message), ou un message dans la page sinon. Vérification chaque minute, tant que Nextcloud est ouvert dans un onglet |
 | Notifications Nextcloud | Même **webmail fermé**, chaque nouveau message de la boîte de réception apparaît dans les **notifications Nextcloud** (la cloche, et le téléphone avec l'application Nextcloud) : « Nouveau message de … », l'objet et le début du texte. Un clic ouvre le message ; ouvert, lu, déplacé ou supprimé dans le webmail, il quitte la cloche. Au plus 5 par compte à chaque vérification, rien pour les messages déjà là au premier passage. Case « 🔔 Signaler chaque nouveau message… » dans « Comptes et signature » (cochée par défaut). Vérification toutes les 5 minutes par les tâches de fond de Nextcloud : réglez-les sur **Cron** (Paramètres d'administration → Paramètres de base) |
 | Rappels des rendez-vous | Le rappel de chaque rendez-vous de l'agenda Exchange (celui réglé dans Outlook ou le webmail : « 15 minutes avant »…) arrive dans les **notifications Nextcloud** au bon moment, même webmail fermé : « Rappel : Comité de pilotage », l'heure, le lieu. Un clic ouvre l'agenda sur le rendez-vous ; la notification disparaît quand il est terminé. Une notification par occurrence d'un rendez-vous périodique. Case « ⏰ Rappels des rendez-vous… » dans « Comptes et signature » (cochée par défaut). Vérification chaque minute par les tâches de fond de Nextcloud (réglage **Cron** conseillé) |
+| Liens enrichis | Un lien vers un message ou un rendez-vous du webmail (celui du lien d'une notification ou d'un résultat de recherche), collé dans **Talk, Text, Deck, Collectives…**, s'affiche avec son objet, l'expéditeur ou l'heure, et le compte — pour vous seulement : un collègue qui n'a pas ce compte ne voit que le lien. Dans le **sélecteur « / »** de Nextcloud (Smart Picker), « Courrier et agenda Exchange » cherche un message ou un rendez-vous et insère son lien |
 | Recherche unifiée | La loupe de Nextcloud (depuis n'importe quelle app) cherche aussi dans Exchange : « **Courrier Exchange** » (tous les dossiers de tous les comptes, les plus récents d'abord, avec l'expéditeur et la date) et « **Agenda Exchange** » (six mois avant et après, les prochains rendez-vous d'abord). Un clic ouvre le message, ou l'agenda à la bonne date avec l'événement ouvert. À partir de 3 lettres |
 | Mobile | Affichage adapté aux téléphones ; le bouton **Retour** du téléphone ferme le message (ou le menu) au lieu de quitter le webmail **Gestes** : un message **balayé vers la gauche** part dans « Éléments supprimés » (avec « Annuler »), **vers la droite** il passe en lu / non lu ; la couleur et le libellé apparaissent pendant le geste, l'action ne se fait qu'au-delà d'un tiers de la largeur |
 
@@ -249,7 +250,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.99.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.107.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -292,7 +293,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.99 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.107 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
