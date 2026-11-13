@@ -653,7 +653,9 @@ def handle(op, el, user):
             for a in it.findall('t:Attachments/t:FileAttachment', NS):
                 aid = 'ATT-%d' % next(COUNTER)
                 ATTACHMENTS[aid] = dict(id=aid, name=a.findtext('t:Name', namespaces=NS), content_type=a.findtext('t:ContentType', default='application/octet-stream', namespaces=NS),
-                                        content=base64.b64decode(a.findtext('t:Content', default='', namespaces=NS)), inline=False)
+                                        content=base64.b64decode(a.findtext('t:Content', default='', namespaces=NS)),
+                                        inline=a.findtext('t:IsInline', default='false', namespaces=NS) == 'true',
+                                        content_id=a.findtext('t:ContentId', default='', namespaces=NS))
                 atts.append(aid)
             if tag == 'ForwardItem':
                 atts += list(ref['attachments'])
@@ -676,6 +678,20 @@ def handle(op, el, user):
             msgs.append(ok(op, items))
         return wrap(op, msgs)
 
+    if op == 'DeleteAttachment':
+        out = []
+        for a in el.findall('m:AttachmentIds/t:AttachmentId', NS):
+            aid = a.get('Id')
+            parent = next((m for m in MESSAGES.values() if aid in m['attachments']), None)
+            if parent is None:
+                out.append(err(op, 'ErrorInvalidAttachmentId', 'The attachment id is invalid.'))
+                continue
+            parent['attachments'].remove(aid)
+            ATTACHMENTS.pop(aid, None)
+            parent['ck'] = 'CK-%d' % next(COUNTER)
+            out.append(ok(op, '<m:RootItemId RootItemId="%s" RootItemChangeKey="%s"/>' % (parent['id'], parent['ck'])))
+        return wrap(op, out)
+
     if op == 'CreateAttachment':
         parent = MESSAGES.get(el.find('m:ParentItemId', NS).get('Id'))
         if parent is None:
@@ -684,7 +700,9 @@ def handle(op, el, user):
         for a in el.find('m:Attachments', NS):
             aid = 'ATT-%d' % next(COUNTER)
             ATTACHMENTS[aid] = dict(id=aid, name=a.findtext('t:Name', namespaces=NS), content_type=a.findtext('t:ContentType', default='application/octet-stream', namespaces=NS),
-                                    content=base64.b64decode(a.findtext('t:Content', default='', namespaces=NS)), inline=False)
+                                    content=base64.b64decode(a.findtext('t:Content', default='', namespaces=NS)),
+                                        inline=a.findtext('t:IsInline', default='false', namespaces=NS) == 'true',
+                                        content_id=a.findtext('t:ContentId', default='', namespaces=NS))
             parent['attachments'].append(aid)
             parent['ck'] = 'CK-%d' % next(COUNTER)
             out.append(ok(op, '<m:Attachments><t:FileAttachment><t:AttachmentId Id="%s" RootItemId="%s" RootItemChangeKey="%s"/></t:FileAttachment></m:Attachments>'

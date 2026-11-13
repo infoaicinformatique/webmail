@@ -647,12 +647,29 @@ async function main() {
 
 	await step('account settings: signature', async () => {
 		await page.click('text=Comptes et signature')
-		await page.fill('.wm-account-card textarea', 'Utilisateur\nSociété A')
-		await page.click('.wm-account-card button:has-text("Enregistrer")')
+		// a formatted signature: a name, a bold company and a logo
+		const ed = '.wm-account-card .wm-signature-editor >> nth=0'
+		await page.click(ed)
+		await page.keyboard.type('Utilisateur')
+		await page.keyboard.press('Enter')
+		await page.click('.wm-account-card .wm-editor-btn[title="Gras"] >> nth=0')
+		await page.keyboard.type('Société A')
+		await page.click('.wm-account-card .wm-editor-btn[title="Gras"] >> nth=0')
+		await page.setInputFiles('.wm-account-card input[name=signatureImage] >> nth=0', { name: 'logo.png', mimeType: 'image/png',
+			buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') })
+		await page.waitForSelector('.wm-account-card .wm-signature-editor img')
+		await shot('61-signature')
+		await page.click('.wm-account-card button:has-text("Enregistrer") >> nth=0')
 		await page.waitForSelector('.wm-toast:has-text("Compte mis à jour")')
+		// kept by the server, formatted, after a reload
+		await page.reload()
+		await page.waitForSelector('.wm-message')
 		await page.click('.wm-compose-btn')
 		const signed = await page.innerText('.wm-editor')
-		assert(/--\s*\nUtilisateur\nSociété A/.test(signed), signed)
+		assert(/--\s*\n+Utilisateur\s*\n+Société A/.test(signed), signed)
+		await shot('62-signature-in-message')
+		assert(await page.$('.wm-editor .wm-signature b:has-text("Société A")'), 'bold kept')
+		assert(await page.$('.wm-editor .wm-signature img[src^="data:image/png"]'), 'logo')
 	})
 
 	await step('automatic replies (out of office)', async () => {
@@ -1020,6 +1037,99 @@ async function main() {
 		await page.click('.wm-folder:has-text("Boîte de réception")')
 	})
 
+	await step('attachments kept with the draft', async () => {
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'client@exemple.fr')
+		await page.fill('input[name=subject]', 'Dossier de subvention')
+		await page.setInputFiles('.wm-file-input', [
+			{ name: 'formulaire.txt', mimeType: 'text/plain', buffer: Buffer.from('formulaire rempli') },
+			{ name: 'brouillon-budget.txt', mimeType: 'text/plain', buffer: Buffer.from('budget provisoire') },
+		])
+		// saved in Exchange with the draft at once
+		await page.waitForSelector('.wm-draft-att:has-text("formulaire.txt")')
+		await page.waitForSelector('.wm-draft-att:has-text("brouillon-budget.txt")')
+		await page.waitForSelector('.wm-draft-status:has-text("Pièces jointes enregistrées dans le brouillon")')
+		await shot('63-draft-attachments')
+		// the window closed: nothing lost
+		await page.click('.wm-compose button:has-text("Annuler")')
+		await page.waitForSelector('.wm-compose', { state: 'detached' })
+		await page.click('.wm-folder:has-text("Brouillons")')
+		const draft = '.wm-message:has-text("Dossier de subvention")'
+		await page.waitForSelector(draft + ' .wm-attach-icon')
+		await page.click(draft)
+		await page.waitForSelector('.wm-compose h2:has-text("Brouillon")')
+		await page.waitForSelector('.wm-draft-att:has-text("formulaire.txt")')
+		// one removed, one added (from Files)
+		await page.click('.wm-draft-att:has-text("brouillon-budget.txt") button:has-text("retirer")')
+		await page.waitForSelector('.wm-draft-att:has-text("brouillon-budget.txt")', { state: 'detached' })
+		await page.evaluate(() => { OC.dialogs.filepicker = (t, cb) => cb(['/Documents/devis-2027.pdf']) })
+		await page.click('.wm-compose button:has-text("Depuis Fichiers")')
+		await page.waitForSelector('.wm-draft-att:has-text("devis-2027.pdf")')
+		assert.strictEqual(await page.$$eval('.wm-draft-att', (els) => els.length), 2)
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		await page.waitForSelector(draft, { state: 'detached' })
+		// sent once, with these two files
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.click('.wm-message:has-text("Dossier de subvention")')
+		await page.waitForSelector('.wm-attachment-name')
+		const atts = await page.$$eval('.wm-attachment-name', (els) => els.map((e) => e.textContent).sort())
+		assert.deepStrictEqual(atts, ['📎 devis-2027.pdf', '📎 formulaire.txt'])
+		assert.strictEqual(await page.$$eval('.wm-message', (els) => els.filter((e) => e.textContent.includes('Dossier de subvention')).length), 1)
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+	})
+
+	await step('images in the text: pasted screenshot, inserted image, sent inline', async () => {
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'client@exemple.fr')
+		await page.fill('input[name=subject]', 'Capture du problème')
+		await page.click('.wm-editor')
+		await page.keyboard.press('Control+Home')
+		await page.keyboard.type('Voici la capture : ')
+		// a big screenshot pasted (2400 px wide): reduced to 1600 px
+		await page.evaluate(async () => {
+			const c = document.createElement('canvas')
+			c.width = 2400
+			c.height = 1200
+			const ctx = c.getContext('2d')
+			ctx.fillStyle = '#0082c9'
+			ctx.fillRect(0, 0, 2400, 1200)
+			ctx.fillStyle = '#fff'
+			ctx.font = 'bold 160px sans-serif'
+			ctx.fillText('Erreur 500', 300, 650)
+			const blob = await new Promise((resolve) => c.toBlob(resolve, 'image/png'))
+			const dt = new DataTransfer()
+			dt.items.add(new File([blob], 'image.png', { type: 'image/png' }))
+			document.querySelector('.wm-editor').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+		})
+		await page.waitForFunction(() => { const i = document.querySelector('.wm-editor img:not(.wm-signature *)'); return i && i.complete && i.naturalWidth === 1600 })
+		// an image chosen with the 🖼 button
+		await page.setInputFiles('input[name=inlineImages]', { name: 'logo.png', mimeType: 'image/png',
+			buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') })
+		// (the logo of the signature is a third one)
+		await page.waitForFunction(() => document.querySelectorAll('.wm-editor img:not(.wm-signature *)').length === 2)
+		assert.strictEqual(await page.$eval('.wm-editor img[alt="logo.png"]', (i) => i.src.slice(0, 22)), 'data:image/png;base64,')
+		// not shown as attachments: they are in the text
+		assert.strictEqual(await page.$$eval('.wm-compose-attachments li', (els) => els.length), 0)
+		await page.waitForSelector('.wm-draft-status:has-text("Brouillon enregistré à")')
+		await shot('60-inline-images')
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		// sent with the images in the text (cid:), not as attachments
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.waitForSelector('.wm-message:has-text("Capture du problème")')
+		assert(!(await page.$('.wm-message:has-text("Capture du problème") .wm-attach-icon')), 'no paper clip for inline images')
+		await page.click('.wm-message:has-text("Capture du problème")')
+		await page.waitForSelector('.wm-body-frame')
+		const loaded = await page.waitForFunction(() => {
+			const imgs = [...document.querySelector('.wm-body-frame').contentDocument.querySelectorAll('img')]
+			return imgs.length === 3 && imgs.every((i) => i.complete && i.naturalWidth > 0 && i.getAttribute('src').includes('/apps/webmail/api/accounts/'))
+		}, null, { timeout: 10000 }).then(() => true, () => false)
+		assert(loaded, 'inline images shown')
+		assert.strictEqual(await page.$$eval('.wm-attachment-name', (els) => els.length), 0)
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+	})
+
 	await step('second account on the other server', async () => {
 		await page.click('text=Comptes et signature')
 		await page.fill('.wm-add-account input[type=email]', 'compta@societe-b.fr')
@@ -1135,7 +1245,8 @@ async function main() {
 		assert(await page.isHidden('.wm-modal input[name=startTime]'))
 		await page.selectOption('.wm-modal select[name=repeat]', 'daily')
 		await page.selectOption('.wm-modal select[name=ends]', 'until')
-		const u = new Date(); u.setDate(u.getDate() + 3)
+		// 3 days after the start shown in the form (the browser's day: not the test runner's, which may be in UTC)
+		const u = new Date(await page.inputValue('.wm-modal input[name=startDate]') + 'T12:00'); u.setDate(u.getDate() + 3)
 		await page.fill('.wm-modal input[name=until]', u.getFullYear() + '-' + String(u.getMonth() + 1).padStart(2, '0') + '-' + String(u.getDate()).padStart(2, '0'))
 		await page.click('.wm-modal button[type=submit]')
 		await page.waitForSelector('.wm-toast:has-text("Événement créé")')

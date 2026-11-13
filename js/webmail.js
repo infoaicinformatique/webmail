@@ -2256,6 +2256,110 @@
 		return wrap
 	}
 
+	/** Largest side of an image put in a message, in pixels (a photo from a phone is reduced). */
+	const IMAGE_MAX_SIDE = 1600
+	const IMAGE_MAX_BYTES = 5 * 1024 * 1024
+
+	/**
+	 * An image file as a data: URL for the editor. Photos larger than
+	 * IMAGE_MAX_SIDE are reduced (JPEG); screenshots stay PNG when they are
+	 * light enough; GIFs are kept as they are (animation).
+	 */
+	function imageDataUrl(file, maxSide = IMAGE_MAX_SIDE) {
+		const read = (blob) => new Promise((resolve, reject) => {
+			const r = new FileReader()
+			r.onload = () => resolve(r.result)
+			r.onerror = () => reject(new Error('Image illisible : ' + file.name))
+			r.readAsDataURL(blob)
+		})
+		const tooBig = () => new Error('Image trop lourde (' + formatSize(file.size) + ') : joignez-la plutôt en pièce jointe')
+		if (file.type === 'image/gif') {
+			if (file.size > IMAGE_MAX_BYTES) return Promise.reject(tooBig())
+			return read(file)
+		}
+		return read(file).then((url) => new Promise((resolve, reject) => {
+			const img = new Image()
+			img.onerror = () => reject(new Error('Image illisible : ' + file.name))
+			img.onload = () => {
+				const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight))
+				if (scale === 1 && file.size <= (maxSide < IMAGE_MAX_SIDE ? 200 * 1024 : 1024 * 1024)) { resolve(url); return }
+				const canvas = document.createElement('canvas')
+				canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+				canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
+				const ctx = canvas.getContext('2d')
+				// JPEG has no transparency: white behind
+				ctx.fillStyle = '#fff'
+				ctx.fillRect(0, 0, canvas.width, canvas.height)
+				ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+				let out = file.type === 'image/png' ? canvas.toDataURL('image/png') : ''
+				if (!out || out.length * 0.75 > 1024 * 1024) out = canvas.toDataURL('image/jpeg', 0.85)
+				if (out.length * 0.75 > IMAGE_MAX_BYTES) { reject(tooBig()); return }
+				resolve(out)
+			}
+			img.src = url
+		}))
+	}
+
+	/** A signature from the editor (HTML), or one written in plain text before. */
+	function signatureHtml(sig) {
+		if (!sig) return ''
+		return /<(div|p|br|b|strong|i|em|u|a|img|span|font|ul|ol|li|table|blockquote)\b[^>]*>/i.test(sig) ? sig : escapeHtml(sig).replace(/\n/g, '<br>')
+	}
+
+	/**
+	 * The signature editor of an account: bold, italic, underline, links and
+	 * a logo (an image, reduced to 400 pixels), like in Outlook.
+	 */
+	function signatureEditor(value) {
+		const ed = h('div', { class: 'wm-editor wm-signature-editor', contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Signature' })
+		ed.innerHTML = signatureHtml(value)
+		const exec = (cmd, v) => { ed.focus(); document.execCommand(cmd, false, v) }
+		let range = null
+		const picker = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', hidden: true, name: 'signatureImage', 'aria-label': 'Ajouter une image à la signature' })
+		const insert = async (list) => {
+			for (const f of Array.from(list).filter((x) => /^image\/(png|jpeg|gif|webp)$/.test(x.type))) {
+				try {
+					const url = await imageDataUrl(f, 400)
+					ed.focus()
+					if (range) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range); range = null }
+					exec('insertHTML', '<img src="' + url + '" alt="' + escapeHtml(f.name || 'logo') + '">')
+				} catch (e) { toast(e.message, true) }
+			}
+		}
+		picker.addEventListener('change', () => { insert(picker.files); picker.value = '' })
+		ed.addEventListener('paste', (e) => {
+			const list = Array.from((e.clipboardData && e.clipboardData.files) || [])
+			if (list.some((f) => f.type.startsWith('image/')) && !(e.clipboardData.types || []).includes('text/html')) { e.preventDefault(); insert(list) }
+		})
+		const tool = (label, title, action) => h('button', { type: 'button', class: 'wm-editor-btn', title, 'aria-label': title, onmousedown: (e) => e.preventDefault(), onclick: action }, label)
+		const bar = h('div', { class: 'wm-editor-bar', role: 'toolbar', 'aria-label': 'Mise en forme de la signature' },
+			tool('G', 'Gras', () => exec('bold')),
+			tool('I', 'Italique', () => exec('italic')),
+			tool('S', 'Souligné', () => exec('underline')),
+			tool('🔗', 'Insérer un lien', () => {
+				const sel = window.getSelection()
+				const r = sel && sel.rangeCount ? sel.getRangeAt(0) : null
+				const url = (window.prompt('Adresse du lien (https://…)', 'https://') || '').trim()
+				if (!/^(https?:\/\/|mailto:)\S+$/i.test(url)) return
+				ed.focus()
+				if (r) { sel.removeAllRanges(); sel.addRange(r) }
+				if (r && !r.collapsed) exec('createLink', url)
+				else exec('insertHTML', '<a href="' + escapeHtml(url) + '">' + escapeHtml(url) + '</a>')
+			}),
+			tool('🖼', 'Ajouter une image (logo)', () => {
+				const sel = window.getSelection()
+				range = sel && sel.rangeCount && ed.contains(sel.anchorNode) ? sel.getRangeAt(0) : null
+				picker.click()
+			}),
+			tool('⌫', 'Effacer la mise en forme', () => { exec('removeFormat'); exec('unlink') }),
+			picker)
+		return {
+			el: h('div', { class: 'wm-editor-wrap wm-signature-wrap' }, bar, ed),
+			// empty editor: no signature
+			value: () => (ed.textContent.trim() || ed.querySelector('img') ? ed.innerHTML : ''),
+		}
+	}
+
 	function openCompose(mode, original, prefill) {
 		if (!state.accountId) { openAccountSettings(); return }
 		if (state.module !== 'mail') {
@@ -2320,7 +2424,7 @@
 				subject.value = /^(re|tr|fw|fwd)\s?:/i.test(original.subject || '') ? original.subject : prefix + (original.subject || '')
 				subject.disabled = true
 			}
-			body.innerHTML = '<div><br></div>' + (account && account.signature ? '<div><br></div><div>-- <br>' + textHtml(account.signature) + '</div>' : '')
+			body.innerHTML = '<div><br></div>' + (account && account.signature ? '<div><br></div><div class="wm-signature">-- <br>' + signatureHtml(account.signature) + '</div>' : '')
 			if (prefill) {
 				if (prefill.to) to.value = prefill.to
 				if (prefill.subject) subject.value = prefill.subject
@@ -2338,6 +2442,8 @@
 			onmousedown: (e) => e.preventDefault(), // keep the selection in the text
 			onclick: action,
 		}, label)
+		let savedImageRange = null
+		const imagePicker = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', multiple: true, hidden: true, name: 'inlineImages', 'aria-label': 'Insérer une image' })
 		const editorBar = h('div', { class: 'wm-editor-bar', role: 'toolbar', 'aria-label': 'Mise en forme' },
 			tool('G', 'Gras (Ctrl+B)', () => exec('bold')),
 			tool('I', 'Italique (Ctrl+I)', () => exec('italic')),
@@ -2355,10 +2461,63 @@
 				else exec('insertHTML', '<a href="' + escapeHtml(url) + '">' + escapeHtml(url) + '</a>')
 			}),
 			tool('❝', 'Citation', () => exec('formatBlock', 'blockquote')),
-			tool('⌫', 'Effacer la mise en forme', () => { exec('removeFormat'); exec('unlink') }))
+			tool('🖼', 'Insérer une image dans le texte (ou coller une capture d\'écran)', () => {
+				const sel = window.getSelection()
+				savedImageRange = sel && sel.rangeCount && body.contains(sel.anchorNode) ? sel.getRangeAt(0) : null
+				imagePicker.click()
+			}),
+			tool('⌫', 'Effacer la mise en forme', () => { exec('removeFormat'); exec('unlink') }),
+			imagePicker)
 		body.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit() }
 		})
+
+		// ---- images in the text: pasted (screenshot), dropped, or chosen; sent as inline images (cid:)
+		async function insertImages(list) {
+			const images = Array.from(list).filter((f) => /^image\/(png|jpeg|gif|webp)$/.test(f.type))
+			for (const f of images) {
+				try {
+					const url = await imageDataUrl(f)
+					body.focus()
+					if (savedImageRange) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedImageRange); savedImageRange = null }
+					exec('insertHTML', '<img src="' + url + '" alt="' + escapeHtml(f.name && f.name !== 'image.png' ? f.name : 'image') + '" style="max-width:100%">')
+				} catch (e) {
+					toast(e.message, true)
+				}
+			}
+			return images.length
+		}
+		body.addEventListener('paste', (e) => {
+			const items = Array.from((e.clipboardData && e.clipboardData.files) || [])
+			// a copied file or screenshot (the HTML of a copied web page keeps its own images)
+			if (items.some((f) => f.type.startsWith('image/')) && !(e.clipboardData.types || []).includes('text/html')) {
+				e.preventDefault()
+				insertImages(items)
+			}
+		})
+		body.addEventListener('dragover', (e) => {
+			if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) e.preventDefault()
+		})
+		body.addEventListener('drop', (e) => {
+			const list = Array.from((e.dataTransfer && e.dataTransfer.files) || [])
+			if (!list.some((f) => f.type.startsWith('image/'))) return
+			e.preventDefault()
+			e.stopPropagation()
+			// where the image was dropped
+			const range = document.caretRangeFromPoint ? document.caretRangeFromPoint(e.clientX, e.clientY) : null
+			if (range) { const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range) }
+			insertImages(list)
+			// the other files are attached as usual
+			const others = list.filter((f) => !/^image\/(png|jpeg|gif|webp)$/.test(f.type))
+			if (others.length) {
+				const dt = new DataTransfer()
+				Array.from(files.files).concat(others).forEach((f) => dt.items.add(f))
+				files.files = dt.files
+				renderAttachList()
+				persistFiles()
+			}
+		})
+		imagePicker.addEventListener('change', () => { insertImages(imagePicker.files); imagePicker.value = '' })
 
 		// ---- Nextcloud share links instead of heavy attachments
 		// where the user was typing, to put the links there
@@ -2440,8 +2599,57 @@
 		// Exchange (OVH) refuses messages over about 25 MB once encoded
 		const HEAVY = 15 * 1024 * 1024
 
+		// files kept in Exchange with the draft (a new message, or a draft opened from « Brouillons »);
+		// a reply or a forward is created again at each save: its files are sent with it
+		const keepsFiles = mode === 'new' || isDraft
+		let savedAtts = isDraft ? (original.attachments || []).filter((a) => !a.isInline && !a.isItem).map((a) => ({ id: a.id, name: a.name, size: a.size })) : []
+		let persisting = Promise.resolve()
+		const persistFiles = () => {
+			persisting = persisting.then(async () => {
+				if (!keepsFiles || closed) return
+				// heavy files stay here: they may still be sent as a Nextcloud link
+				const local = Array.from(files.files).filter((f) => f.size < HEAVY)
+				const paths = ncFiles.slice()
+				if (!local.length && !paths.length) return
+				if (!draftId) { dirty = true; await saveDraft() }
+				if (!draftId) return
+				const fd = new FormData()
+				fd.append('draftId', draftId)
+				local.forEach((f) => fd.append('files[]', f, f.name))
+				paths.forEach((p) => fd.append('filePaths[]', p))
+				draftStatus.textContent = 'Enregistrement des pièces jointes…'
+				try {
+					const r = await api('/accounts/' + state.accountId + '/draft/attachments', { method: 'POST', body: fd })
+					savedAtts = r.attachments
+					const dt = new DataTransfer()
+					Array.from(files.files).filter((f) => !local.includes(f)).forEach((f) => dt.items.add(f))
+					files.files = dt.files
+					ncFiles.splice(0, ncFiles.length, ...ncFiles.filter((p) => !paths.includes(p)))
+					draftStatus.textContent = 'Pièces jointes enregistrées dans le brouillon'
+				} catch (e) {
+					draftStatus.textContent = 'Pièces jointes non enregistrées : ' + e.message + ' (elles partiront avec le message)'
+				}
+				renderAttachList()
+			})
+			return persisting
+		}
+
 		const renderAttachList = () => {
 			clear(attachList)
+			savedAtts.forEach((a) => attachList.appendChild(h('li', { class: 'wm-draft-att', dataset: { id: a.id } },
+				'📎 ' + a.name + (a.size ? ' (' + formatSize(a.size) + ')' : '') + ' ',
+				h('span', { class: 'wm-muted' }, '· dans le brouillon '),
+				h('button', {
+					type: 'button',
+					class: 'wm-small',
+					onclick: async (e) => {
+						e.currentTarget.disabled = true
+						try {
+							savedAtts = (await api('/accounts/' + state.accountId + '/draft/attachments/delete', { method: 'POST', body: { draftId, attachmentId: a.id } })).attachments
+						} catch (err) { toast(err.message, true) }
+						renderAttachList()
+					},
+				}, 'retirer'))))
 			const local = Array.from(files.files)
 			const total = local.reduce((n, f) => n + f.size, 0)
 			local.forEach((f) => {
@@ -2457,13 +2665,15 @@
 					'Pièces jointes lourdes (' + formatSize(total) + ') : Exchange peut refuser le message. Préférez « 🔗 Envoyer en lien » : le fichier est déposé dans vos Fichiers et le destinataire reçoit un lien de téléchargement.'))
 			}
 		}
-		files.addEventListener('change', renderAttachList)
+		files.addEventListener('change', () => { renderAttachList(); persistFiles() })
+		renderAttachList()
 
 		const pickFromFiles = () => {
 			if (!(OC.dialogs && OC.dialogs.filepicker)) { toast('Sélecteur de fichiers indisponible', true); return }
 			OC.dialogs.filepicker('Joindre depuis Fichiers', (paths) => {
 				(Array.isArray(paths) ? paths : [paths]).forEach((p) => { if (p && !ncFiles.includes(p)) ncFiles.push(p) })
 				renderAttachList()
+				persistFiles()
 			}, true, null, true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
 		}
 
@@ -2568,9 +2778,12 @@
 				e.preventDefault()
 				// a save in progress must end first: the draft it creates is deleted after sending
 				clearTimeout(draftTimer)
+				await persisting
 				await saving
 				const fd = new FormData()
 				Object.entries(fields()).forEach(([k, v]) => fd.append(k, v))
+				// a new message saved with its files: the draft itself is sent
+				if (mode === 'new' && draftId && savedAtts.length) fd.set('mode', 'draft')
 				if (receipt.checked) fd.append('readReceipt', '1')
 				if (later.checked) {
 					const at = new Date(laterAt.value)
@@ -2614,9 +2827,6 @@
 		h('label', { class: 'wm-field' }, h('span', {}, 'Cci'), attachAutocomplete(bcc)),
 		h('label', { class: 'wm-field' }, h('span', {}, 'Objet'), subject),
 		h('div', { class: 'wm-editor-wrap' }, editorBar, body),
-		isDraft && original.attachments && original.attachments.length
-			? h('div', { class: 'wm-info wm-muted' }, 'Déjà joint : ' + original.attachments.map((a) => a.name).join(', '))
-			: null,
 		original && !isDraft ? h('div', { class: 'wm-info wm-muted' }, mode === 'forward'
 			? 'Le message d\'origine et ses pièces jointes seront ajoutés automatiquement sous votre texte.'
 			: 'Le message d\'origine sera cité automatiquement sous votre réponse.') : null,
@@ -2708,14 +2918,13 @@
 
 		state.accounts.forEach((a) => {
 			const name = h('input', { type: 'text', value: a.displayName === a.email ? '' : a.displayName, placeholder: 'Nom affiché (facultatif)' })
-			const sig = h('textarea', { rows: '4', placeholder: 'Signature (texte)' })
-			sig.value = a.signature || ''
+			const sig = signatureEditor(a.signature || '')
 			const pwd = h('input', { type: 'password', placeholder: 'Nouveau mot de passe (si changé)', autocomplete: 'new-password' })
 			const save = h('button', { class: 'primary' }, 'Enregistrer')
 			save.addEventListener('click', async () => {
 				save.disabled = true
 				try {
-					const updated = await api('/accounts/' + a.id, { method: 'PUT', body: { displayName: name.value, signature: sig.value, password: pwd.value || null } })
+					const updated = await api('/accounts/' + a.id, { method: 'PUT', body: { displayName: name.value, signature: sig.value(), password: pwd.value || null } })
 					Object.assign(a, updated)
 					pwd.value = ''
 					toast('Compte mis à jour')
@@ -2770,7 +2979,7 @@
 				h('legend', {}, a.email),
 				h('label', { class: 'wm-field' }, h('span', {}, 'Nom'), name),
 				h('label', { class: 'wm-field' }, h('span', {}, 'Mot de passe'), pwd),
-				h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Signature'), sig),
+				h('div', { class: 'wm-field wm-field-top' }, h('span', {}, 'Signature'), sig.el),
 				sharedMailboxesEditor(a),
 				h('label', { class: 'wm-radio wm-bell' }, bell, ' 🔔 Signaler chaque nouveau message dans les notifications Nextcloud, même webmail fermé (et sur le téléphone avec l\'application Nextcloud)'),
 				h('label', { class: 'wm-radio wm-bell' }, remind, ' ⏰ Rappels des rendez-vous de l\'agenda dans les notifications Nextcloud (au moment choisi pour chaque rendez-vous : 15 minutes avant…)'),

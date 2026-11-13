@@ -90,7 +90,8 @@ class AccountService {
 			$account->setDisplayName(trim($displayName) !== '' ? trim($displayName) : null);
 		}
 		if ($signature !== null) {
-			$account->setSignature($signature);
+			$signature = HtmlSanitizer::signature($signature);
+			$account->setSignature($signature !== '' ? $signature : null);
 		}
 		return $this->mapper->update($account);
 	}

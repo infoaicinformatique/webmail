@@ -24,6 +24,8 @@ return [
 		['name' => 'mail#moveFolder', 'url' => '/api/accounts/{id}/folders/move', 'verb' => 'POST'],
 		['name' => 'mail#deleteFolder', 'url' => '/api/accounts/{id}/folders/delete', 'verb' => 'POST'],
 		['name' => 'mail#saveDraft', 'url' => '/api/accounts/{id}/draft', 'verb' => 'POST'],
+		['name' => 'mail#draftAttachments', 'url' => '/api/accounts/{id}/draft/attachments', 'verb' => 'POST'],
+		['name' => 'mail#deleteDraftAttachment', 'url' => '/api/accounts/{id}/draft/attachments/delete', 'verb' => 'POST'],
 		['name' => 'mail#deleteDraft', 'url' => '/api/accounts/{id}/draft/delete', 'verb' => 'POST'],
 		['name' => 'mail#newMessages', 'url' => '/api/accounts/{id}/new', 'verb' => 'GET'],
 		['name' => 'mail#attachment', 'url' => '/api/accounts/{id}/attachment', 'verb' => 'GET'],
