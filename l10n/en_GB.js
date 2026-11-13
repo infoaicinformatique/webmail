@@ -71,6 +71,7 @@ OC.L10N.register(
     "Afficher les en-têtes Internet": "Show the Internet headers",
     "Afficher les images": "Show images",
     "Afficher {name}": "Show {name}",
+    "Afficher « En vacances » dans mon statut Nextcloud pendant l'absence": "Show “Vacationing” in my Nextcloud status while away",
     "Agenda": "Calendar",
     "Agenda Exchange": "Exchange calendar",
     "Agenda de {name}": "{name}'s calendar",

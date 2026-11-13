@@ -1283,5 +1283,6 @@
 	"Expéditeur (Z → A)": "Sender (Z → A)",
 	"Objet (A → Z)": "Subject (A → Z)",
 	"Plus volumineux": "Largest first",
-	"Trier par": "Sort by"
+	"Trier par": "Sort by",
+	"Afficher « En vacances » dans mon statut Nextcloud pendant l'absence": "Show “Vacationing” in my Nextcloud status while away"
 }
