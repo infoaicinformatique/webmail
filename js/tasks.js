@@ -4,7 +4,7 @@
 
 	/** Translated text (Nextcloud l10n: l10n/<language>.js); the French text is the key. */
 	const _ = (s, vars) => (window.t ? window.t('webmail', s, vars, undefined, { escape: false }) : s)
-	const locale = () => (window.OC && OC.getLanguage && OC.getLanguage()) || 'fr'
+	const locale = () => ((window.OC && OC.getLanguage && OC.getLanguage()) || 'fr').replace('_', '-')
 	const STATUS = [['NotStarted', _('Non commencée')], ['InProgress', _('En cours')], ['WaitingOnOthers', _('En attente de quelqu\'un')], ['Deferred', _('Reportée')], ['Completed', _('Terminée')]]
 	const IMPORTANCE = [['Normal', _('Normale')], ['High', _('Haute')], ['Low', _('Basse')]]
 

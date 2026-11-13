@@ -2659,6 +2659,22 @@ async function main() {
 			await page.waitForSelector('.wm-contact-form .wm-field:has-text("First name")')
 			await shot('69-english-contacts')
 			await page.click('.wm-contact-form button:has-text("Cancel")')
+			// calendar: dates in English too
+			const calView = await page.evaluate(() => localStorage.getItem('webmail.calview'))
+			await page.click('.wm-tab[data-module="calendar"]')
+			await page.waitForSelector('.wm-compose-btn:has-text("New event")')
+			await page.waitForSelector('.wm-cal-section:has-text("My calendars")')
+			await page.waitForSelector('.wm-segmented button:has-text("Week")')
+			await page.click('.wm-segmented button:has-text("Month")')
+			const monthTitle = await page.textContent('.wm-cal-title')
+			assert.ok(/^(January|February|March|April|May|June|July|August|September|October|November|December) \d{4}$/.test(monthTitle.trim()), monthTitle)
+			await page.waitForSelector('.wm-month-head:has-text("Mon")')
+			await page.click('.wm-compose-btn:has-text("New event")')
+			await page.waitForSelector('.wm-modal h2:has-text("New event")')
+			await page.waitForSelector('.wm-modal button:has-text("Cancel")')
+			await shot('69-english-calendar')
+			await page.click('.wm-modal button:has-text("Cancel")')
+			await page.evaluate((v) => (v ? localStorage.setItem('webmail.calview', v) : localStorage.removeItem('webmail.calview')), calView)
 		} finally {
 			occ('user:setting admin core lang fr')
 		}
