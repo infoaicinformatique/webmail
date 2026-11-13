@@ -3274,6 +3274,31 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('favorites: a folder pinned at the top of the pane, kept, then removed', async () => {
+		const tree = '.wm-folders:not(.wm-favorites) .wm-folder-row:has(.wm-folder-name:text-is("Clients"))'
+		await page.click('.wm-folder >> nth=0')
+		assert.strictEqual(await page.$('.wm-favorites'), null)
+		await page.click(tree + ' .wm-folder-menu-btn')
+		await page.click('.wm-folder-menu-item:has-text("Ajouter aux favoris")')
+		await page.waitForSelector('.wm-toast:has-text("« Clients » ajouté aux favoris")')
+		await page.waitForSelector('.wm-nav-section:text-is("Favoris")')
+		// one click away: its messages
+		await page.click('.wm-favorites .wm-folder:has-text("Clients")')
+		await page.waitForSelector('.wm-message:has-text("Photos du chantier")')
+		assert.ok(await page.$eval('.wm-favorites .wm-folder', (a) => a.classList.contains('active')))
+		await shot('88-favorites')
+		// kept after a reload; the menu offers to remove it
+		await page.reload()
+		await page.waitForSelector('.wm-favorites .wm-folder:has-text("Clients")')
+		await page.click(tree + ' .wm-folder-menu-btn')
+		await page.waitForSelector('.wm-folder-menu-item:has-text("Retirer des favoris")')
+		await page.keyboard.press('Escape')
+		await page.click('.wm-favorites .wm-unfavorite')
+		await page.waitForSelector('.wm-toast:has-text("« Clients » retiré des favoris")')
+		await page.locator('.wm-favorites').waitFor({ state: 'detached' })
+		await page.click('.wm-folder >> nth=0')
+	})
+
 	await step('Internet headers: the SPF, DKIM and DMARC checks, the way of the message, every header', async () => {
 		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')

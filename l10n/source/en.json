@@ -1231,5 +1231,11 @@
 	"Désabonnement demandé": "Unsubscribe requested",
 	"Ce message vient d'une liste de diffusion.": "This message comes from a mailing list.",
 	"Ouvre la page de désinscription de la liste": "Opens the list's unsubscribe page",
-	"Se désabonner": "Unsubscribe"
+	"Se désabonner": "Unsubscribe",
+	"« {name} » ajouté aux favoris": "“{name}” added to favorites",
+	"« {name} » retiré des favoris": "“{name}” removed from favorites",
+	"Retirer des favoris": "Remove from favorites",
+	"Ajouter aux favoris": "Add to favorites",
+	"Favoris": "Favorites",
+	"Retirer {name} des favoris": "Remove {name} from favorites"
 }

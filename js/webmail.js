@@ -861,6 +861,36 @@
 		const sel = accountSelector()
 		if (sel) navEl.appendChild(sel)
 
+		// the favorite folders first (those still there), one click away whatever the depth
+		const favs = favorites().map((id) => state.folders.find((f) => f.id === id)).filter(Boolean)
+		if (favs.length) {
+			const favUl = h('ul', { class: 'wm-folders wm-favorites', 'aria-label': _('Favoris') })
+			favs.forEach((f) => {
+				const active = f.id === state.folderId || f.role === state.folderId
+				const link = h('a', {
+					href: '#',
+					class: 'wm-folder' + (active ? ' active' : '') + (f.unread ? ' has-unread' : ''),
+					onclick: (e) => { e.preventDefault(); selectFolder(f.id) },
+					dataset: { folderId: f.id },
+				},
+				h('span', { class: 'wm-folder-icon', 'aria-hidden': 'true' }, '★'),
+				h('span', { class: 'wm-folder-name' }, f.name),
+				f.unread && f.role !== 'sentitems' && f.role !== 'deleteditems' ? h('span', { class: 'wm-badge' }, String(f.unread)) : null)
+				folderDropTarget(link, f)
+				favUl.appendChild(h('li', { class: 'wm-folder-row' }, link,
+					h('button', {
+						type: 'button',
+						class: 'wm-folder-menu-btn wm-unfavorite',
+						title: _('Retirer des favoris'),
+						'aria-label': _('Retirer {name} des favoris', { name: f.name }),
+						onclick: (e) => { e.stopPropagation(); setFavorite(f, false) },
+					}, '✕')))
+			})
+			navEl.appendChild(h('div', { class: 'wm-nav-section' }, _('Favoris')))
+			navEl.appendChild(favUl)
+			navEl.appendChild(h('div', { class: 'wm-nav-section' }, _('Dossiers')))
+		}
+
 		const ul = h('ul', { class: 'wm-folders' })
 		const byParent = {}
 		state.folders.forEach((f) => { (byParent[f.parentId || ''] = byParent[f.parentId || ''] || []).push(f) })
@@ -1955,6 +1985,22 @@
 
 	const FIXED_ROLES = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'outbox']
 
+	/** « Favoris »: folders pinned at the top of the pane, in the order chosen (kept per account in this browser). */
+	const favKey = () => 'webmail.favorites.' + state.accountId
+	function favorites() {
+		try {
+			const v = JSON.parse(localStorage.getItem(favKey()) || '[]')
+			return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []
+		} catch (e) { return [] }
+	}
+	function setFavorite(f, on) {
+		const list = favorites().filter((id) => id !== f.id)
+		if (on) list.push(f.id)
+		try { localStorage.setItem(favKey(), JSON.stringify(list)) } catch (e) { /* not kept */ }
+		toast(on ? _('« {name} » ajouté aux favoris', { name: f.name }) : _('« {name} » retiré des favoris', { name: f.name }))
+		renderNav()
+	}
+
 	function openFolderMenu(anchor, f) {
 		document.querySelectorAll('.wm-folder-menu').forEach((m) => m.remove())
 		const fixed = FIXED_ROLES.includes(f.role)
@@ -1965,6 +2011,9 @@
 			onclick: () => { close(); action() },
 		}, label)
 		const menu = h('div', { class: 'wm-folder-menu', role: 'menu', 'aria-label': _('Dossier {name}', { name: f.name }) },
+			favorites().includes(f.id)
+				? item('☆ ' + _('Retirer des favoris'), () => setFavorite(f, false))
+				: item('★ ' + _('Ajouter aux favoris'), () => setFavorite(f, true)),
 			item('＋ ' + _('Nouveau sous-dossier'), () => createFolder(f)),
 			f.unread ? item('✓ ' + _('Tout marquer comme lu'), () => markFolderRead(f)) : null,
 			item('📥 ' + _('Importer des messages (.eml)…'), () => pickEml(f)),
