@@ -377,6 +377,18 @@ class MailController extends Controller {
 		return $this->handle(fn () => $this->client($id)->getHeaders($itemId));
 	}
 
+	/** « Ignorer la conversation »: its messages, and the next ones, to « Éléments supprimés » (or back). */
+	#[NoAdminRequired]
+	public function ignoreConversation(int $id, string $conversationId, bool $ignore = true): Response {
+		return $this->handle(function () use ($id, $conversationId, $ignore) {
+			if ($conversationId === '') {
+				throw new MailException('Conversation introuvable');
+			}
+			$this->client($id)->ignoreConversation($conversationId, $ignore);
+			return ['ignored' => $ignore];
+		});
+	}
+
 	/** « Se désabonner » of the mailing list a message comes from (List-Unsubscribe). */
 	#[NoAdminRequired]
 	public function unsubscribe(int $id, string $itemId): Response {
