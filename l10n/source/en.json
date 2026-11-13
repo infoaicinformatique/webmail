@@ -1283,5 +1283,15 @@
 	"Expéditeur (Z → A)": "Sender (Z → A)",
 	"Objet (A → Z)": "Subject (A → Z)",
 	"Plus volumineux": "Largest first",
-	"Trier par": "Sort by"
+	"Trier par": "Sort by",
+	"Délai de réponse": "Time to answer",
+	"{count} jours": "{count} days",
+	"{count} jour": "{count} day",
+	"Me rappeler si pas de réponse sous": "Remind me if no answer within",
+	"Sans réponse d'ici le {date}, Nextcloud vous le rappellera": "If there is no answer by {date}, Nextcloud will remind you",
+	"Pas de réponse : %s": "No answer: %s",
+	"Envoyé le %1$s à %2$s": "Sent on %1$s to %2$s",
+	"Aucun destinataire à attendre": "No recipient to wait for",
+	"Entre 1 et %s jours": "Between 1 and %s days",
+	"Trop de messages en attente de réponse (%s au plus)": "Too many messages awaiting an answer (%s at most)"
 }

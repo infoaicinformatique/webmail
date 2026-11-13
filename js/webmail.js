@@ -4276,7 +4276,12 @@
 			}
 			sendBtn.textContent = later.checked ? _('Programmer l\'envoi') : _('Envoyer')
 		})
+		// « Me rappeler si pas de réponse »: the bell of Nextcloud says so after the days chosen
+		const followUp = h('input', { type: 'checkbox', name: 'followUp' })
+		const followDays = h('select', { name: 'followUpDays', 'aria-label': _('Délai de réponse') },
+			[1, 2, 3, 5, 7, 14].map((n) => h('option', { value: String(n), selected: n === 3 }, n > 1 ? _('{count} jours', { count: n }) : _('{count} jour', { count: n }))))
 		const sendOptions = h('div', { class: 'wm-send-options' },
+			h('label', { class: 'wm-radio' }, followUp, ' ' + _('Me rappeler si pas de réponse sous')), followDays,
 			h('label', { class: 'wm-radio' }, receipt, ' ' + _('Demander un accusé de lecture')),
 			h('label', { class: 'wm-radio' }, later, ' ' + _('Envoyer plus tard')), laterAt)
 		const sendBtn = h('button', { type: 'submit', class: 'primary', title: _('Envoyer (Ctrl+Entrée)') }, _('Envoyer'))
@@ -4329,6 +4334,16 @@
 				try {
 					const sent = await api('/accounts/' + state.accountId + '/send', { method: 'POST', body: fd })
 					threadCache.clear() // the reply now belongs to its conversation
+					if (followUp.checked) {
+						try {
+							const r = await api('/accounts/' + state.accountId + '/followups', { method: 'POST', body: {
+								subject: subject.value || (original && original.subject) || '',
+								to: [to.value, cc.value].concat(isResponse ? [personLabel((original.replyTo && original.replyTo[0]) || original.from)] : []).join(', '),
+								days: parseInt(followDays.value, 10),
+							} })
+							toast(_('Sans réponse d\'ici le {date}, Nextcloud vous le rappellera', { date: new Date(r.until).toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' }) }))
+						} catch (err) { toast(err.message, true) }
+					}
 					rememberRecipients([to.value, cc.value, bcc.value].concat(isResponse ? [personLabel((original.replyTo && original.replyTo[0]) || original.from)] : []).join(','))
 					toast(sent && sent.sendAt
 						? _('Envoi programmé le {date} (dans « Boîte d\'envoi » d\'ici là)', { date: new Date(sent.sendAt).toLocaleString(locale(), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) })

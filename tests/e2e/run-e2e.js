@@ -2929,6 +2929,43 @@ async function main() {
 		await page.click('.wm-tab[data-module="mail"]')
 	})
 
+	await step('no answer: « Me rappeler si pas de réponse », the bell rings for an unanswered message only', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const send = async (to, subject) => {
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', to)
+			await page.fill('input[name=subject]', subject)
+			await page.fill('.wm-editor', 'Merci de me dire ce que vous en pensez.')
+			await page.check('input[name=followUp]')
+			await page.selectOption('select[name=followUpDays]', '3')
+			await submitCompose()
+			await page.waitForSelector('.wm-toast:has-text("Nextcloud vous le rappellera")')
+		}
+		await page.click('.wm-tab[data-module="mail"]')
+		await send('paul@societe-a.fr', 'Devis toiture Cannes')
+		// to oneself: its copy arrives, from one of the people written to: answered
+		await send('user@societe-a.fr', 'Point budget Cannes')
+		const accountId = await page.evaluate(async () => (await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()).find((a) => a.email === 'user@societe-a.fr').id)
+		const key = 'followup_' + accountId
+		const list = JSON.parse(occ('user:setting admin webmail ' + key).trim())
+		assert.deepStrictEqual(list.map((e) => e.subject), ['Devis toiture Cannes', 'Point budget Cannes'])
+		assert.deepStrictEqual(list[0].to, ['paul@societe-a.fr'])
+		// three days later
+		list.forEach((e) => { e.until = new Date(Date.now() - 60000).toISOString().slice(0, 19) + 'Z' })
+		occ('user:setting admin webmail ' + key + " '" + JSON.stringify(list) + "'")
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\FollowUpJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		assert(jobId, 'background job registered')
+		occ('background-job:execute ' + jobId + ' --force-execute')
+		const mine = await page.evaluate(async () => {
+			const r = await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })
+			return (await r.json()).ocs.data.filter((n) => n.app === 'webmail' && n.subject.startsWith('Pas de réponse')).map((n) => n.subject + ' | ' + n.message)
+		})
+		assert.strictEqual(mine.length, 1, mine.join(' / '))
+		assert.ok(mine[0].startsWith('Pas de réponse : Devis toiture Cannes | Envoyé le ') && mine[0].includes('paul@societe-a.fr'), mine[0])
+		// done with: no longer waited for
+		assert.throws(() => occ('user:setting admin webmail ' + key + ' 2>/dev/null'))
+	})
+
 	await step('tab memory: after a reload, the mailbox shows before Exchange answers', async () => {
 		await page.click('.wm-tab[data-module="mail"]')
 		await page.waitForSelector('.wm-message')
