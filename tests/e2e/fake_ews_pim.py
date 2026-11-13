@@ -588,7 +588,9 @@ def contact_xml(c, detail):
     if c.get('birthday'):
         b = c['birthday']
         if b == 'IN-3-DAYS':
-            soon = dt.date.today() + dt.timedelta(days=3)
+            # (the day in Paris, as the browser of the test sees it)
+            from zoneinfo import ZoneInfo
+            soon = dt.datetime.now(ZoneInfo('Europe/Paris')).date() + dt.timedelta(days=3)
             b = (dt.datetime(1980, soon.month, soon.day) - dt.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
         x += '<t:Birthday>%s</t:Birthday>' % b
     if detail and c['department']:
