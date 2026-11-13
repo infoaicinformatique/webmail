@@ -109,7 +109,7 @@ class EwsDelegates {
 		foreach (self::FOLDERS as $key => $el) {
 			$level = (string)($d['permissions'][$key] ?? 'None');
 			if (!in_array($level, self::LEVELS, true)) {
-				throw new MailException('Niveau d\'autorisation inconnu : ' . $level);
+				throw new MailException('Niveau d\'autorisation inconnu : %s', [$level]);
 			}
 			$levels[$key] = $level;
 			$perms .= '<t:' . $el . '>' . $level . '</t:' . $el . '>';
@@ -158,16 +158,16 @@ class EwsDelegates {
 			if (in_array($code, $tolerated, true)) {
 				return null;
 			}
-			throw new MailException(match ($code) {
-				'ErrorDelegateNoUser', 'ErrorMissingEmailAddress' => 'Aucune boîte Exchange ne correspond à cette adresse',
-				'ErrorDelegateAlreadyExists' => 'Cette personne est déjà déléguée',
-				'ErrorNotDelegate' => 'Cette personne n\'est pas déléguée',
-				'ErrorDelegateCannotAddOwner' => 'Vous ne pouvez pas être votre propre délégué',
-				'ErrorDelegateMissingConfiguration' => 'La délégation n\'est pas encore configurée pour cette boîte : ajoutez d\'abord un délégué',
-				'ErrorDelegateValidationFailed' => 'Exchange a refusé ces réglages de délégation',
-				'ErrorAccessDenied' => 'Accès refusé : seul le propriétaire de la boîte peut gérer ses délégués',
-				default => EwsClient::translateError($code, $this->client->text($xp, 'm:MessageText', $errors[0])),
-			});
+			throw match ($code) {
+				'ErrorDelegateNoUser', 'ErrorMissingEmailAddress' => new MailException('Aucune boîte Exchange ne correspond à cette adresse'),
+				'ErrorDelegateAlreadyExists' => new MailException('Cette personne est déjà déléguée'),
+				'ErrorNotDelegate' => new MailException('Cette personne n\'est pas déléguée'),
+				'ErrorDelegateCannotAddOwner' => new MailException('Vous ne pouvez pas être votre propre délégué'),
+				'ErrorDelegateMissingConfiguration' => new MailException('La délégation n\'est pas encore configurée pour cette boîte : ajoutez d\'abord un délégué'),
+				'ErrorDelegateValidationFailed' => new MailException('Exchange a refusé ces réglages de délégation'),
+				'ErrorAccessDenied' => new MailException('Accès refusé : seul le propriétaire de la boîte peut gérer ses délégués'),
+				default => EwsClient::exchangeError($code, $this->client->text($xp, 'm:MessageText', $errors[0])),
+			};
 		}
 		return $xp;
 	}

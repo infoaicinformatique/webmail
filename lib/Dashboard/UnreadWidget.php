@@ -13,6 +13,7 @@ use OCP\Dashboard\IReloadableWidget;
 use OCP\Dashboard\Model\WidgetButton;
 use OCP\Dashboard\Model\WidgetItem;
 use OCP\Dashboard\Model\WidgetItems;
+use OCP\IL10N;
 use OCP\IURLGenerator;
 
 /**
@@ -22,6 +23,7 @@ class UnreadWidget implements IAPIWidgetV2, IIconWidget, IButtonWidget, IReloada
 	public function __construct(
 		private DashboardService $dashboard,
 		private IURLGenerator $url,
+		private IL10N $l,
 	) {
 	}
 
@@ -30,7 +32,7 @@ class UnreadWidget implements IAPIWidgetV2, IIconWidget, IButtonWidget, IReloada
 	}
 
 	public function getTitle(): string {
-		return 'Courrier non lu';
+		return $this->l->t('Courrier non lu');
 	}
 
 	public function getOrder(): int {
@@ -64,11 +66,11 @@ class UnreadWidget implements IAPIWidgetV2, IIconWidget, IButtonWidget, IReloada
 			$avatar($m['from']),
 			$m['date'],
 		), $messages);
-		return new WidgetItems($items, 'Aucun message non lu');
+		return new WidgetItems($items, $this->l->t('Aucun message non lu'));
 	}
 
 	public function getWidgetButtons(string $userId): array {
-		return [new WidgetButton(WidgetButton::TYPE_MORE, $this->url->linkToRouteAbsolute('webmail.page.index'), 'Ouvrir le courrier')];
+		return [new WidgetButton(WidgetButton::TYPE_MORE, $this->url->linkToRouteAbsolute('webmail.page.index'), $this->l->t('Ouvrir le courrier'))];
 	}
 
 	public function getReloadInterval(): int {

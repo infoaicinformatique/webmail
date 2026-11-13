@@ -9,6 +9,7 @@ use OCA\Webmail\Ews\EwsClient;
 use OCA\Webmail\Exception\MailException;
 use OCP\ICacheFactory;
 use OCP\IConfig;
+use OCP\IL10N;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -23,6 +24,7 @@ class DashboardService {
 		private ICacheFactory $cacheFactory,
 		private IConfig $config,
 		private LoggerInterface $logger,
+		private IL10N $l,
 	) {
 	}
 
@@ -44,7 +46,7 @@ class DashboardService {
 				}
 				$lists[] = ['id' => $account->getId(), 'email' => $account->getEmail(), 'items' => $r['items']];
 			}
-			return [self::mergeUnread($lists, $limit), $complete];
+			return [self::mergeUnread($lists, $limit, $this->l), $complete];
 		});
 	}
 
@@ -73,7 +75,7 @@ class DashboardService {
 						'accountId' => $account->getId(),
 						'account' => $account->getEmail(),
 						'id' => (string)$e['id'],
-						'subject' => $e['subject'] !== '' ? $e['subject'] : '(sans titre)',
+						'subject' => $e['subject'] !== '' ? $e['subject'] : $this->l->t('(sans titre)'),
 						'start' => (string)$e['start'],
 						'end' => (string)$e['end'],
 						'allDay' => (bool)$e['allDay'],
@@ -91,16 +93,16 @@ class DashboardService {
 	 * @param array<int, array{id: int, email: string, items: array<int, array<string, mixed>>}> $lists
 	 * @return array<int, array{accountId: int, account: string, id: string, subject: string, from: string, date: string}>
 	 */
-	public static function mergeUnread(array $lists, int $limit): array {
+	public static function mergeUnread(array $lists, int $limit, ?IL10N $l = null): array {
 		$out = [];
-		foreach ($lists as $l) {
-			foreach ($l['items'] as $m) {
+		foreach ($lists as $list) {
+			foreach ($list['items'] as $m) {
 				$from = (string)($m['from']['name'] ?? '');
 				$out[] = [
-					'accountId' => $l['id'],
-					'account' => $l['email'],
+					'accountId' => $list['id'],
+					'account' => $list['email'],
 					'id' => (string)$m['id'],
-					'subject' => (string)$m['subject'] !== '' ? (string)$m['subject'] : '(sans objet)',
+					'subject' => (string)$m['subject'] !== '' ? (string)$m['subject'] : L10n::t($l, '(sans objet)'),
 					'from' => $from !== '' ? $from : (string)($m['from']['email'] ?? ''),
 					'date' => (string)$m['date'],
 				];
@@ -112,21 +114,50 @@ class DashboardService {
 
 	/** "Aujourd'hui 14:00", "Demain, toute la journée", "jeu. 20 nov. 09:30" in the user's time zone. */
 	public function when(string $userId, string $start, bool $allDay, ?\DateTimeImmutable $now = null): string {
-		return self::label($start, $allDay, new \DateTimeZone($this->config->getUserValue($userId, 'core', 'timezone', '') ?: date_default_timezone_get()), $now);
+		return self::label($start, $allDay, new \DateTimeZone($this->config->getUserValue($userId, 'core', 'timezone', '') ?: date_default_timezone_get()), $now, $this->l);
 	}
 
-	public static function label(string $start, bool $allDay, \DateTimeZone $tz, ?\DateTimeImmutable $now = null): string {
+	public static function label(string $start, bool $allDay, \DateTimeZone $tz, ?\DateTimeImmutable $now = null, ?IL10N $l = null): string {
 		$d = (new \DateTimeImmutable($start))->setTimezone($tz);
 		$today = ($now ?? new \DateTimeImmutable('now'))->setTimezone($tz)->setTime(0, 0);
 		$days = (int)$today->diff($d->setTime(0, 0))->format('%r%a');
-		$dayNames = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
-		$months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 		$day = match (true) {
-			$days === 0 => 'Aujourd\'hui',
-			$days === 1 => 'Demain',
-			default => $dayNames[(int)$d->format('w')] . ' ' . $d->format('j') . ' ' . $months[(int)$d->format('n') - 1],
+			$days === 0 => L10n::t($l, 'Aujourd\'hui'),
+			$days === 1 => L10n::t($l, 'Demain'),
+			default => self::dayName((int)$d->format('w'), $l) . ' ' . $d->format('j') . ' ' . self::monthName((int)$d->format('n'), $l),
 		};
-		return $day . ($allDay ? ', toute la journée' : ' ' . $d->format('H:i'));
+		return $allDay ? L10n::t($l, '%s, toute la journée', [$day]) : $day . ' ' . $d->format('H:i');
+	}
+
+	/** "lun." (0: Sunday, as date('w')) */
+	public static function dayName(int $w, ?IL10N $l = null): string {
+		return match ($w % 7) {
+			0 => L10n::t($l, 'dim.'),
+			1 => L10n::t($l, 'lun.'),
+			2 => L10n::t($l, 'mar.'),
+			3 => L10n::t($l, 'mer.'),
+			4 => L10n::t($l, 'jeu.'),
+			5 => L10n::t($l, 'ven.'),
+			default => L10n::t($l, 'sam.'),
+		};
+	}
+
+	/** "janv." (1: January, as date('n')) */
+	public static function monthName(int $n, ?IL10N $l = null): string {
+		return match ($n) {
+			1 => L10n::t($l, 'janv.'),
+			2 => L10n::t($l, 'févr.'),
+			3 => L10n::t($l, 'mars'),
+			4 => L10n::t($l, 'avr.'),
+			5 => L10n::t($l, 'mai'),
+			6 => L10n::t($l, 'juin'),
+			7 => L10n::t($l, 'juil.'),
+			8 => L10n::t($l, 'août'),
+			9 => L10n::t($l, 'sept.'),
+			10 => L10n::t($l, 'oct.'),
+			11 => L10n::t($l, 'nov.'),
+			default => L10n::t($l, 'déc.'),
+		};
 	}
 
 	/**

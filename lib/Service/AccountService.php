@@ -116,14 +116,14 @@ class AccountService {
 			$ewsHost = (string)parse_url($url, PHP_URL_HOST);
 			if (!ServerConfigService::isAllowedHost($ewsHost, $settings['hosts'])) {
 				$this->logger->warning('Webmail: Autodiscover of ' . $domain . ' gave ' . $ewsHost . ', not among the servers allowed by the administrator', ['app' => 'webmail']);
-				throw new MailException(sprintf('Le serveur Exchange trouvé pour « %s » (%s) n\'est pas parmi ceux autorisés par l\'administrateur.', $domain, $ewsHost));
+				throw new MailException('Le serveur Exchange trouvé pour « %1$s » (%2$s) n\'est pas parmi ceux autorisés par l\'administrateur.', [$domain, $ewsHost]);
 			}
 			if (!$this->servers->isReachableHost($ewsHost)) {
 				continue;
 			}
 			return $url;
 		}
-		throw new MailException(sprintf('Aucun serveur Exchange n\'a été trouvé automatiquement pour le domaine « %s ». Vérifiez l\'adresse et le mot de passe, ou demandez à votre administrateur d\'ajouter ce domaine.', $domain));
+		throw new MailException('Aucun serveur Exchange n\'a été trouvé automatiquement pour le domaine « %s ». Vérifiez l\'adresse et le mot de passe, ou demandez à votre administrateur d\'ajouter ce domaine.', [$domain]);
 	}
 
 	/**

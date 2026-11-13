@@ -13,6 +13,7 @@ use OCP\Dashboard\IReloadableWidget;
 use OCP\Dashboard\Model\WidgetButton;
 use OCP\Dashboard\Model\WidgetItem;
 use OCP\Dashboard\Model\WidgetItems;
+use OCP\IL10N;
 use OCP\IURLGenerator;
 
 /**
@@ -22,6 +23,7 @@ class AgendaWidget implements IAPIWidgetV2, IIconWidget, IButtonWidget, IReloada
 	public function __construct(
 		private DashboardService $dashboard,
 		private IURLGenerator $url,
+		private IL10N $l,
 	) {
 	}
 
@@ -30,7 +32,7 @@ class AgendaWidget implements IAPIWidgetV2, IIconWidget, IButtonWidget, IReloada
 	}
 
 	public function getTitle(): string {
-		return 'Agenda Exchange';
+		return $this->l->t('Agenda Exchange');
 	}
 
 	public function getOrder(): int {
@@ -62,11 +64,11 @@ class AgendaWidget implements IAPIWidgetV2, IIconWidget, IButtonWidget, IReloada
 			$this->getIconUrl(),
 			$e['start'],
 		), $events);
-		return new WidgetItems($items, 'Aucun rendez-vous dans les 7 prochains jours');
+		return new WidgetItems($items, $this->l->t('Aucun rendez-vous dans les 7 prochains jours'));
 	}
 
 	public function getWidgetButtons(string $userId): array {
-		return [new WidgetButton(WidgetButton::TYPE_MORE, $this->getUrl() ?? '', 'Ouvrir l\'agenda')];
+		return [new WidgetButton(WidgetButton::TYPE_MORE, $this->getUrl() ?? '', $this->l->t('Ouvrir l\'agenda'))];
 	}
 
 	public function getReloadInterval(): int {

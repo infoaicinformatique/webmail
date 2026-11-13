@@ -67,7 +67,7 @@ class CalendarController extends Controller {
 		try {
 			return new \DateTimeImmutable($value);
 		} catch (\Exception) {
-			throw new MailException('Date invalide : ' . $value);
+			throw new MailException('Date invalide : %s', [$value]);
 		}
 	}
 
@@ -179,7 +179,11 @@ class CalendarController extends Controller {
 					throw new MailException('Agenda partagé inconnu');
 				}
 				if ($entry['mode'] === 'freebusy') {
-					return ['events' => $cal->freeBusy($entry['email'], self::date($start), self::date($end))];
+					// the events without details are named after their state: in the language of the user
+					$l = $this->l10n();
+					return ['events' => array_map(fn ($e) => in_array($e['subject'], EwsCalendar::FREE_BUSY_LABELS, true)
+						? ['subject' => $l->t($e['subject'])] + $e : $e,
+						$cal->freeBusy($entry['email'], self::date($start), self::date($end)))];
 				}
 			}
 			return ['events' => $cal->findEvents(self::date($start), self::date($end), $calendar)];
@@ -235,7 +239,8 @@ class CalendarController extends Controller {
 			$people = $this->calendar($id, 'UTC')->availability($list, $windowStart, $windowEnd);
 			$slot = EwsCalendar::firstFreeSlot(array_filter($people, fn ($p) => $p['error'] === null), $start, $searchEnd, max(15, min(600, $minutes)), $zone);
 			return [
-				'people' => array_map(fn ($p) => $p + ['self' => strtolower($p['email']) === strtolower($account->getEmail())], $people),
+				'people' => array_map(fn ($p) => ($p['error'] !== null ? ['error' => $this->l10n()->t($p['error'])] : []) + $p
+					+ ['self' => strtolower($p['email']) === strtolower($account->getEmail())], $people),
 				'suggestion' => $slot === null ? null : [
 					'start' => $slot->format('Y-m-d\TH:i'),
 					'end' => $slot->modify('+' . max(15, min(600, $minutes)) . ' minutes')->format('Y-m-d\TH:i'),

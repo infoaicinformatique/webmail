@@ -2,6 +2,10 @@
 (function () {
 	'use strict'
 
+	/** Translated text (Nextcloud l10n: l10n/<language>.js); the French text is the key. */
+	const _ = (s, vars) => (window.t ? window.t('webmail', s, vars, undefined, { escape: false }) : s)
+	const locale = () => ((window.OC && OC.getLanguage && OC.getLanguage()) || 'fr').replace('_', '-')
+
 	const BASE = '/apps/webmail/api'
 	const PAGE_SIZE = 50
 	const REFRESH_MS = 120000
@@ -34,11 +38,11 @@
 
 	/** Browser time zone, sent with calendar requests (wall-clock times are interpreted in it). */
 	const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } catch (e) { return 'UTC' } })()
-	const MODULES = [
-		{ id: 'mail', label: 'Courrier', icon: '✉️' },
-		{ id: 'calendar', label: 'Agenda', icon: '📅' },
-		{ id: 'contacts', label: 'Contacts', icon: '👤' },
-		{ id: 'tasks', label: 'Tâches', icon: '✅' },
+	const MODULES = () => [
+		{ id: 'mail', label: _('Courrier'), icon: '✉️' },
+		{ id: 'calendar', label: _('Agenda'), icon: '📅' },
+		{ id: 'contacts', label: _('Contacts'), icon: '👤' },
+		{ id: 'tasks', label: _('Tâches'), icon: '✅' },
 	]
 	// calendar.js and contacts.js register themselves here
 	window.WebmailModules = window.WebmailModules || {}
@@ -134,7 +138,7 @@
 		let data = null
 		try { data = await res.json() } catch (e) { /* empty */ }
 		if (!res.ok) {
-			throw new Error((data && data.message) || ('Erreur ' + res.status))
+			throw new Error((data && data.message) || _('Erreur {status}', { status: res.status }))
 		}
 		return data
 	}
@@ -179,22 +183,22 @@
 		const d = new Date(iso)
 		const now = new Date()
 		if (long) {
-			return d.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+			return d.toLocaleString(locale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 		}
 		if (d.toDateString() === now.toDateString()) {
-			return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+			return d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })
 		}
 		if (d.getFullYear() === now.getFullYear()) {
-			return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+			return d.toLocaleDateString(locale(), { day: 'numeric', month: 'short' })
 		}
-		return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+		return d.toLocaleDateString(locale(), { day: '2-digit', month: '2-digit', year: 'numeric' })
 	}
 
 	function formatSize(bytes) {
 		if (!bytes) return ''
-		if (bytes < 1024) return bytes + ' o'
-		if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' Ko'
-		return (bytes / 1024 / 1024).toFixed(1).replace('.', ',') + ' Mo'
+		if (bytes < 1024) return _('{size} o', { size: bytes })
+		if (bytes < 1024 * 1024) return _('{size} Ko', { size: Math.round(bytes / 1024) })
+		return _('{size} Mo', { size: (bytes / 1024 / 1024).toLocaleString(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1, useGrouping: false }) })
 	}
 
 	function personLabel(p) {
@@ -272,16 +276,16 @@
 
 	function buildLayout() {
 		clear(root)
-		navEl = h('nav', { class: 'wm-nav', 'aria-label': 'Dossiers' })
-		listEl = h('section', { class: 'wm-list', 'aria-label': 'Messages' })
-		detailEl = h('section', { class: 'wm-detail', 'aria-label': 'Lecture' })
+		navEl = h('nav', { class: 'wm-nav', 'aria-label': _('Dossiers') })
+		listEl = h('section', { class: 'wm-list', 'aria-label': _('Messages') })
+		detailEl = h('section', { class: 'wm-detail', 'aria-label': _('Lecture') })
 		root.append(navEl, listEl, detailEl)
 		root.dataset.module = state.module
 		setView('list')
 	}
 
 	function moduleTabs() {
-		return h('div', { class: 'wm-tabs', role: 'tablist' }, MODULES.map((m) => h('button', {
+		return h('div', { class: 'wm-tabs', role: 'tablist' }, MODULES().map((m) => h('button', {
 			type: 'button',
 			role: 'tab',
 			class: 'wm-tab' + (state.module === m.id ? ' active' : ''),
@@ -295,7 +299,7 @@
 		if (state.accounts.length > 1) {
 			return h('select', {
 				class: 'wm-account-select',
-				'aria-label': 'Compte',
+				'aria-label': _('Compte'),
 				onchange: (e) => selectAccount(parseInt(e.target.value, 10)),
 			}, state.accounts.map((a) => h('option', { value: String(a.id), selected: a.id === state.accountId }, a.displayName)))
 		}
@@ -307,11 +311,11 @@
 
 	function navFooter() {
 		return h('div', { class: 'wm-nav-footer' },
-			h('a', { href: '#', onclick: (e) => { e.preventDefault(); openAccountSettings() } }, '⚙️  Comptes et signature'),
-			h('a', { href: '#', class: 'wm-shortcuts-link wm-desktop-only', onclick: (e) => { e.preventDefault(); showShortcuts() } }, '⌨️  Raccourcis clavier'),
+			h('a', { href: '#', onclick: (e) => { e.preventDefault(); openAccountSettings() } }, '⚙️  ' + _('Comptes et signature')),
+			h('a', { href: '#', class: 'wm-shortcuts-link wm-desktop-only', onclick: (e) => { e.preventDefault(); showShortcuts() } }, '⌨️  ' + _('Raccourcis clavier')),
 			'Notification' in window
 				? h('a', { href: '#', class: 'wm-notify-toggle', onclick: (e) => { e.preventDefault(); toggleNotifications() } },
-					notificationsOn() ? '🔔  Notifications activées' : '🔕  Activer les notifications')
+					notificationsOn() ? '🔔  ' + _('Notifications activées') : '🔕  ' + _('Activer les notifications'))
 				: null)
 	}
 
@@ -332,15 +336,15 @@
 	async function toggleNotifications() {
 		if (notificationsOn()) {
 			try { localStorage.setItem('webmail.notify', 'off') } catch (e) { /* ignore */ }
-			toast('Notifications désactivées')
+			toast(_('Notifications désactivées'))
 		} else {
 			const permission = window.Notification.permission === 'granted' ? 'granted' : await window.Notification.requestPermission()
 			if (permission !== 'granted') {
-				toast('Le navigateur refuse les notifications pour ce site : autorisez-les dans les réglages du site (icône à gauche de l\'adresse).', true)
+				toast(_('Le navigateur refuse les notifications pour ce site : autorisez-les dans les réglages du site (icône à gauche de l\'adresse).'), true)
 				return
 			}
 			try { localStorage.setItem('webmail.notify', 'on') } catch (e) { /* ignore */ }
-			toast('Vous serez prévenu des nouveaux messages tant que Nextcloud est ouvert dans un onglet')
+			toast(_('Vous serez prévenu des nouveaux messages tant que Nextcloud est ouvert dans un onglet'))
 		}
 		renderNav()
 	}
@@ -398,14 +402,14 @@
 
 	function announce(account, items) {
 		const many = state.accounts.length > 1 ? ' (' + account.email + ')' : ''
-		const sender = (m) => (m.from && (m.from.name || m.from.email)) || 'Nouveau message'
+		const sender = (m) => (m.from && (m.from.name || m.from.email)) || _('Nouveau message')
 		const inFront = !document.hidden && document.hasFocus()
 		if (account.id === state.accountId && state.module === 'mail' && folderRole() === 'inbox' && !isSearching()) refresh()
 		if (inFront || !notificationsOn()) {
 			if (inFront) {
 				toast(items.length > 1
-					? items.length + ' nouveaux messages' + many
-					: '✉️ Nouveau message de ' + sender(items[0]) + many + ' : ' + (items[0].subject || '(sans objet)'))
+					? _('{count} nouveaux messages', { count: items.length }) + many
+					: '✉️ ' + _('Nouveau message de {sender}{account} : {subject}', { sender: sender(items[0]), account: many, subject: items[0].subject || _('(sans objet)') }))
 			}
 			return
 		}
@@ -419,12 +423,12 @@
 		}
 		const icon = OC.imagePath('webmail', 'app-dark')
 		if (items.length > 3) {
-			const n = new window.Notification(items.length + ' nouveaux messages' + many, { body: items.slice(0, 3).map((m) => sender(m) + ' : ' + m.subject).join('\n'), icon, tag: 'webmail-' + account.id })
+			const n = new window.Notification(_('{count} nouveaux messages', { count: items.length }) + many, { body: items.slice(0, 3).map((m) => _('{sender} : {subject}', { sender: sender(m), subject: m.subject })).join('\n'), icon, tag: 'webmail-' + account.id })
 			n.onclick = open(null)
 			return
 		}
 		items.forEach((m) => {
-			const n = new window.Notification(sender(m) + many, { body: m.subject || '(sans objet)', icon, tag: 'webmail-' + m.id })
+			const n = new window.Notification(sender(m) + many, { body: m.subject || _('(sans objet)'), icon, tag: 'webmail-' + m.id })
 			n.onclick = open(m.id)
 		})
 	}
@@ -433,21 +437,21 @@
 	// keyboard shortcuts (mail)
 	// ------------------------------------------------------------------
 
-	const SHORTCUTS = [
-		['j  ou  ↓', 'Message suivant'],
-		['k  ou  ↑', 'Message précédent'],
-		['Entrée', 'Ouvrir le message sélectionné'],
-		['r', 'Répondre'],
-		['a', 'Répondre à tous'],
-		['f', 'Transférer'],
-		['n', 'Nouveau message'],
-		['Suppr', 'Supprimer (Maj+Suppr : définitivement)'],
-		['u', 'Marquer comme non lu'],
-		['x', 'Sélectionner le message (Ctrl+clic, Maj+clic dans la liste)'],
-		['s', 'Assurer un suivi / le retirer'],
-		['/', 'Rechercher dans le dossier'],
-		['Échap', 'Revenir à la liste'],
-		['?', 'Afficher cette aide'],
+	const SHORTCUTS = () => [
+		[_('j  ou  ↓'), _('Message suivant')],
+		[_('k  ou  ↑'), _('Message précédent')],
+		[_('Entrée'), _('Ouvrir le message sélectionné')],
+		['r', _('Répondre')],
+		['a', _('Répondre à tous')],
+		['f', _('Transférer')],
+		['n', _('Nouveau message')],
+		[_('Suppr'), _('Supprimer (Maj+Suppr : définitivement)')],
+		['u', _('Marquer comme non lu')],
+		['x', _('Sélectionner le message (Ctrl+clic, Maj+clic dans la liste)')],
+		['s', _('Assurer un suivi / le retirer')],
+		['/', _('Rechercher dans le dossier')],
+		[_('Échap'), _('Revenir à la liste')],
+		['?', _('Afficher cette aide')],
 	]
 
 	function showShortcuts() {
@@ -457,10 +461,10 @@
 		const onKey = (e) => { if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); e.stopPropagation(); close() } }
 		document.addEventListener('keydown', onKey, true)
 		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
-		overlay.appendChild(h('div', { class: 'wm-modal wm-shortcuts', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Raccourcis clavier' },
-			h('div', { class: 'wm-modal-header' }, h('h2', {}, 'Raccourcis clavier du courrier'),
-				h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
-			h('table', {}, h('tbody', {}, SHORTCUTS.map(([k, label]) => h('tr', {}, h('td', {}, h('kbd', {}, k)), h('td', {}, label)))))))
+		overlay.appendChild(h('div', { class: 'wm-modal wm-shortcuts', role: 'dialog', 'aria-modal': 'true', 'aria-label': _('Raccourcis clavier') },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, _('Raccourcis clavier du courrier')),
+				h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			h('table', {}, h('tbody', {}, SHORTCUTS().map(([k, label]) => h('tr', {}, h('td', {}, h('kbd', {}, k)), h('td', {}, label)))))))
 		document.body.appendChild(overlay)
 	}
 
@@ -506,7 +510,7 @@
 
 	function selectModule(id) {
 		if (id !== 'mail' && !window.WebmailModules[id]) {
-			toast('Module indisponible', true)
+			toast(_('Module indisponible'), true)
 			return
 		}
 		state.module = id
@@ -543,7 +547,7 @@
 			mod.renderNav(navEl, core)
 			return
 		}
-		navEl.appendChild(h('button', { class: 'wm-compose-btn primary', onclick: () => openCompose('new') }, '✉️  Nouveau message'))
+		navEl.appendChild(h('button', { class: 'wm-compose-btn primary', onclick: () => openCompose('new') }, '✉️  ' + _('Nouveau message')))
 		const away = oofBanner()
 		if (away) navEl.appendChild(away)
 		const sel = accountSelector()
@@ -555,7 +559,7 @@
 		const top = (byParent[''] || []).slice().sort((a, b) => {
 			const ra = a.role ? ROLE_ORDER.indexOf(a.role) : 99
 			const rb = b.role ? ROLE_ORDER.indexOf(b.role) : 99
-			return ra !== rb ? ra - rb : a.name.localeCompare(b.name, 'fr')
+			return ra !== rb ? ra - rb : a.name.localeCompare(b.name, locale())
 		})
 
 		const addFolder = (f, depth) => {
@@ -575,17 +579,17 @@
 				h('button', {
 					type: 'button',
 					class: 'wm-folder-menu-btn',
-					title: 'Actions sur le dossier',
-					'aria-label': 'Actions sur le dossier ' + f.name,
+					title: _('Actions sur le dossier'),
+					'aria-label': _('Actions sur le dossier {name}', { name: f.name }),
 					'aria-haspopup': 'menu',
 					onclick: (e) => { e.stopPropagation(); openFolderMenu(e.currentTarget, f) },
 				}, '⋯')))
-			const children = (byParent[f.id] || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+			const children = (byParent[f.id] || []).slice().sort((a, b) => a.name.localeCompare(b.name, locale()))
 			children.forEach((c) => addFolder(c, depth + 1))
 		}
 		top.forEach((f) => addFolder(f, 0))
 		navEl.appendChild(ul)
-		navEl.appendChild(h('a', { href: '#', class: 'wm-new-folder', onclick: (e) => { e.preventDefault(); createFolder(null) } }, '＋ Nouveau dossier'))
+		navEl.appendChild(h('a', { href: '#', class: 'wm-new-folder', onclick: (e) => { e.preventDefault(); createFolder(null) } }, '＋ ' + _('Nouveau dossier')))
 		if (shared.accountId === state.accountId) shared.list.forEach((mb) => navEl.appendChild(sharedMailboxNav(mb)))
 		const usage = usageGauge()
 		if (usage) navEl.appendChild(usage)
@@ -599,7 +603,7 @@
 			type: 'button',
 			class: 'wm-shared-mailbox-title',
 			'aria-expanded': String(mb.open),
-			title: (mb.delegate ? 'Boîte dont vous êtes délégué (les dossiers qu\'on vous a partagés) : ' : 'Boîte partagée ') + mb.email,
+			title: mb.delegate ? _('Boîte dont vous êtes délégué (les dossiers qu\'on vous a partagés) : {email}', { email: mb.email }) : _('Boîte partagée {email}', { email: mb.email }),
 			onclick: () => {
 				mb.open = !mb.open
 				try { localStorage.setItem('webmail.shared.' + mb.email, mb.open ? '1' : '0') } catch (e) { /* ignore */ }
@@ -632,12 +636,12 @@
 			h('span', { class: 'wm-folder-icon', 'aria-hidden': 'true' }, ROLE_ICON[f.role] || '📁'),
 			h('span', { class: 'wm-folder-name' }, f.name),
 			f.unread && f.role !== 'sentitems' && f.role !== 'deleteditems' ? h('span', { class: 'wm-badge' }, String(f.unread)) : null)))
-			;(byParent[f.id] || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).forEach((c) => add(c, depth + 1))
+			;(byParent[f.id] || []).slice().sort((a, b) => a.name.localeCompare(b.name, locale())).forEach((c) => add(c, depth + 1))
 		}
 		;(byParent[''] || []).slice().sort((a, b) => {
 			const ra = a.role ? ROLE_ORDER.indexOf(a.role) : 99
 			const rb = b.role ? ROLE_ORDER.indexOf(b.role) : 99
-			return ra !== rb ? ra - rb : a.name.localeCompare(b.name, 'fr')
+			return ra !== rb ? ra - rb : a.name.localeCompare(b.name, locale())
 		}).forEach((f) => add(f, 0))
 		box.appendChild(ul)
 		return box
@@ -673,9 +677,9 @@
 	// ------------------------------------------------------------------
 
 	function formatBytes(n) {
-		if (n >= 1024 ** 3) return (n / 1024 ** 3).toLocaleString('fr-FR', { maximumFractionDigits: n >= 10 * 1024 ** 3 ? 0 : 1 }) + ' Go'
-		if (n >= 1024 ** 2) return Math.round(n / 1024 ** 2) + ' Mo'
-		return Math.max(1, Math.round(n / 1024)) + ' Ko'
+		if (n >= 1024 ** 3) return _('{size} Go', { size: (n / 1024 ** 3).toLocaleString(locale(), { maximumFractionDigits: n >= 10 * 1024 ** 3 ? 0 : 1 }) })
+		if (n >= 1024 ** 2) return _('{size} Mo', { size: Math.round(n / 1024 ** 2) })
+		return _('{size} Ko', { size: Math.max(1, Math.round(n / 1024)) })
 	}
 
 	/** Space used by the mailbox, against its limit when Exchange gives it. */
@@ -683,14 +687,14 @@
 		const u = state.usage
 		if (!u || typeof u.used !== 'number') return null
 		if (!u.limit) {
-			return h('div', { class: 'wm-quota', title: 'Espace utilisé par la boîte aux lettres' }, h('span', { class: 'wm-muted' }, formatBytes(u.used) + ' utilisés'))
+			return h('div', { class: 'wm-quota', title: _('Espace utilisé par la boîte aux lettres') }, h('span', { class: 'wm-muted' }, _('{size} utilisés', { size: formatBytes(u.used) })))
 		}
 		const pct = Math.min(100, Math.round((u.used / u.limit) * 100))
 		const level = pct >= 90 ? 'full' : (pct >= 75 ? 'high' : 'ok')
-		return h('div', { class: 'wm-quota wm-quota-' + level, title: 'Espace utilisé par la boîte aux lettres' },
-			h('div', { class: 'wm-quota-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': 'Espace utilisé' },
+		return h('div', { class: 'wm-quota wm-quota-' + level, title: _('Espace utilisé par la boîte aux lettres') },
+			h('div', { class: 'wm-quota-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': _('Espace utilisé') },
 				h('div', { class: 'wm-quota-fill', style: 'width:' + pct + '%' })),
-			h('span', { class: 'wm-quota-text' }, formatBytes(u.used) + ' sur ' + formatBytes(u.limit) + ' (' + pct + ' %)'))
+			h('span', { class: 'wm-quota-text' }, _('{used} sur {limit} ({percent} %)', { used: formatBytes(u.used), limit: formatBytes(u.limit), percent: pct })))
 	}
 
 	const warnedFull = new Set()
@@ -698,7 +702,7 @@
 		const u = state.usage
 		if (!u || !u.limit || u.used / u.limit < 0.9 || warnedFull.has(state.accountId)) return
 		warnedFull.add(state.accountId)
-		toast('Votre boîte aux lettres est presque pleine (' + Math.round((u.used / u.limit) * 100) + ' %) : videz les éléments supprimés ou archivez des messages, sinon l\'envoi sera bloqué.', true)
+		toast(_('Votre boîte aux lettres est presque pleine ({percent} %) : videz les éléments supprimés ou archivez des messages, sinon l\'envoi sera bloqué.', { percent: Math.round((u.used / u.limit) * 100) }), true)
 	}
 
 	async function loadFolders() {
@@ -750,7 +754,7 @@
 		} catch (e) { /* not shown when Exchange does not answer */ }
 	}
 
-	const shortDate = (iso) => new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+	const shortDate = (iso) => new Date(iso).toLocaleString(locale(), { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
 
 	/** Reminder in the folder pane while automatic replies are on. */
 	function oofBanner() {
@@ -758,20 +762,20 @@
 		if (!o || !o.active) return null
 		const account = state.accounts.find((a) => a.id === state.accountId)
 		return h('div', { class: 'wm-oof-banner', role: 'status' },
-			h('div', {}, '🌴 Réponse automatique activée' + (o.state === 'Scheduled' && o.end ? ' jusqu\'au ' + shortDate(o.end) : '')),
+			h('div', {}, '🌴 ' + (o.state === 'Scheduled' && o.end ? _('Réponse automatique activée jusqu\'au {date}', { date: shortDate(o.end) }) : _('Réponse automatique activée'))),
 			h('div', {},
-				h('a', { href: '#', onclick: (e) => { e.preventDefault(); openOof(account) } }, 'Modifier'), ' · ',
+				h('a', { href: '#', onclick: (e) => { e.preventDefault(); openOof(account) } }, _('Modifier')), ' · ',
 				h('a', {
 					href: '#',
 					onclick: async (e) => {
 						e.preventDefault()
 						try {
 							oofState[account.id] = await api('/accounts/' + account.id + '/oof', { method: 'POST', body: { state: 'Disabled', audience: o.audience, internal: o.internal, external: o.external } })
-							toast('Réponse automatique désactivée')
+							toast(_('Réponse automatique désactivée'))
 							renderNav()
 						} catch (err) { toast(err.message, true) }
 					},
-				}, 'Désactiver')))
+				}, _('Désactiver'))))
 	}
 
 	/** Same settings as Outlook's "Automatic replies". */
@@ -782,9 +786,9 @@
 		document.addEventListener('keydown', onKey)
 		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
 		const body = h('div', { class: 'wm-event-form' }, h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
-		overlay.appendChild(h('div', { class: 'wm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Réponse automatique' },
-			h('div', { class: 'wm-modal-header' }, h('h2', {}, 'Réponse automatique – ' + account.email),
-				h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
+		overlay.appendChild(h('div', { class: 'wm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': _('Réponse automatique') },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, _('Réponse automatique – {email}', { email: account.email })),
+				h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
 			body))
 		document.body.appendChild(overlay)
 		let o
@@ -807,18 +811,18 @@
 		const current = o.state === 'Scheduled' && o.end && new Date(o.end) > new Date()
 		const start = h('input', { type: 'datetime-local', name: 'oofStart', value: local(current ? o.start : null, 0) })
 		const end = h('input', { type: 'datetime-local', name: 'oofEnd', value: local(current ? o.end : null, 7) })
-		const internal = h('textarea', { name: 'oofInternal', rows: '5', placeholder: 'Bonjour, je suis absent jusqu\'au … Pour toute urgence, contactez …' })
+		const internal = h('textarea', { name: 'oofInternal', rows: '5', placeholder: _('Bonjour, je suis absent jusqu\'au … Pour toute urgence, contactez …') })
 		internal.value = o.internal || ''
 		const audience = h('select', { name: 'oofAudience' },
-			[['None', 'Ne pas répondre aux personnes extérieures'], ['Known', 'Répondre seulement à mes contacts extérieurs'], ['All', 'Répondre à toutes les personnes extérieures']]
+			[['None', _('Ne pas répondre aux personnes extérieures')], ['Known', _('Répondre seulement à mes contacts extérieurs')], ['All', _('Répondre à toutes les personnes extérieures')]]
 				.map(([v, l]) => h('option', { value: v, selected: o.audience === v }, l)))
 		const differs = h('input', { type: 'checkbox', name: 'oofDiffers', checked: !!o.external && o.external !== o.internal, onchange: sync })
-		const external = h('textarea', { name: 'oofExternal', rows: '4', placeholder: 'Message pour les personnes extérieures' })
+		const external = h('textarea', { name: 'oofExternal', rows: '4', placeholder: _('Message pour les personnes extérieures') })
 		external.value = o.external && o.external !== o.internal ? o.external : ''
-		const period = h('div', { class: 'wm-oof-period' }, h('label', {}, 'Du ', start), h('label', {}, ' au ', end))
-		const externalBox = h('div', {}, h('label', { class: 'wm-radio' }, differs, ' Message différent pour l\'extérieur'), external)
-		const details = h('div', {}, h('label', { class: 'wm-field wm-field-top' }, h('span', {}, 'Message'), internal),
-			h('label', { class: 'wm-field' }, h('span', {}, 'Extérieur'), audience), externalBox)
+		const period = h('div', { class: 'wm-oof-period' }, h('label', {}, _('Du '), start), h('label', {}, _(' au '), end))
+		const externalBox = h('div', {}, h('label', { class: 'wm-radio' }, differs, ' ' + _('Message différent pour l\'extérieur')), external)
+		const details = h('div', {}, h('label', { class: 'wm-field wm-field-top' }, h('span', {}, _('Message')), internal),
+			h('label', { class: 'wm-field' }, h('span', {}, _('Extérieur')), audience), externalBox)
 		function sync() {
 			const st = overlay.querySelector('input[name=oofState]:checked').value
 			period.hidden = st !== 'Scheduled'
@@ -828,7 +832,7 @@
 		}
 		audience.addEventListener('change', sync)
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
-		const save = h('button', { type: 'submit', class: 'primary' }, 'Enregistrer')
+		const save = h('button', { type: 'submit', class: 'primary' }, _('Enregistrer'))
 		clear(body)
 		body.appendChild(h('form', {
 			class: 'wm-event-form',
@@ -851,9 +855,9 @@
 					})
 					close()
 					const r = oofState[account.id]
-					toast(r.state === 'Disabled' ? 'Réponse automatique désactivée'
-						: r.state === 'Enabled' ? 'Réponse automatique activée'
-							: 'Réponse automatique programmée du ' + shortDate(r.start) + ' au ' + shortDate(r.end))
+					toast(r.state === 'Disabled' ? _('Réponse automatique désactivée')
+						: r.state === 'Enabled' ? _('Réponse automatique activée')
+							: _('Réponse automatique programmée du {start} au {end}', { start: shortDate(r.start), end: shortDate(r.end) }))
 					if (account.id === state.accountId) renderNav()
 				} catch (ex) {
 					err.textContent = ex.message
@@ -862,16 +866,16 @@
 			},
 		},
 		h('div', { class: 'wm-oof-states' },
-			radio('Disabled', 'Ne pas envoyer de réponse automatique'),
-			radio('Enabled', 'Envoyer une réponse automatique'),
-			radio('Scheduled', 'Envoyer une réponse automatique pendant une période')),
+			radio('Disabled', _('Ne pas envoyer de réponse automatique')),
+			radio('Enabled', _('Envoyer une réponse automatique')),
+			radio('Scheduled', _('Envoyer une réponse automatique pendant une période'))),
 		period, details, err,
-		h('div', { class: 'wm-compose-actions' }, save, h('button', { type: 'button', onclick: close }, 'Annuler'))))
+		h('div', { class: 'wm-compose-actions' }, save, h('button', { type: 'button', onclick: close }, _('Annuler')))))
 		sync()
 	}
 
 	function openRules(account, prefill) {
-		if (!window.WebmailRules) { toast('Module indisponible', true); return }
+		if (!window.WebmailRules) { toast(_('Module indisponible'), true); return }
 		window.WebmailRules.open(core, account, prefill)
 	}
 
@@ -880,7 +884,7 @@
 		const account = state.accounts.find((a) => a.id === state.accountId)
 		const from = m.from && m.from.email && !m.from.email.startsWith('/') ? m.from.email : ''
 		openRules(account, {
-			name: 'Messages de ' + ((m.from && (m.from.name || m.from.email)) || 'cet expéditeur'),
+			name: _('Messages de {sender}', { sender: (m.from && (m.from.name || m.from.email)) || _('cet expéditeur') }),
 			conditions: from ? { from: [from] } : { subject: [m.subject || ''] },
 			actions: {},
 		})
@@ -985,29 +989,29 @@
 		const searchInput = h('input', {
 			type: 'search',
 			class: 'wm-search',
-			placeholder: state.filters.all ? 'Rechercher dans tous les dossiers' : 'Rechercher dans ' + (f ? f.name : 'le dossier'),
+			placeholder: state.filters.all ? _('Rechercher dans tous les dossiers') : _('Rechercher dans {folder}', { folder: f ? f.name : _('le dossier') }),
 			value: typing ? typing.value : state.query,
-			'aria-label': 'Rechercher',
+			'aria-label': _('Rechercher'),
 		})
 		const form = h('form', {
 			class: 'wm-list-header',
 			onsubmit: (e) => { e.preventDefault(); state.query = searchInput.value.trim(); loadMessages(true) },
 		},
-		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': 'Dossiers', onclick: () => setView('nav') }, '☰'),
+		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Dossiers'), onclick: () => setView('nav') }, '☰'),
 		searchInput,
 		h('button', {
 			type: 'button',
 			class: 'wm-icon-btn wm-filter-toggle' + (state.showFilters || filtersOn() ? ' active' : ''),
-			title: 'Filtres',
-			'aria-label': 'Filtres',
+			title: _('Filtres'),
+			'aria-label': _('Filtres'),
 			'aria-expanded': state.showFilters ? 'true' : 'false',
 			onclick: () => { state.showFilters = !state.showFilters; renderList(state.loadingList && !state.messages.length) },
 		}, '⏷' + (filtersOn() ? ' ' + filtersOn() : '')),
 		h('button', {
 			type: 'button',
 			class: 'wm-icon-btn wm-group-toggle' + (state.grouped ? ' active' : ''),
-			title: state.grouped ? 'Afficher chaque message' : 'Regrouper par conversation',
-			'aria-label': 'Regrouper par conversation',
+			title: state.grouped ? _('Afficher chaque message') : _('Regrouper par conversation'),
+			'aria-label': _('Regrouper par conversation'),
 			'aria-pressed': state.grouped ? 'true' : 'false',
 			onclick: () => {
 				state.grouped = !state.grouped
@@ -1016,7 +1020,7 @@
 				loadMessages(true)
 			},
 		}, '🗨'),
-		h('button', { type: 'button', class: 'wm-icon-btn', title: 'Actualiser', 'aria-label': 'Actualiser', onclick: () => { loadFolders(); loadMessages(true) } }, '⟳'),
+		h('button', { type: 'button', class: 'wm-icon-btn', title: _('Actualiser'), 'aria-label': _('Actualiser'), onclick: () => { loadFolders(); loadMessages(true) } }, '⟳'),
 		)
 		listEl.appendChild(form)
 		if (state.showFilters || filtersOn()) listEl.appendChild(filterBar(searchInput))
@@ -1030,12 +1034,16 @@
 		}
 
 		if (isSearching()) {
-			const where = state.filters.all ? 'dans tous les dossiers' : 'dans ' + (f ? f.name : 'le dossier')
+			const folder = f ? f.name : _('le dossier')
+			const all = state.filters.all
+			const what = /^category:"[^"]*"$/.test(state.query)
+				? (all ? _('Catégorie « {name} » dans tous les dossiers', { name: state.query.slice(10, -1) }) : _('Catégorie « {name} » dans {folder}', { name: state.query.slice(10, -1), folder }))
+				: state.query
+					? (all ? _('Résultats pour « {query} » dans tous les dossiers', { query: state.query }) : _('Résultats pour « {query} » dans {folder}', { query: state.query, folder }))
+					: (all ? _('Messages filtrés dans tous les dossiers') : _('Messages filtrés dans {folder}', { folder }))
 			listEl.appendChild(h('div', { class: 'wm-search-info' },
-				(/^category:"[^"]*"$/.test(state.query) ? 'Catégorie « ' + state.query.slice(10, -1) + ' » '
-					: state.query ? 'Résultats pour « ' + state.query + ' » ' : 'Messages filtrés ') + where
-				+ (state.loadingList ? '' : ' (' + state.total + ') '),
-				h('a', { href: '#', onclick: (e) => { e.preventDefault(); resetSearch(); loadMessages(true) } }, 'effacer')))
+				what + (state.loadingList ? '' : ' (' + state.total + ') '),
+				h('a', { href: '#', onclick: (e) => { e.preventDefault(); resetSearch(); loadMessages(true) } }, _('effacer'))))
 		}
 
 		if (loading) {
@@ -1043,7 +1051,7 @@
 			return
 		}
 		if (state.messages.length === 0) {
-			listEl.appendChild(h('div', { class: 'wm-empty' }, isSearching() ? 'Aucun résultat' : 'Aucun message'))
+			listEl.appendChild(h('div', { class: 'wm-empty' }, isSearching() ? _('Aucun résultat') : _('Aucun message')))
 			return
 		}
 
@@ -1052,7 +1060,7 @@
 		const conv = grouped()
 		const ul = h('ul', { class: 'wm-messages' + (conv ? ' wm-conversations' : ''), role: 'list' })
 		state.messages.forEach((m) => {
-			const who = showRecipients ? ('À : ' + (m.displayTo || '')) : (personShort(m.from) || '(expéditeur inconnu)')
+			const who = showRecipients ? _('À : {names}', { names: m.displayTo || '' }) : (personShort(m.from) || _('(expéditeur inconnu)'))
 			const li = h('li', {
 				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : '') + (state.checked.has(m.id) ? ' checked' : ''),
 				tabindex: '0',
@@ -1069,7 +1077,7 @@
 					e.dataTransfer.setData('application/x-webmail-ids', JSON.stringify(ids))
 					e.dataTransfer.effectAllowed = 'move'
 					// the image shown under the pointer, kept until the drag ends
-					dragGhost = h('div', { class: 'wm-drag-ghost' }, ids.length > 1 ? ids.length + ' messages' : (m.subject || '(sans objet)'))
+					dragGhost = h('div', { class: 'wm-drag-ghost' }, ids.length > 1 ? _('{count} messages', { count: ids.length }) : (m.subject || _('(sans objet)')))
 					document.body.appendChild(dragGhost)
 					e.dataTransfer.setDragImage(dragGhost, 10, 10)
 					root.classList.add('wm-dragging')
@@ -1087,23 +1095,23 @@
 				type: 'checkbox',
 				class: 'wm-check',
 				checked: state.checked.has(m.id),
-				'aria-label': 'Sélectionner « ' + (m.subject || '(sans objet)') + ' »',
+				'aria-label': _('Sélectionner « {subject} »', { subject: m.subject || _('(sans objet)') }),
 				onclick: (e) => { e.stopPropagation(); if (e.shiftKey) { e.preventDefault(); checkRange(m.id) } else toggleChecked(m.id) },
 			}),
 			h('div', { class: 'wm-message-line1' },
 				h('span', { class: 'wm-message-from' }, who),
-				conv && m.count > 1 ? h('span', { class: 'wm-thread-count', title: m.count + ' messages' + (m.unreadCount ? ', dont ' + m.unreadCount + ' non lu' + (m.unreadCount > 1 ? 's' : '') : '') }, String(m.count)) : null,
+				conv && m.count > 1 ? h('span', { class: 'wm-thread-count', title: !m.unreadCount ? _('{count} messages', { count: m.count }) : m.unreadCount > 1 ? _('{count} messages, dont {unread} non lus', { count: m.count, unread: m.unreadCount }) : _('{count} messages, dont {unread} non lu', { count: m.count, unread: m.unreadCount }) }, String(m.count)) : null,
 				m.folderId && state.filters.all ? h('span', { class: 'wm-message-folder' }, folderName(m.folderId)) : null,
 				h('span', { class: 'wm-message-date' }, formatDate(m.date))),
 			h('div', { class: 'wm-message-line2' },
-				m.importance === 'High' ? h('span', { class: 'wm-important', title: 'Importance haute' }, '❗') : null,
-				h('span', { class: 'wm-message-subject' }, m.subject || '(sans objet)'),
+				m.importance === 'High' ? h('span', { class: 'wm-important', title: _('Importance haute') }, '❗') : null,
+				h('span', { class: 'wm-message-subject' }, m.subject || _('(sans objet)')),
 				categoryPills(m.categories),
-				m.hasAttachments ? h('span', { class: 'wm-attach-icon', title: 'Pièce jointe' }, '📎') : null,
+				m.hasAttachments ? h('span', { class: 'wm-attach-icon', title: _('Pièce jointe') }, '📎') : null,
 				h('button', {
 					class: 'wm-flag' + (m.flagged ? ' on' : ''),
-					title: m.flagged ? 'Retirer le suivi' : 'Assurer un suivi',
-					'aria-label': 'Suivi',
+					title: m.flagged ? _('Retirer le suivi') : _('Assurer un suivi'),
+					'aria-label': _('Suivi'),
 					onclick: (e) => { e.stopPropagation(); toggleFlag(m) },
 				}, '⚑')),
 			m.preview ? h('div', { class: 'wm-message-preview' }, m.preview) : null,
@@ -1115,7 +1123,7 @@
 		if (state.hasMore) {
 			// the next page loads by itself when the end of the list comes into view
 			const more = h('div', { class: 'wm-center wm-list-more' },
-				h('button', { onclick: () => loadMessages(false) }, 'Charger plus (' + state.messages.length + ' / ' + state.total + ')'))
+				h('button', { onclick: () => loadMessages(false) }, _('Charger plus ({loaded} / {total})', { loaded: state.messages.length, total: state.total })))
 			listEl.appendChild(more)
 			if ('IntersectionObserver' in window) {
 				listObserver = new IntersectionObserver((entries) => {
@@ -1183,13 +1191,13 @@
 		const move = h('select', {
 			class: 'wm-move',
 			name: 'bulkMove',
-			'aria-label': 'Déplacer les messages sélectionnés vers',
+			'aria-label': _('Déplacer les messages sélectionnés vers'),
 			onchange: (e) => { if (e.target.value) moveMessages(ids(), e.target.value) },
-		}, h('option', { value: '' }, 'Déplacer vers…'),
+		}, h('option', { value: '' }, _('Déplacer vers…')),
 		moveTargets().map((f) => h('option', { value: f.id }, f.name)))
 		const allTicked = state.checked.size === state.messages.length
-		bulkBarEl.appendChild(h('div', { class: 'wm-bulk', role: 'toolbar', 'aria-label': 'Messages sélectionnés' },
-			h('strong', {}, state.checked.size + ' sélectionné' + (state.checked.size > 1 ? 's' : '')),
+		bulkBarEl.appendChild(h('div', { class: 'wm-bulk', role: 'toolbar', 'aria-label': _('Messages sélectionnés') },
+			h('strong', {}, state.checked.size > 1 ? _('{count} sélectionnés', { count: state.checked.size }) : _('{count} sélectionné', { count: state.checked.size })),
 			h('button', {
 				type: 'button',
 				class: 'wm-small',
@@ -1197,20 +1205,20 @@
 					if (allTicked) state.checked.clear(); else state.messages.forEach((m) => state.checked.add(m.id))
 					refreshChecks()
 				},
-			}, allTicked ? 'Tout désélectionner' : 'Tout sélectionner'),
-			h('button', { type: 'button', class: 'wm-small', onclick: () => setReadMany(ids(), true) }, 'Lu'),
-			h('button', { type: 'button', class: 'wm-small', onclick: () => setReadMany(ids(), false) }, 'Non lu'),
-			h('button', { type: 'button', class: 'wm-small', onclick: () => setFlagMany(ids()) }, '⚑ Suivi'),
+			}, allTicked ? _('Tout désélectionner') : _('Tout sélectionner')),
+			h('button', { type: 'button', class: 'wm-small', onclick: () => setReadMany(ids(), true) }, _('Lu')),
+			h('button', { type: 'button', class: 'wm-small', onclick: () => setReadMany(ids(), false) }, _('Non lu')),
+			h('button', { type: 'button', class: 'wm-small', onclick: () => setFlagMany(ids()) }, '⚑ ' + _('Suivi')),
 			move,
 			h('button', { type: 'button', class: 'wm-small wm-danger', onclick: () => deleteMessages(ids(), role === 'deleteditems') },
-				role === 'deleteditems' ? 'Supprimer définitivement' : '🗑 Supprimer'),
+				role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
 			junkButton(null, role, ids),
 			h('button', {
 				type: 'button',
 				class: 'wm-small wm-cat-btn',
 				onclick: (e) => categoryMenu(e.currentTarget, () => state.messages.filter((x) => state.checked.has(x.id))),
-			}, '🏷 Catégoriser'),
-			h('button', { type: 'button', class: 'wm-small wm-icon-btn', 'aria-label': 'Annuler la sélection', title: 'Annuler la sélection (Échap)', onclick: clearChecked }, '✕')))
+			}, '🏷 ' + _('Catégoriser')),
+			h('button', { type: 'button', class: 'wm-small wm-icon-btn', 'aria-label': _('Annuler la sélection'), title: _('Annuler la sélection (Échap)'), onclick: clearChecked }, '✕')))
 	}
 
 	// ------------------------------------------------------------------
@@ -1252,7 +1260,7 @@
 		return h('span', { class: 'wm-cats' }, names.map((n) => {
 			const pill = h(clickable ? 'button' : 'span', {
 				class: 'wm-cat',
-				title: clickable ? 'Tous les messages de la catégorie « ' + n + ' »' : 'Catégorie ' + n,
+				title: clickable ? _('Tous les messages de la catégorie « {name} »', { name: n }) : _('Catégorie {name}', { name: n }),
 				dataset: { name: n },
 				onclick: clickable ? () => searchCategory(n) : null,
 			}, n)
@@ -1303,7 +1311,7 @@
 	/** The menu of the 🏷 button: tick the categories, or make a new one. */
 	function categoryMenu(anchor, getMessages) {
 		document.querySelectorAll('.wm-cat-menu').forEach((x) => x.remove())
-		const menu = h('div', { class: 'wm-cat-menu', role: 'dialog', 'aria-label': 'Catégories' })
+		const menu = h('div', { class: 'wm-cat-menu', role: 'dialog', 'aria-label': _('Catégories') })
 		const close = () => { menu.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', esc, true) }
 		const outside = (e) => { if (!menu.contains(e.target) && e.target !== anchor) close() }
 		const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close() } }
@@ -1324,12 +1332,12 @@
 				paintCategory(dot, name)
 				list.appendChild(h('label', { class: 'wm-cat-choice' }, box, dot, ' ' + name))
 			})
-			if (!known.length) list.appendChild(h('p', { class: 'wm-muted' }, 'Aucune catégorie pour l\'instant'))
-			const name = h('input', { type: 'text', name: 'newCategory', placeholder: 'Nouvelle catégorie', maxlength: '255' })
-			const color = h('select', { name: 'newCategoryColor', 'aria-label': 'Couleur' },
+			if (!known.length) list.appendChild(h('p', { class: 'wm-muted' }, _('Aucune catégorie pour l\'instant')))
+			const name = h('input', { type: 'text', name: 'newCategory', placeholder: _('Nouvelle catégorie'), maxlength: '255' })
+			const color = h('select', { name: 'newCategoryColor', 'aria-label': _('Couleur') },
 				categories.colorNames.map((l, i) => h('option', { value: String(i), selected: i === 7 }, l)))
 			const err = h('div', { class: 'wm-form-error' })
-			menu.append(h('div', { class: 'wm-cat-title' }, 'Catégories'), list,
+			menu.append(h('div', { class: 'wm-cat-title' }, _('Catégories')), list,
 				h('form', {
 					class: 'wm-cat-new',
 					onsubmit: async (e) => {
@@ -1344,7 +1352,7 @@
 							fill()
 						} catch (ex) { err.textContent = ex.message }
 					},
-				}, name, color, h('button', { type: 'submit', class: 'primary' }, 'Créer'), err))
+				}, name, color, h('button', { type: 'submit', class: 'primary' }, _('Créer')), err))
 		}
 		fill()
 		document.body.appendChild(menu)
@@ -1364,7 +1372,9 @@
 		clearChecked()
 		try {
 			await api('/accounts/' + state.accountId + '/flags', { method: 'POST', body: { itemIds: ids, flag: 'read', value } })
-			toast(ids.length + ' message' + (ids.length > 1 ? 's marqués' : ' marqué') + (value ? ' comme lu' : ' comme non lu') + (ids.length > 1 ? 's' : ''))
+			toast(ids.length > 1
+				? (value ? _('{count} messages marqués comme lus', { count: ids.length }) : _('{count} messages marqués comme non lus', { count: ids.length }))
+				: (value ? _('{count} message marqué comme lu', { count: ids.length }) : _('{count} message marqué comme non lu', { count: ids.length })))
 		} catch (e) {
 			changed.forEach((m) => updateListItem(m.id, { isRead: !value }))
 			toast(e.message, true)
@@ -1423,11 +1433,11 @@
 			class: 'wm-folder-menu-item' + (danger ? ' wm-danger' : ''),
 			onclick: () => { close(); action() },
 		}, label)
-		const menu = h('div', { class: 'wm-folder-menu', role: 'menu', 'aria-label': 'Dossier ' + f.name },
-			item('＋ Nouveau sous-dossier', () => createFolder(f)),
-			fixed ? null : item('✏️ Renommer', () => renameFolder(f)),
-			fixed ? null : item('↪ Déplacer…', () => moveFolder(f)),
-			fixed ? null : item('🗑 Supprimer', () => deleteFolder(f), true))
+		const menu = h('div', { class: 'wm-folder-menu', role: 'menu', 'aria-label': _('Dossier {name}', { name: f.name }) },
+			item('＋ ' + _('Nouveau sous-dossier'), () => createFolder(f)),
+			fixed ? null : item('✏️ ' + _('Renommer'), () => renameFolder(f)),
+			fixed ? null : item('↪ ' + _('Déplacer…'), () => moveFolder(f)),
+			fixed ? null : item('🗑 ' + _('Supprimer'), () => deleteFolder(f), true))
 		const close = () => { menu.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', onKey, true) }
 		const outside = (e) => { if (!menu.contains(e.target)) close() }
 		const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close() } }
@@ -1456,13 +1466,13 @@
 				? h('select', { name: 'folderChoice' }, choices.map(([v, l]) => h('option', { value: v }, l)))
 				: h('input', { type: 'text', name: 'folderName', value, maxlength: '255', required: true })
 			overlay.appendChild(h('div', { class: 'wm-modal wm-modal-small', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
-				h('div', { class: 'wm-modal-header' }, h('h2', {}, title), h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: () => done(null) }, '✕')),
+				h('div', { class: 'wm-modal-header' }, h('h2', {}, title), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: () => done(null) }, '✕')),
 				h('form', {
 					class: 'wm-event-form',
 					onsubmit: (e) => { e.preventDefault(); const v = field.value.trim ? field.value.trim() : field.value; if (choices || v) done(v) },
 				},
 				h('label', { class: 'wm-field' }, h('span', {}, label), field),
-				h('div', { class: 'wm-compose-actions' }, h('button', { type: 'submit', class: 'primary' }, confirmLabel), h('button', { type: 'button', onclick: () => done(null) }, 'Annuler')))))
+				h('div', { class: 'wm-compose-actions' }, h('button', { type: 'submit', class: 'primary' }, confirmLabel), h('button', { type: 'button', onclick: () => done(null) }, _('Annuler'))))))
 			document.body.appendChild(overlay)
 			field.focus()
 			if (field.select) field.select()
@@ -1482,13 +1492,13 @@
 	}
 
 	async function createFolder(parent) {
-		const name = await askFolder({ title: parent ? 'Nouveau dossier dans « ' + parent.name + ' »' : 'Nouveau dossier', label: 'Nom', confirmLabel: 'Créer' })
-		if (name) await folderAction('', { name, parentId: parent ? parent.id : '' }, 'Dossier « ' + name + ' » créé')
+		const name = await askFolder({ title: parent ? _('Nouveau dossier dans « {name} »', { name: parent.name }) : _('Nouveau dossier'), label: _('Nom'), confirmLabel: _('Créer') })
+		if (name) await folderAction('', { name, parentId: parent ? parent.id : '' }, _('Dossier « {name} » créé', { name }))
 	}
 
 	async function renameFolder(f) {
-		const name = await askFolder({ title: 'Renommer « ' + f.name + ' »', label: 'Nouveau nom', value: f.name, confirmLabel: 'Renommer' })
-		if (name && name !== f.name) await folderAction('/rename', { folderId: f.id, name }, 'Dossier renommé en « ' + name + ' »')
+		const name = await askFolder({ title: _('Renommer « {name} »', { name: f.name }), label: _('Nouveau nom'), value: f.name, confirmLabel: _('Renommer') })
+		if (name && name !== f.name) await folderAction('/rename', { folderId: f.id, name }, _('Dossier renommé en « {name} »', { name }))
 	}
 
 	async function moveFolder(f) {
@@ -1499,17 +1509,18 @@
 			grew = false
 			state.folders.forEach((x) => { if (x.parentId && inside.has(x.parentId) && !inside.has(x.id)) { inside.add(x.id); grew = true } })
 		}
-		const choices = [['', '(en haut de la boîte aux lettres)']].concat(state.folders.filter((x) => !inside.has(x.id) && x.id !== f.parentId).map((x) => [x.id, x.name]))
-		const target = await askFolder({ title: 'Déplacer « ' + f.name + ' »', label: 'Dans', choices, confirmLabel: 'Déplacer' })
+		const choices = [['', _('(en haut de la boîte aux lettres)')]].concat(state.folders.filter((x) => !inside.has(x.id) && x.id !== f.parentId).map((x) => [x.id, x.name]))
+		const target = await askFolder({ title: _('Déplacer « {name} »', { name: f.name }), label: _('Dans'), choices, confirmLabel: _('Déplacer') })
 		if (target === null) return
-		const where = target ? '« ' + folderName(target) + ' »' : 'en haut de la boîte aux lettres'
-		await folderAction('/move', { folderId: f.id, parentId: target }, 'Dossier « ' + f.name + ' » déplacé ' + (target ? 'dans ' : '') + where)
+		await folderAction('/move', { folderId: f.id, parentId: target }, target
+			? _('Dossier « {name} » déplacé dans « {target} »', { name: f.name, target: folderName(target) })
+			: _('Dossier « {name} » déplacé en haut de la boîte aux lettres', { name: f.name }))
 	}
 
 	async function deleteFolder(f) {
-		if (!window.confirm('Supprimer le dossier « ' + f.name + ' » et tout son contenu ? Il sera placé dans « Éléments supprimés ».')) return
+		if (!window.confirm(_('Supprimer le dossier « {name} » et tout son contenu ? Il sera placé dans « Éléments supprimés ».', { name: f.name }))) return
 		const wasOpen = state.folderId === f.id
-		if (await folderAction('/delete', { folderId: f.id }, 'Dossier « ' + f.name + ' » placé dans les éléments supprimés') && wasOpen) {
+		if (await folderAction('/delete', { folderId: f.id }, _('Dossier « {name} » placé dans les éléments supprimés', { name: f.name })) && wasOpen) {
 			const inbox = state.folders.find((x) => x.role === 'inbox')
 			if (inbox) selectFolder(inbox.id)
 		}
@@ -1535,14 +1546,14 @@
 			dataset: { filter: key },
 			onclick: () => { f[key] = !f[key]; apply() },
 		}, label)
-		const period = h('select', { class: 'wm-chip-select', name: 'since', 'aria-label': 'Période', onchange: (e) => { f.since = e.target.value; apply() } },
-			[['', 'Toute période'], ['7', '7 derniers jours'], ['30', '30 derniers jours'], ['365', '12 derniers mois']]
+		const period = h('select', { class: 'wm-chip-select', name: 'since', 'aria-label': _('Période'), onchange: (e) => { f.since = e.target.value; apply() } },
+			[['', _('Toute période')], ['7', _('7 derniers jours')], ['30', _('30 derniers jours')], ['365', _('12 derniers mois')]]
 				.map(([v, l]) => h('option', { value: v, selected: f.since === v }, l)))
 		const all = h('label', { class: 'wm-chip-check' },
 			h('input', { type: 'checkbox', name: 'allFolders', checked: f.all, onchange: (e) => { f.all = e.target.checked; if (isSearching() || searchInput.value.trim()) apply() } }),
-			' Tous les dossiers')
-		return h('div', { class: 'wm-filters', role: 'group', 'aria-label': 'Filtres' },
-			chip('unread', 'Non lus'), chip('attachments', '📎 Pièces jointes'), chip('flagged', '⚑ Suivis'), period, all)
+			' ' + _('Tous les dossiers'))
+		return h('div', { class: 'wm-filters', role: 'group', 'aria-label': _('Filtres') },
+			chip('unread', _('Non lus')), chip('attachments', '📎 ' + _('Pièces jointes')), chip('flagged', '⚑ ' + _('Suivis')), period, all)
 	}
 
 	function listItemEl(id) {
@@ -1566,7 +1577,7 @@
 		const flag = li.querySelector('.wm-flag')
 		if (flag) {
 			flag.classList.toggle('on', !!m.flagged)
-			flag.title = m.flagged ? 'Retirer le suivi' : 'Assurer un suivi'
+			flag.title = m.flagged ? _('Retirer le suivi') : _('Assurer un suivi')
 		}
 		saveListCache()
 	}
@@ -1590,7 +1601,7 @@
 			if (state.current && state.current.id === m.id) {
 				state.current.flagged = v
 				const btn = detailEl.querySelector('.wm-flag-btn')
-				if (btn) { btn.classList.toggle('on', v); btn.textContent = v ? '⚑ Suivi ✓' : '⚑ Suivi' }
+				if (btn) { btn.classList.toggle('on', v); btn.textContent = v ? '⚑ ' + _('Suivi') + ' ✓' : '⚑ ' + _('Suivi') }
 			}
 		}
 		apply(value)
@@ -1609,7 +1620,7 @@
 	function renderEmptyDetail() {
 		state.current = null
 		clear(detailEl)
-		detailEl.appendChild(h('div', { class: 'wm-empty wm-empty-detail' }, h('div', { class: 'wm-empty-icon' }, '✉️'), 'Sélectionnez un message'))
+		detailEl.appendChild(h('div', { class: 'wm-empty wm-empty-detail' }, h('div', { class: 'wm-empty-icon' }, '✉️'), _('Sélectionnez un message')))
 	}
 
 	let hoverTimer = null
@@ -1713,25 +1724,25 @@
 
 		const moveSelect = h('select', {
 			class: 'wm-move',
-			'aria-label': 'Déplacer vers',
+			'aria-label': _('Déplacer vers'),
 			onchange: (e) => { if (e.target.value) moveMessages([m.id], e.target.value) },
 		},
-		h('option', { value: '' }, 'Déplacer vers…'),
+		h('option', { value: '' }, _('Déplacer vers…')),
 		moveTargets().map((f) => h('option', { value: f.id }, f.name)))
 
 		const toolbar = h('div', { class: 'wm-toolbar' },
-			h('button', { class: 'wm-back wm-mobile-only', onclick: () => setView('list'), 'aria-label': 'Retour' }, '←'),
-			h('button', { onclick: () => openCompose('reply', m) }, '↩ Répondre'),
-			h('button', { onclick: () => openCompose('replyAll', m) }, '↩↩ Répondre à tous'),
-			h('button', { onclick: () => openCompose('forward', m) }, '↪ Transférer'),
-			h('button', { onclick: () => markUnread(m) }, 'Non lu'),
-			h('button', { class: m.flagged ? 'wm-flag-btn on' : 'wm-flag-btn', onclick: () => toggleFlag(m) }, m.flagged ? '⚑ Suivi ✓' : '⚑ Suivi'),
+			h('button', { class: 'wm-back wm-mobile-only', onclick: () => setView('list'), 'aria-label': _('Retour') }, '←'),
+			h('button', { onclick: () => openCompose('reply', m) }, '↩ ' + _('Répondre')),
+			h('button', { onclick: () => openCompose('replyAll', m) }, '↩↩ ' + _('Répondre à tous')),
+			h('button', { onclick: () => openCompose('forward', m) }, '↪ ' + _('Transférer')),
+			h('button', { onclick: () => markUnread(m) }, _('Non lu')),
+			h('button', { class: m.flagged ? 'wm-flag-btn on' : 'wm-flag-btn', onclick: () => toggleFlag(m) }, m.flagged ? '⚑ ' + _('Suivi') + ' ✓' : '⚑ ' + _('Suivi')),
 			moveSelect,
-			h('button', { class: 'wm-danger', onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? 'Supprimer définitivement' : '🗑 Supprimer'),
+			h('button', { class: 'wm-danger', onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
 			junkButton([m.id], role),
-			h('button', { class: 'wm-cat-btn', title: 'Catégoriser', 'aria-label': 'Catégoriser', onclick: (e) => categoryMenu(e.currentTarget, () => [m]) }, '🏷'),
-			h('button', { class: 'wm-print-btn', title: 'Imprimer', 'aria-label': 'Imprimer', onclick: () => printMessage(m) }, '🖨'),
-			h('button', { class: 'wm-rule-from-msg', title: 'Créer une règle pour les messages de cet expéditeur', onclick: () => ruleFromMessage(m) }, '📋 Règle…'),
+			h('button', { class: 'wm-cat-btn', title: _('Catégoriser'), 'aria-label': _('Catégoriser'), onclick: (e) => categoryMenu(e.currentTarget, () => [m]) }, '🏷'),
+			h('button', { class: 'wm-print-btn', title: _('Imprimer'), 'aria-label': _('Imprimer'), onclick: () => printMessage(m) }, '🖨'),
+			h('button', { class: 'wm-rule-from-msg', title: _('Créer une règle pour les messages de cet expéditeur'), onclick: () => ruleFromMessage(m) }, '📋 ' + _('Règle…')),
 		)
 		detailEl.appendChild(toolbar)
 
@@ -1740,17 +1751,17 @@
 			: null
 
 		detailEl.appendChild(h('header', { class: 'wm-message-header' },
-			h('h2', { class: 'wm-subject' }, m.subject || '(sans objet)'),
+			h('h2', { class: 'wm-subject' }, m.subject || _('(sans objet)')),
 			h('div', { class: 'wm-header-cats' }, categoryPills(m.categories, true)),
-			h('div', { class: 'wm-header-line' }, h('span', { class: 'wm-header-label' }, 'De'), h('strong', {}, personLabel(m.from))),
-			recipients('À', m.to),
+			h('div', { class: 'wm-header-line' }, h('span', { class: 'wm-header-label' }, _('De')), h('strong', {}, personLabel(m.from))),
+			recipients(_('À'), m.to),
 			recipients('Cc', m.cc),
-			recipients('Cci', m.bcc),
+			recipients(_('Cci'), m.bcc),
 			h('div', { class: 'wm-header-line wm-muted' }, formatDate(m.date, true)),
 		))
 
 		// the other messages of the conversation (the replies sent included)
-		const thread = h('section', { class: 'wm-thread', hidden: true, 'aria-label': 'Conversation' })
+		const thread = h('section', { class: 'wm-thread', hidden: true, 'aria-label': _('Conversation') })
 		detailEl.appendChild(thread)
 		if (m.conversationId) loadThread(m, thread)
 
@@ -1760,8 +1771,8 @@
 
 		if (m.hasRemoteContent && !m.remoteAllowed) {
 			detailEl.appendChild(h('div', { class: 'wm-remote-banner' },
-				'Les images distantes ont été bloquées pour protéger votre vie privée. ',
-				h('button', { onclick: () => openMessage(m.id, true) }, 'Afficher les images')))
+				_('Les images distantes ont été bloquées pour protéger votre vie privée.') + ' ',
+				h('button', { onclick: () => openMessage(m.id, true) }, _('Afficher les images'))))
 		}
 
 		if (m.attachments && m.attachments.length) {
@@ -1772,18 +1783,18 @@
 				const open = kind ? () => openPreview(previewable, previewable.indexOf(a)) : null
 				list.appendChild(h('li', { class: 'wm-attachment' + (kind === 'image' ? ' wm-attachment-image' : '') },
 					kind === 'image'
-						? h('button', { type: 'button', class: 'wm-attachment-thumb', title: 'Aperçu de ' + a.name, onclick: open },
+						? h('button', { type: 'button', class: 'wm-attachment-thumb', title: _('Aperçu de {name}', { name: a.name }), onclick: open },
 							h('img', { src: attachmentUrl(a, true), alt: '', loading: 'lazy' }))
 						: null,
-					h('a', { href: attachmentUrl(a), class: 'wm-attachment-name', title: 'Télécharger', download: a.name }, '📎 ' + a.name),
+					h('a', { href: attachmentUrl(a), class: 'wm-attachment-name', title: _('Télécharger'), download: a.name }, '📎 ' + a.name),
 					h('span', { class: 'wm-muted' }, ' ' + formatSize(a.size) + ' '),
-					kind ? h('button', { class: 'wm-small wm-preview-btn', onclick: open }, '👁 Aperçu') : null,
-					h('button', { class: 'wm-small', onclick: () => saveAttachment(a) }, 'Enregistrer dans Fichiers')))
+					kind ? h('button', { class: 'wm-small wm-preview-btn', onclick: open }, '👁 ' + _('Aperçu')) : null,
+					h('button', { class: 'wm-small', onclick: () => saveAttachment(a) }, _('Enregistrer dans Fichiers'))))
 			})
 			detailEl.appendChild(list)
 			if (m.attachments.filter((a) => !a.isItem).length > 1) {
 				detailEl.appendChild(h('div', { class: 'wm-attachments-all' },
-					h('button', { class: 'wm-small', onclick: () => saveAllAttachments(m.attachments.filter((a) => !a.isItem)) }, '💾 Tout enregistrer dans Fichiers')))
+					h('button', { class: 'wm-small', onclick: () => saveAllAttachments(m.attachments.filter((a) => !a.isItem)) }, '💾 ' + _('Tout enregistrer dans Fichiers'))))
 			}
 		}
 
@@ -1816,10 +1827,10 @@
 				const open = list.hidden
 				list.hidden = !open
 				toggle.setAttribute('aria-expanded', String(open))
-				toggle.textContent = (open ? '▾ ' : '▸ ') + 'Conversation : ' + items.length + ' messages'
+				toggle.textContent = (open ? '▾ ' : '▸ ') + _('Conversation : {count} messages', { count: items.length })
 				try { localStorage.setItem('webmail.threadOpen', open ? '1' : '0') } catch (e) { /* ignore */ }
 			},
-		}, '▸ Conversation : ' + items.length + ' messages')
+		}, '▸ ' + _('Conversation : {count} messages', { count: items.length }))
 		items.forEach((x) => {
 			const own = state.folders.find((f) => f.id === x.folderId)
 			const isThis = x.id === m.id
@@ -1846,8 +1857,8 @@
 							body.dataset.loaded = '1'
 							body.append(
 								h('div', { class: 'wm-thread-actions' },
-									h('button', { type: 'button', class: 'wm-small', onclick: () => openMessage(x.id) }, 'Ouvrir ce message'),
-									h('button', { type: 'button', class: 'wm-small', onclick: () => openCompose('reply', full) }, '↩ Répondre')),
+									h('button', { type: 'button', class: 'wm-small', onclick: () => openMessage(x.id) }, _('Ouvrir ce message')),
+									h('button', { type: 'button', class: 'wm-small', onclick: () => openCompose('reply', full) }, '↩ ' + _('Répondre'))),
 								bodyFrame(full.body))
 						} catch (err) {
 							clear(body)
@@ -1855,9 +1866,9 @@
 						}
 					},
 				},
-				h('span', { class: 'wm-thread-from' }, personShort(x.from) || x.displayTo || '(expéditeur inconnu)'),
+				h('span', { class: 'wm-thread-from' }, personShort(x.from) || x.displayTo || _('(expéditeur inconnu)')),
 				(() => {
-					const tags = [own && own.id !== m.folderId ? own.name : null, isThis ? 'ce message' : null].filter(Boolean)
+					const tags = [own && own.id !== m.folderId ? own.name : null, isThis ? _('ce message') : null].filter(Boolean)
 					return tags.length ? h('span', { class: 'wm-thread-folder' }, tags.join(' · ')) : h('span')
 				})(),
 				h('span', { class: 'wm-thread-date' }, formatDate(x.date)),
@@ -1869,8 +1880,10 @@
 		try { open = localStorage.getItem('webmail.threadOpen') === '1' } catch (e) { /* ignore */ }
 		list.hidden = !open
 		toggle.setAttribute('aria-expanded', String(open))
-		toggle.textContent = (open ? '▾ ' : '▸ ') + 'Conversation : ' + items.length + ' messages'
-		toggle.title = others + ' autre' + (others > 1 ? 's' : '') + ' message' + (others > 1 ? 's' : '') + ' de cette conversation, réponses envoyées comprises'
+		toggle.textContent = (open ? '▾ ' : '▸ ') + _('Conversation : {count} messages', { count: items.length })
+		toggle.title = others > 1
+			? _('{count} autres messages de cette conversation, réponses envoyées comprises', { count: others })
+			: _('{count} autre message de cette conversation, réponses envoyées comprises', { count: others })
 		clear(box)
 		box.append(toggle, list)
 		box.hidden = false
@@ -1880,7 +1893,7 @@
 	function bodyFrame(html) {
 		const frame = h('iframe', {
 			class: 'wm-body-frame',
-			title: 'Contenu du message',
+			title: _('Contenu du message'),
 			// no allow-scripts: nothing in the mail can run. allow-same-origin
 			// is needed only to measure the content height from here.
 			sandbox: 'allow-same-origin allow-popups allow-popups-to-escape-sandbox',
@@ -1911,16 +1924,16 @@
 	/** Print a message: its headers and its (already cleaned) content, in a page of its own. */
 	function printMessage(m) {
 		const w = window.open('', '_blank')
-		if (!w) { toast('Le navigateur a bloqué la fenêtre d\'impression', true); return }
+		if (!w) { toast(_('Le navigateur a bloqué la fenêtre d\'impression'), true); return }
 		const line = (label, value) => value ? '<tr><th>' + escapeHtml(label) + '</th><td>' + escapeHtml(value) + '</td></tr>' : ''
 		const people = (list) => (list || []).map(personLabel).join(', ')
-		w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + escapeHtml(m.subject || 'Message') + '</title>'
+		w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + escapeHtml(m.subject || _('Message')) + '</title>'
 			+ '<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;margin:24px;color:#000}h1{font-size:16pt;margin:0 0 8px}'
 			+ 'table{border-collapse:collapse;margin-bottom:12px}th{text-align:left;padding:2px 12px 2px 0;color:#555;font-weight:normal;vertical-align:top}'
 			+ 'hr{border:0;border-top:1px solid #999;margin:12px 0}img{max-width:100%}</style></head><body>'
-			+ '<h1>' + escapeHtml(m.subject || '(sans objet)') + '</h1><table>'
-			+ line('De', personLabel(m.from)) + line('À', people(m.to)) + line('Cc', people(m.cc)) + line('Date', formatDate(m.date, true))
-			+ line('Pièces jointes', (m.attachments || []).map((a) => a.name).join(', '))
+			+ '<h1>' + escapeHtml(m.subject || _('(sans objet)')) + '</h1><table>'
+			+ line(_('De'), personLabel(m.from)) + line(_('À'), people(m.to)) + line('Cc', people(m.cc)) + line(_('Date'), formatDate(m.date, true))
+			+ line(_('Pièces jointes'), (m.attachments || []).map((a) => a.name).join(', '))
 			+ '</table><hr>' + (m.body || '') + '</body></html>')
 		w.document.close()
 		w.focus()
@@ -1931,49 +1944,50 @@
 		if (!start) return ''
 		const s = new Date(start)
 		const e = new Date(end || start)
-		const day = (d) => d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-		const time = (d) => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+		const day = (d) => d.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+		const time = (d) => d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })
 		if (allDay) {
 			const last = new Date(e.getTime() - 86400000)
-			return last > s ? 'du ' + day(s) + ' au ' + day(last) : day(s) + ' (journée entière)'
+			return last > s ? _('du {start} au {end}', { start: day(s), end: day(last) }) : _('{date} (journée entière)', { date: day(s) })
 		}
 		if (s.toDateString() === e.toDateString()) return day(s) + ', ' + time(s) + ' – ' + time(e)
 		return day(s) + ' ' + time(s) + ' – ' + day(e) + ' ' + time(e)
 	}
 
-	const RESPONSE_LABELS = { Accept: 'Vous avez accepté', Tentative: 'Vous avez répondu « provisoire »', Decline: 'Vous avez refusé', Organizer: 'Vous êtes l\'organisateur' }
+	const RESPONSE_LABELS = () => ({ Accept: _('Vous avez accepté'), Tentative: _('Vous avez répondu « provisoire »'), Decline: _('Vous avez refusé'), Organizer: _('Vous êtes l\'organisateur') })
 
-	const DELEGATE_RESPONSE = { Accept: 'a accepté', Tentative: 'a répondu « provisoire »', Decline: 'a refusé' }
+	/** What a colleague (name) answered, for their delegate. */
+	const DELEGATE_RESPONSE = (name) => ({ Accept: _('{name} a accepté', { name }), Tentative: _('{name} a répondu « provisoire »', { name }), Decline: _('{name} a refusé', { name }) })
 
 	function meetingBanner(m) {
 		const info = m.meeting
 		// copy of a colleague's invitation received as their delegate
 		const principal = info.onBehalfOf ? (info.onBehalfOf.name || info.onBehalfOf.email) : null
 		const responseLine = principal
-			? (DELEGATE_RESPONSE[info.response] ? principal + ' ' + DELEGATE_RESPONSE[info.response] : null)
-			: RESPONSE_LABELS[info.response]
+			? (DELEGATE_RESPONSE(principal)[info.response] || null)
+			: RESPONSE_LABELS()[info.response]
 		const box = h('div', { class: 'wm-meeting' + (info.cancelled ? ' cancelled' : '') + (principal ? ' delegate' : '') },
-			h('div', { class: 'wm-meeting-title' }, info.cancelled ? '❌ Réunion annulée'
-				: (principal ? '📅 Invitation reçue pour ' + principal + ' (vous êtes son délégué)' : '📅 Invitation à une réunion')),
+			h('div', { class: 'wm-meeting-title' }, info.cancelled ? '❌ ' + _('Réunion annulée')
+				: '📅 ' + (principal ? _('Invitation reçue pour {name} (vous êtes son délégué)', { name: principal }) : _('Invitation à une réunion'))),
 			h('div', {}, (() => { const r = formatRange(info.start, info.end, info.allDay); return r.charAt(0).toUpperCase() + r.slice(1) })()),
 			info.location ? h('div', { class: 'wm-muted' }, '📍 ' + info.location) : null,
 			responseLine ? h('div', { class: 'wm-muted' }, responseLine) : null)
 		if (!info.cancelled) {
 			const answer = async (response, label) => {
-				if (principal && !window.confirm('Répondre « ' + label + ' » au nom de ' + principal + ' ? L\'organisateur recevra la réponse de votre part, au nom de ' + principal + '.')) return
+				if (principal && !window.confirm(_('Répondre « {answer} » au nom de {name} ? L\'organisateur recevra la réponse de votre part, au nom de {name}.', { answer: label, name: principal }))) return
 				try {
 					await api('/accounts/' + state.accountId + '/calendar/respond', { method: 'POST', body: { eventId: m.id, response } })
-					toast(principal ? 'Réponse envoyée au nom de ' + principal + ' : ' + label : 'Réponse envoyée : ' + label)
+					toast(principal ? _('Réponse envoyée au nom de {name} : {answer}', { name: principal, answer: label }) : _('Réponse envoyée : {answer}', { answer: label }))
 					// Exchange files the processed invitation in "Deleted Items"
 					removeFromList([m.id])
 					loadFolders()
 				} catch (e) { toast(e.message, true) }
 			}
 			box.appendChild(h('div', { class: 'wm-meeting-actions' },
-				principal ? h('span', { class: 'wm-muted' }, 'Répondre au nom de ' + principal + ' :') : null,
-				h('button', { class: 'primary', onclick: () => answer('accept', 'accepté') }, '✓ Accepter'),
-				h('button', { onclick: () => answer('tentative', 'provisoire') }, '? Provisoire'),
-				h('button', { class: 'wm-danger', onclick: () => answer('decline', 'refusé') }, '✗ Refuser')))
+				principal ? h('span', { class: 'wm-muted' }, _('Répondre au nom de {name} :', { name: principal })) : null,
+				h('button', { class: 'primary', onclick: () => answer('accept', _('accepté')) }, '✓ ' + _('Accepter')),
+				h('button', { onclick: () => answer('tentative', _('provisoire')) }, '? ' + _('Provisoire')),
+				h('button', { class: 'wm-danger', onclick: () => answer('decline', _('refusé')) }, '✗ ' + _('Refuser'))))
 		}
 		return box
 	}
@@ -2039,9 +2053,9 @@
 		return h('button', {
 			type: 'button',
 			class: 'wm-junk-btn' + (getIds ? ' wm-small' : ''),
-			title: notJunk ? 'Remettre dans la boîte de réception et faire confiance à l\'expéditeur' : 'Déplacer dans « Courrier indésirable » et bloquer l\'expéditeur',
+			title: notJunk ? _('Remettre dans la boîte de réception et faire confiance à l\'expéditeur') : _('Déplacer dans « Courrier indésirable » et bloquer l\'expéditeur'),
 			onclick: () => markJunk(getIds ? getIds() : ids, !notJunk),
-		}, notJunk ? '✔ Pas indésirable' : '⛔ Indésirable')
+		}, notJunk ? '✔ ' + _('Pas indésirable') : '⛔ ' + _('Indésirable'))
 	}
 
 	async function markJunk(ids, junk) {
@@ -2049,10 +2063,10 @@
 		const undo = removeFromList(ids)
 		try {
 			await api('/accounts/' + state.accountId + '/junk', { method: 'POST', body: { itemIds: ids, junk } })
-			const n = ids.length > 1 ? ids.length + ' messages' : 'Message'
+			const count = ids.length
 			toast(junk
-				? n + ' dans « Courrier indésirable » ; ' + (ids.length > 1 ? 'leurs expéditeurs sont bloqués' : 'l\'expéditeur est bloqué')
-				: n + ' remis dans la boîte de réception ; ' + (ids.length > 1 ? 'leurs expéditeurs sont' : 'l\'expéditeur est') + ' considéré' + (ids.length > 1 ? 's' : '') + ' comme fiable' + (ids.length > 1 ? 's' : ''))
+				? (count > 1 ? _('{count} messages dans « Courrier indésirable » ; leurs expéditeurs sont bloqués', { count }) : _('Message dans « Courrier indésirable » ; l\'expéditeur est bloqué'))
+				: (count > 1 ? _('{count} messages remis dans la boîte de réception ; leurs expéditeurs sont considérés comme fiables', { count }) : _('Message remis dans la boîte de réception ; l\'expéditeur est considéré comme fiable')))
 			state.folders.filter((f) => f.role === (junk ? 'junkemail' : 'inbox')).forEach((f) => listCache.delete(state.accountId + '|' + f.id))
 			loadFolders()
 		} catch (e) {
@@ -2066,7 +2080,10 @@
 		try {
 			await api('/accounts/' + state.accountId + '/move', { method: 'POST', body: { itemIds: ids, target } })
 			const name = targetName || folderName(target)
-			toast((ids.length > 1 ? ids.length + ' messages déplacés' : 'Message déplacé') + (name ? ' vers « ' + name + ' »' : ''))
+			const count = ids.length
+			toast(name
+				? (count > 1 ? _('{count} messages déplacés vers « {name} »', { count, name }) : _('Message déplacé vers « {name} »', { name }))
+				: (count > 1 ? _('{count} messages déplacés', { count }) : _('Message déplacé')))
 			listCache.delete(state.accountId + '|' + target)
 			loadFolders()
 		} catch (e) {
@@ -2076,14 +2093,15 @@
 	}
 
 	async function deleteMessages(ids, permanent) {
-		if (permanent && !window.confirm(ids.length > 1 ? 'Supprimer définitivement ces ' + ids.length + ' messages ?' : 'Supprimer définitivement ce message ?')) return
+		if (permanent && !window.confirm(ids.length > 1 ? _('Supprimer définitivement ces {count} messages ?', { count: ids.length }) : _('Supprimer définitivement ce message ?'))) return
 		ids.forEach((id) => state.checked.delete(id))
 		const undo = removeFromList(ids)
 		try {
 			await api('/accounts/' + state.accountId + '/delete', { method: 'POST', body: { itemIds: ids, permanent: !!permanent } })
-			const n = ids.length > 1 ? ids.length + ' messages ' : 'Message '
-			toast(permanent ? n + (ids.length > 1 ? 'supprimés définitivement' : 'supprimé définitivement')
-				: n + (ids.length > 1 ? 'placés' : 'placé') + ' dans les éléments supprimés')
+			const count = ids.length
+			toast(permanent
+				? (count > 1 ? _('{count} messages supprimés définitivement', { count }) : _('Message supprimé définitivement'))
+				: (count > 1 ? _('{count} messages placés dans les éléments supprimés', { count }) : _('Message placé dans les éléments supprimés')))
 			const trash = state.folders.find((f) => f.role === 'deleteditems')
 			if (trash) listCache.delete(state.accountId + '|' + trash.id)
 			loadFolders()
@@ -2119,10 +2137,10 @@
 		const title = h('h2', { class: 'wm-preview-title' })
 		const counter = h('span', { class: 'wm-muted' })
 		const body = h('div', { class: 'wm-preview-body' })
-		const download = h('a', { class: 'button', download: '' }, '⬇ Télécharger')
-		const save = h('button', { type: 'button', onclick: () => saveAttachment(items[i]) }, 'Enregistrer dans Fichiers')
-		const prev = h('button', { type: 'button', class: 'wm-preview-nav', 'aria-label': 'Pièce jointe précédente', onclick: () => go(-1) }, '‹')
-		const next = h('button', { type: 'button', class: 'wm-preview-nav', 'aria-label': 'Pièce jointe suivante', onclick: () => go(1) }, '›')
+		const download = h('a', { class: 'button', download: '' }, '⬇ ' + _('Télécharger'))
+		const save = h('button', { type: 'button', onclick: () => saveAttachment(items[i]) }, _('Enregistrer dans Fichiers'))
+		const prev = h('button', { type: 'button', class: 'wm-preview-nav', 'aria-label': _('Pièce jointe précédente'), onclick: () => go(-1) }, '‹')
+		const next = h('button', { type: 'button', class: 'wm-preview-nav', 'aria-label': _('Pièce jointe suivante'), onclick: () => go(1) }, '›')
 		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true) }
 		const onKey = (e) => {
 			if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close() } else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); go(-1) } else if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); go(1) }
@@ -2151,7 +2169,7 @@
 				body.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
 				try {
 					const res = await fetch(attachmentUrl(a), { headers: { requesttoken: OC.requestToken } })
-					if (!res.ok) throw new Error('Erreur ' + res.status)
+					if (!res.ok) throw new Error(_('Erreur {status}', { status: res.status }))
 					const text = await res.text()
 					if (mine !== seq) return
 					clear(body)
@@ -2160,15 +2178,15 @@
 				} catch (e) {
 					if (mine !== seq) return
 					clear(body)
-					body.appendChild(h('div', { class: 'wm-empty' }, 'Aperçu impossible : ' + e.message))
+					body.appendChild(h('div', { class: 'wm-empty' }, _('Aperçu impossible : {error}', { error: e.message })))
 				}
 			}
 		}
 		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay || e.target === body) close() })
 		document.addEventListener('keydown', onKey, true)
-		overlay.appendChild(h('div', { class: 'wm-preview-frame', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Aperçu de la pièce jointe' },
+		overlay.appendChild(h('div', { class: 'wm-preview-frame', role: 'dialog', 'aria-modal': 'true', 'aria-label': _('Aperçu de la pièce jointe') },
 			h('div', { class: 'wm-preview-header' }, h('div', { class: 'wm-preview-names' }, title, counter),
-				download, save, h('button', { type: 'button', class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
+				download, save, h('button', { type: 'button', class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
 			h('div', { class: 'wm-preview-stage' }, prev, body, next)))
 		document.body.appendChild(overlay)
 		show()
@@ -2184,14 +2202,15 @@
 					const res = await api('/accounts/' + state.accountId + '/attachment/save', { method: 'POST', body: { attachmentId: a.id, path: dir } })
 					done++
 					lastPath = res.path
-				} catch (e) { toast(a.name + ' : ' + e.message, true) }
+				} catch (e) { toast(_('{name} : {error}', { name: a.name, error: e.message }), true) }
 			}
-			if (done) toast(done + ' pièce' + (done > 1 ? 's jointes enregistrées' : ' jointe enregistrée') + ' dans ' + lastPath.replace(/\/[^/]*$/, '/'))
+			const folder = lastPath.replace(/\/[^/]*$/, '/')
+			if (done) toast(done > 1 ? _('{count} pièces jointes enregistrées dans {path}', { count: done, path: folder }) : _('{count} pièce jointe enregistrée dans {path}', { count: done, path: folder }))
 		}
 		if (OC.dialogs && typeof OC.dialogs.filepicker === 'function') {
-			OC.dialogs.filepicker('Choisir le dossier de destination', (dir) => doSave(dir || '/'), false, 'httpd/unix-directory', true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
+			OC.dialogs.filepicker(_('Choisir le dossier de destination'), (dir) => doSave(dir || '/'), false, 'httpd/unix-directory', true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
 		} else {
-			doSave('/Pièces jointes')
+			doSave('/' + _('Pièces jointes'))
 		}
 	}
 
@@ -2199,13 +2218,13 @@
 		const doSave = async (dir) => {
 			try {
 				const res = await api('/accounts/' + state.accountId + '/attachment/save', { method: 'POST', body: { attachmentId: a.id, path: dir } })
-				toast('Enregistré dans ' + res.path)
+				toast(_('Enregistré dans {path}', { path: res.path }))
 			} catch (e) { toast(e.message, true) }
 		}
 		if (OC.dialogs && typeof OC.dialogs.filepicker === 'function') {
-			OC.dialogs.filepicker('Choisir le dossier de destination', (dir) => doSave(dir || '/'), false, 'httpd/unix-directory', true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
+			OC.dialogs.filepicker(_('Choisir le dossier de destination'), (dir) => doSave(dir || '/'), false, 'httpd/unix-directory', true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
 		} else {
-			doSave('/Pièces jointes')
+			doSave('/' + _('Pièces jointes'))
 		}
 	}
 
@@ -2244,7 +2263,7 @@
 				class: 'wm-ac-item' + (i === active ? ' active' : ''),
 				onmousedown: (e) => { e.preventDefault(); choose(r) },
 			}, h('span', { class: 'wm-ac-name' }, r.name || r.email), ' ',
-			h('span', { class: 'wm-muted' }, r.email + (r.source === 'directory' ? ' · annuaire' : '')))))
+			h('span', { class: 'wm-muted' }, r.email + (r.source === 'directory' ? ' · ' + _('annuaire') : '')))))
 			// a late answer must not reopen the menu once the field is left
 			menu.hidden = items.length === 0 || document.activeElement !== input
 		}
@@ -2290,17 +2309,17 @@
 		const read = (blob) => new Promise((resolve, reject) => {
 			const r = new FileReader()
 			r.onload = () => resolve(r.result)
-			r.onerror = () => reject(new Error('Image illisible : ' + file.name))
+			r.onerror = () => reject(new Error(_('Image illisible : {name}', { name: file.name })))
 			r.readAsDataURL(blob)
 		})
-		const tooBig = () => new Error('Image trop lourde (' + formatSize(file.size) + ') : joignez-la plutôt en pièce jointe')
+		const tooBig = () => new Error(_('Image trop lourde ({size}) : joignez-la plutôt en pièce jointe', { size: formatSize(file.size) }))
 		if (file.type === 'image/gif') {
 			if (file.size > IMAGE_MAX_BYTES) return Promise.reject(tooBig())
 			return read(file)
 		}
 		return read(file).then((url) => new Promise((resolve, reject) => {
 			const img = new Image()
-			img.onerror = () => reject(new Error('Image illisible : ' + file.name))
+			img.onerror = () => reject(new Error(_('Image illisible : {name}', { name: file.name })))
 			img.onload = () => {
 				const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight))
 				if (scale === 1 && file.size <= (maxSide < IMAGE_MAX_SIDE ? 200 * 1024 : 1024 * 1024)) { resolve(url); return }
@@ -2332,11 +2351,11 @@
 	 * a logo (an image, reduced to 400 pixels), like in Outlook.
 	 */
 	function signatureEditor(value) {
-		const ed = h('div', { class: 'wm-editor wm-signature-editor', contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Signature' })
+		const ed = h('div', { class: 'wm-editor wm-signature-editor', contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true', 'aria-label': _('Signature') })
 		ed.innerHTML = signatureHtml(value)
 		const exec = (cmd, v) => { ed.focus(); document.execCommand(cmd, false, v) }
 		let range = null
-		const picker = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', hidden: true, name: 'signatureImage', 'aria-label': 'Ajouter une image à la signature' })
+		const picker = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', hidden: true, name: 'signatureImage', 'aria-label': _('Ajouter une image à la signature') })
 		const insert = async (list) => {
 			for (const f of Array.from(list).filter((x) => /^image\/(png|jpeg|gif|webp)$/.test(x.type))) {
 				try {
@@ -2353,26 +2372,26 @@
 			if (list.some((f) => f.type.startsWith('image/')) && !(e.clipboardData.types || []).includes('text/html')) { e.preventDefault(); insert(list) }
 		})
 		const tool = (label, title, action) => h('button', { type: 'button', class: 'wm-editor-btn', title, 'aria-label': title, onmousedown: (e) => e.preventDefault(), onclick: action }, label)
-		const bar = h('div', { class: 'wm-editor-bar', role: 'toolbar', 'aria-label': 'Mise en forme de la signature' },
-			tool('G', 'Gras', () => exec('bold')),
-			tool('I', 'Italique', () => exec('italic')),
-			tool('S', 'Souligné', () => exec('underline')),
-			tool('🔗', 'Insérer un lien', () => {
+		const bar = h('div', { class: 'wm-editor-bar', role: 'toolbar', 'aria-label': _('Mise en forme de la signature') },
+			tool(_('G'), _('Gras'), () => exec('bold')),
+			tool('I', _('Italique'), () => exec('italic')),
+			tool(_('S'), _('Souligné'), () => exec('underline')),
+			tool('🔗', _('Insérer un lien'), () => {
 				const sel = window.getSelection()
 				const r = sel && sel.rangeCount ? sel.getRangeAt(0) : null
-				const url = (window.prompt('Adresse du lien (https://…)', 'https://') || '').trim()
+				const url = (window.prompt(_('Adresse du lien (https://…)'), 'https://') || '').trim()
 				if (!/^(https?:\/\/|mailto:)\S+$/i.test(url)) return
 				ed.focus()
 				if (r) { sel.removeAllRanges(); sel.addRange(r) }
 				if (r && !r.collapsed) exec('createLink', url)
 				else exec('insertHTML', '<a href="' + escapeHtml(url) + '">' + escapeHtml(url) + '</a>')
 			}),
-			tool('🖼', 'Ajouter une image (logo)', () => {
+			tool('🖼', _('Ajouter une image (logo)'), () => {
 				const sel = window.getSelection()
 				range = sel && sel.rangeCount && ed.contains(sel.anchorNode) ? sel.getRangeAt(0) : null
 				picker.click()
 			}),
-			tool('⌫', 'Effacer la mise en forme', () => { exec('removeFormat'); exec('unlink') }),
+			tool('⌫', _('Effacer la mise en forme'), () => { exec('removeFormat'); exec('unlink') }),
 			picker)
 		return {
 			el: h('div', { class: 'wm-editor-wrap wm-signature-wrap' }, bar, ed),
@@ -2395,23 +2414,23 @@
 		const account = state.accounts.find((a) => a.id === state.accountId)
 		const ncFiles = [] // paths from Nextcloud Files
 
-		const titles = { new: 'Nouveau message', reply: 'Répondre', replyAll: 'Répondre à tous', forward: 'Transférer', draft: 'Brouillon' }
+		const titles = { new: _('Nouveau message'), reply: _('Répondre'), replyAll: _('Répondre à tous'), forward: _('Transférer'), draft: _('Brouillon') }
 		// sender: the account, or one of its shared mailboxes (by default the one the original message is in)
 		const mailboxes = shared.accountId === state.accountId ? shared.list : []
 		const fromMailbox = original && mailboxes.find((mb) => (mb.folders || []).some((f) => f.id === original.folderId))
 		const defaultFrom = (fromMailbox || (mode === 'new' && currentMailbox()) || null)
-		const fromSelect = mailboxes.length ? h('select', { name: 'from', class: 'wm-from', 'aria-label': 'De' },
+		const fromSelect = mailboxes.length ? h('select', { name: 'from', class: 'wm-from', 'aria-label': _('De') },
 			h('option', { value: account ? account.email : '' }, account ? account.email : ''),
 			mailboxes.map((mb) => h('option', { value: mb.email, selected: defaultFrom === mb }, mb.name !== mb.email ? mb.name + ' <' + mb.email + '>' : mb.email))) : null
 		const fromField = fromSelect
-			? h('label', { class: 'wm-muted wm-from-label' }, 'De : ', fromSelect)
-			: h('span', { class: 'wm-muted' }, 'De : ' + (account ? account.email : ''))
+			? h('label', { class: 'wm-muted wm-from-label' }, _('De :') + ' ', fromSelect)
+			: h('span', { class: 'wm-muted' }, _('De :') + ' ' + (account ? account.email : ''))
 		const isResponse = mode === 'reply' || mode === 'replyAll'
 		// a draft opened from « Brouillons »: original is the draft itself
 		const isDraft = mode === 'draft'
 		let draftId = isDraft ? original.id : null
 
-		const to = h('input', { type: 'text', name: 'to', placeholder: 'adresse@exemple.fr, …', autocomplete: 'email', multiple: true })
+		const to = h('input', { type: 'text', name: 'to', placeholder: _('adresse@exemple.fr') + ', …', autocomplete: 'email', multiple: true })
 		const cc = h('input', { type: 'text', name: 'cc', placeholder: '' })
 		const bcc = h('input', { type: 'text', name: 'bcc', placeholder: '' })
 		const subject = h('input', { type: 'text', name: 'subject' })
@@ -2420,15 +2439,15 @@
 			contenteditable: 'true',
 			role: 'textbox',
 			'aria-multiline': 'true',
-			'aria-label': 'Message',
+			'aria-label': _('Message'),
 			spellcheck: 'true',
 		})
-		const files = h('input', { type: 'file', multiple: true, class: 'wm-file-input', 'aria-label': 'Joindre des fichiers' })
+		const files = h('input', { type: 'file', multiple: true, class: 'wm-file-input', 'aria-label': _('Joindre des fichiers') })
 		const attachList = h('ul', { class: 'wm-compose-attachments' })
-		const importance = h('select', { name: 'importance', 'aria-label': 'Importance' },
-			h('option', { value: 'Normal' }, 'Importance normale'),
-			h('option', { value: 'High' }, 'Importance haute'),
-			h('option', { value: 'Low' }, 'Importance faible'))
+		const importance = h('select', { name: 'importance', 'aria-label': _('Importance') },
+			h('option', { value: 'Normal' }, _('Importance normale')),
+			h('option', { value: 'High' }, _('Importance haute')),
+			h('option', { value: 'Low' }, _('Importance faible')))
 
 		const textHtml = (t) => escapeHtml(t).replace(/\n/g, '<br>')
 		const addresses = (list) => (list || []).map((p) => (p.name && p.name !== p.email ? p.name + ' <' + p.email + '>' : p.email)).join(', ')
@@ -2441,7 +2460,7 @@
 			body.innerHTML = original.body || ''
 		} else {
 			if (original) {
-				const prefix = mode === 'forward' ? 'TR : ' : 'RE : '
+				const prefix = mode === 'forward' ? _('TR : ') : _('RE : ')
 				subject.value = /^(re|tr|fw|fwd)\s?:/i.test(original.subject || '') ? original.subject : prefix + (original.subject || '')
 				subject.disabled = true
 			}
@@ -2464,30 +2483,30 @@
 			onclick: action,
 		}, label)
 		let savedImageRange = null
-		const imagePicker = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', multiple: true, hidden: true, name: 'inlineImages', 'aria-label': 'Insérer une image' })
-		const editorBar = h('div', { class: 'wm-editor-bar', role: 'toolbar', 'aria-label': 'Mise en forme' },
-			tool('G', 'Gras (Ctrl+B)', () => exec('bold')),
-			tool('I', 'Italique (Ctrl+I)', () => exec('italic')),
-			tool('S', 'Souligné (Ctrl+U)', () => exec('underline')),
-			tool('•', 'Liste à puces', () => exec('insertUnorderedList')),
-			tool('1.', 'Liste numérotée', () => exec('insertOrderedList')),
-			tool('🔗', 'Insérer un lien', () => {
+		const imagePicker = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', multiple: true, hidden: true, name: 'inlineImages', 'aria-label': _('Insérer une image') })
+		const editorBar = h('div', { class: 'wm-editor-bar', role: 'toolbar', 'aria-label': _('Mise en forme') },
+			tool(_('G'), _('Gras (Ctrl+B)'), () => exec('bold')),
+			tool('I', _('Italique (Ctrl+I)'), () => exec('italic')),
+			tool(_('S'), _('Souligné (Ctrl+U)'), () => exec('underline')),
+			tool('•', _('Liste à puces'), () => exec('insertUnorderedList')),
+			tool('1.', _('Liste numérotée'), () => exec('insertOrderedList')),
+			tool('🔗', _('Insérer un lien'), () => {
 				const sel = window.getSelection()
 				const range = sel && sel.rangeCount ? sel.getRangeAt(0) : null
-				const url = (window.prompt('Adresse du lien (https://…)', 'https://') || '').trim()
+				const url = (window.prompt(_('Adresse du lien (https://…)'), 'https://') || '').trim()
 				if (!/^(https?:\/\/|mailto:)\S+$/i.test(url)) return
 				body.focus()
 				if (range) { sel.removeAllRanges(); sel.addRange(range) }
 				if (range && !range.collapsed) exec('createLink', url)
 				else exec('insertHTML', '<a href="' + escapeHtml(url) + '">' + escapeHtml(url) + '</a>')
 			}),
-			tool('❝', 'Citation', () => exec('formatBlock', 'blockquote')),
-			tool('🖼', 'Insérer une image dans le texte (ou coller une capture d\'écran)', () => {
+			tool('❝', _('Citation'), () => exec('formatBlock', 'blockquote')),
+			tool('🖼', _('Insérer une image dans le texte (ou coller une capture d\'écran)'), () => {
 				const sel = window.getSelection()
 				savedImageRange = sel && sel.rangeCount && body.contains(sel.anchorNode) ? sel.getRangeAt(0) : null
 				imagePicker.click()
 			}),
-			tool('⌫', 'Effacer la mise en forme', () => { exec('removeFormat'); exec('unlink') }),
+			tool('⌫', _('Effacer la mise en forme'), () => { exec('removeFormat'); exec('unlink') }),
 			imagePicker)
 		body.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit() }
@@ -2552,7 +2571,7 @@
 		const insertLinks = (links) => {
 			const html = links.map((l) => '<div>' + (l.isFolder ? '📁 ' : '📎 ') + '<a href="' + escapeHtml(l.url) + '">' + escapeHtml(l.name) + '</a>'
 				+ (l.isFolder ? '' : ' (' + formatSize(l.size) + ')')
-				+ (l.expires ? ' — lien valable jusqu\'au ' + new Date(l.expires + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '')
+				+ (l.expires ? ' — ' + _('lien valable jusqu\'au {date}', { date: new Date(l.expires + 'T12:00:00').toLocaleDateString(locale(), { day: 'numeric', month: 'long', year: 'numeric' }) }) : '')
 				+ '</div>').join('')
 			const tmp = document.createElement('div')
 			tmp.innerHTML = html
@@ -2583,28 +2602,28 @@
 			}
 			if (links.length) {
 				insertLinks(links)
-				toast(links.length > 1 ? links.length + ' liens ajoutés au message' : 'Lien ajouté au message')
+				toast(links.length > 1 ? _('{count} liens ajoutés au message', { count: links.length }) : _('Lien ajouté au message'))
 			}
 			return links.length === paths.length
 		}
 		const pickLinks = () => {
-			if (!(OC.dialogs && OC.dialogs.filepicker)) { toast('Sélecteur de fichiers indisponible', true); return }
-			OC.dialogs.filepicker('Envoyer un lien Nextcloud', (paths) => {
+			if (!(OC.dialogs && OC.dialogs.filepicker)) { toast(_('Sélecteur de fichiers indisponible'), true); return }
+			OC.dialogs.filepicker(_('Envoyer un lien Nextcloud'), (paths) => {
 				shareLinks((Array.isArray(paths) ? paths : [paths]).filter(Boolean))
 			}, true, null, true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
 		}
 		// a file of the computer: put in Files (« Pièces jointes envoyées »), then its link
-		const LINK_FOLDER = 'Pièces jointes envoyées'
+		const LINK_FOLDER = _('Pièces jointes envoyées')
 		const uploadAsLink = async (file, button) => {
 			button.disabled = true
-			button.textContent = 'Envoi dans Fichiers…'
+			button.textContent = _('Envoi dans Fichiers…')
 			try {
 				const base = OC.linkToRemote('dav') + '/files/' + encodeURIComponent(OC.getCurrentUser().uid) + '/' + encodeURIComponent(LINK_FOLDER)
 				const headers = { requesttoken: OC.requestToken }
 				await fetch(base, { method: 'MKCOL', headers }) // 405 when it exists already
 				const name = file.name.replace(/[\\/]/g, '_')
 				const put = await fetch(base + '/' + encodeURIComponent(name), { method: 'PUT', headers, body: file })
-				if (!put.ok) throw new Error('Dépôt dans Fichiers impossible (' + put.status + ')')
+				if (!put.ok) throw new Error(_('Dépôt dans Fichiers impossible ({status})', { status: put.status }))
 				if (await shareLinks(['/' + LINK_FOLDER + '/' + name])) {
 					const dt = new DataTransfer()
 					Array.from(files.files).filter((f) => f !== file).forEach((f) => dt.items.add(f))
@@ -2614,7 +2633,7 @@
 			} catch (e) {
 				toast(e.message, true)
 				button.disabled = false
-				button.textContent = '🔗 Envoyer en lien'
+				button.textContent = '🔗 ' + _('Envoyer en lien')
 			}
 		}
 		// Exchange (OVH) refuses messages over about 25 MB once encoded
@@ -2638,7 +2657,7 @@
 				fd.append('draftId', draftId)
 				local.forEach((f) => fd.append('files[]', f, f.name))
 				paths.forEach((p) => fd.append('filePaths[]', p))
-				draftStatus.textContent = 'Enregistrement des pièces jointes…'
+				draftStatus.textContent = _('Enregistrement des pièces jointes…')
 				try {
 					const r = await api('/accounts/' + state.accountId + '/draft/attachments', { method: 'POST', body: fd })
 					savedAtts = r.attachments
@@ -2646,9 +2665,9 @@
 					Array.from(files.files).filter((f) => !local.includes(f)).forEach((f) => dt.items.add(f))
 					files.files = dt.files
 					ncFiles.splice(0, ncFiles.length, ...ncFiles.filter((p) => !paths.includes(p)))
-					draftStatus.textContent = 'Pièces jointes enregistrées dans le brouillon'
+					draftStatus.textContent = _('Pièces jointes enregistrées dans le brouillon')
 				} catch (e) {
-					draftStatus.textContent = 'Pièces jointes non enregistrées : ' + e.message + ' (elles partiront avec le message)'
+					draftStatus.textContent = _('Pièces jointes non enregistrées : {error} (elles partiront avec le message)', { error: e.message })
 				}
 				renderAttachList()
 			})
@@ -2659,7 +2678,7 @@
 			clear(attachList)
 			savedAtts.forEach((a) => attachList.appendChild(h('li', { class: 'wm-draft-att', dataset: { id: a.id } },
 				'📎 ' + a.name + (a.size ? ' (' + formatSize(a.size) + ')' : '') + ' ',
-				h('span', { class: 'wm-muted' }, '· dans le brouillon '),
+				h('span', { class: 'wm-muted' }, '· ' + _('dans le brouillon') + ' '),
 				h('button', {
 					type: 'button',
 					class: 'wm-small',
@@ -2670,28 +2689,28 @@
 						} catch (err) { toast(err.message, true) }
 						renderAttachList()
 					},
-				}, 'retirer'))))
+				}, _('retirer')))))
 			const local = Array.from(files.files)
 			const total = local.reduce((n, f) => n + f.size, 0)
 			local.forEach((f) => {
-				const toLink = h('button', { type: 'button', class: 'wm-small wm-to-link', onclick: (e) => uploadAsLink(f, e.currentTarget) }, '🔗 Envoyer en lien')
+				const toLink = h('button', { type: 'button', class: 'wm-small wm-to-link', onclick: (e) => uploadAsLink(f, e.currentTarget) }, '🔗 ' + _('Envoyer en lien'))
 				attachList.appendChild(h('li', { class: f.size >= HEAVY ? 'wm-heavy' : '' }, '📎 ' + f.name + ' (' + formatSize(f.size) + ') ', toLink))
 			})
 			ncFiles.forEach((p, i) => attachList.appendChild(h('li', {}, '☁️ ' + p + ' ',
-				h('button', { type: 'button', class: 'wm-small wm-to-link', onclick: async () => { if (await shareLinks([p])) { ncFiles.splice(ncFiles.indexOf(p), 1); renderAttachList() } } }, '🔗 en lien'),
+				h('button', { type: 'button', class: 'wm-small wm-to-link', onclick: async () => { if (await shareLinks([p])) { ncFiles.splice(ncFiles.indexOf(p), 1); renderAttachList() } } }, '🔗 ' + _('en lien')),
 				' ',
-				h('button', { type: 'button', class: 'wm-small', onclick: () => { ncFiles.splice(i, 1); renderAttachList() } }, 'retirer'))))
+				h('button', { type: 'button', class: 'wm-small', onclick: () => { ncFiles.splice(i, 1); renderAttachList() } }, _('retirer')))))
 			if (total >= HEAVY) {
 				attachList.appendChild(h('li', { class: 'wm-warning wm-heavy-warning' },
-					'Pièces jointes lourdes (' + formatSize(total) + ') : Exchange peut refuser le message. Préférez « 🔗 Envoyer en lien » : le fichier est déposé dans vos Fichiers et le destinataire reçoit un lien de téléchargement.'))
+					_('Pièces jointes lourdes ({size}) : Exchange peut refuser le message. Préférez « 🔗 Envoyer en lien » : le fichier est déposé dans vos Fichiers et le destinataire reçoit un lien de téléchargement.', { size: formatSize(total) })))
 			}
 		}
 		files.addEventListener('change', () => { renderAttachList(); persistFiles() })
 		renderAttachList()
 
 		const pickFromFiles = () => {
-			if (!(OC.dialogs && OC.dialogs.filepicker)) { toast('Sélecteur de fichiers indisponible', true); return }
-			OC.dialogs.filepicker('Joindre depuis Fichiers', (paths) => {
+			if (!(OC.dialogs && OC.dialogs.filepicker)) { toast(_('Sélecteur de fichiers indisponible'), true); return }
+			OC.dialogs.filepicker(_('Joindre depuis Fichiers'), (paths) => {
 				(Array.isArray(paths) ? paths : [paths]).forEach((p) => { if (p && !ncFiles.includes(p)) ncFiles.push(p) })
 				renderAttachList()
 				persistFiles()
@@ -2700,7 +2719,7 @@
 
 		// ---- drafts: saved a few seconds after the last change, and when leaving
 		const draftStatus = h('span', { class: 'wm-draft-status wm-muted', 'aria-live': 'polite' })
-		const deleteDraftBtn = h('button', { type: 'button', class: 'wm-danger', hidden: !draftId, onclick: () => discardDraft() }, '🗑 Supprimer le brouillon')
+		const deleteDraftBtn = h('button', { type: 'button', class: 'wm-danger', hidden: !draftId, onclick: () => discardDraft() }, '🗑 ' + _('Supprimer le brouillon'))
 		const DRAFT_DELAY = 3000
 		let draftTimer = null
 		let dirty = false
@@ -2723,17 +2742,17 @@
 			if (!dirty) return saving || Promise.resolve()
 			dirty = false
 			const run = async () => {
-				draftStatus.textContent = 'Enregistrement du brouillon…'
+				draftStatus.textContent = _('Enregistrement du brouillon…')
 				try {
 					const r = await api('/accounts/' + state.accountId + '/draft', { method: 'POST', body: fields() })
 					draftId = r.draftId
 					deleteDraftBtn.hidden = false
-					draftStatus.textContent = 'Brouillon enregistré à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+					draftStatus.textContent = _('Brouillon enregistré à {time}', { time: new Date().toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) })
 					const drafts = state.folders.find((f) => f.role === 'drafts')
 					if (drafts) listCache.delete(state.accountId + '|' + drafts.id)
 				} catch (err) {
 					dirty = true
-					draftStatus.textContent = 'Brouillon non enregistré : ' + err.message
+					draftStatus.textContent = _('Brouillon non enregistré : {error}', { error: err.message })
 				}
 			}
 			// one save at a time, in order
@@ -2758,18 +2777,18 @@
 		const cancel = async () => {
 			if (dirty || saving) {
 				await saveDraft()
-				if (draftId && !dirty) toast('Brouillon enregistré dans « Brouillons »')
+				if (draftId && !dirty) toast(_('Brouillon enregistré dans « Brouillons »'))
 			}
 			leave()
 		}
 		const discardDraft = async () => {
-			if (!window.confirm('Supprimer ce brouillon ?')) return
+			if (!window.confirm(_('Supprimer ce brouillon ?'))) return
 			closed = true
 			clearTimeout(draftTimer)
 			await saving
 			try {
 				if (draftId) await api('/accounts/' + state.accountId + '/draft/delete', { method: 'POST', body: { draftId } })
-				toast('Brouillon supprimé')
+				toast(_('Brouillon supprimé'))
 				if (isDraft) { state.selectedId = null; removeFromList([draftId]) }
 			} catch (err) { toast(err.message, true) }
 			leave()
@@ -2787,12 +2806,12 @@
 				const p = (n) => String(n).padStart(2, '0')
 				laterAt.value = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T08:00'
 			}
-			sendBtn.textContent = later.checked ? 'Programmer l\'envoi' : 'Envoyer'
+			sendBtn.textContent = later.checked ? _('Programmer l\'envoi') : _('Envoyer')
 		})
 		const sendOptions = h('div', { class: 'wm-send-options' },
-			h('label', { class: 'wm-radio' }, receipt, ' Demander un accusé de lecture'),
-			h('label', { class: 'wm-radio' }, later, ' Envoyer plus tard'), laterAt)
-		const sendBtn = h('button', { type: 'submit', class: 'primary', title: 'Envoyer (Ctrl+Entrée)' }, 'Envoyer')
+			h('label', { class: 'wm-radio' }, receipt, ' ' + _('Demander un accusé de lecture')),
+			h('label', { class: 'wm-radio' }, later, ' ' + _('Envoyer plus tard')), laterAt)
+		const sendBtn = h('button', { type: 'submit', class: 'primary', title: _('Envoyer (Ctrl+Entrée)') }, _('Envoyer'))
 		const form = h('form', {
 			class: 'wm-compose',
 			onsubmit: async (e) => {
@@ -2808,20 +2827,20 @@
 				if (receipt.checked) fd.append('readReceipt', '1')
 				if (later.checked) {
 					const at = new Date(laterAt.value)
-					if (!laterAt.value || isNaN(at) || at <= new Date()) { toast('Choisissez une date et une heure d\'envoi à venir', true); return }
+					if (!laterAt.value || isNaN(at) || at <= new Date()) { toast(_('Choisissez une date et une heure d\'envoi à venir'), true); return }
 					fd.append('sendAt', at.toISOString())
 				}
 				Array.from(files.files).forEach((f) => fd.append('files[]', f, f.name))
 				ncFiles.forEach((p) => fd.append('filePaths[]', p))
 				sendBtn.disabled = true
-				sendBtn.textContent = 'Envoi…'
+				sendBtn.textContent = _('Envoi…')
 				closed = true
 				try {
 					const sent = await api('/accounts/' + state.accountId + '/send', { method: 'POST', body: fd })
 					threadCache.clear() // the reply now belongs to its conversation
 					toast(sent && sent.sendAt
-						? 'Envoi programmé le ' + new Date(sent.sendAt).toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) + ' (dans « Boîte d\'envoi » d\'ici là)'
-						: 'Message envoyé')
+						? _('Envoi programmé le {date} (dans « Boîte d\'envoi » d\'ici là)', { date: new Date(sent.sendAt).toLocaleString(locale(), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) })
+						: _('Message envoyé'))
 					if (isDraft) { state.selectedId = null; removeFromList([draftId]) }
 					// meanwhile another message may have been opened or started: leave it
 					if (form.isConnected) { if (state.current && !isDraft) renderMessage(); else renderEmptyDetail() }
@@ -2830,36 +2849,36 @@
 					closed = false
 					toast(err.message, true)
 					sendBtn.disabled = false
-					sendBtn.textContent = 'Envoyer'
+					sendBtn.textContent = _('Envoyer')
 				}
 			},
 		},
 		h('div', { class: 'wm-compose-title' },
-			h('button', { type: 'button', class: 'wm-back wm-mobile-only', onclick: cancel, 'aria-label': 'Retour' }, '←'),
+			h('button', { type: 'button', class: 'wm-back wm-mobile-only', onclick: cancel, 'aria-label': _('Retour') }, '←'),
 			h('h2', {}, titles[mode]),
 			fromField,
 			draftStatus),
 		isResponse
 			? h('div', { class: 'wm-info' }, mode === 'reply'
-				? 'Réponse à : ' + personLabel((original.replyTo && original.replyTo[0]) || original.from)
-				: 'Réponse à : ' + [original.from].concat(original.to || [], original.cc || []).filter(Boolean).map(personShort).join(', '))
-			: h('label', { class: 'wm-field' }, h('span', {}, 'À'), attachAutocomplete(to)),
-		h('label', { class: 'wm-field' }, h('span', {}, isResponse ? 'Ajouter en Cc' : 'Cc'), attachAutocomplete(cc)),
-		h('label', { class: 'wm-field' }, h('span', {}, 'Cci'), attachAutocomplete(bcc)),
-		h('label', { class: 'wm-field' }, h('span', {}, 'Objet'), subject),
+				? _('Réponse à : {names}', { names: personLabel((original.replyTo && original.replyTo[0]) || original.from) })
+				: _('Réponse à : {names}', { names: [original.from].concat(original.to || [], original.cc || []).filter(Boolean).map(personShort).join(', ') }))
+			: h('label', { class: 'wm-field' }, h('span', {}, _('À')), attachAutocomplete(to)),
+		h('label', { class: 'wm-field' }, h('span', {}, isResponse ? _('Ajouter en Cc') : 'Cc'), attachAutocomplete(cc)),
+		h('label', { class: 'wm-field' }, h('span', {}, _('Cci')), attachAutocomplete(bcc)),
+		h('label', { class: 'wm-field' }, h('span', {}, _('Objet')), subject),
 		h('div', { class: 'wm-editor-wrap' }, editorBar, body),
 		original && !isDraft ? h('div', { class: 'wm-info wm-muted' }, mode === 'forward'
-			? 'Le message d\'origine et ses pièces jointes seront ajoutés automatiquement sous votre texte.'
-			: 'Le message d\'origine sera cité automatiquement sous votre réponse.') : null,
+			? _('Le message d\'origine et ses pièces jointes seront ajoutés automatiquement sous votre texte.')
+			: _('Le message d\'origine sera cité automatiquement sous votre réponse.')) : null,
 		attachList,
 		sendOptions,
 		h('div', { class: 'wm-compose-actions' },
 			sendBtn,
-			h('label', { class: 'wm-file-label button' }, '📎 Joindre', files),
-			h('button', { type: 'button', onclick: pickFromFiles }, '☁️ Depuis Fichiers'),
-			h('button', { type: 'button', class: 'wm-link-btn', onclick: pickLinks, title: 'Un lien de téléchargement Nextcloud dans le message, au lieu d\'une pièce jointe' }, '🔗 Lien Nextcloud'),
+			h('label', { class: 'wm-file-label button' }, '📎 ' + _('Joindre'), files),
+			h('button', { type: 'button', onclick: pickFromFiles }, '☁️ ' + _('Depuis Fichiers')),
+			h('button', { type: 'button', class: 'wm-link-btn', onclick: pickLinks, title: _('Un lien de téléchargement Nextcloud dans le message, au lieu d\'une pièce jointe') }, '🔗 ' + _('Lien Nextcloud')),
 			importance,
-			h('button', { type: 'button', onclick: cancel, title: 'Fermer (le brouillon est gardé)' }, 'Annuler'),
+			h('button', { type: 'button', onclick: cancel, title: _('Fermer (le brouillon est gardé)') }, _('Annuler')),
 			deleteDraftBtn),
 		)
 		detailEl.appendChild(form)
@@ -2887,20 +2906,20 @@
 
 	/** The shared mailboxes of an account, in its settings: add by address, remove. */
 	function sharedMailboxesEditor(a) {
-		const box = h('div', { class: 'wm-shared-editor' }, h('span', { class: 'wm-shared-editor-title' }, '📮 Boîtes partagées'))
+		const box = h('div', { class: 'wm-shared-editor' }, h('span', { class: 'wm-shared-editor-title' }, '📮 ' + _('Boîtes partagées')))
 		const list = h('ul', { class: 'wm-shared-list' })
-		const email = h('input', { type: 'email', name: 'sharedMailbox', placeholder: 'contact@exemple.fr' })
+		const email = h('input', { type: 'email', name: 'sharedMailbox', placeholder: _('contact@exemple.fr') })
 		const err = h('div', { class: 'wm-form-error' })
-		const add = h('button', { type: 'button', class: 'wm-small' }, 'Ajouter')
+		const add = h('button', { type: 'button', class: 'wm-small' }, _('Ajouter'))
 		const show = (mailboxes) => {
 			clear(list)
 			mailboxes.forEach((m) => list.appendChild(h('li', {}, m.name !== m.email ? m.name + ' <' + m.email + '>' : m.email, ' ',
-				m.delegate ? h('span', { class: 'wm-muted wm-delegate-tag', title: 'Vous êtes délégué : seuls les dossiers qu\'on vous a partagés sont affichés' }, '(délégué) ') : null,
+				m.delegate ? h('span', { class: 'wm-muted wm-delegate-tag', title: _('Vous êtes délégué : seuls les dossiers qu\'on vous a partagés sont affichés') }, _('(délégué)') + ' ') : null,
 				h('button', {
 					type: 'button',
 					class: 'wm-small wm-icon-btn',
-					'aria-label': 'Retirer ' + m.email,
-					title: 'Retirer cette boîte du webmail (rien n\'est supprimé dans Exchange)',
+					'aria-label': _('Retirer {name}', { name: m.email }),
+					title: _('Retirer cette boîte du webmail (rien n\'est supprimé dans Exchange)'),
 					onclick: async () => {
 						try {
 							show((await api('/accounts/' + a.id + '/mailboxes/delete', { method: 'POST', body: { email: m.email } })).mailboxes)
@@ -2908,7 +2927,7 @@
 						} catch (e) { toast(e.message, true) }
 					},
 				}, '✕'))))
-			if (!mailboxes.length) list.appendChild(h('li', { class: 'wm-muted' }, 'Aucune : ajoutez une boîte commune (contact@, accueil@…) dont l\'administrateur Exchange vous a donné l\'accès, ou celle d\'un collègue qui vous a fait délégué de sa boîte de réception dans Outlook.'))
+			if (!mailboxes.length) list.appendChild(h('li', { class: 'wm-muted' }, _('Aucune : ajoutez une boîte commune (contact@, accueil@…) dont l\'administrateur Exchange vous a donné l\'accès, ou celle d\'un collègue qui vous a fait délégué de sa boîte de réception dans Outlook.')))
 		}
 		add.addEventListener('click', async () => {
 			err.textContent = ''
@@ -2916,7 +2935,7 @@
 			add.disabled = true
 			try {
 				show((await api('/accounts/' + a.id + '/mailboxes', { method: 'POST', body: { email: email.value.trim() } })).mailboxes)
-				toast('Boîte partagée ajoutée : ses dossiers sont sous les vôtres')
+				toast(_('Boîte partagée ajoutée : ses dossiers sont sous les vôtres'))
 				email.value = ''
 				if (a.id === state.accountId) loadShared(a.id)
 			} catch (e) {
@@ -2935,21 +2954,21 @@
 		setView('detail')
 		clear(detailEl)
 		const wrap = h('div', { class: 'wm-settings' },
-			h('button', { class: 'wm-back wm-mobile-only', onclick: () => setView('list'), 'aria-label': 'Retour' }, '←'),
-			h('h2', {}, 'Comptes Exchange'))
+			h('button', { class: 'wm-back wm-mobile-only', onclick: () => setView('list'), 'aria-label': _('Retour') }, '←'),
+			h('h2', {}, _('Comptes Exchange')))
 
 		state.accounts.forEach((a) => {
-			const name = h('input', { type: 'text', value: a.displayName === a.email ? '' : a.displayName, placeholder: 'Nom affiché (facultatif)' })
+			const name = h('input', { type: 'text', value: a.displayName === a.email ? '' : a.displayName, placeholder: _('Nom affiché (facultatif)') })
 			const sig = signatureEditor(a.signature || '')
-			const pwd = h('input', { type: 'password', placeholder: 'Nouveau mot de passe (si changé)', autocomplete: 'new-password' })
-			const save = h('button', { class: 'primary' }, 'Enregistrer')
+			const pwd = h('input', { type: 'password', placeholder: _('Nouveau mot de passe (si changé)'), autocomplete: 'new-password' })
+			const save = h('button', { class: 'primary' }, _('Enregistrer'))
 			save.addEventListener('click', async () => {
 				save.disabled = true
 				try {
 					const updated = await api('/accounts/' + a.id, { method: 'PUT', body: { displayName: name.value, signature: sig.value(), password: pwd.value || null } })
 					Object.assign(a, updated)
 					pwd.value = ''
-					toast('Compte mis à jour')
+					toast(_('Compte mis à jour'))
 					renderNav()
 				} catch (e) { toast(e.message, true) } finally { save.disabled = false }
 			})
@@ -2961,7 +2980,7 @@
 				onchange: async () => {
 					try {
 						Object.assign(a, await api('/accounts/' + a.id, { method: 'PUT', body: { bell: bell.checked } }))
-						toast(bell.checked ? 'Les nouveaux messages seront signalés dans Nextcloud' : 'Les nouveaux messages ne seront plus signalés dans Nextcloud')
+						toast(bell.checked ? _('Les nouveaux messages seront signalés dans Nextcloud') : _('Les nouveaux messages ne seront plus signalés dans Nextcloud'))
 					} catch (e) {
 						bell.checked = !bell.checked
 						toast(e.message, true)
@@ -2976,16 +2995,16 @@
 				onchange: async () => {
 					try {
 						Object.assign(a, await api('/accounts/' + a.id, { method: 'PUT', body: { reminders: remind.checked } }))
-						toast(remind.checked ? 'Les rappels des rendez-vous arriveront dans Nextcloud' : 'Les rappels des rendez-vous n\'arriveront plus dans Nextcloud')
+						toast(remind.checked ? _('Les rappels des rendez-vous arriveront dans Nextcloud') : _('Les rappels des rendez-vous n\'arriveront plus dans Nextcloud'))
 					} catch (e) {
 						remind.checked = !remind.checked
 						toast(e.message, true)
 					}
 				},
 			})
-			const del = h('button', { class: 'wm-danger' }, 'Retirer ce compte')
+			const del = h('button', { class: 'wm-danger' }, _('Retirer ce compte'))
 			del.addEventListener('click', async () => {
-				if (!window.confirm('Retirer le compte ' + a.email + ' du webmail ? (aucun e-mail n\'est supprimé)')) return
+				if (!window.confirm(_('Retirer le compte {email} du webmail ? (aucun e-mail n\'est supprimé)', { email: a.email }))) return
 				try {
 					await api('/accounts/' + a.id, { method: 'DELETE' })
 					state.accounts = state.accounts.filter((x) => x.id !== a.id)
@@ -2999,20 +3018,20 @@
 			})
 			wrap.appendChild(h('fieldset', { class: 'wm-account-card' },
 				h('legend', {}, a.email),
-				h('label', { class: 'wm-field' }, h('span', {}, 'Nom'), name),
-				h('label', { class: 'wm-field' }, h('span', {}, 'Mot de passe'), pwd),
-				h('div', { class: 'wm-field wm-field-top' }, h('span', {}, 'Signature'), sig.el),
+				h('label', { class: 'wm-field' }, h('span', {}, _('Nom')), name),
+				h('label', { class: 'wm-field' }, h('span', {}, _('Mot de passe')), pwd),
+				h('div', { class: 'wm-field wm-field-top' }, h('span', {}, _('Signature')), sig.el),
 				sharedMailboxesEditor(a),
-				h('label', { class: 'wm-radio wm-bell' }, bell, ' 🔔 Signaler chaque nouveau message dans les notifications Nextcloud, même webmail fermé (et sur le téléphone avec l\'application Nextcloud)'),
-				h('label', { class: 'wm-radio wm-bell' }, remind, ' ⏰ Rappels des rendez-vous de l\'agenda dans les notifications Nextcloud (au moment choisi pour chaque rendez-vous : 15 minutes avant…)'),
+				h('label', { class: 'wm-radio wm-bell' }, bell, ' 🔔 ' + _('Signaler chaque nouveau message dans les notifications Nextcloud, même webmail fermé (et sur le téléphone avec l\'application Nextcloud)')),
+				h('label', { class: 'wm-radio wm-bell' }, remind, ' ⏰ ' + _('Rappels des rendez-vous de l\'agenda dans les notifications Nextcloud (au moment choisi pour chaque rendez-vous : 15 minutes avant…)')),
 				h('div', { class: 'wm-compose-actions' }, save,
-					h('button', { type: 'button', class: 'wm-oof-btn', onclick: () => openOof(a) }, '🌴 Réponse automatique'),
-					h('button', { type: 'button', class: 'wm-rules-btn', onclick: () => openRules(a) }, '📋 Règles'),
+					h('button', { type: 'button', class: 'wm-oof-btn', onclick: () => openOof(a) }, '🌴 ' + _('Réponse automatique')),
+					h('button', { type: 'button', class: 'wm-rules-btn', onclick: () => openRules(a) }, '📋 ' + _('Règles')),
 					h('button', {
 						type: 'button',
 						class: 'wm-delegates-btn',
-						onclick: () => (window.WebmailDelegates ? window.WebmailDelegates.open(core, a) : toast('Module indisponible', true)),
-					}, '👥 Délégués'),
+						onclick: () => (window.WebmailDelegates ? window.WebmailDelegates.open(core, a) : toast(_('Module indisponible'), true)),
+					}, '👥 ' + _('Délégués')),
 					del)))
 		})
 
@@ -3021,19 +3040,19 @@
 	}
 
 	function buildAddAccountForm(firstRun) {
-		const email = h('input', { type: 'email', required: true, placeholder: 'prenom.nom@' + (state.domains[0] || 'exemple.fr'), autocomplete: 'email' })
+		const email = h('input', { type: 'email', required: true, placeholder: _('prenom.nom@{domain}', { domain: state.domains[0] || _('exemple.fr') }), autocomplete: 'email' })
 		const pwd = h('input', { type: 'password', required: true, autocomplete: 'current-password' })
-		const name = h('input', { type: 'text', placeholder: 'Facultatif' })
-		const btn = h('button', { type: 'submit', class: 'primary' }, 'Connecter')
+		const name = h('input', { type: 'text', placeholder: _('Facultatif') })
+		const btn = h('button', { type: 'submit', class: 'primary' }, _('Connecter'))
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
 
 		const domainsHint = state.domains.length || state.autodiscover
-			? h('p', { class: 'wm-muted wm-domains-hint' }, (state.domains.length ? 'Domaines pris en charge : ' + state.domains.join(', ') + '. ' : '')
-				+ (state.autodiscover ? (state.domains.length ? 'Pour les autres, le serveur est cherché automatiquement.' : 'Le serveur de votre adresse est cherché automatiquement.') : ''))
-			: h('p', { class: 'wm-warning' }, 'Aucun serveur Exchange n\'est encore configuré. ',
+			? h('p', { class: 'wm-muted wm-domains-hint' }, (state.domains.length ? _('Domaines pris en charge : {domains}.', { domains: state.domains.join(', ') }) + ' ' : '')
+				+ (state.autodiscover ? (state.domains.length ? _('Pour les autres, le serveur est cherché automatiquement.') : _('Le serveur de votre adresse est cherché automatiquement.')) : ''))
+			: h('p', { class: 'wm-warning' }, _('Aucun serveur Exchange n\'est encore configuré.') + ' ',
 				state.isAdmin
-					? h('a', { href: OC.generateUrl('/settings/admin/webmail') }, 'Configurer les serveurs (administration)')
-					: 'Contactez votre administrateur.')
+					? h('a', { href: OC.generateUrl('/settings/admin/webmail') }, _('Configurer les serveurs (administration)'))
+					: _('Contactez votre administrateur.'))
 
 		return h('form', {
 			class: 'wm-account-card wm-add-account',
@@ -3041,11 +3060,11 @@
 				e.preventDefault()
 				err.textContent = ''
 				btn.disabled = true
-				btn.textContent = 'Connexion à Exchange…'
+				btn.textContent = _('Connexion à Exchange…')
 				try {
 					const acc = await api('/accounts', { method: 'POST', body: { email: email.value, password: pwd.value, displayName: name.value } })
 					state.accounts.push(acc)
-					toast('Compte ajouté')
+					toast(_('Compte ajouté'))
 					if (!navEl || !root.contains(navEl)) buildLayout()
 					await selectAccount(acc.id)
 					startBackground()
@@ -3055,15 +3074,15 @@
 					err.textContent = ex.message
 				} finally {
 					btn.disabled = false
-					btn.textContent = 'Connecter'
+					btn.textContent = _('Connecter')
 				}
 			},
 		},
-		h('h3', {}, firstRun ? 'Connectez votre boîte Exchange' : 'Ajouter un compte'),
+		h('h3', {}, firstRun ? _('Connectez votre boîte Exchange') : _('Ajouter un compte')),
 		domainsHint,
-		h('label', { class: 'wm-field' }, h('span', {}, 'Adresse e-mail'), email),
-		h('label', { class: 'wm-field' }, h('span', {}, 'Mot de passe'), pwd),
-		h('label', { class: 'wm-field' }, h('span', {}, 'Nom affiché'), name),
+		h('label', { class: 'wm-field' }, h('span', {}, _('Adresse e-mail')), email),
+		h('label', { class: 'wm-field' }, h('span', {}, _('Mot de passe')), pwd),
+		h('label', { class: 'wm-field' }, h('span', {}, _('Nom affiché')), name),
 		err,
 		h('div', { class: 'wm-compose-actions' }, btn))
 	}

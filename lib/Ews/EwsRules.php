@@ -141,9 +141,9 @@ class EwsRules {
 			$code = $this->client->text($xp, 'm:ResponseCode', $resp);
 			$message = $this->client->text($xp, 'm:RuleOperationErrors//t:ErrorMessage', $resp);
 			if ($code === 'ErrorInboxRulesValidationError' && $message !== null && $message !== '') {
-				throw new MailException('Règle refusée par Exchange : ' . $message);
+				throw new MailException('Règle refusée par Exchange : %s', [$message]);
 			}
-			throw new MailException(EwsClient::translateError($code, $this->client->text($xp, 'm:MessageText', $resp)));
+			throw EwsClient::exchangeError($code, $this->client->text($xp, 'm:MessageText', $resp));
 		}
 		return $xp;
 	}
@@ -329,7 +329,7 @@ class EwsRules {
 					$items = self::cleanList($v);
 					foreach ($items as $a) {
 						if (!filter_var($a, FILTER_VALIDATE_EMAIL)) {
-							throw new MailException('Adresse invalide : ' . $a);
+							throw new MailException('Adresse invalide : %s', [$a]);
 						}
 					}
 					if ($items === []) {

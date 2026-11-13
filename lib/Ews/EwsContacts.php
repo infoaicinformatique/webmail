@@ -118,7 +118,7 @@ class EwsContacts {
 		$msg = $xp->query('//m:ResponseMessages/*')->item(0);
 		$code = $msg !== null ? $this->client->text($xp, 'm:ResponseCode', $msg) : null;
 		if ($code === 'ErrorNonExistentMailbox' || $code === 'ErrorInvalidSmtpAddress') {
-			throw new MailException('Aucune boîte Exchange ne correspond à ' . $email);
+			throw new MailException('Aucune boîte Exchange ne correspond à %s', [$email]);
 		}
 		$books = [];
 		$mainId = null;
@@ -155,7 +155,7 @@ class EwsContacts {
 		usort($others, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
 		$books = array_merge($books, $others);
 		if ($books === []) {
-			throw new MailException($email . ' ne partage pas de carnet d\'adresses avec vous (à faire dans Outlook : clic droit sur le carnet → Propriétés → Autorisations)');
+			throw new MailException('%s ne partage pas de carnet d\'adresses avec vous (à faire dans Outlook : clic droit sur le carnet → Propriétés → Autorisations)', [$email]);
 		}
 		return $books;
 	}
@@ -204,9 +204,9 @@ class EwsContacts {
 		$msg = $xp->query('//m:ResponseMessages/*')->item(0);
 		if (!$msg instanceof \DOMElement || $msg->getAttribute('ResponseClass') === 'Error') {
 			$code = $msg !== null ? $this->client->text($xp, 'm:ResponseCode', $msg) : null;
-			throw new MailException($parent === null || $parent === ''
-				? 'Aucun dossier public n\'est accessible sur ce serveur Exchange'
-				: EwsClient::translateError($code, $msg !== null ? $this->client->text($xp, 'm:MessageText', $msg) : null));
+			throw $parent === null || $parent === ''
+				? new MailException('Aucun dossier public n\'est accessible sur ce serveur Exchange')
+				: EwsClient::exchangeError($code, $msg !== null ? $this->client->text($xp, 'm:MessageText', $msg) : null);
 		}
 		$out = [];
 		foreach ($xp->query('.//t:Folders/*', $msg) as $node) {
@@ -243,7 +243,9 @@ class EwsContacts {
 		$node = $xp->query('//m:Folders/*')->item(0);
 		if ($node === null || $this->client->text($xp, 't:FolderClass', $node) !== $class
 			|| $this->client->text($xp, 't:EffectiveRights/t:Read', $node) === 'false') {
-			throw new MailException($class === 'IPF.Appointment' ? 'Ce dossier public n\'est pas un agenda lisible' : 'Ce dossier public n\'est pas un carnet d\'adresses lisible');
+			throw $class === 'IPF.Appointment'
+				? new MailException('Ce dossier public n\'est pas un agenda lisible')
+				: new MailException('Ce dossier public n\'est pas un carnet d\'adresses lisible');
 		}
 		return [
 			'name' => (string)$this->client->text($xp, 't:DisplayName', $node),
@@ -661,7 +663,7 @@ class EwsContacts {
 				continue;
 			}
 			if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-				throw new MailException('Adresse invalide dans le groupe : ' . $email);
+				throw new MailException('Adresse invalide dans le groupe : %s', [$email]);
 			}
 			if (isset($seen[$email])) {
 				continue;
@@ -860,7 +862,7 @@ class EwsContacts {
 				continue;
 			}
 			if (!filter_var($e, FILTER_VALIDATE_EMAIL)) {
-				throw new MailException('Adresse e-mail invalide : ' . $e);
+				throw new MailException('Adresse e-mail invalide : %s', [$e]);
 			}
 			$emails[] = $e;
 		}

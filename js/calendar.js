@@ -2,11 +2,16 @@
 (function () {
 	'use strict'
 
-	const DAY_NAMES = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.']
-	const REMINDERS = [[-1, 'Aucun rappel'], [0, 'Au début'], [5, '5 minutes avant'], [15, '15 minutes avant'], [30, '30 minutes avant'],
-		[60, '1 heure avant'], [120, '2 heures avant'], [1440, '1 jour avant'], [10080, '1 semaine avant']]
-	const FREEBUSY = [['Busy', 'Occupé'], ['Tentative', 'Provisoire'], ['Free', 'Disponible'], ['OOF', 'Absent du bureau'], ['WorkingElsewhere', 'Travail à distance']]
-	const RESPONSES = { Accept: 'Accepté', Tentative: 'Provisoire', Decline: 'Refusé', NoResponseReceived: 'Pas de réponse', Unknown: 'Pas de réponse', Organizer: 'Organisateur' }
+	/** Translated text (Nextcloud l10n: l10n/<language>.js); the French text is the key. */
+	const _ = (s, vars) => (window.t ? window.t('webmail', s, vars, undefined, { escape: false }) : s)
+	const locale = () => ((window.OC && OC.getLanguage && OC.getLanguage()) || 'fr').replace('_', '-')
+
+	/** Short weekday names, Monday first ("lun.", "mar."…), from a week that starts on a Monday. */
+	const DAY_NAMES = () => Array.from({ length: 7 }, (x, i) => new Date(2024, 0, 1 + i).toLocaleDateString(locale(), { weekday: 'short' }))
+	const REMINDERS = () => [[-1, _('Aucun rappel')], [0, _('Au début')], [5, _('5 minutes avant')], [15, _('15 minutes avant')], [30, _('30 minutes avant')],
+		[60, _('1 heure avant')], [120, _('2 heures avant')], [1440, _('1 jour avant')], [10080, _('1 semaine avant')]]
+	const FREEBUSY = () => [['Busy', _('Occupé')], ['Tentative', _('Provisoire')], ['Free', _('Disponible')], ['OOF', _('Absent du bureau')], ['WorkingElsewhere', _('Travail à distance')]]
+	const RESPONSES = () => ({ Accept: _('Accepté'), Tentative: _('Provisoire'), Decline: _('Refusé'), NoResponseReceived: _('Pas de réponse'), Unknown: _('Pas de réponse'), Organizer: _('Organisateur') })
 
 	const HOUR_PX = 48 // height of one hour in the week view
 
@@ -52,7 +57,7 @@
 	function ymd(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) }
 	function hm(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()) }
 	function ucfirst(str) { return str.charAt(0).toUpperCase() + str.slice(1) }
-	function timeLabel(d) { return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) }
+	function timeLabel(d) { return d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) }
 
 	/** Monday of the week containing d */
 	function startOfWeek(d) {
@@ -112,7 +117,7 @@
 	async function loadCalendars(force) {
 		if (!force && cal.calendarsFor === core.accountId && cal.calendars.length) return
 		const accountId = core.accountId
-		let list = [{ key: 'calendar', name: 'Calendrier', kind: 'own', canEdit: true, mode: 'full' }]
+		let list = [{ key: 'calendar', name: _('Calendrier'), kind: 'own', canEdit: true, mode: 'full' }]
 		try {
 			list = (await api('/accounts/' + accountId + '/calendar/calendars')).calendars
 		} catch (e) {
@@ -149,7 +154,7 @@
 		const errors = []
 		results.forEach(({ c, events: evs, error }) => {
 			if (error) {
-				errors.push(c.name + ' : ' + error.message)
+				errors.push(_('{name} : {error}', { name: c.name, error: error.message }))
 				return
 			}
 			evs.forEach((ev) => {
@@ -227,7 +232,7 @@
 
 	function renderNav(navEl) {
 		const h = core.h
-		navEl.appendChild(h('button', { class: 'wm-compose-btn primary', onclick: () => openForm(null, new Date()) }, '＋  Nouvel événement'))
+		navEl.appendChild(h('button', { class: 'wm-compose-btn primary', onclick: () => openForm(null, new Date()) }, '＋  ' + _('Nouvel événement')))
 		const sel = core.accountSelector()
 		if (sel) navEl.appendChild(sel)
 		navEl.appendChild(miniMonth())
@@ -236,7 +241,7 @@
 		navEl.appendChild(core.navFooter())
 	}
 
-	const MODE_LABEL = { freebusy: 'disponibilités', read: 'lecture', edit: 'modification' }
+	const MODE_LABEL = () => ({ freebusy: _('disponibilités'), read: _('lecture'), edit: _('modification') })
 
 	function calendarList() {
 		const h = core.h
@@ -244,7 +249,7 @@
 			const box = h('input', {
 				type: 'checkbox',
 				checked: !cal.hidden.has(c.key),
-				'aria-label': 'Afficher ' + c.name,
+				'aria-label': _('Afficher {name}', { name: c.name }),
 				onchange: () => {
 					box.checked ? cal.hidden.delete(c.key) : cal.hidden.add(c.key)
 					try { localStorage.setItem(hiddenKey(), JSON.stringify([...cal.hidden])) } catch (e) { /* ignore */ }
@@ -257,26 +262,26 @@
 					box,
 					h('span', { class: 'wm-cal-dot', style: c.color ? 'background:' + c.color : '' }),
 					h('span', { class: 'wm-cal-name' }, c.name)),
-				mode ? h('span', { class: 'wm-cal-mode wm-cal-mode-' + mode }, MODE_LABEL[mode]) : null,
+				mode ? h('span', { class: 'wm-cal-mode wm-cal-mode-' + mode }, MODE_LABEL()[mode]) : null,
 				c.kind !== 'shared' && c.kind !== 'public' ? h('button', {
 					type: 'button',
 					class: 'wm-cal-share',
-					title: 'Partager cet agenda',
-					'aria-label': 'Partager ' + c.name,
+					title: _('Partager cet agenda'),
+					'aria-label': _('Partager {name}', { name: c.name }),
 					onclick: () => openShare(c),
 				}, '🔗') : null,
 				c.kind === 'shared' ? h('button', {
 					type: 'button',
 					class: 'wm-cal-remove',
-					title: 'Retirer cet agenda',
-					'aria-label': 'Retirer l\'agenda de ' + c.name,
+					title: _('Retirer cet agenda'),
+					'aria-label': _('Retirer l\'agenda de {name}', { name: c.name }),
 					onclick: () => removeShared(c),
 				}, '✕') : null,
 				c.kind === 'public' ? h('button', {
 					type: 'button',
 					class: 'wm-cal-remove',
-					title: 'Retirer cet agenda (rien n\'est supprimé dans Exchange)',
-					'aria-label': 'Retirer ' + c.name,
+					title: _('Retirer cet agenda (rien n\'est supprimé dans Exchange)'),
+					'aria-label': _('Retirer {name}', { name: c.name }),
 					onclick: () => removePublic(c),
 				}, '✕') : null)
 		}
@@ -284,37 +289,36 @@
 		const shared = cal.calendars.filter((c) => c.kind === 'shared')
 		const publicCals = cal.calendars.filter((c) => c.kind === 'public')
 		return h('div', { class: 'wm-cal-list' },
-			h('div', { class: 'wm-cal-section' }, 'Mes agendas'),
+			h('div', { class: 'wm-cal-section' }, _('Mes agendas')),
 			h('ul', {}, own.map(row)),
-			h('div', { class: 'wm-cal-section' }, 'Agendas partagés'),
-			shared.length ? h('ul', {}, shared.map(row)) : h('p', { class: 'wm-muted wm-cal-hint' }, 'Ajoutez l\'agenda d\'un collègue qui vous l\'a partagé dans Outlook.'),
-			h('button', { type: 'button', class: 'wm-cal-add', onclick: openAddShared }, '＋ Ajouter un agenda partagé'),
-			h('div', { class: 'wm-cal-section' }, 'Dossiers publics'),
+			h('div', { class: 'wm-cal-section' }, _('Agendas partagés')),
+			shared.length ? h('ul', {}, shared.map(row)) : h('p', { class: 'wm-muted wm-cal-hint' }, _('Ajoutez l\'agenda d\'un collègue qui vous l\'a partagé dans Outlook.')),
+			h('button', { type: 'button', class: 'wm-cal-add', onclick: openAddShared }, '＋ ' + _('Ajouter un agenda partagé')),
+			h('div', { class: 'wm-cal-section' }, _('Dossiers publics')),
 			publicCals.length ? h('ul', {}, publicCals.map(row)) : null,
-			h('button', { type: 'button', class: 'wm-cal-add wm-public-cal-add', onclick: openAddPublic }, '＋ Ajouter un agenda des dossiers publics'))
+			h('button', { type: 'button', class: 'wm-cal-add wm-public-cal-add', onclick: openAddPublic }, '＋ ' + _('Ajouter un agenda des dossiers publics')))
 	}
 
 	function isPublicCal(ev) { return String((ev && ev.calendar) || '').startsWith('public:') }
 
 	/** Browse the public folders for a calendar (the picker of contacts.js). */
 	function openAddPublic() {
-		if (!window.WebmailPublicPicker) { core.toast('Module indisponible', true); return }
+		if (!window.WebmailPublicPicker) { core.toast(_('Module indisponible'), true); return }
 		window.WebmailPublicPicker(core, {
 			base: '/accounts/' + core.accountId + '/calendar/public',
-			title: 'Ajouter un agenda des dossiers publics',
-			intro: 'Les dossiers publics sont partagés par toute l\'organisation (planning commun, réservations…). Ouvrez les dossiers pour trouver les agendas ; '
-				+ 'le niveau d\'accès, lecture ou modification, est celui défini par l\'administrateur Exchange.',
+			title: _('Ajouter un agenda des dossiers publics'),
+			intro: _('Les dossiers publics sont partagés par toute l\'organisation (planning commun, réservations…). Ouvrez les dossiers pour trouver les agendas ; le niveau d\'accès, lecture ou modification, est celui défini par l\'administrateur Exchange.'),
 			icon: '📅',
-			empty: 'Aucun agenda ici.',
+			empty: _('Aucun agenda ici.'),
 			onAdded: async () => { await loadCalendars(true); refreshAll() },
 		})
 	}
 
 	async function removePublic(c) {
-		if (!window.confirm('Retirer « ' + c.name + ' » de la liste ? (rien n\'est supprimé dans Exchange)')) return
+		if (!window.confirm(_('Retirer « {name} » de la liste ? (rien n\'est supprimé dans Exchange)', { name: c.name }))) return
 		try {
 			await api('/accounts/' + core.accountId + '/calendar/public/delete', { method: 'POST', body: { folder: c.key.slice(7) } })
-			core.toast('Agenda retiré')
+			core.toast(_('Agenda retiré'))
 			await loadCalendars(true)
 			refreshAll()
 		} catch (e) { core.toast(e.message, true) }
@@ -327,65 +331,63 @@
 	function openShare(c) {
 		const base = '/accounts/' + core.accountId + '/calendar/permissions'
 		window.WebmailSharing.open(core, {
-			title: 'Partager « ' + c.name + ' »',
-			intro: 'Choisissez ce que chacun peut voir ou faire dans cet agenda, sans en faire un délégué. '
-				+ 'C\'est le réglage « Autorisations » de l\'agenda dans Outlook. Vos collègues l\'ajoutent ensuite avec « Ajouter un agenda partagé ».',
+			title: _('Partager « {name} »', { name: c.name }),
+			intro: _('Choisissez ce que chacun peut voir ou faire dans cet agenda, sans en faire un délégué. C\'est le réglage « Autorisations » de l\'agenda dans Outlook. Vos collègues l\'ajoutent ensuite avec « Ajouter un agenda partagé ».'),
 			levels: [
-				['None', 'Aucun accès'],
-				['FreeBusyTimeOnly', 'Disponibilités seulement'],
-				['FreeBusyTimeAndSubjectAndLocation', 'Disponibilités, objet et lieu'],
-				['Reviewer', 'Lecture (tous les détails)'],
-				['Author', 'Lecture et ajout d\'événements'],
-				['Editor', 'Modification'],
+				['None', _('Aucun accès')],
+				['FreeBusyTimeOnly', _('Disponibilités seulement')],
+				['FreeBusyTimeAndSubjectAndLocation', _('Disponibilités, objet et lieu')],
+				['Reviewer', _('Lecture (tous les détails)')],
+				['Author', _('Lecture et ajout d\'événements')],
+				['Editor', _('Modification')],
 			],
 			newLevel: 'Reviewer',
 			load: async () => (await api(base, { query: { calendar: c.key } })).permissions,
 			save: (permissions) => api(base, { method: 'POST', body: { calendar: c.key, permissions } }),
-			savedMessage: 'Partage de « ' + c.name + ' » enregistré',
+			savedMessage: _('Partage de « {name} » enregistré', { name: c.name }),
 		})
 	}
 
 	function openAddShared() {
 		const h = core.h
-		const email = h('input', { type: 'text', name: 'sharedEmail', required: true, placeholder: 'prenom.nom@exemple.fr' })
+		const email = h('input', { type: 'text', name: 'sharedEmail', required: true, placeholder: _('prenom.nom@exemple.fr') })
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
-		const btn = h('button', { type: 'submit', class: 'primary' }, 'Ajouter')
+		const btn = h('button', { type: 'submit', class: 'primary' }, _('Ajouter'))
 		const form = h('form', {
 			class: 'wm-event-form',
 			onsubmit: async (e) => {
 				e.preventDefault()
 				err.textContent = ''
 				btn.disabled = true
-				btn.textContent = 'Vérification de l\'accès…'
+				btn.textContent = _('Vérification de l\'accès…')
 				try {
 					const c = await api('/accounts/' + core.accountId + '/calendar/shared', { method: 'POST', body: { email: email.value } })
 					cal.hidden.delete(c.key)
 					close()
 					core.toast(c.mode === 'freebusy'
-						? 'Agenda de ' + c.name + ' ajouté (disponibilités seulement)'
-						: 'Agenda de ' + c.name + ' ajouté (' + (c.canEdit ? 'modification' : 'lecture') + ')')
+						? _('Agenda de {name} ajouté (disponibilités seulement)', { name: c.name })
+						: c.canEdit ? _('Agenda de {name} ajouté (modification)', { name: c.name }) : _('Agenda de {name} ajouté (lecture)', { name: c.name }))
 					await loadCalendars(true)
 					load()
 				} catch (ex) {
 					err.textContent = ex.message
 					btn.disabled = false
-					btn.textContent = 'Ajouter'
+					btn.textContent = _('Ajouter')
 				}
 			},
 		},
-		h('p', { class: 'wm-muted' }, 'Indiquez l\'adresse d\'un collègue. Le niveau d\'accès est détecté automatiquement : '
-			+ 'modification ou lecture si l\'agenda vous a été partagé dans Outlook, sinon ses seules disponibilités (occupé / libre).'),
-		h('label', { class: 'wm-field' }, h('span', {}, 'Adresse'), core.attachAutocomplete(email)),
+		h('p', { class: 'wm-muted' }, _('Indiquez l\'adresse d\'un collègue. Le niveau d\'accès est détecté automatiquement : modification ou lecture si l\'agenda vous a été partagé dans Outlook, sinon ses seules disponibilités (occupé / libre).')),
+		h('label', { class: 'wm-field' }, h('span', {}, _('Adresse')), core.attachAutocomplete(email)),
 		err,
-		h('div', { class: 'wm-compose-actions' }, btn, h('button', { type: 'button', onclick: () => close() }, 'Annuler')))
-		const close = modal('Ajouter un agenda partagé', form)
+		h('div', { class: 'wm-compose-actions' }, btn, h('button', { type: 'button', onclick: () => close() }, _('Annuler'))))
+		const close = modal(_('Ajouter un agenda partagé'), form)
 	}
 
 	async function removeShared(c) {
-		if (!window.confirm('Retirer l\'agenda de ' + c.name + ' de la liste ? (rien n\'est supprimé dans Exchange)')) return
+		if (!window.confirm(_('Retirer l\'agenda de {name} de la liste ? (rien n\'est supprimé dans Exchange)', { name: c.name }))) return
 		try {
 			await api('/accounts/' + core.accountId + '/calendar/shared/delete', { method: 'POST', body: { email: c.email } })
-			core.toast('Agenda retiré')
+			core.toast(_('Agenda retiré'))
 			await loadCalendars(true)
 			load()
 		} catch (e) { core.toast(e.message, true) }
@@ -403,16 +405,17 @@
 		const weekStart = startOfWeek(cal.cursor)
 		const busy = new Set()
 		cal.events.forEach((ev) => eventDays(ev).forEach((d) => busy.add(ymd(d))))
-		const grid = h('div', { class: 'wm-mini-grid' }, DAY_NAMES.map((d) => h('span', { class: 'wm-mini-head' }, d[0].toUpperCase())))
+		const grid = h('div', { class: 'wm-mini-grid' }, DAY_NAMES().map((d) => h('span', { class: 'wm-mini-head' }, d[0].toUpperCase())))
 		for (let i = 0; i < 42; i++) {
 			const d = addDays(first, i)
+			const dayLabel = d.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' })
 			grid.appendChild(h('button', {
 				type: 'button',
 				class: 'wm-mini-day' + (d.getMonth() !== shown.getMonth() ? ' other' : '') + (sameDay(d, today) ? ' today' : '')
 					+ (cal.view === 'week' && d >= weekStart && d < addDays(weekStart, 7) ? ' in-week' : '')
 					+ (sameDay(d, cal.cursor) ? ' selected' : '')
 					+ (busy.has(ymd(d)) ? ' has-events' : ''),
-				'aria-label': d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + (busy.has(ymd(d)) ? ', avec des événements' : ''),
+				'aria-label': busy.has(ymd(d)) ? _('{date}, avec des événements', { date: dayLabel }) : dayLabel,
 				dataset: { date: ymd(d) },
 				onclick: () => { cal.cursor = d; cal.miniMonth = null; cal.weekScroll = null; refreshAll() },
 				// double-click: this day on its own
@@ -422,9 +425,9 @@
 		const step = (n) => { cal.miniMonth = new Date(shown.getFullYear(), shown.getMonth() + n, 1); core.renderNav() }
 		return h('div', { class: 'wm-mini' },
 			h('div', { class: 'wm-mini-title' },
-				h('button', { type: 'button', class: 'wm-mini-nav', 'aria-label': 'Mois précédent', onclick: () => step(-1) }, '‹'),
-				h('span', {}, ucfirst(shown.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }))),
-				h('button', { type: 'button', class: 'wm-mini-nav', 'aria-label': 'Mois suivant', onclick: () => step(1) }, '›')),
+				h('button', { type: 'button', class: 'wm-mini-nav', 'aria-label': _('Mois précédent'), onclick: () => step(-1) }, '‹'),
+				h('span', {}, ucfirst(shown.toLocaleDateString(locale(), { month: 'long', year: 'numeric' }))),
+				h('button', { type: 'button', class: 'wm-mini-nav', 'aria-label': _('Mois suivant'), onclick: () => step(1) }, '›')),
 			grid)
 	}
 
@@ -437,12 +440,12 @@
 		core.clear(el)
 
 		const title = cal.view === 'list'
-			? 'À venir'
+			? _('À venir')
 			: cal.view === 'day'
-				? ucfirst(cal.cursor.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
+				? ucfirst(cal.cursor.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
 				: cal.view === 'week'
 					? weekTitle(startOfWeek(cal.cursor))
-					: ucfirst(cal.cursor.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }))
+					: ucfirst(cal.cursor.toLocaleDateString(locale(), { month: 'long', year: 'numeric' }))
 		const move = (n) => {
 			cal.cursor = cal.view === 'day'
 				? addDays(cal.cursor, n)
@@ -452,21 +455,21 @@
 			cal.miniMonth = null
 			refreshAll()
 		}
-		const unit = { day: ['Jour précédent', 'Jour suivant'], week: ['Semaine précédente', 'Semaine suivante'] }[cal.view] || ['Mois précédent', 'Mois suivant']
+		const unit = { day: [_('Jour précédent'), _('Jour suivant')], week: [_('Semaine précédente'), _('Semaine suivante')] }[cal.view] || [_('Mois précédent'), _('Mois suivant')]
 
 		el.appendChild(h('div', { class: 'wm-toolbar wm-cal-toolbar' },
-			h('button', { class: 'wm-back wm-mobile-only', 'aria-label': 'Menu', onclick: () => core.setView('nav') }, '☰'),
-			h('button', { onclick: () => { cal.cursor = startOfDay(new Date()); cal.weekScroll = null; refreshAll() } }, 'Aujourd\'hui'),
+			h('button', { class: 'wm-back wm-mobile-only', 'aria-label': _('Menu'), onclick: () => core.setView('nav') }, '☰'),
+			h('button', { onclick: () => { cal.cursor = startOfDay(new Date()); cal.weekScroll = null; refreshAll() } }, _('Aujourd\'hui')),
 			cal.view !== 'list' ? h('button', { 'aria-label': unit[0], onclick: () => move(-1) }, '‹') : null,
 			cal.view !== 'list' ? h('button', { 'aria-label': unit[1], onclick: () => move(1) }, '›') : null,
 			h('h2', { class: 'wm-cal-title' }, title),
 			searchField(),
 			cal.loading ? h('span', { class: 'icon-loading-small' }) : null,
 			h('div', { class: 'wm-segmented' },
-				h('button', { class: cal.view === 'day' ? 'active' : '', onclick: () => setCalView('day') }, 'Jour'),
-				h('button', { class: cal.view === 'month' ? 'active' : '', onclick: () => setCalView('month') }, 'Mois'),
-				h('button', { class: cal.view === 'week' ? 'active' : '', onclick: () => setCalView('week') }, 'Semaine'),
-				h('button', { class: cal.view === 'list' ? 'active' : '', onclick: () => setCalView('list') }, 'Liste')),
+				h('button', { class: cal.view === 'day' ? 'active' : '', onclick: () => setCalView('day') }, _('Jour')),
+				h('button', { class: cal.view === 'month' ? 'active' : '', onclick: () => setCalView('month') }, _('Mois')),
+				h('button', { class: cal.view === 'week' ? 'active' : '', onclick: () => setCalView('week') }, _('Semaine')),
+				h('button', { class: cal.view === 'list' ? 'active' : '', onclick: () => setCalView('list') }, _('Liste'))),
 			h('button', { class: 'primary wm-mobile-only', onclick: () => openForm(null, new Date()) }, '＋'),
 		))
 
@@ -499,8 +502,8 @@
 			type: 'search',
 			class: 'wm-cal-search',
 			name: 'calSearch',
-			placeholder: 'Rechercher un événement',
-			'aria-label': 'Rechercher un événement',
+			placeholder: _('Rechercher un événement'),
+			'aria-label': _('Rechercher un événement'),
 			value: cal.search ? cal.search.q : '',
 			onkeydown: (e) => {
 				if (e.key === 'Enter') { e.preventDefault(); searchEvents(input.value.trim()) }
@@ -521,7 +524,7 @@
 	/** In every visible calendar, six months back and ahead. */
 	async function searchEvents(q) {
 		if (!q) { endSearch(); return }
-		if (q.length < 2) { core.toast('Tapez au moins 2 lettres', true); return }
+		if (q.length < 2) { core.toast(_('Tapez au moins 2 lettres'), true); return }
 		const mine = ++searchSeq
 		cal.search = { q, loading: true, events: [] }
 		render()
@@ -529,7 +532,7 @@
 		const results = await Promise.all(visible.map((c) => api('/accounts/' + core.accountId + '/calendar/search', {
 			query: { q, tz: core.TZ, calendar: c.key },
 		}).then((d) => d.events.map((ev) => Object.assign(ev, { calendar: c.key, color: c.color, readOnly: !c.canEdit, shared: c.kind === 'shared' })),
-			(e) => { core.toast(c.name + ' : ' + e.message, true); return [] })))
+			(e) => { core.toast(_('{name} : {error}', { name: c.name, error: e.message }), true); return [] })))
 		if (mine !== searchSeq || !cal.search) return
 		cal.search = { q, loading: false, events: results.flat().sort((a, b) => new Date(a.start) - new Date(b.start)) }
 		render()
@@ -540,14 +543,16 @@
 		const { q, loading, events } = cal.search
 		const wrap = h('div', { class: 'wm-agenda wm-cal-results' },
 			h('div', { class: 'wm-search-info' },
-				'Événements contenant « ' + q + ' » ' + (loading ? '' : '(' + events.length + ') ') + '— six mois avant et après aujourd\'hui · ',
-				h('a', { href: '#', onclick: (e) => { e.preventDefault(); endSearch() } }, 'revenir à l\'agenda')))
+				(loading
+					? _('Événements contenant « {query} » — six mois avant et après aujourd\'hui', { query: q })
+					: _('Événements contenant « {query} » ({count}) — six mois avant et après aujourd\'hui', { query: q, count: events.length })) + ' · ',
+				h('a', { href: '#', onclick: (e) => { e.preventDefault(); endSearch() } }, _('revenir à l\'agenda'))))
 		if (loading) {
 			wrap.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
 			return wrap
 		}
 		if (!events.length) {
-			wrap.appendChild(h('div', { class: 'wm-empty' }, 'Aucun événement trouvé'))
+			wrap.appendChild(h('div', { class: 'wm-empty' }, _('Aucun événement trouvé')))
 			return wrap
 		}
 		let lastDay = null
@@ -558,11 +563,11 @@
 			if (!lastDay || !sameDay(day, lastDay)) {
 				lastDay = day
 				wrap.appendChild(h('h3', { class: 'wm-agenda-day' + (sameDay(day, today) ? ' today' : '') + (day < today ? ' past' : '') },
-					ucfirst(day.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))))
+					ucfirst(day.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))))
 			}
 			const item = h('button', { type: 'button', class: 'wm-agenda-item', onclick: () => openEvent(ev), dataset: { id: ev.id } },
-				h('span', { class: 'wm-agenda-time' }, ev.allDay ? 'Journée' : timeLabel(s) + ' – ' + timeLabel(new Date(ev.end))),
-				h('span', { class: 'wm-agenda-subject' + (ev.isCancelled ? ' cancelled' : '') }, ev.subject || '(sans titre)',
+				h('span', { class: 'wm-agenda-time' }, ev.allDay ? _('Journée') : timeLabel(s) + ' – ' + timeLabel(new Date(ev.end))),
+				h('span', { class: 'wm-agenda-subject' + (ev.isCancelled ? ' cancelled' : '') }, ev.subject || _('(sans titre)'),
 					ev.location ? h('span', { class: 'wm-muted' }, ' · ' + ev.location) : null,
 					cal.calendars.length > 1 ? h('span', { class: 'wm-muted' }, ' · ' + (calendarOf(ev) || {}).name) : null))
 			if (ev.color) item.style.setProperty('--ev-color', ev.color)
@@ -574,8 +579,8 @@
 	function weekTitle(first) {
 		const last = addDays(first, 6)
 		const sameMonth = first.getMonth() === last.getMonth()
-		const from = first.toLocaleDateString('fr-FR', sameMonth ? { day: 'numeric' } : { day: 'numeric', month: 'long' })
-		return 'Semaine du ' + from + ' au ' + last.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+		const from = first.toLocaleDateString(locale(), sameMonth ? { day: 'numeric' } : { day: 'numeric', month: 'long' })
+		return _('Semaine du {from} au {to}', { from, to: last.toLocaleDateString(locale(), { day: 'numeric', month: 'long', year: 'numeric' }) })
 	}
 
 	/** Moving in the calendar closes the search results. */
@@ -613,7 +618,7 @@
 			dataset: { id: ev.id },
 		},
 		!ev.allDay && !continued ? h('span', { class: 'wm-event-time' }, timeLabel(start) + ' ') : null,
-		ev.subject || '(sans titre)')
+		ev.subject || _('(sans titre)'))
 	}
 
 	function renderMonth() {
@@ -622,7 +627,7 @@
 		const today = new Date()
 		const weeks = Math.round((visibleRange()[1] - first) / (7 * 86400000))
 		const grid = h('div', { class: 'wm-month', style: 'grid-template-rows: auto repeat(' + weeks + ', minmax(96px, 1fr))' },
-			DAY_NAMES.map((d) => h('div', { class: 'wm-month-head' }, d)))
+			DAY_NAMES().map((d) => h('div', { class: 'wm-month-head' }, d)))
 		for (let i = 0; i < weeks * 7; i++) {
 			const day = addDays(first, i)
 			const evs = eventsOn(day)
@@ -638,7 +643,7 @@
 				type: 'button',
 				class: 'wm-more',
 				onclick: (e) => { e.stopPropagation(); showDay(day) },
-			}, '+ ' + (evs.length - max) + ' autre' + (evs.length - max > 1 ? 's' : '')) : null)
+			}, '+ ' + (evs.length - max > 1 ? _('{count} autres', { count: evs.length - max }) : _('{count} autre', { count: evs.length - max }))) : null)
 			grid.appendChild(cell)
 		}
 		return grid
@@ -689,25 +694,26 @@
 		// the day view is the week grid with one column
 		const days = cal.view === 'day'
 			? [startOfDay(cal.cursor)]
-			: Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(cal.cursor), i))
+			: Array.from({ length: 7 }, (x, i) => addDays(startOfWeek(cal.cursor), i))
 		const now = new Date()
+		const dayNames = DAY_NAMES()
 
 		const head = h('div', { class: 'wm-week-row wm-week-head' },
 			h('div', { class: 'wm-week-gutter' }),
 			days.map((d) => h('button', {
 				type: 'button',
 				class: 'wm-week-dayname' + (sameDay(d, now) ? ' today' : ''),
-				title: 'Nouvel événement le ' + d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }),
+				title: _('Nouvel événement le {date}', { date: d.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' }) }),
 				onclick: () => openForm(null, d),
-			}, h('span', { class: 'wm-week-dow' }, DAY_NAMES[(d.getDay() + 6) % 7]), h('span', { class: 'wm-week-date' }, String(d.getDate())))))
+			}, h('span', { class: 'wm-week-dow' }, dayNames[(d.getDay() + 6) % 7]), h('span', { class: 'wm-week-date' }, String(d.getDate())))))
 
 		const allDay = h('div', { class: 'wm-week-row wm-week-allday' },
-			h('div', { class: 'wm-week-gutter wm-muted' }, 'Journée'),
+			h('div', { class: 'wm-week-gutter wm-muted' }, _('Journée')),
 			days.map((d) => h('div', { class: 'wm-week-allday-cell', dataset: { date: ymd(d) } },
 				eventsOn(d).filter((ev) => ev.allDay).map((ev) => draggable(chip(ev, d), ev, 'day', d)))))
 
 		const hours = h('div', { class: 'wm-week-gutter wm-week-hours' },
-			Array.from({ length: 24 }, (_, hr) => h('div', { class: 'wm-week-hour', style: 'height:' + HOUR_PX + 'px' }, hr ? pad(hr) + ':00' : '')))
+			Array.from({ length: 24 }, (x, hr) => h('div', { class: 'wm-week-hour', style: 'height:' + HOUR_PX + 'px' }, hr ? pad(hr) + ':00' : '')))
 		const grid = h('div', { class: 'wm-week-row wm-week-grid', style: 'height:' + (24 * HOUR_PX) + 'px' }, hours)
 
 		days.forEach((d) => {
@@ -739,9 +745,9 @@
 				b.append(
 					h('span', { class: 'wm-week-event-time' },
 						(startsToday ? timeLabel(new Date(ev.start)) : '…') + ' – ' + (endsToday ? timeLabel(new Date(ev.end)) : '…')),
-					h('span', { class: 'wm-week-event-subject' }, ev.subject || '(sans titre)'))
+					h('span', { class: 'wm-week-event-subject' }, ev.subject || _('(sans titre)')))
 				if (ev.location && minutes >= 45) b.appendChild(h('span', { class: 'wm-week-event-location' }, ev.location))
-				if (canMove(ev)) b.appendChild(h('span', { class: 'wm-resize', title: 'Tirer pour changer l\'heure de fin', 'aria-hidden': 'true' }))
+				if (canMove(ev)) b.appendChild(h('span', { class: 'wm-resize', title: _('Tirer pour changer l\'heure de fin'), 'aria-hidden': 'true' }))
 				col.appendChild(draggable(b, ev, 'time', d))
 			})
 			if (sameDay(d, now)) {
@@ -774,24 +780,25 @@
 		const h = core.h
 		const [from, to] = visibleRange()
 		const wrap = h('div', { class: 'wm-agenda' })
+		const responses = RESPONSES()
 		let any = false
 		for (let d = from; d < to; d = addDays(d, 1)) {
 			const evs = eventsOn(d)
 			if (!evs.length) continue
 			any = true
 			wrap.appendChild(h('h3', { class: 'wm-agenda-day' + (sameDay(d, new Date()) ? ' today' : '') },
-				ucfirst(d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }))))
+				ucfirst(d.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' }))))
 			evs.forEach((ev) => {
 				const s = new Date(ev.start)
 				const e = new Date(ev.end)
 				wrap.appendChild(h('button', { type: 'button', class: 'wm-agenda-item', onclick: () => openEvent(ev), dataset: { id: ev.id } },
-					h('span', { class: 'wm-agenda-time' }, ev.allDay ? 'Journée' : (sameDay(s, d) ? timeLabel(s) : '…') + ' – ' + (sameDay(e, d) ? timeLabel(e) : '…')),
-					h('span', { class: 'wm-agenda-subject' + (ev.isCancelled ? ' cancelled' : '') }, ev.subject || '(sans titre)',
+					h('span', { class: 'wm-agenda-time' }, ev.allDay ? _('Journée') : (sameDay(s, d) ? timeLabel(s) : '…') + ' – ' + (sameDay(e, d) ? timeLabel(e) : '…')),
+					h('span', { class: 'wm-agenda-subject' + (ev.isCancelled ? ' cancelled' : '') }, ev.subject || _('(sans titre)'),
 						ev.location ? h('span', { class: 'wm-muted' }, ' · ' + ev.location) : null,
-						ev.isMeeting && !ev.isOrganizer && !isPublicCal(ev) && RESPONSES[ev.response] ? h('span', { class: 'wm-muted' }, ' · ' + RESPONSES[ev.response]) : null)))
+						ev.isMeeting && !ev.isOrganizer && !isPublicCal(ev) && responses[ev.response] ? h('span', { class: 'wm-muted' }, ' · ' + responses[ev.response]) : null)))
 			})
 		}
-		if (!any) wrap.appendChild(h('div', { class: 'wm-empty' }, cal.loading ? 'Chargement…' : 'Aucun événement dans les 30 prochains jours'))
+		if (!any) wrap.appendChild(h('div', { class: 'wm-empty' }, cal.loading ? _('Chargement…') : _('Aucun événement dans les 30 prochains jours')))
 		return wrap
 	}
 
@@ -822,7 +829,7 @@
 	function draggable(el, ev, mode, day) {
 		if (!canMove(ev)) return el
 		el.classList.add('wm-movable')
-		el.title = (el.title ? el.title + ' — ' : '') + 'glisser pour déplacer'
+		el.title = el.title ? _('{title} — glisser pour déplacer', { title: el.title }) : _('glisser pour déplacer')
 		el.addEventListener('pointerdown', (e) => {
 			if (e.button !== 0 || e.pointerType === 'touch') return
 			startDrag(e, el, ev, mode, day, e.target.classList.contains('wm-resize'))
@@ -920,8 +927,7 @@
 
 	async function commitMove(ev, r) {
 		const notify = ev.isMeeting && ev.isOrganizer
-		if (notify && !window.confirm('Déplacer la réunion « ' + (ev.subject || '') + ' » au '
-			+ core.formatRange(r.start.toISOString(), r.end.toISOString(), ev.allDay) + ' ? Les participants recevront la mise à jour.')) {
+		if (notify && !window.confirm(_('Déplacer la réunion « {subject} » au {when} ? Les participants recevront la mise à jour.', { subject: ev.subject || '', when: core.formatRange(r.start.toISOString(), r.end.toISOString(), ev.allDay) }))) {
 			render()
 			return
 		}
@@ -944,7 +950,8 @@
 					tz: core.TZ,
 				},
 			})
-			core.toast((notify ? 'Réunion déplacée, participants prévenus : ' : 'Événement déplacé : ') + core.formatRange(ev.start, ev.end, ev.allDay))
+			const when = core.formatRange(ev.start, ev.end, ev.allDay)
+				core.toast(notify ? _('Réunion déplacée, participants prévenus : {when}', { when }) : _('Événement déplacé : {when}', { when }))
 		} catch (e) {
 			ev.start = before.start
 			ev.end = before.end
@@ -959,28 +966,33 @@
 	// ------------------------------------------------------------------
 
 	const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-	const WEEKDAY_FR = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
-	const UNITS = { daily: ['jour', 'jours'], weekly: ['semaine', 'semaines'], monthly: ['mois', 'mois'], yearly: ['an', 'ans'] }
+	/** Weekday names, Monday first ("lundi"…), from a week that starts on a Monday. */
+	const weekdayNames = () => Array.from({ length: 7 }, (x, i) => new Date(2024, 0, 1 + i).toLocaleDateString(locale(), { weekday: 'long' }))
+	const UNITS = () => ({ daily: [_('jour'), _('jours')], weekly: [_('semaine'), _('semaines')], monthly: [_('mois'), _('mois')], yearly: [_('an'), _('ans')] })
 
 	function weekdayOf(d) { return WEEKDAYS[(d.getDay() + 6) % 7] }
 
 	function joinFr(list) {
-		return list.length > 1 ? list.slice(0, -1).join(', ') + ' et ' + list[list.length - 1] : (list[0] || '')
+		return list.length > 1 ? list.slice(0, -1).join(', ') + _(' et ') + list[list.length - 1] : (list[0] || '')
 	}
-
-	const RANKS = ['1er', '2e', '3e', '4e']
 
 	/** "le 2e mardi", "le dernier vendredi" of the month of `d` (a 5th one is the last) */
 	function weekdayRank(d, by) {
 		const n = Math.floor((d.getDate() - 1) / 7)
-		const day = WEEKDAY_FR[(d.getDay() + 6) % 7]
-		return 'le ' + (by === 'last' || n > 3 ? 'dernier' : RANKS[n]) + ' ' + day
+		const weekday = weekdayNames()[(d.getDay() + 6) % 7]
+		if (by === 'last' || n > 3) return _('le dernier {weekday}', { weekday })
+		return [_('le 1er {weekday}', { weekday }), _('le 2e {weekday}', { weekday }), _('le 3e {weekday}', { weekday }), _('le 4e {weekday}', { weekday })][n]
+	}
+
+	/** "le 1er", "le 12" (day of the month of `d`) */
+	function dayOfMonth(d) {
+		return _('le {day}', { day: d.getDate() === 1 ? _('1er') : d.getDate() })
 	}
 
 	/** "de novembre", "d'avril" */
 	function monthOf(d) {
-		const m = d.toLocaleDateString('fr-FR', { month: 'long' })
-		return (/^[aeiou]/.test(m) ? 'd\'' : 'de ') + m
+		const month = d.toLocaleDateString(locale(), { month: 'long' })
+		return /^[aeiou]/.test(month) ? _('d\'{month}', { month }) : _('de {month}', { month })
 	}
 
 	function inLastWeek(d) {
@@ -990,27 +1002,34 @@
 
 	/** "Toutes les 2 semaines le lundi et le jeudi, jusqu'au 31 mars 2027" */
 	function describeRule(r, start) {
-		if (!r) return 'Ne se répète pas'
-		if (r.freq === 'other' || r.freq === 'keep') return 'Répétition personnalisée (définie dans Outlook)'
+		if (!r) return _('Ne se répète pas')
+		if (r.freq === 'other' || r.freq === 'keep') return _('Répétition personnalisée (définie dans Outlook)')
 		const n = r.interval || 1
-		const fem = r.freq === 'weekly' // « semaine » est féminin
 		let text = n === 1
-			? { daily: 'Tous les jours', weekly: 'Toutes les semaines', monthly: 'Tous les mois', yearly: 'Tous les ans' }[r.freq]
-			: (fem ? 'Toutes les ' : 'Tous les ') + n + ' ' + UNITS[r.freq][1]
+			? { daily: _('Tous les jours'), weekly: _('Toutes les semaines'), monthly: _('Tous les mois'), yearly: _('Tous les ans') }[r.freq]
+			: {
+				daily: _('Tous les {count} jours', { count: n }),
+				weekly: _('Toutes les {count} semaines', { count: n }),
+				monthly: _('Tous les {count} mois', { count: n }),
+				yearly: _('Tous les {count} ans', { count: n }),
+			}[r.freq]
+		let when = null
 		if (r.freq === 'weekly') {
 			const days = (r.days && r.days.length ? r.days : [weekdayOf(start)])
-			text += ' ' + joinFr(WEEKDAYS.filter((d) => days.includes(d)).map((d) => 'le ' + WEEKDAY_FR[WEEKDAYS.indexOf(d)]))
+			const names = weekdayNames()
+			when = joinFr(WEEKDAYS.filter((d) => days.includes(d)).map((d) => _('le {weekday}', { weekday: names[WEEKDAYS.indexOf(d)] })))
 		} else if (r.freq === 'monthly') {
-			text += r.by === 'weekday' || r.by === 'last' ? ' ' + weekdayRank(start, r.by) : ' le ' + (start.getDate() === 1 ? '1er' : start.getDate())
+			when = r.by === 'weekday' || r.by === 'last' ? weekdayRank(start, r.by) : dayOfMonth(start)
 		} else if (r.freq === 'yearly') {
-			text += r.by === 'weekday' || r.by === 'last'
-				? ' ' + weekdayRank(start, r.by) + ' ' + monthOf(start)
-				: ' le ' + start.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+			when = r.by === 'weekday' || r.by === 'last'
+				? _('{when} {month}', { when: weekdayRank(start, r.by), month: monthOf(start) })
+				: _('le {date}', { date: start.toLocaleDateString(locale(), { day: 'numeric', month: 'long' }) })
 		}
+		if (when !== null) text = _('{rule} {when}', { rule: text, when })
 		if (r.until) {
-			text += ', jusqu\'au ' + new Date(r.until + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+			text = _('{rule}, jusqu\'au {date}', { rule: text, date: new Date(r.until + 'T12:00').toLocaleDateString(locale(), { day: 'numeric', month: 'long', year: 'numeric' }) })
 		} else if (r.count) {
-			text += ', ' + r.count + ' fois'
+			text = r.count > 1 ? _('{rule}, {count} fois', { rule: text, count: r.count }) : _('{rule}, 1 fois', { rule: text })
 		}
 		return text
 	}
@@ -1022,42 +1041,43 @@
 	 */
 	function recurrenceEditor(initial, getStart, allowKeep) {
 		const h = core.h
-		const repeat = h('select', { name: 'repeat', 'aria-label': 'Répétition' },
-			allowKeep ? h('option', { value: 'keep' }, 'Conserver la répétition actuelle') : null,
-			h('option', { value: '' }, 'Ne se répète pas'),
-			h('option', { value: 'daily' }, 'Tous les jours'),
-			h('option', { value: 'weekly' }, 'Toutes les semaines'),
-			h('option', { value: 'monthly' }, 'Tous les mois'),
-			h('option', { value: 'yearly' }, 'Tous les ans'))
-		const interval = h('input', { type: 'number', name: 'interval', min: '1', max: '99', value: String((initial && initial.interval) || 1), 'aria-label': 'Intervalle' })
+		const repeat = h('select', { name: 'repeat', 'aria-label': _('Répétition') },
+			allowKeep ? h('option', { value: 'keep' }, _('Conserver la répétition actuelle')) : null,
+			h('option', { value: '' }, _('Ne se répète pas')),
+			h('option', { value: 'daily' }, _('Tous les jours')),
+			h('option', { value: 'weekly' }, _('Toutes les semaines')),
+			h('option', { value: 'monthly' }, _('Tous les mois')),
+			h('option', { value: 'yearly' }, _('Tous les ans')))
+		const interval = h('input', { type: 'number', name: 'interval', min: '1', max: '99', value: String((initial && initial.interval) || 1), 'aria-label': _('Intervalle') })
 		const unit = h('span', {})
-		const intervalWrap = h('label', { class: 'wm-inline' }, 'tous les ', interval, ' ', unit)
+		const intervalWrap = h('label', { class: 'wm-inline' }, _('tous les') + ' ', interval, ' ', unit)
+		const names = weekdayNames()
 		const dayBoxes = WEEKDAYS.map((d, i) => {
 			const box = h('input', { type: 'checkbox', name: 'day-' + d, value: d })
-			return { d, box, el: h('label', { class: 'wm-day-check', title: WEEKDAY_FR[i] }, box, WEEKDAY_FR[i].slice(0, 2)) }
+			return { d, box, el: h('label', { class: 'wm-day-check', title: names[i] }, box, names[i].slice(0, 2)) }
 		})
 		const daysWrap = h('div', { class: 'wm-days' }, dayBoxes.map((x) => x.el))
 		// monthly / yearly: on the date, or on the weekday ("le 2e mardi", "le dernier mardi")
-		const by = h('select', { name: 'repeatBy', 'aria-label': 'Quel jour' })
+		const by = h('select', { name: 'repeatBy', 'aria-label': _('Quel jour') })
 		const fillBy = (start, f) => {
 			const keep = by.value || (initial && initial.by) || 'date'
 			core.clear(by)
 			if (isNaN(start)) return
-			const date = f === 'yearly' ? 'le ' + start.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : 'le ' + (start.getDate() === 1 ? '1er' : start.getDate())
-			const suffix = f === 'yearly' ? ' ' + monthOf(start) : ''
-			const options = [['date', date], ['weekday', weekdayRank(start, 'weekday') + suffix]]
+			const date = f === 'yearly' ? _('le {date}', { date: start.toLocaleDateString(locale(), { day: 'numeric', month: 'long' }) }) : dayOfMonth(start)
+			const withMonth = (when) => (f === 'yearly' ? _('{when} {month}', { when, month: monthOf(start) }) : when)
+			const options = [['date', date], ['weekday', withMonth(weekdayRank(start, 'weekday'))]]
 			// the 4th Tuesday can also be the last one
-			if (inLastWeek(start) && Math.floor((start.getDate() - 1) / 7) < 4) options.push(['last', weekdayRank(start, 'last') + suffix])
+			if (inLastWeek(start) && Math.floor((start.getDate() - 1) / 7) < 4) options.push(['last', withMonth(weekdayRank(start, 'last'))])
 			options.forEach(([v, l]) => by.appendChild(h('option', { value: v }, l)))
 			by.value = options.some(([v]) => v === keep) ? keep : (keep === 'last' ? 'weekday' : 'date')
 		}
-		const ends = h('select', { name: 'ends', 'aria-label': 'Fin de la répétition' },
-			h('option', { value: 'never' }, 'sans fin'),
-			h('option', { value: 'until' }, 'jusqu\'au'),
-			h('option', { value: 'count' }, 'après'))
-		const until = h('input', { type: 'date', name: 'until', 'aria-label': 'Jusqu\'au' })
-		const count = h('input', { type: 'number', name: 'count', min: '1', max: '999', value: '10', 'aria-label': 'Nombre d\'occurrences' })
-		const countWrap = h('span', { class: 'wm-inline' }, count, ' occurrences')
+		const ends = h('select', { name: 'ends', 'aria-label': _('Fin de la répétition') },
+			h('option', { value: 'never' }, _('sans fin')),
+			h('option', { value: 'until' }, _('jusqu\'au')),
+			h('option', { value: 'count' }, _('après')))
+		const until = h('input', { type: 'date', name: 'until', 'aria-label': _('Jusqu\'au') })
+		const count = h('input', { type: 'number', name: 'count', min: '1', max: '999', value: '10', 'aria-label': _('Nombre d\'occurrences') })
+		const countWrap = h('span', { class: 'wm-inline' }, count, ' ' + _('occurrences'))
 		const summary = h('div', { class: 'wm-muted wm-rule-summary', 'aria-live': 'polite' })
 
 		if (initial && initial.freq !== 'other') {
@@ -1092,7 +1112,8 @@
 			ends.hidden = !active
 			until.hidden = !active || ends.value !== 'until'
 			countWrap.hidden = !active || ends.value !== 'count'
-			if (f && UNITS[f]) unit.textContent = (parseInt(interval.value, 10) || 1) > 1 ? UNITS[f][1] : UNITS[f][0]
+			const units = UNITS()
+			if (f && units[f]) unit.textContent = (parseInt(interval.value, 10) || 1) > 1 ? units[f][1] : units[f][0]
 			// a weekly rule always includes the weekday of the start date
 			const start = getStart()
 			if (f === 'weekly' && !isNaN(start) && !dayBoxes.some((x) => x.box.checked)) {
@@ -1122,7 +1143,7 @@
 		const dialog = h('div', { class: 'wm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
 			h('div', { class: 'wm-modal-header' },
 				h('h2', {}, title),
-				h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
+				h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
 			content)
 		const overlay = h('div', { class: 'wm-overlay', onmousedown: (e) => { if (e.target === overlay) close() } }, dialog)
 		document.addEventListener('keydown', onKey)
@@ -1139,7 +1160,7 @@
 			b.addEventListener('click', () => close())
 			return b
 		}))
-		const close = modal(ucfirst(day.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })), list)
+		const close = modal(ucfirst(day.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' })), list)
 	}
 
 	// ------------------------------------------------------------------
@@ -1159,11 +1180,13 @@
 		const r = await fetch(OC.linkToOCS('apps/spreed/api/v4', 2) + 'room?format=json', {
 			method: 'POST',
 			headers: { 'OCS-APIRequest': 'true', requesttoken: OC.requestToken, 'Content-Type': 'application/json', Accept: 'application/json' },
-			body: JSON.stringify({ roomType: 3, roomName: (name || 'Réunion').slice(0, 255) }),
+			body: JSON.stringify({ roomType: 3, roomName: (name || _('Réunion')).slice(0, 255) }),
 		})
 		const data = await r.json().catch(() => null)
 		const token = data && data.ocs && data.ocs.data && data.ocs.data.token
-		if (!r.ok || !token) throw new Error('Nextcloud Talk n\'a pas pu créer la salle de visio' + (data && data.ocs && data.ocs.meta && data.ocs.meta.message ? ' : ' + data.ocs.meta.message : ''))
+		if (!r.ok || !token) throw new Error(data && data.ocs && data.ocs.meta && data.ocs.meta.message
+			? _('Nextcloud Talk n\'a pas pu créer la salle de visio : {error}', { error: data.ocs.meta.message })
+			: _('Nextcloud Talk n\'a pas pu créer la salle de visio'))
 		return window.location.origin + OC.generateUrl('/call/' + token)
 	}
 
@@ -1179,7 +1202,7 @@
 		const h = core.h
 		const calendar = calendarOf(summary)
 		const calendarLine = calendar && calendar.key !== 'calendar'
-			? h('div', { class: 'wm-muted' }, h('span', { class: 'wm-cal-dot', style: calendar.color ? 'background:' + calendar.color : '' }), ' ' + (calendar.kind === 'shared' ? 'Agenda de ' : 'Agenda ') + calendar.name)
+			? h('div', { class: 'wm-muted' }, h('span', { class: 'wm-cal-dot', style: calendar.color ? 'background:' + calendar.color : '' }), ' ' + (calendar.kind === 'shared' ? _('Agenda de {name}', { name: calendar.name }) : _('Agenda {name}', { name: calendar.name })))
 			: null
 		if (summary.freeBusyOnly) {
 			// only availability is shared: nothing more to fetch
@@ -1187,11 +1210,11 @@
 				h('div', { class: 'wm-event-when' }, '🕑 ' + ucfirst(core.formatRange(summary.start, summary.end, summary.allDay))),
 				summary.location ? h('div', {}, '📍 ' + summary.location) : null,
 				calendarLine,
-				h('p', { class: 'wm-muted' }, 'Cette personne ne partage que ses disponibilités : le détail de ses rendez-vous n\'est pas accessible.')))
+				h('p', { class: 'wm-muted' }, _('Cette personne ne partage que ses disponibilités : le détail de ses rendez-vous n\'est pas accessible.'))))
 			return
 		}
 		const body = h('div', { class: 'wm-event-detail' }, h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
-		const close = modal(summary.subject || '(sans titre)', body)
+		const close = modal(summary.subject || _('(sans titre)'), body)
 		let ev
 		try {
 			ev = await api('/accounts/' + core.accountId + '/calendar/event', { query: { eventId: summary.id, tz: core.TZ, calendar: summary.calendar || '' } })
@@ -1202,25 +1225,26 @@
 			return
 		}
 		core.clear(body)
+		const responses = RESPONSES()
 		const people = (list) => list.map((a) => h('li', {}, core.personShort(a) || a.email,
-			h('span', { class: 'wm-muted' }, ' — ' + (RESPONSES[a.response] || 'Pas de réponse'))))
+			h('span', { class: 'wm-muted' }, ' — ' + (responses[a.response] || _('Pas de réponse')))))
 
 		body.append(...[
-			ev.isCancelled ? h('div', { class: 'wm-warning' }, 'Cet événement a été annulé.') : null,
+			ev.isCancelled ? h('div', { class: 'wm-warning' }, _('Cet événement a été annulé.')) : null,
 			h('div', { class: 'wm-event-when' }, '🕑 ' + ucfirst(core.formatRange(ev.start, ev.end, ev.allDay))),
-			ev.isRecurring ? h('div', { class: 'wm-muted wm-event-rule' }, '🔁 Événement périodique') : null,
+			ev.isRecurring ? h('div', { class: 'wm-muted wm-event-rule' }, '🔁 ' + _('Événement périodique')) : null,
 			calendarLine,
 			ev.location ? h('div', {}, '📍 ' + ev.location) : null,
 			(() => {
 				const link = meetingLink(ev)
 				return link ? h('div', { class: 'wm-event-join' },
-					h('a', { class: 'button primary wm-join-btn', href: link.url, target: '_blank', rel: 'noopener noreferrer' }, link.talk ? '🎥 Rejoindre la visio Nextcloud Talk' : '🎥 Rejoindre la réunion en ligne')) : null
+					h('a', { class: 'button primary wm-join-btn', href: link.url, target: '_blank', rel: 'noopener noreferrer' }, link.talk ? '🎥 ' + _('Rejoindre la visio Nextcloud Talk') : '🎥 ' + _('Rejoindre la réunion en ligne'))) : null
 			})(),
-			ev.isMeeting && ev.organizer ? h('div', {}, '👤 Organisateur : ' + core.personLabel(ev.organizer)) : null,
-			ev.attendees.length ? h('div', {}, h('strong', {}, 'Participants'), h('ul', { class: 'wm-attendees' }, people(ev.attendees))) : null,
-			ev.optionalAttendees.length ? h('div', {}, h('strong', {}, 'Facultatifs'), h('ul', { class: 'wm-attendees' }, people(ev.optionalAttendees))) : null,
-			(ev.resources || []).length ? h('div', { class: 'wm-event-rooms' }, h('strong', {}, 'Salle'), h('ul', { class: 'wm-attendees' }, ev.resources.map((a) => h('li', {}, '🚪 ' + (a.name || a.email),
-				h('span', { class: 'wm-muted' }, ' — ' + ({ Accept: 'réservée', Tentative: 'réservation provisoire', Decline: 'refusée (déjà prise ?)' }[a.response] || 'en attente de confirmation')))))) : null,
+			ev.isMeeting && ev.organizer ? h('div', {}, '👤 ' + _('Organisateur : {name}', { name: core.personLabel(ev.organizer) })) : null,
+			ev.attendees.length ? h('div', {}, h('strong', {}, _('Participants')), h('ul', { class: 'wm-attendees' }, people(ev.attendees))) : null,
+			ev.optionalAttendees.length ? h('div', {}, h('strong', {}, _('Facultatifs')), h('ul', { class: 'wm-attendees' }, people(ev.optionalAttendees))) : null,
+			(ev.resources || []).length ? h('div', { class: 'wm-event-rooms' }, h('strong', {}, _('Salle')), h('ul', { class: 'wm-attendees' }, ev.resources.map((a) => h('li', {}, '🚪 ' + (a.name || a.email),
+				h('span', { class: 'wm-muted' }, ' — ' + ({ Accept: _('réservée'), Tentative: _('réservation provisoire'), Decline: _('refusée (déjà prise ?)') }[a.response] || _('en attente de confirmation'))))))) : null,
 			ev.body.trim() ? h('div', { class: 'wm-event-body' }, ev.body.trim()) : null,
 		].filter(Boolean))
 
@@ -1233,34 +1257,36 @@
 		// an event of a common calendar (public folders) is not an invitation to answer
 		if (ev.isMeeting && !ev.isOrganizer && !ev.isCancelled && !isPublicCal(summary) && (!shared || !readOnly)) {
 			const answer = async (response, label) => {
-				if (principal && !window.confirm('Répondre « ' + label + ' » au nom de ' + principal + ' ? L\'organisateur recevra la réponse de votre part, au nom de ' + principal + '.')) return
+				if (principal && !window.confirm(_('Répondre « {answer} » au nom de {name} ? L\'organisateur recevra la réponse de votre part, au nom de {name}.', { answer: label, name: principal }))) return
 				try {
 					await api('/accounts/' + core.accountId + '/calendar/respond', {
 						method: 'POST',
 						body: { eventId: ev.id, response, calendar: summary.calendar || 'calendar' },
 					})
-					core.toast(principal ? 'Réponse envoyée au nom de ' + principal + ' : ' + label : 'Réponse envoyée : ' + label)
+					core.toast(principal ? _('Réponse envoyée au nom de {name} : {answer}', { name: principal, answer: label }) : _('Réponse envoyée : {answer}', { answer: label }))
 					close()
 					load()
 				} catch (e) { core.toast(e.message, true) }
 			}
 			actions.append(
-				h('span', { class: 'wm-muted' }, (principal ? 'Réponse de ' + principal + ' : ' : 'Votre réponse : ') + (RESPONSES[ev.response] || 'aucune')),
-				h('button', { class: 'primary', onclick: () => answer('accept', 'accepté') }, '✓ Accepter'),
-				h('button', { onclick: () => answer('tentative', 'provisoire') }, '? Provisoire'),
-				h('button', { class: 'wm-danger', onclick: () => answer('decline', 'refusé') }, '✗ Refuser'))
+				h('span', { class: 'wm-muted' }, principal
+					? _('Réponse de {name} : {answer}', { name: principal, answer: responses[ev.response] || _('aucune') })
+					: _('Votre réponse : {answer}', { answer: responses[ev.response] || _('aucune') })),
+				h('button', { class: 'primary', onclick: () => answer('accept', _('accepté')) }, '✓ ' + _('Accepter')),
+				h('button', { onclick: () => answer('tentative', _('provisoire')) }, '? ' + _('Provisoire')),
+				h('button', { class: 'wm-danger', onclick: () => answer('decline', _('refusé')) }, '✗ ' + _('Refuser')))
 		}
 		const isOccurrence = ev.type === 'Occurrence' || ev.type === 'Exception'
 		if (canEdit) {
-			actions.appendChild(h('button', { class: 'primary', onclick: () => { close(); openForm(ev) } }, isOccurrence ? '✏️ Modifier cette occurrence' : '✏️ Modifier'))
+			actions.appendChild(h('button', { class: 'primary', onclick: () => { close(); openForm(ev) } }, isOccurrence ? '✏️ ' + _('Modifier cette occurrence') : '✏️ ' + _('Modifier')))
 		}
 		if (readOnly) {
-			actions.appendChild(h('span', { class: 'wm-muted' }, '🔒 Agenda partagé en lecture seule'))
+			actions.appendChild(h('span', { class: 'wm-muted' }, '🔒 ' + _('Agenda partagé en lecture seule')))
 		}
 		if (isOccurrence) {
 			// describe the rule, and allow editing the whole series
 			const ruleLine = body.querySelector('.wm-event-rule')
-			const editSeries = h('button', { disabled: true, onclick: () => { close(); openForm(editSeries.series, null, false, { series: true }) } }, '🔁 Modifier la série')
+			const editSeries = h('button', { disabled: true, onclick: () => { close(); openForm(editSeries.series, null, false, { series: true }) } }, '🔁 ' + _('Modifier la série'))
 			if (canEdit) actions.appendChild(editSeries)
 			api('/accounts/' + core.accountId + '/calendar/series', { query: { eventId: ev.id, tz: core.TZ, calendar: summary.calendar || '' } }).then((series) => {
 				series.calendar = summary.calendar
@@ -1272,22 +1298,23 @@
 		if (ev.attendees.length || ev.optionalAttendees.length) {
 			const emails = ev.attendees.concat(ev.optionalAttendees).map((a) => a.email).filter((e) => e && !e.startsWith('/'))
 			if (ev.organizer && ev.organizer.email && !ev.isOrganizer) emails.unshift(ev.organizer.email)
-			actions.appendChild(h('button', { onclick: () => { close(); core.openCompose('new', null, { to: emails.join(', '), subject: ev.subject }) } }, '✉️ Écrire aux participants'))
+			actions.appendChild(h('button', { onclick: () => { close(); core.openCompose('new', null, { to: emails.join(', '), subject: ev.subject }) } }, '✉️ ' + _('Écrire aux participants')))
 		}
 		const del = async (series) => {
-			const what = series ? 'toute la série' : 'cet événement'
-			const notify = ev.isMeeting && ev.isOrganizer ? ' Les participants recevront une annulation.' : ''
-			if (!window.confirm('Supprimer ' + what + ' ?' + notify)) return
+			const question = ev.isMeeting && ev.isOrganizer
+				? (series ? _('Supprimer toute la série ? Les participants recevront une annulation.') : _('Supprimer cet événement ? Les participants recevront une annulation.'))
+				: (series ? _('Supprimer toute la série ?') : _('Supprimer cet événement ?'))
+			if (!window.confirm(question)) return
 			try {
 				await api('/accounts/' + core.accountId + '/calendar/delete', { method: 'POST', body: { eventId: ev.id, series, calendar: summary.calendar || '' } })
-				core.toast('Événement supprimé')
+				core.toast(_('Événement supprimé'))
 				close()
 				load()
 			} catch (e) { core.toast(e.message, true) }
 		}
-		if (!readOnly) actions.appendChild(h('button', { class: 'wm-danger', onclick: () => del(false) }, ev.type === 'Occurrence' || ev.type === 'Exception' ? '🗑 Supprimer cette occurrence' : '🗑 Supprimer'))
+		if (!readOnly) actions.appendChild(h('button', { class: 'wm-danger', onclick: () => del(false) }, ev.type === 'Occurrence' || ev.type === 'Exception' ? '🗑 ' + _('Supprimer cette occurrence') : '🗑 ' + _('Supprimer')))
 		if (!readOnly && (ev.type === 'Occurrence' || ev.type === 'Exception')) {
-			actions.appendChild(h('button', { class: 'wm-danger', onclick: () => del(true) }, 'Supprimer la série'))
+			actions.appendChild(h('button', { class: 'wm-danger', onclick: () => del(true) }, _('Supprimer la série')))
 		}
 		body.appendChild(actions)
 	}
@@ -1321,25 +1348,25 @@
 			end = new Date(start.getTime() + 3600000)
 		}
 
-		const subject = h('input', { type: 'text', name: 'subject', required: true, value: ev ? ev.subject : '', placeholder: 'Titre' })
+		const subject = h('input', { type: 'text', name: 'subject', required: true, value: ev ? ev.subject : '', placeholder: _('Titre') })
 		const writable = cal.calendars.filter((c) => c.canEdit)
 		let lastCalendar = 'calendar'
 		try { lastCalendar = localStorage.getItem('webmail.lastcal.' + core.accountId) || 'calendar' } catch (e) { /* ignore */ }
 		const calendarSelect = isNew && writable.length > 1
-			? h('select', { name: 'calendar', 'aria-label': 'Agenda' }, writable.map((c) => h('option', { value: c.key, selected: c.key === lastCalendar },
-				c.kind === 'shared' ? 'Agenda de ' + c.name : c.name)))
+			? h('select', { name: 'calendar', 'aria-label': _('Agenda') }, writable.map((c) => h('option', { value: c.key, selected: c.key === lastCalendar },
+				c.kind === 'shared' ? _('Agenda de {name}', { name: c.name }) : c.name)))
 			: null
 		const allDay = h('input', { type: 'checkbox', name: 'allDay', checked: ev ? ev.allDay : false })
 		const startDate = h('input', { type: 'date', name: 'startDate', required: true, value: ymd(start) })
 		const startTime = h('input', { type: 'time', name: 'startTime', value: hm(start), step: '300' })
 		const endDate = h('input', { type: 'date', name: 'endDate', required: true, value: ymd(end) })
 		const endTime = h('input', { type: 'time', name: 'endTime', value: hm(end), step: '300' })
-		const location = h('input', { type: 'text', name: 'location', value: ev ? ev.location : '', placeholder: 'Salle, adresse ou lien visio' })
-		const attendees = h('input', { type: 'text', name: 'attendees', placeholder: 'Inviter des participants (adresses e-mail)',
+		const location = h('input', { type: 'text', name: 'location', value: ev ? ev.location : '', placeholder: _('Salle, adresse ou lien visio') })
+		const attendees = h('input', { type: 'text', name: 'attendees', placeholder: _('Inviter des participants (adresses e-mail)'),
 			value: ev ? ev.attendees.map((a) => a.email).filter((e) => e && !e.startsWith('/')).join(', ') : '' })
-		const optional = h('input', { type: 'text', name: 'optionalAttendees', placeholder: 'Facultatif',
+		const optional = h('input', { type: 'text', name: 'optionalAttendees', placeholder: _('Facultatif'),
 			value: ev ? ev.optionalAttendees.map((a) => a.email).filter((e) => e && !e.startsWith('/')).join(', ') : '' })
-		const description = h('textarea', { name: 'body', rows: '5', placeholder: 'Description' })
+		const description = h('textarea', { name: 'body', rows: '5', placeholder: _('Description') })
 		description.value = ev ? ev.body : ''
 
 		// ---- meeting rooms (Exchange room lists): booked as resources, the room answers itself
@@ -1349,12 +1376,12 @@
 		const roomName = (email) => (rooms.find((r) => r.email.toLowerCase() === email.toLowerCase()) || {}).name
 		function renderRoomChips() {
 			core.clear(roomChips)
-			if (!rooms.length) roomChips.appendChild(h('span', { class: 'wm-muted' }, 'Aucune'))
+			if (!rooms.length) roomChips.appendChild(h('span', { class: 'wm-muted' }, _('Aucune')))
 			rooms.forEach((r) => roomChips.appendChild(h('span', { class: 'wm-room-chip', dataset: { email: r.email } }, '🚪 ' + r.name,
 				h('button', {
 					type: 'button',
 					class: 'wm-chip-remove',
-					'aria-label': 'Retirer la salle ' + r.name,
+					'aria-label': _('Retirer la salle {name}', { name: r.name }),
 					onclick: () => {
 						rooms.splice(rooms.indexOf(r), 1)
 						if (location.value.trim() === r.name) location.value = ''
@@ -1367,12 +1394,12 @@
 		const roomBtn = h('button', {
 			type: 'button',
 			class: 'wm-room-btn',
-			title: 'Réserver une salle de réunion de l\'entreprise',
+			title: _('Réserver une salle de réunion de l\'entreprise'),
 			onclick: () => {
 				roomBox.hidden = !roomBox.hidden
 				if (!roomBox.hidden) loadRooms()
 			},
-		}, '🚪 Choisir une salle')
+		}, '🚪 ' + _('Choisir une salle'))
 		let roomSeq = 0
 		async function loadRooms() {
 			const mine = ++roomSeq
@@ -1386,7 +1413,7 @@
 				if (mine !== roomSeq) return
 				if (!cache.lists.length) {
 					core.clear(roomBox)
-					roomBox.appendChild(h('div', { class: 'wm-muted' }, 'Aucune liste de salles n\'est définie dans Exchange : l\'administrateur peut en créer (salles de réunion regroupées par site).'))
+					roomBox.appendChild(h('div', { class: 'wm-muted' }, _('Aucune liste de salles n\'est définie dans Exchange : l\'administrateur peut en créer (salles de réunion regroupées par site).')))
 					return
 				}
 				// the list chosen last time
@@ -1420,12 +1447,12 @@
 			const e = readEnd()
 			roomBox.appendChild(h('div', { class: 'wm-rooms-head' },
 				lists.length > 1
-					? h('select', { name: 'roomList', 'aria-label': 'Liste de salles', onchange: (ev2) => { roomCache.get(core.accountId).last = ev2.target.value; loadRooms() } },
+					? h('select', { name: 'roomList', 'aria-label': _('Liste de salles'), onchange: (ev2) => { roomCache.get(core.accountId).last = ev2.target.value; loadRooms() } },
 						lists.map((l) => h('option', { value: l.email, selected: l.email === current }, l.name)))
 					: h('strong', {}, lists[0].name),
 				!isNaN(s) && !isNaN(e) ? h('span', { class: 'wm-muted' }, ' ' + ucfirst(core.formatRange(s.toISOString(), e.toISOString(), allDay.checked))) : null))
 			if (!list.length) {
-				roomBox.appendChild(h('div', { class: 'wm-muted' }, 'Aucune salle dans cette liste'))
+				roomBox.appendChild(h('div', { class: 'wm-muted' }, _('Aucune salle dans cette liste')))
 				return
 			}
 			const ul = h('ul', { class: 'wm-room-list' })
@@ -1438,22 +1465,22 @@
 				const chosen = rooms.some((x) => x.email.toLowerCase() === r.email.toLowerCase())
 				ul.appendChild(h('li', { class: 'wm-room' + (taken ? ' taken' : ''), dataset: { email: r.email } },
 					h('span', { class: 'wm-room-name' }, '🚪 ' + r.name),
-					h('span', { class: 'wm-room-state' }, st === 'unknown' ? 'disponibilité inconnue'
-						: taken ? 'occupée ' + st.map((b) => timeLabel(new Date(b.start)) + '–' + timeLabel(new Date(b.end))).join(', ')
-							: st ? 'libre' : ''),
-					chosen ? h('span', { class: 'wm-muted' }, '✓ choisie') : h('button', {
+					h('span', { class: 'wm-room-state' }, st === 'unknown' ? _('disponibilité inconnue')
+						: taken ? _('occupée {times}', { times: st.map((b) => timeLabel(new Date(b.start)) + '–' + timeLabel(new Date(b.end))).join(', ') })
+							: st ? _('libre') : ''),
+					chosen ? h('span', { class: 'wm-muted' }, '✓ ' + _('choisie')) : h('button', {
 						type: 'button',
 						class: 'wm-small' + (taken ? '' : ' primary'),
 						onclick: () => {
-							if (taken && !window.confirm(r.name + ' est déjà occupée à ce moment : elle refusera sans doute la réservation. La demander quand même ?')) return
+							if (taken && !window.confirm(_('{name} est déjà occupée à ce moment : elle refusera sans doute la réservation. La demander quand même ?', { name: r.name }))) return
 							rooms.push({ name: r.name, email: r.email })
 							if (!location.value.trim()) location.value = r.name
 							renderRoomChips()
 							roomBox.hidden = true
 							if (!planBox.hidden) loadPlan()
-							core.toast(r.name + ' sera réservée à l\'enregistrement')
+							core.toast(_('{name} sera réservée à l\'enregistrement', { name: r.name }))
 						},
-					}, 'Réserver')))
+					}, _('Réserver'))))
 			})
 			roomBox.appendChild(ul)
 		}
@@ -1461,25 +1488,25 @@
 		const talkBtn = talkEnabled() ? h('button', {
 			type: 'button',
 			class: 'wm-talk-btn',
-			title: 'Créer une salle de visio Nextcloud Talk pour cet événement (les invités y entrent par le lien, sans compte)',
+			title: _('Créer une salle de visio Nextcloud Talk pour cet événement (les invités y entrent par le lien, sans compte)'),
 			hidden: TALK_LINK.test(location.value + ' ' + ((ev && ev.body) || '')),
 			onclick: async () => {
 				talkBtn.disabled = true
 				try {
 					const url = await createTalkRoom(subject.value.trim())
 					if (!location.value.trim()) location.value = url
-					description.value = (description.value.trim() ? description.value.trim() + '\n\n' : '') + 'Rejoindre la visio Nextcloud Talk : ' + url
+					description.value = (description.value.trim() ? description.value.trim() + '\n\n' : '') + _('Rejoindre la visio Nextcloud Talk : {url}', { url })
 					talkBtn.hidden = true
-					core.toast('Salle de visio créée : son lien est dans le lieu et la description')
+					core.toast(_('Salle de visio créée : son lien est dans le lieu et la description'))
 				} catch (e) {
 					core.toast(e.message, true)
 				} finally {
 					talkBtn.disabled = false
 				}
 			},
-		}, '🎥 Visio Talk') : null
-		const reminder = h('select', { name: 'reminder' }, REMINDERS.map(([v, l]) => h('option', { value: String(v), selected: (ev ? ev.reminder : 15) === v }, l)))
-		const freeBusy = h('select', { name: 'freeBusy' }, FREEBUSY.map(([v, l]) => h('option', { value: v, selected: (ev ? ev.freeBusy : 'Busy') === v }, l)))
+		}, '🎥 ' + _('Visio Talk')) : null
+		const reminder = h('select', { name: 'reminder' }, REMINDERS().map(([v, l]) => h('option', { value: String(v), selected: (ev ? ev.reminder : 15) === v }, l)))
+		const freeBusy = h('select', { name: 'freeBusy' }, FREEBUSY().map(([v, l]) => h('option', { value: v, selected: (ev ? ev.freeBusy : 'Busy') === v }, l)))
 		const customRule = isSeries && ev.recurrence && ev.recurrence.freq === 'other'
 		const rule = (isNew || isSeries)
 			? recurrenceEditor(isSeries ? ev.recurrence : null, () => new Date(startDate.value + 'T12:00'), customRule)
@@ -1523,12 +1550,12 @@
 		const planBtn = h('button', {
 			type: 'button',
 			class: 'wm-plan-btn',
-			title: 'Voir quand les participants sont libres et trouver un créneau',
+			title: _('Voir quand les participants sont libres et trouver un créneau'),
 			onclick: () => {
 				planBox.hidden = !planBox.hidden
 				if (!planBox.hidden) { planDay = startDate.value; loadPlan() }
 			},
-		}, '📅 Disponibilités')
+		}, '📅 ' + _('Disponibilités'))
 		let planSeq = 0
 		async function loadPlan() {
 			const mine = ++planSeq
@@ -1557,16 +1584,17 @@
 			const pct = (d) => Math.max(0, Math.min(100, ((d - day) / 3600000 - FROM) / (TO - FROM) * 100))
 			const shift = (n) => { const d = new Date(planDay + 'T12:00'); d.setDate(d.getDate() + n); planDay = ymd(d); loadPlan() }
 			planBox.appendChild(h('div', { class: 'wm-plan-head' },
-				h('button', { type: 'button', class: 'wm-small', 'aria-label': 'Jour précédent', onclick: () => shift(-1) }, '‹'),
-				h('strong', {}, ucfirst(day.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }))),
-				h('button', { type: 'button', class: 'wm-small', 'aria-label': 'Jour suivant', onclick: () => shift(1) }, '›')))
+				h('button', { type: 'button', class: 'wm-small', 'aria-label': _('Jour précédent'), onclick: () => shift(-1) }, '‹'),
+				h('strong', {}, ucfirst(day.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' }))),
+				h('button', { type: 'button', class: 'wm-small', 'aria-label': _('Jour suivant'), onclick: () => shift(1) }, '›')))
 			const hours = h('div', { class: 'wm-plan-hours' })
-			for (let hr = FROM; hr < TO; hr += 2) hours.appendChild(h('span', { style: 'left:' + ((hr - FROM) / (TO - FROM) * 100) + '%' }, hr + ' h'))
+			for (let hr = FROM; hr < TO; hr += 2) hours.appendChild(h('span', { style: 'left:' + ((hr - FROM) / (TO - FROM) * 100) + '%' }, _('{hour} h', { hour: hr })))
 			planBox.appendChild(h('div', { class: 'wm-plan-row' }, h('span', { class: 'wm-plan-who' }), hours))
 			// the meeting as it is set now
 			const s = readStart()
 			const e = readEnd()
 			const sameDay = !isNaN(s) && ymd(s) === planDay
+			const states = { Busy: _('Occupé'), Tentative: _('Provisoire'), OOF: _('Absent'), WorkingElsewhere: _('Ailleurs') }
 			r.people.forEach((p) => {
 				const track = h('div', { class: 'wm-plan-track' })
 				p.busy.forEach((b) => {
@@ -1579,18 +1607,18 @@
 					track.appendChild(h('span', {
 						class: 'wm-plan-busy' + (b.type === 'Tentative' ? ' tentative' : '') + (b.type === 'OOF' ? ' oof' : ''),
 						style: 'left:' + left + '%;width:' + width + '%',
-						title: ({ Busy: 'Occupé', Tentative: 'Provisoire', OOF: 'Absent', WorkingElsewhere: 'Ailleurs' }[b.type] || 'Occupé') + ' ' + timeLabel(bs) + ' – ' + timeLabel(be),
+						title: _('{state} {from} – {to}', { state: states[b.type] || _('Occupé'), from: timeLabel(bs), to: timeLabel(be) }),
 					}))
 				})
 				if (sameDay && !allDay.checked) track.appendChild(h('span', { class: 'wm-plan-meeting', style: 'left:' + pct(s) + '%;width:' + Math.max(0.5, pct(e) - pct(s)) + '%' }))
 				if (p.error) track.appendChild(h('span', { class: 'wm-plan-unknown' }, p.error))
 				planBox.appendChild(h('div', { class: 'wm-plan-row', dataset: { email: p.email } },
-					h('span', { class: 'wm-plan-who', title: p.email }, p.self ? 'Moi' : roomName(p.email) ? '🚪 ' + roomName(p.email) : p.email), track))
+					h('span', { class: 'wm-plan-who', title: p.email }, p.self ? _('Moi') : roomName(p.email) ? '🚪 ' + roomName(p.email) : p.email), track))
 			})
 			const sug = r.suggestion
 			planBox.appendChild(h('div', { class: 'wm-plan-foot' },
-				h('span', { class: 'wm-plan-legend' }, h('span', { class: 'wm-plan-busy' }), ' occupé ', h('span', { class: 'wm-plan-busy tentative' }), ' provisoire ',
-					h('span', { class: 'wm-plan-meeting' }), ' votre réunion'),
+				h('span', { class: 'wm-plan-legend' }, h('span', { class: 'wm-plan-busy' }), ' ' + _('occupé') + ' ', h('span', { class: 'wm-plan-busy tentative' }), ' ' + _('provisoire') + ' ',
+					h('span', { class: 'wm-plan-meeting' }), ' ' + _('votre réunion')),
 				sug
 					? h('button', {
 						type: 'button',
@@ -1606,10 +1634,10 @@
 							if (rule) rule.sync()
 							planDay = ymd(ns)
 							loadPlan()
-							core.toast('Réunion placée ' + ns.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' à ' + timeLabel(ns))
+							core.toast(_('Réunion placée {date} à {time}', { date: ns.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' }), time: timeLabel(ns) }))
 						},
-					}, 'Premier créneau libre pour tous : ' + new Date(sug.start).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + timeLabel(new Date(sug.start)))
-					: h('span', { class: 'wm-muted' }, 'Aucun créneau libre de ' + minutes + ' minutes pour tous dans les 2 semaines (jours ouvrés, 8 h – 18 h)')))
+					}, _('Premier créneau libre pour tous : {date} {time}', { date: new Date(sug.start).toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' }), time: timeLabel(new Date(sug.start)) }))
+					: h('span', { class: 'wm-muted' }, _('Aucun créneau libre de {minutes} minutes pour tous dans les 2 semaines (jours ouvrés, 8 h – 18 h)', { minutes }))))
 		}
 		;[startDate, startTime, endDate, endTime].forEach((i) => i.addEventListener('change', () => {
 			if (!planBox.hidden) { planDay = startDate.value; loadPlan() }
@@ -1617,7 +1645,7 @@
 		}))
 
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
-		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? 'Créer' : 'Enregistrer')
+		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? _('Créer') : _('Enregistrer'))
 		const field = (label, ...inputs) => h('label', { class: 'wm-field' }, h('span', {}, label), ...inputs)
 
 		const form = h('form', {
@@ -1639,8 +1667,9 @@
 					freeBusy: freeBusy.value,
 				}
 				if (rule) data.recurrence = rule.value()
-				if (isSeries && !window.confirm('Modifier toutes les occurrences de « ' + (subject.value || ev.subject) + ' » ?'
-					+ (ev.attendees.length || ev.optionalAttendees.length ? ' Les participants recevront la mise à jour.' : ''))) return
+				if (isSeries && !window.confirm(ev.attendees.length || ev.optionalAttendees.length
+					? _('Modifier toutes les occurrences de « {subject} » ? Les participants recevront la mise à jour.', { subject: subject.value || ev.subject })
+					: _('Modifier toutes les occurrences de « {subject} » ?', { subject: subject.value || ev.subject }))) return
 				save.disabled = true
 				try {
 					if (isNew) {
@@ -1652,9 +1681,9 @@
 						await api('/accounts/' + core.accountId + '/calendar/update', { method: 'POST', body: { eventId: ev.id, event: data, tz: core.TZ, series: isSeries, calendar: ev.calendar || '' } })
 					}
 					const invited = (attendees.value + optional.value).trim() !== ''
-					core.toast(isNew ? (invited ? 'Événement créé, invitations envoyées' : 'Événement créé')
-						: isSeries ? (invited ? 'Série modifiée, participants prévenus' : 'Série modifiée')
-							: (invited ? 'Événement modifié, participants prévenus' : 'Événement modifié'))
+					core.toast(isNew ? (invited ? _('Événement créé, invitations envoyées') : _('Événement créé'))
+						: isSeries ? (invited ? _('Série modifiée, participants prévenus') : _('Série modifiée'))
+							: (invited ? _('Événement modifié, participants prévenus') : _('Événement modifié')))
 					close()
 					const s = readStart()
 					const [from, to] = visibleRange()
@@ -1671,27 +1700,27 @@
 				}
 			},
 		},
-		field('Titre', subject),
-		calendarSelect ? field('Agenda', calendarSelect) : null,
-		h('label', { class: 'wm-inline' }, allDay, ' Journée entière'),
-		field('Début', startDate, startTime),
-		field('Fin', endDate, endTime),
-		field('Lieu', location, talkBtn),
-		h('div', { class: 'wm-field' }, h('span', {}, 'Salle'), h('div', { class: 'wm-room-field' }, roomChips, roomBtn, roomBox)),
-		field('Participants', core.attachAutocomplete(attendees)),
-		field('Facultatifs', core.attachAutocomplete(optional)),
+		field(_('Titre'), subject),
+		calendarSelect ? field(_('Agenda'), calendarSelect) : null,
+		h('label', { class: 'wm-inline' }, allDay, ' ' + _('Journée entière')),
+		field(_('Début'), startDate, startTime),
+		field(_('Fin'), endDate, endTime),
+		field(_('Lieu'), location, talkBtn),
+		h('div', { class: 'wm-field' }, h('span', {}, _('Salle')), h('div', { class: 'wm-room-field' }, roomChips, roomBtn, roomBox)),
+		field(_('Participants'), core.attachAutocomplete(attendees)),
+		field(_('Facultatifs'), core.attachAutocomplete(optional)),
 		h('div', { class: 'wm-field' }, h('span', {}), h('div', {}, planBtn, planBox)),
-		rule ? h('div', { class: 'wm-field wm-field-top' }, h('span', {}, 'Répétition'), rule.el) : (ev.isRecurring ? h('p', { class: 'wm-muted' }, '🔁 Seule cette occurrence sera modifiée.') : null),
+		rule ? h('div', { class: 'wm-field wm-field-top' }, h('span', {}, _('Répétition')), rule.el) : (ev.isRecurring ? h('p', { class: 'wm-muted' }, '🔁 ' + _('Seule cette occurrence sera modifiée.')) : null),
 		isSeries ? h('p', { class: 'wm-muted' }, customRule
-			? '🔁 Les modifications s\'appliquent à toutes les occurrences. La répétition a été définie dans Outlook : seuls les horaires sont modifiables ici, pas les dates.'
-			: '🔁 Les modifications s\'appliquent à toutes les occurrences, à partir du début de la série. Les occurrences modifiées une par une peuvent reprendre les valeurs de la série.') : null,
-		field('Rappel', reminder),
-		field('Afficher comme', freeBusy),
+			? '🔁 ' + _('Les modifications s\'appliquent à toutes les occurrences. La répétition a été définie dans Outlook : seuls les horaires sont modifiables ici, pas les dates.')
+			: '🔁 ' + _('Les modifications s\'appliquent à toutes les occurrences, à partir du début de la série. Les occurrences modifiées une par une peuvent reprendre les valeurs de la série.')) : null,
+		field(_('Rappel'), reminder),
+		field(_('Afficher comme'), freeBusy),
 		description,
 		err,
-		h('div', { class: 'wm-compose-actions' }, save, h('button', { type: 'button', onclick: () => close() }, 'Annuler')))
+		h('div', { class: 'wm-compose-actions' }, save, h('button', { type: 'button', onclick: () => close() }, _('Annuler'))))
 
-		const close = modal(isNew ? 'Nouvel événement' : isSeries ? 'Modifier la série' : 'Modifier l\'événement', form)
+		const close = modal(isNew ? _('Nouvel événement') : isSeries ? _('Modifier la série') : _('Modifier l\'événement'), form)
 	}
 
 	// ------------------------------------------------------------------

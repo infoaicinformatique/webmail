@@ -65,7 +65,7 @@ class ContactController extends Controller {
 				'kind' => 'public',
 				'canEdit' => $c['canEdit'],
 			], $this->shared->list(SharedFolderService::PUBLIC_CONTACTS, (string)$this->userId, $id));
-			$directory = [['key' => 'directory', 'name' => 'Annuaire de l\'entreprise', 'kind' => 'directory', 'canEdit' => false]];
+			$directory = [['key' => 'directory', 'name' => $this->l10n()->t('Annuaire de l\'entreprise'), 'kind' => 'directory', 'canEdit' => false]];
 			return ['books' => array_merge($own, $shared, $public, $directory)];
 		});
 	}
@@ -154,7 +154,7 @@ class ContactController extends Controller {
 			}
 			$chosen = $folders === null ? $books : array_values(array_filter($books, fn ($b) => in_array($b['folder'], $folders, true)));
 			if ($chosen === [] || ($folders !== null && count($chosen) !== count(array_unique($folders)))) {
-				throw new MailException('Choisissez au moins un carnet partagé par ' . $name);
+				throw new MailException('Choisissez au moins un carnet partagé par %s', [$name]);
 			}
 			foreach ($chosen as $b) {
 				$this->shared->save(SharedFolderService::CONTACTS, (string)$this->userId, $id, [
@@ -350,7 +350,7 @@ class ContactController extends Controller {
 				throw new MailException('Aucun contact dans ce fichier (est-ce bien un fichier vCard ?)');
 			}
 			if (count($cards) > EwsContacts::MAX_TRANSFER) {
-				throw new MailException('Trop de contacts dans ce fichier (' . EwsContacts::MAX_TRANSFER . ' au plus)');
+				throw new MailException('Trop de contacts dans ce fichier (%s au plus)', [EwsContacts::MAX_TRANSFER]);
 			}
 			$contacts = $this->contacts($id, $book);
 			$known = $contacts->knownEmails($book);
@@ -370,7 +370,7 @@ class ContactController extends Controller {
 						$known[$e] = true;
 					}
 				} catch (MailException $e) {
-					$failed[] = ['name' => $card['displayName'] ?: ($card['emails'][0] ?? '?'), 'error' => $e->getMessage()];
+					$failed[] = ['name' => $card['displayName'] ?: ($card['emails'][0] ?? '?'), 'error' => $this->errorMessage($e)];
 				}
 			}
 			return ['created' => $created, 'skipped' => $skipped, 'failed' => $failed];

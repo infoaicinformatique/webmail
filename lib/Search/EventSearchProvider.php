@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Webmail\Search;
 
 use OCA\Webmail\Service\UnifiedSearchService;
+use OCP\IL10N;
 use OCP\IUser;
 use OCP\Search\IProvider;
 use OCP\Search\ISearchQuery;
@@ -17,6 +18,7 @@ use OCP\Search\SearchResultEntry;
 class EventSearchProvider implements IProvider {
 	public function __construct(
 		private UnifiedSearchService $search,
+		private IL10N $l,
 	) {
 	}
 
@@ -25,7 +27,7 @@ class EventSearchProvider implements IProvider {
 	}
 
 	public function getName(): string {
-		return 'Agenda Exchange';
+		return $this->l->t('Agenda Exchange');
 	}
 
 	public function getOrder(string $route, array $routeParameters): ?int {

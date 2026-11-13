@@ -8,6 +8,7 @@ use OCA\Webmail\Db\Account;
 use OCA\Webmail\Ews\EwsCalendar;
 use OCA\Webmail\Exception\MailException;
 use OCP\IConfig;
+use OCP\IL10N;
 use OCP\IURLGenerator;
 use Psr\Log\LoggerInterface;
 
@@ -25,6 +26,7 @@ class UnifiedSearchService {
 		private IConfig $config,
 		private IURLGenerator $url,
 		private LoggerInterface $logger,
+		private IL10N $l,
 	) {
 	}
 
@@ -53,8 +55,8 @@ class UnifiedSearchService {
 		[$page, $hasMore] = self::page($lists, $offset, $limit, fn ($a, $b) => strcmp((string)$b['date'], (string)$a['date']));
 		$tz = $this->timeZone($userId);
 		$entries = array_map(fn ($m) => [
-			'title' => trim((string)$m['subject']) !== '' ? (string)$m['subject'] : '(sans objet)',
-			'subline' => self::messageSubline($m, $tz, count($accounts) > 1),
+			'title' => trim((string)$m['subject']) !== '' ? (string)$m['subject'] : $this->l->t('(sans objet)'),
+			'subline' => self::messageSubline($m, $tz, count($accounts) > 1, null, $this->l),
 			'url' => $this->link(['account' => $m['accountId'], 'message' => $m['id']]),
 		], $page);
 		return ['entries' => $entries, 'next' => ($hasMore || $more) ? $offset + $limit : null];
@@ -84,8 +86,8 @@ class UnifiedSearchService {
 		[$page, $hasMore] = self::page($lists, $offset, $limit, self::eventOrder($now));
 		$tz = $this->timeZone($userId);
 		$entries = array_map(fn ($ev) => [
-			'title' => trim((string)$ev['subject']) !== '' ? (string)$ev['subject'] : '(sans titre)',
-			'subline' => self::eventSubline($ev, $tz, $now, count($accounts) > 1),
+			'title' => trim((string)$ev['subject']) !== '' ? (string)$ev['subject'] : $this->l->t('(sans titre)'),
+			'subline' => self::eventSubline($ev, $tz, $now, count($accounts) > 1, $this->l),
 			'url' => $this->link(['account' => $ev['accountId'], 'module' => 'calendar', 'event' => $ev['id']]),
 		], $page);
 		return ['entries' => $entries, 'next' => $hasMore ? $offset + $limit : null];
@@ -146,7 +148,7 @@ class UnifiedSearchService {
 	}
 
 	/** "Jean Dupont · 12 nov. 2025" (and the account when there are several) */
-	public static function messageSubline(array $m, \DateTimeZone $tz, bool $withAccount, ?\DateTimeImmutable $now = null): string {
+	public static function messageSubline(array $m, \DateTimeZone $tz, bool $withAccount, ?\DateTimeImmutable $now = null, ?IL10N $l = null): string {
 		$from = $m['from'] ?? null;
 		$parts = [];
 		$name = is_array($from) ? trim((string)(($from['name'] ?? '') !== '' ? $from['name'] : ($from['email'] ?? ''))) : '';
@@ -154,7 +156,7 @@ class UnifiedSearchService {
 			$parts[] = $name;
 		}
 		if (!empty($m['date'])) {
-			$parts[] = self::day((string)$m['date'], $tz, $now);
+			$parts[] = self::day((string)$m['date'], $tz, $now, $l);
 		}
 		if ($withAccount) {
 			$parts[] = (string)$m['email'];
@@ -163,8 +165,8 @@ class UnifiedSearchService {
 	}
 
 	/** "Demain 09:00 · Salle Riviera" */
-	public static function eventSubline(array $ev, \DateTimeZone $tz, \DateTimeImmutable $now, bool $withAccount): string {
-		$when = DashboardService::label((string)$ev['start'], (bool)($ev['allDay'] ?? false), $tz, $now);
+	public static function eventSubline(array $ev, \DateTimeZone $tz, \DateTimeImmutable $now, bool $withAccount, ?IL10N $l = null): string {
+		$when = DashboardService::label((string)$ev['start'], (bool)($ev['allDay'] ?? false), $tz, $now, $l);
 		$year = (new \DateTimeImmutable((string)$ev['start']))->setTimezone($tz)->format('Y');
 		if ($year !== $now->setTimezone($tz)->format('Y')) {
 			$when = preg_replace('/^(\D+ \d+ \S+)/u', '$1 ' . $year, $when) ?? $when;
@@ -180,15 +182,14 @@ class UnifiedSearchService {
 	}
 
 	/** "Aujourd'hui 10:30", "Hier", "12 nov.", "12 nov. 2025" */
-	public static function day(string $iso, \DateTimeZone $tz, ?\DateTimeImmutable $now = null): string {
+	public static function day(string $iso, \DateTimeZone $tz, ?\DateTimeImmutable $now = null, ?IL10N $l = null): string {
 		$d = (new \DateTimeImmutable($iso))->setTimezone($tz);
 		$now = ($now ?? new \DateTimeImmutable('now'))->setTimezone($tz);
 		$days = (int)$d->setTime(0, 0)->diff($now->setTime(0, 0))->format('%r%a');
-		$months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 		return match (true) {
-			$days === 0 => 'Aujourd\'hui ' . $d->format('H:i'),
-			$days === 1 => 'Hier',
-			default => $d->format('j') . ' ' . $months[(int)$d->format('n') - 1] . ($d->format('Y') !== $now->format('Y') ? ' ' . $d->format('Y') : ''),
+			$days === 0 => L10n::t($l, 'Aujourd\'hui') . ' ' . $d->format('H:i'),
+			$days === 1 => L10n::t($l, 'Hier'),
+			default => $d->format('j') . ' ' . DashboardService::monthName((int)$d->format('n'), $l) . ($d->format('Y') !== $now->format('Y') ? ' ' . $d->format('Y') : ''),
 		};
 	}
 }

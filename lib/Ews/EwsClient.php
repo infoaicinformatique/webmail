@@ -201,7 +201,7 @@ class EwsClient {
 		$roles = $this->distinguishedFolderIds(['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'outbox', 'msgfolderroot'], $mailbox);
 		if ($mailbox !== null && !isset($roles['msgfolderroot'])) {
 			if ($roles === []) {
-				throw new MailException('Vous n\'avez pas accès à la boîte ' . $mailbox . ' : demandez à son propriétaire de vous en faire délégué dans Outlook (au moins la boîte de réception), ou à l\'administrateur Exchange le droit « Accès total »');
+				throw new MailException('Vous n\'avez pas accès à la boîte %s : demandez à son propriétaire de vous en faire délégué dans Outlook (au moins la boîte de réception), ou à l\'administrateur Exchange le droit « Accès total »', [$mailbox]);
 			}
 			// a delegate (Outlook « Accès délégué »): only the folders shared with us
 			$usedBytes = 0;
@@ -527,7 +527,7 @@ class EwsClient {
 			// every folder refused: report the first error
 			$err = $xp->query('//m:ResponseMessages/*[@ResponseClass="Error"]')->item(0);
 			if ($err !== null) {
-				throw new MailException(self::translateError($this->text($xp, 'm:ResponseCode', $err), $this->text($xp, 'm:MessageText', $err)));
+				throw self::exchangeError($this->text($xp, 'm:ResponseCode', $err), $this->text($xp, 'm:MessageText', $err));
 			}
 		}
 		usort($items, fn ($a, $b) => strcmp((string)$b['date'], (string)$a['date']));
@@ -757,7 +757,9 @@ class EwsClient {
 		$root = $xp->query('//m:FindConversationResponse')->item(0);
 		if (!$root instanceof \DOMElement || $root->getAttribute('ResponseClass') !== 'Success') {
 			$code = $root instanceof \DOMElement ? (string)$this->text($xp, 'm:ResponseCode', $root) : '';
-			throw new MailException('Exchange ne donne pas les conversations de ce dossier' . ($code !== '' ? ' (' . $code . ')' : ''));
+			throw $code !== ''
+				? new MailException('Exchange ne donne pas les conversations de ce dossier (%s)', [$code])
+				: new MailException('Exchange ne donne pas les conversations de ce dossier');
 		}
 		$items = [];
 		foreach ($xp->query('m:Conversations/t:Conversation', $root) as $c) {
@@ -1422,7 +1424,7 @@ class EwsClient {
 		$doc = new \DOMDocument();
 		$ok = $response !== '' && @$doc->loadXML($response, LIBXML_NONET | LIBXML_COMPACT | LIBXML_PARSEHUGE);
 		if (!$ok) {
-			throw new MailException(sprintf('Réponse invalide du serveur Exchange (HTTP %d)', $status));
+			throw new MailException('Réponse invalide du serveur Exchange (HTTP %s)', [$status]);
 		}
 		$xp = new \DOMXPath($doc);
 		$xp->registerNamespace('s', self::NS_SOAP);
@@ -1431,48 +1433,54 @@ class EwsClient {
 
 		$fault = $xp->query('//s:Fault/faultstring')->item(0);
 		if ($fault !== null) {
-			throw new MailException('Erreur Exchange : ' . trim($fault->textContent));
+			throw new MailException('Erreur Exchange : %s', [trim($fault->textContent)]);
 		}
 		if ($status >= 400) {
-			throw new MailException(sprintf('Erreur du serveur Exchange (HTTP %d)', $status));
+			throw new MailException('Erreur du serveur Exchange (HTTP %s)', [$status]);
 		}
 
 		if ($strict) {
 			foreach ($xp->query('//m:ResponseMessages/*[@ResponseClass="Error"]') as $err) {
 				$code = $this->text($xp, 'm:ResponseCode', $err);
 				$text = $this->text($xp, 'm:MessageText', $err);
-				throw new MailException(self::translateError($code, $text));
+				throw self::exchangeError($code, $text);
 			}
 		}
 		return $xp;
 	}
 
-	public static function translateError(?string $code, ?string $text): string {
+	/** The error of an Exchange response code, in words for the user. */
+	public static function exchangeError(?string $code, ?string $text): MailException {
 		return match ($code) {
-			'ErrorItemNotFound' => 'Ce message n\'existe plus (déplacé ou supprimé)',
-			'ErrorFolderNotFound' => 'Dossier introuvable',
-			'ErrorAccessDenied' => 'Accès refusé par Exchange (élément non partagé ou droits insuffisants)',
-			'ErrorSendAsDenied' => 'Vous n\'avez pas le droit d\'envoyer au nom de cette boîte : il faut le droit « Envoyer en tant que » (administrateur Exchange) ou être délégué de cette personne dans Outlook (le message part alors « de la part de »)',
-			'ErrorQuotaExceeded' => 'Boîte aux lettres pleine',
-			'ErrorMessageSizeExceeded' => 'Message trop volumineux',
-			'ErrorInvalidRecipients', 'ErrorInvalidSmtpAddress' => 'Adresse de destinataire invalide',
-			'ErrorCalendarEndDateIsEarlierThanStartDate' => 'La fin de l\'événement est avant son début',
-			'ErrorCalendarDurationIsTooLong' => 'Événement trop long',
-			'ErrorCalendarIsOrganizerForAccept', 'ErrorCalendarIsOrganizerForDecline', 'ErrorCalendarIsOrganizerForTentative' => 'Vous êtes l\'organisateur de cette réunion',
-			'ErrorOccurrenceCrossingBoundary' => 'Une occurrence ne peut pas être déplacée au-delà de l\'occurrence précédente ou suivante de la série',
-			'ErrorNonExistentMailbox' => 'Aucune boîte Exchange ne correspond à cette adresse',
-			'ErrorDelegateNoUser', 'ErrorDelegateValidationFailed' => 'Vous n\'êtes pas délégué de cette personne dans Exchange',
-			'ErrorInvalidUserInfo', 'ErrorUserNotMailbox', 'ErrorInvalidUserSid' => 'Une des personnes n\'a pas de boîte Exchange dans votre organisation',
-			'ErrorDuplicateUserIdsSpecified' => 'Une personne figure deux fois dans la liste',
-			'ErrorNotAllowedExternalSharingByPolicy' => 'Le partage avec des personnes extérieures est interdit par votre organisation',
-			'ErrorInvalidPermissionSettings' => 'Exchange a refusé ces autorisations',
-			'ErrorIrresolvableConflict' => 'L\'élément a été modifié entre-temps, rechargez la page',
-			'ErrorTimeZone' => 'Fuseau horaire non reconnu par Exchange',
-			'ErrorFolderExists' => 'Un dossier porte déjà ce nom à cet endroit',
-			'ErrorDeleteDistinguishedFolder' => 'Ce dossier est indispensable à Exchange et ne peut pas être supprimé',
-			'ErrorMoveDistinguishedFolder' => 'Ce dossier est indispensable à Exchange et ne peut pas être déplacé',
-			'ErrorMoveCopyFailed' => 'Exchange n\'a pas pu déplacer le dossier (pas dans un de ses sous-dossiers)',
-			default => 'Erreur Exchange' . ($code ? ' (' . $code . ')' : '') . ($text ? ' : ' . $text : ''),
+			'ErrorItemNotFound' => new MailException('Ce message n\'existe plus (déplacé ou supprimé)'),
+			'ErrorFolderNotFound' => new MailException('Dossier introuvable'),
+			'ErrorAccessDenied' => new MailException('Accès refusé par Exchange (élément non partagé ou droits insuffisants)'),
+			'ErrorSendAsDenied' => new MailException('Vous n\'avez pas le droit d\'envoyer au nom de cette boîte : il faut le droit « Envoyer en tant que » (administrateur Exchange) ou être délégué de cette personne dans Outlook (le message part alors « de la part de »)'),
+			'ErrorQuotaExceeded' => new MailException('Boîte aux lettres pleine'),
+			'ErrorMessageSizeExceeded' => new MailException('Message trop volumineux'),
+			'ErrorInvalidRecipients', 'ErrorInvalidSmtpAddress' => new MailException('Adresse de destinataire invalide'),
+			'ErrorCalendarEndDateIsEarlierThanStartDate' => new MailException('La fin de l\'événement est avant son début'),
+			'ErrorCalendarDurationIsTooLong' => new MailException('Événement trop long'),
+			'ErrorCalendarIsOrganizerForAccept', 'ErrorCalendarIsOrganizerForDecline', 'ErrorCalendarIsOrganizerForTentative' => new MailException('Vous êtes l\'organisateur de cette réunion'),
+			'ErrorOccurrenceCrossingBoundary' => new MailException('Une occurrence ne peut pas être déplacée au-delà de l\'occurrence précédente ou suivante de la série'),
+			'ErrorNonExistentMailbox' => new MailException('Aucune boîte Exchange ne correspond à cette adresse'),
+			'ErrorDelegateNoUser', 'ErrorDelegateValidationFailed' => new MailException('Vous n\'êtes pas délégué de cette personne dans Exchange'),
+			'ErrorInvalidUserInfo', 'ErrorUserNotMailbox', 'ErrorInvalidUserSid' => new MailException('Une des personnes n\'a pas de boîte Exchange dans votre organisation'),
+			'ErrorDuplicateUserIdsSpecified' => new MailException('Une personne figure deux fois dans la liste'),
+			'ErrorNotAllowedExternalSharingByPolicy' => new MailException('Le partage avec des personnes extérieures est interdit par votre organisation'),
+			'ErrorInvalidPermissionSettings' => new MailException('Exchange a refusé ces autorisations'),
+			'ErrorIrresolvableConflict' => new MailException('L\'élément a été modifié entre-temps, rechargez la page'),
+			'ErrorTimeZone' => new MailException('Fuseau horaire non reconnu par Exchange'),
+			'ErrorFolderExists' => new MailException('Un dossier porte déjà ce nom à cet endroit'),
+			'ErrorDeleteDistinguishedFolder' => new MailException('Ce dossier est indispensable à Exchange et ne peut pas être supprimé'),
+			'ErrorMoveDistinguishedFolder' => new MailException('Ce dossier est indispensable à Exchange et ne peut pas être déplacé'),
+			'ErrorMoveCopyFailed' => new MailException('Exchange n\'a pas pu déplacer le dossier (pas dans un de ses sous-dossiers)'),
+			default => match (true) {
+				$code && $text => new MailException('Erreur Exchange (%1$s) : %2$s', [$code, $text]),
+				(bool)$code => new MailException('Erreur Exchange (%s)', [$code]),
+				(bool)$text => new MailException('Erreur Exchange : %s', [$text]),
+				default => new MailException('Erreur Exchange'),
+			},
 		};
 	}
 
@@ -1514,7 +1522,7 @@ class EwsClient {
 			// do not reuse a connection in an unknown state
 			curl_close($ch);
 			$this->curl = null;
-			throw new MailException('Impossible de joindre le serveur Exchange : ' . $error);
+			throw new MailException('Impossible de joindre le serveur Exchange : %s', [$error]);
 		}
 		return [$status, (string)$response];
 	}

@@ -72,7 +72,7 @@ class EwsCategories {
 			if ($code === 'ErrorItemNotFound') {
 				return null;
 			}
-			throw new MailException(EwsClient::translateError($code, $this->client->text($xp, 'm:MessageText', $msg)));
+			throw EwsClient::exchangeError($code, $this->client->text($xp, 'm:MessageText', $msg));
 		}
 		$data = (string)$this->client->text($xp, '//m:UserConfiguration/t:XmlData');
 		$xml = base64_decode($data, true);

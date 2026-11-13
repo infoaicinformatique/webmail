@@ -2,6 +2,8 @@
 (function () {
 	'use strict'
 
+	const _ = (s, vars) => (window.t ? window.t('webmail', s, vars, undefined, { escape: false }) : s)
+
 	function init() {
 		const root = document.getElementById('webmail-admin')
 		if (!root) return
@@ -10,10 +12,27 @@
 
 		function rowTemplate() {
 			const tr = document.createElement('tr')
-			tr.innerHTML = '<td><input type="text" class="wm-domain" placeholder="exemple.fr"></td>'
-				+ '<td><input type="text" class="wm-label" placeholder="Libellé"></td>'
-				+ '<td><input type="text" class="wm-url" placeholder="ex3.mail.ovh.net"></td>'
-				+ '<td><button type="button" class="wm-remove icon-delete" title="Supprimer" aria-label="Supprimer"></button></td>'
+			const cell = (child) => {
+				const td = document.createElement('td')
+				td.appendChild(child)
+				tr.appendChild(td)
+			}
+			const input = (className, placeholder) => {
+				const el = document.createElement('input')
+				el.type = 'text'
+				el.className = className
+				el.placeholder = placeholder
+				cell(el)
+			}
+			input('wm-domain', _('exemple.fr'))
+			input('wm-label', _('Libellé'))
+			input('wm-url', 'ex3.mail.ovh.net')
+			const remove = document.createElement('button')
+			remove.type = 'button'
+			remove.className = 'wm-remove icon-delete'
+			remove.title = _('Supprimer')
+			remove.setAttribute('aria-label', _('Supprimer'))
+			cell(remove)
 			return tr
 		}
 
@@ -41,7 +60,8 @@
 				const forget = document.createElement('button')
 				forget.type = 'button'
 				forget.className = 'wm-forget'
-				forget.textContent = 'Oublier'
+				forget.title = _('Oublier : le prochain compte de ce domaine le cherchera à nouveau')
+				forget.textContent = _('Oublier')
 				li.append(code, ' ', forget)
 				discovered.appendChild(li)
 			})
@@ -63,7 +83,7 @@
 				url: tr.querySelector('.wm-url').value.trim(),
 			})).filter((s) => s.domain !== '' || s.url !== '')
 
-			msg.textContent = 'Enregistrement…'
+			msg.textContent = _('Enregistrement…')
 			msg.className = 'msg'
 			try {
 				const res = await fetch(OC.generateUrl('/apps/webmail/api/admin/servers'), {
@@ -78,7 +98,7 @@
 					}),
 				})
 				const data = await res.json()
-				if (!res.ok) throw new Error(data.message || 'Erreur')
+				if (!res.ok) throw new Error(data.message || _('Erreur'))
 				// show normalised values
 				tbody.innerHTML = ''
 				data.servers.forEach((s) => {
@@ -91,7 +111,7 @@
 				document.getElementById('webmail-autodiscover').checked = data.autodiscover.enabled
 				document.getElementById('webmail-autodiscover-hosts').value = data.autodiscover.hosts.join(', ')
 				showDiscovered(data.discovered)
-				msg.textContent = 'Enregistré'
+				msg.textContent = _('Enregistré')
 				msg.className = 'msg success'
 			} catch (e) {
 				msg.textContent = e.message

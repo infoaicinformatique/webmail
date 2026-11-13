@@ -16,6 +16,10 @@ use OCA\Webmail\Exception\MailException;
  * Exchange returns UTC times ("...Z").
  */
 class EwsCalendar {
+	/** subject of the events of a calendar shared as availability only (French: translation keys) */
+	public const FREE_BUSY_LABELS = ['Busy' => 'Occupé', 'Tentative' => 'Provisoire', 'OOF' => 'Absent', 'WorkingElsewhere' => 'Ailleurs'];
+	/** why the availability of an attendee is missing (French: translation keys) */
+	public const AVAILABILITY_ERRORS = ['disponibilités inconnues (personne extérieure ou adresse inconnue)', 'disponibilités non partagées'];
 	private const LIST_FIELDS = ['item:Subject', 'calendar:Start', 'calendar:End', 'calendar:IsAllDayEvent', 'calendar:Location',
 		'calendar:Organizer', 'calendar:MyResponseType', 'calendar:IsRecurring', 'calendar:IsCancelled', 'calendar:IsMeeting',
 		'calendar:LegacyFreeBusyStatus', 'calendar:CalendarItemType'];
@@ -116,7 +120,7 @@ class EwsCalendar {
 		} else {
 			$code = $msg !== null ? $this->client->text($xp, 'm:ResponseCode', $msg) : null;
 			if ($code === 'ErrorNonExistentMailbox' || $code === 'ErrorInvalidSmtpAddress') {
-				throw new MailException('Aucune boîte Exchange ne correspond à ' . $email);
+				throw new MailException('Aucune boîte Exchange ne correspond à %s', [$email]);
 			}
 		}
 		// no access to the items: availability is usually still visible
@@ -170,7 +174,9 @@ class EwsCalendar {
 		$node = $xp->query('//' . $root)->item(0);
 		if ($node instanceof \DOMElement && $node->getAttribute('ResponseClass') === 'Error') {
 			$code = trim((string)$xp->evaluate('string(m:ResponseCode)', $node));
-			throw new MailException($code === 'ErrorNameResolutionNoResults' ? 'Liste de salles introuvable' : 'Exchange ne donne pas les salles de réunion (' . $code . ')');
+			throw $code === 'ErrorNameResolutionNoResults'
+				? new MailException('Liste de salles introuvable')
+				: new MailException('Exchange ne donne pas les salles de réunion (%s)', [$code]);
 		}
 	}
 
@@ -202,12 +208,12 @@ class EwsCalendar {
 		$msg = $xp->query('//m:FreeBusyResponse/m:ResponseMessage')->item(0);
 		if (!$msg instanceof \DOMElement || $msg->getAttribute('ResponseClass') === 'Error') {
 			$code = $msg !== null ? $this->client->text($xp, 'm:ResponseCode', $msg) : null;
-			throw new MailException(match ($code) {
-				'ErrorMailRecipientNotFound', 'ErrorNonExistentMailbox' => 'Aucune boîte Exchange ne correspond à ' . $email,
-				default => 'Cet agenda n\'est pas partagé avec vous (pas même les disponibilités)',
-			});
+			throw match ($code) {
+				'ErrorMailRecipientNotFound', 'ErrorNonExistentMailbox' => new MailException('Aucune boîte Exchange ne correspond à %s', [$email]),
+				default => new MailException('Cet agenda n\'est pas partagé avec vous (pas même les disponibilités)'),
+			};
 		}
-		$labels = ['Busy' => 'Occupé', 'Tentative' => 'Provisoire', 'OOF' => 'Absent', 'WorkingElsewhere' => 'Ailleurs'];
+		$labels = self::FREE_BUSY_LABELS;
 		$events = [];
 		foreach ($xp->query('//m:FreeBusyView/t:CalendarEventArray/t:CalendarEvent') as $i => $node) {
 			$busy = (string)$this->client->text($xp, 't:BusyType', $node);
@@ -281,8 +287,8 @@ class EwsCalendar {
 			if ($msg instanceof \DOMElement && $msg->getAttribute('ResponseClass') === 'Error') {
 				$code = $this->client->text($xp, 'm:ResponseCode', $msg);
 				$out[] = ['email' => $emails[$i], 'busy' => [], 'error' => in_array($code, ['ErrorMailRecipientNotFound', 'ErrorNonExistentMailbox'], true)
-					? 'disponibilités inconnues (personne extérieure ou adresse inconnue)'
-					: 'disponibilités non partagées'];
+					? self::AVAILABILITY_ERRORS[0]
+					: self::AVAILABILITY_ERRORS[1]];
 				continue;
 			}
 			$busy = [];
@@ -800,7 +806,7 @@ class EwsCalendar {
 		if ($freq === 'weekly') {
 			foreach ((array)($r['days'] ?? []) as $d) {
 				if (!in_array($d, self::WEEKDAYS, true)) {
-					throw new MailException('Jour de la semaine inconnu : ' . $d);
+					throw new MailException('Jour de la semaine inconnu : %s', [$d]);
 				}
 				$days[] = $d;
 			}
@@ -862,7 +868,7 @@ class EwsCalendar {
 				continue;
 			}
 			if (!filter_var($addr, FILTER_VALIDATE_EMAIL)) {
-				throw new MailException('Adresse de participant invalide : ' . $addr);
+				throw new MailException('Adresse de participant invalide : %s', [$addr]);
 			}
 			$out[] = $addr;
 		}
@@ -872,7 +878,7 @@ class EwsCalendar {
 	private static function parseDate(string $value): \DateTimeImmutable {
 		$d = \DateTimeImmutable::createFromFormat('!Y-m-d', substr(trim($value), 0, 10));
 		if ($d === false) {
-			throw new MailException('Date invalide : ' . $value);
+			throw new MailException('Date invalide : %s', [$value]);
 		}
 		return $d;
 	}
@@ -885,7 +891,7 @@ class EwsCalendar {
 				return $d;
 			}
 		}
-		throw new MailException('Date et heure invalides : ' . $value);
+		throw new MailException('Date et heure invalides : %s', [$value]);
 	}
 
 	private static function utc(\DateTimeInterface $d): string {
