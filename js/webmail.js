@@ -90,6 +90,30 @@
 	/** a search or a filter is active: the list is not the folder's content */
 	const isSearching = () => !!state.query || filtersOn() > 0
 
+	/**
+	 * Changes made here to messages of the list (read, flag, categories…, or taken out of it), with
+	 * their time: a list asked for before them, answered after, must not undo them on screen.
+	 * id -> { changes, at }
+	 */
+	const localEdits = new Map()
+	const LOCAL_EDIT_TTL = 120000
+	function noteEdit(id, changes) {
+		const e = localEdits.get(id)
+		localEdits.set(id, { changes: Object.assign(e ? e.changes : {}, changes), at: Date.now() })
+	}
+	/** The list items of an answer to a request sent at $sentAt, with the changes made since. */
+	function withLocalEdits(items, sentAt) {
+		const now = Date.now()
+		localEdits.forEach((e, id) => { if (now - e.at > LOCAL_EDIT_TTL) localEdits.delete(id) })
+		const after = (m) => { const e = localEdits.get(m.id); return e && e.at >= sentAt ? e.changes : null }
+		return items.filter((m) => { const c = after(m); return !(c && c.gone) }).map((m) => {
+			const c = after(m)
+			if (!c) return m
+			const { gone, ...rest } = c
+			return Object.assign(m, rest)
+		})
+	}
+
 	function resetSearch() {
 		state.query = ''
 		state.filters = Object.assign({}, NO_FILTERS)
@@ -1283,12 +1307,14 @@
 			}
 		}
 		try {
+			const sentAt = Date.now()
 			const data = await api(listEndpoint(), {
 				query: listQuery(reset ? 0 : state.messages.length, limit),
 			})
 			// a newer load (another folder, a search) replaced this one; the folder id
 			// itself may change meanwhile ("inbox" becomes its real id)
 			if (seq !== listSeq) return
+			data.items = withLocalEdits(data.items, sentAt)
 			state.messages = reset ? data.items : state.messages.concat(data.items)
 			state.total = data.total
 			state.hasMore = data.hasMore
@@ -1368,11 +1394,12 @@
 		if (state.messages.length <= 100 && !state.loadingList) {
 			const seq = listSeq
 			try {
+				const sentAt = Date.now()
 				const data = await api(listEndpoint(), {
 					query: listQuery(0, Math.max(PAGE_SIZE, state.messages.length)),
 				})
 				if (seq !== listSeq || state.module !== 'mail') return
-				state.messages = data.items
+				state.messages = withLocalEdits(data.items, sentAt)
 				state.total = data.total
 				state.hasMore = data.hasMore
 				renderList(false)
@@ -2132,6 +2159,7 @@
 		const m = state.messages.find((x) => x.id === id)
 		if (!m) return
 		Object.assign(m, changes)
+		noteEdit(id, changes)
 		const li = listItemEl(id)
 		if (!li) return
 		li.classList.toggle('unread', !m.isRead)
@@ -3013,6 +3041,7 @@
 		const before = { messages: state.messages.slice(), total: state.total, selectedId: state.selectedId }
 		const i = state.messages.findIndex((m) => m.id === state.selectedId)
 		state.messages = state.messages.filter((m) => !ids.includes(m.id))
+		ids.forEach((id) => noteEdit(id, { gone: true }))
 		state.total = Math.max(0, state.total - ids.length)
 		ids.forEach((id) => msgCache.delete(msgKey(id)))
 		renderList(false)
@@ -3029,6 +3058,7 @@
 		}
 		return () => {
 			state.messages = before.messages
+			ids.forEach((id) => noteEdit(id, { gone: false }))
 			state.total = before.total
 			renderList(false)
 			saveListCache()
