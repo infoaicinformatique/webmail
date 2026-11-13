@@ -2847,7 +2847,7 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
-	await step('a message as an .eml file: downloaded, or saved in Files', async () => {
+	await step('a message as an .eml file: downloaded, saved in Files, imported into a folder', async () => {
 		await page.click('.wm-tab[data-module="mail"]')
 		await page.click('.wm-folder >> nth=0')
 		await page.click('.wm-message:has-text("Votre facture OVH")')
@@ -2859,6 +2859,27 @@ async function main() {
 		await page.evaluate(() => { OC.dialogs.filepicker = (t, cb) => cb('/Documents') })
 		await page.click('.wm-eml-save-btn')
 		await page.waitForSelector('.wm-toast:has-text("Enregistré dans /Documents/Votre facture OVH.eml")')
+
+		// and back: the .eml imported into another folder, as a received message (not a draft)
+		const row = (name) => '.wm-folder-row:has(.wm-folder-name:text-is("' + name + '"))'
+		await page.hover(row('Chantier Antibes'))
+		await page.click(row('Chantier Antibes') + ' .wm-folder-menu-btn')
+		const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('.wm-folder-menu button:has-text("Importer des messages (.eml)")')])
+		await chooser.setFiles(await download.path().then((p) => { const copy = p + '.eml'; fs.copyFileSync(p, copy); return copy }))
+		await page.waitForSelector('.wm-toast:has-text("1 message importé dans « Chantier Antibes »")')
+		await page.click('.wm-folder:has-text("Chantier Antibes")')
+		await page.waitForSelector('.wm-message:not(.unread):has-text("Votre facture OVH")')
+		await page.click('.wm-message:has-text("Votre facture OVH")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Votre facture OVH")')
+		assert.strictEqual(await page.$('.wm-compose'), null, 'opened as a message, not as a draft')
+		// a file that is not a message
+		await page.hover(row('Chantier Antibes'))
+		await page.click(row('Chantier Antibes') + ' .wm-folder-menu-btn')
+		const [chooser2] = await Promise.all([page.waitForEvent('filechooser'), page.click('.wm-folder-menu button:has-text("Importer des messages (.eml)")')])
+		await chooser2.setFiles({ name: 'notes.eml', mimeType: 'message/rfc822', buffer: Buffer.from('Juste du texte, pas un message.') })
+		await page.waitForSelector('.wm-toast:has-text("notes.eml : Ce fichier n\'est pas un message (.eml)")')
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-message')
 	})
 
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {

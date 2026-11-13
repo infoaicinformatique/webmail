@@ -1575,9 +1575,41 @@
 		}
 	}
 
-	/** Folders accept messages dropped on them. */
+	/**
+	 * .eml files (Outlook, Thunderbird, another mailbox…) put into a folder.
+	 * @param {Array<File>} files from the computer
+	 */
+	async function importEml(folder, files) {
+		const emls = Array.from(files || []).filter((f) => /\.eml$/i.test(f.name) || f.type === 'message/rfc822')
+		if (!emls.length) { toast(_('Choisissez des messages enregistrés en .eml'), true); return }
+		const fd = new FormData()
+		fd.append('folderId', folder.id)
+		emls.forEach((f) => fd.append('files[]', f, f.name))
+		toast(_('Import dans « {folder} »…', { folder: folder.name }))
+		try {
+			const r = await api('/accounts/' + state.accountId + '/import', { method: 'POST', body: fd })
+			const parts = []
+			if (r.imported) parts.push(r.imported > 1 ? _('{count} messages importés dans « {folder} »', { count: r.imported, folder: folder.name }) : _('{count} message importé dans « {folder} »', { count: r.imported, folder: folder.name }))
+			r.failed.forEach((f) => parts.push(_('{name} : {error}', { name: f.name, error: f.error })))
+			toast(parts.join(_(' ; ')), r.failed.length > 0 && !r.imported)
+			listCache.delete(state.accountId + '|' + folder.id)
+			if (folder.id === state.folderId) loadMessages(true)
+			loadFolders()
+		} catch (e) { toast(e.message, true) }
+	}
+
+	function pickEml(folder) {
+		const input = h('input', { type: 'file', multiple: true, accept: '.eml,message/rfc822', hidden: true, class: 'wm-eml-input' })
+		input.addEventListener('change', () => { const list = Array.from(input.files); input.remove(); importEml(folder, list) })
+		document.body.appendChild(input)
+		input.click()
+	}
+
+	/** Folders accept messages dropped on them, and .eml files from the computer. */
 	function folderDropTarget(el, folder) {
+		const hasFiles = (e) => e.dataTransfer.types.includes('Files')
 		el.addEventListener('dragover', (e) => {
+			if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; el.classList.add('wm-drop-target'); return }
 			if (folder.id === state.folderId || !e.dataTransfer.types.includes('application/x-webmail-ids')) return
 			e.preventDefault()
 			e.dataTransfer.dropEffect = 'move'
@@ -1587,6 +1619,7 @@
 		el.addEventListener('drop', (e) => {
 			el.classList.remove('wm-drop-target')
 			root.classList.remove('wm-dragging')
+			if (e.dataTransfer.files && e.dataTransfer.files.length) { e.preventDefault(); importEml(folder, e.dataTransfer.files); return }
 			let ids = []
 			try { ids = JSON.parse(e.dataTransfer.getData('application/x-webmail-ids')) } catch (err) { return }
 			if (!Array.isArray(ids) || !ids.length || folder.id === state.folderId) return
@@ -1613,6 +1646,7 @@
 		}, label)
 		const menu = h('div', { class: 'wm-folder-menu', role: 'menu', 'aria-label': _('Dossier {name}', { name: f.name }) },
 			item('＋ ' + _('Nouveau sous-dossier'), () => createFolder(f)),
+			item('📥 ' + _('Importer des messages (.eml)…'), () => pickEml(f)),
 			fixed ? null : item('✏️ ' + _('Renommer'), () => renameFolder(f)),
 			fixed ? null : item('↪ ' + _('Déplacer…'), () => moveFolder(f)),
 			fixed ? null : item('🗑 ' + _('Supprimer'), () => deleteFolder(f), true))

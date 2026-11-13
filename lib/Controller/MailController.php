@@ -304,6 +304,53 @@ class MailController extends Controller {
 		});
 	}
 
+	/**
+	 * .eml files put into a folder of the mailbox (sent from the computer or picked in Files).
+	 *
+	 * @param string[] $filePaths
+	 */
+	#[NoAdminRequired]
+	public function importEml(int $id, string $folderId, array $filePaths = []): Response {
+		return $this->handle(function () use ($id, $folderId, $filePaths) {
+			$client = $this->client($id);
+			$files = [];
+			$uploads = $this->request->getUploadedFile('files');
+			if (is_array($uploads) && isset($uploads['name'])) {
+				foreach ((array)$uploads['name'] as $i => $name) {
+					$error = ((array)$uploads['error'])[$i] ?? UPLOAD_ERR_NO_FILE;
+					$tmp = (string)(((array)$uploads['tmp_name'])[$i] ?? '');
+					$files[] = ['name' => (string)$name, 'content' => $error === UPLOAD_ERR_OK && is_uploaded_file($tmp) ? (string)file_get_contents($tmp) : null];
+				}
+			}
+			$userFolder = $this->rootFolder->getUserFolder((string)$this->userId);
+			foreach ($filePaths as $path) {
+				try {
+					$node = $userFolder->get((string)$path);
+					$files[] = ['name' => $node->getName(), 'content' => $node instanceof File && $node->isReadable() && $node->getSize() <= EwsClient::MAX_EML_BYTES ? $node->getContent() : null];
+				} catch (NotFoundException) {
+					$files[] = ['name' => basename((string)$path), 'content' => null];
+				}
+			}
+			if ($files === []) {
+				throw new MailException('Aucun fichier à importer');
+			}
+			$imported = 0;
+			$failed = [];
+			foreach ($files as $f) {
+				try {
+					if ($f['content'] === null) {
+						throw new MailException('Fichier illisible ou trop lourd');
+					}
+					$client->importMime($f['content'], $folderId);
+					$imported++;
+				} catch (MailException $e) {
+					$failed[] = ['name' => $f['name'], 'error' => $this->errorMessage($e)];
+				}
+			}
+			return ['imported' => $imported, 'failed' => $failed];
+		});
+	}
+
 	/** A message as an .eml file, saved in Nextcloud Files. */
 	#[NoAdminRequired]
 	public function saveEml(int $id, string $itemId, string $path = '/Pièces jointes'): Response {

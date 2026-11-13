@@ -749,6 +749,23 @@ def handle(op, el, user):
         msgs = []
         for it in el.find('m:Items', NS):
             tag = it.tag.replace(T, '')
+            mime = it.findtext('t:MimeContent', default='', namespaces=NS)
+            if tag == 'Message' and mime:
+                # an imported .eml: a received message in the folder given
+                from email import message_from_bytes, policy
+                from email.utils import parseaddr
+                parsed = message_from_bytes(base64.b64decode(mime), policy=policy.default)
+                saved = el.find('m:SavedItemFolderId', NS)
+                target = folder_id(saved[0]) if saved is not None and len(saved) else 'F-DRAFTS'
+                part = parsed.get_body(preferencelist=('html', 'plain'))
+                text = part.get_content() if part is not None else ''
+                body = text if part is not None and part.get_content_subtype() == 'html' else '<p>%s</p>' % esc(text)
+                name, addr = parseaddr(str(parsed.get('From', '')))
+                flags = it.find('t:ExtendedProperty/t:Value', NS)
+                mid = add_message(target, str(parsed.get('Subject', '')), (name or addr, addr), body, 0,
+                                  is_read=flags is not None and flags.text == '1')
+                msgs.append(ok(op, '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/></t:Message></m:Items>' % (mid, MESSAGES[mid]['ck'])))
+                continue
             if tag == 'Message':
                 subject = it.findtext('t:Subject', default='', namespaces=NS)
                 body = it.findtext('t:Body', default='', namespaces=NS)

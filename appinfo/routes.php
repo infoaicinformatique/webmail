@@ -37,6 +37,7 @@ return [
 		['name' => 'mail#saveAttachment', 'url' => '/api/accounts/{id}/attachment/save', 'verb' => 'POST'],
 		['name' => 'mail#eml', 'url' => '/api/accounts/{id}/message/eml', 'verb' => 'GET'],
 		['name' => 'mail#saveEml', 'url' => '/api/accounts/{id}/message/eml/save', 'verb' => 'POST'],
+		['name' => 'mail#importEml', 'url' => '/api/accounts/{id}/import', 'verb' => 'POST'],
 		['name' => 'mail#flags', 'url' => '/api/accounts/{id}/flags', 'verb' => 'POST'],
 		['name' => 'mail#move', 'url' => '/api/accounts/{id}/move', 'verb' => 'POST'],
 		['name' => 'mail#delete', 'url' => '/api/accounts/{id}/delete', 'verb' => 'POST'],

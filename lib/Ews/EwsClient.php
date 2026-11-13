@@ -1004,6 +1004,35 @@ class EwsClient {
 		];
 	}
 
+	/** Largest .eml imported (Exchange refuses bigger messages anyway). */
+	public const MAX_EML_BYTES = 26214400;
+
+	/**
+	 * An .eml file (from Outlook, Thunderbird, another mailbox…) put into a folder,
+	 * as a received and read message (not a draft: PR_MESSAGE_FLAGS = MSGFLAG_READ).
+	 *
+	 * @return string the id of the new message
+	 * @throws MailException
+	 */
+	public function importMime(string $mime, string $folderId): string {
+		if (strlen($mime) > self::MAX_EML_BYTES) {
+			throw new MailException('Message trop lourd (25 Mo au plus)');
+		}
+		// a message starts with its headers (« From: … », « Subject: … »)
+		if (!preg_match('/^(?:[!-9;-~]+:[^\r\n]*\r?\n(?:[ \t][^\r\n]*\r?\n)*)+\r?\n/', ltrim($mime, "\xEF\xBB\xBF\r\n"))
+			|| !preg_match('/^(from|subject|date|message-id):/im', $mime)) {
+			throw new MailException('Ce fichier n\'est pas un message (.eml)');
+		}
+		$xp = $this->request(
+			'<m:CreateItem MessageDisposition="SaveOnly"><m:SavedItemFolderId>' . $this->folderIdXml($folderId) . '</m:SavedItemFolderId>'
+			. '<m:Items><t:Message><t:MimeContent CharacterSet="UTF-8">' . base64_encode($mime) . '</t:MimeContent>'
+			. '<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0x0E07" PropertyType="Integer"/><t:Value>1</t:Value></t:ExtendedProperty>'
+			. '</t:Message></m:Items></m:CreateItem>'
+		);
+		$id = $xp->query('//m:Items/t:Message/t:ItemId')->item(0);
+		return $id instanceof \DOMElement ? $id->getAttribute('Id') : '';
+	}
+
 	/** @param string[] $itemIds */
 	public function setRead(array $itemIds, bool $read): void {
 		$this->updateItems($itemIds, 'message:IsRead',
