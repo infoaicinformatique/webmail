@@ -730,7 +730,7 @@
 		}
 		const f = {
 			givenName: input('givenName', _('Prénom')),
-			surname: input('surname', _('Nom')),
+			surname: input('surname', _('Nom de famille')),
 			displayName: input('displayName', _('Nom affiché')),
 			company: input('company', _('Société')),
 			department: input('department', _('Service')),

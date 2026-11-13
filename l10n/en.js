@@ -142,6 +142,7 @@ OC.L10N.register(
     "Niveau pour la nouvelle personne": "Level for the new person",
     "Nom": "Name",
     "Nom affiché": "Display name",
+    "Nom de famille": "Last name",
     "Nom du groupe": "Group name",
     "Nom ou adresse (complétion)": "Name or address (completion)",
     "Non commencée": "Not started",
