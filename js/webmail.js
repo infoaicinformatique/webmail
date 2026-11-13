@@ -4296,7 +4296,8 @@
 	/** The card of « Comptes et signature »: homeserver, access token (kept encrypted), default room. */
 	function matrixSettings() {
 		const card = h('fieldset', { class: 'wm-account-card wm-matrix-settings' }, h('legend', {}, '💬 ' + _('Matrix (Element)')))
-		const homeserver = h('input', { type: 'url', name: 'matrixHomeserver', placeholder: 'https://matrix.example.org' })
+		// (text: « matrix.example.org » alone is accepted, https is added by the server)
+		const homeserver = h('input', { type: 'text', inputmode: 'url', autocapitalize: 'off', spellcheck: 'false', name: 'matrixHomeserver', placeholder: 'https://matrix.example.org' })
 		const token = h('input', { type: 'password', name: 'matrixToken', autocomplete: 'off' })
 		const room = h('input', { type: 'text', name: 'matrixRoom', placeholder: '#equipe:example.org', list: 'wm-matrix-rooms' })
 		const roomList = h('datalist', { id: 'wm-matrix-rooms' })
