@@ -294,6 +294,15 @@ class MailController extends Controller {
 		});
 	}
 
+	/** Every message of a folder marked as read. */
+	#[NoAdminRequired]
+	public function markFolderRead(int $id, string $folderId): Response {
+		return $this->handle(function () use ($id, $folderId) {
+			$this->client($id)->markFolderRead($folderId);
+			return ['status' => 'ok'];
+		});
+	}
+
 	/** A message as an .eml file, to download. */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]

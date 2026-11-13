@@ -1115,5 +1115,7 @@
 	"Message trop lourd (25 Mo au plus)": "Message too large (25 MB at most)",
 	"Ce fichier n'est pas un message (.eml)": "This file is not a message (.eml)",
 	"Aucun fichier à importer": "No file to import",
-	"Fichier illisible ou trop lourd": "File unreadable or too large"
+	"Fichier illisible ou trop lourd": "File unreadable or too large",
+	"Tout marquer comme lu": "Mark all as read",
+	"Tous les messages de « {folder} » sont lus": "All messages of “{folder}” are read"
 }

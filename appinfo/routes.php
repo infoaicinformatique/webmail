@@ -28,6 +28,7 @@ return [
 		['name' => 'mail#renameFolder', 'url' => '/api/accounts/{id}/folders/rename', 'verb' => 'POST'],
 		['name' => 'mail#moveFolder', 'url' => '/api/accounts/{id}/folders/move', 'verb' => 'POST'],
 		['name' => 'mail#deleteFolder', 'url' => '/api/accounts/{id}/folders/delete', 'verb' => 'POST'],
+		['name' => 'mail#markFolderRead', 'url' => '/api/accounts/{id}/folders/read', 'verb' => 'POST'],
 		['name' => 'mail#saveDraft', 'url' => '/api/accounts/{id}/draft', 'verb' => 'POST'],
 		['name' => 'mail#draftAttachments', 'url' => '/api/accounts/{id}/draft/attachments', 'verb' => 'POST'],
 		['name' => 'mail#deleteDraftAttachment', 'url' => '/api/accounts/{id}/draft/attachments/delete', 'verb' => 'POST'],

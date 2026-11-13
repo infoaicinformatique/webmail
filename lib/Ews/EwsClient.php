@@ -1033,6 +1033,20 @@ class EwsClient {
 		return $id instanceof \DOMElement ? $id->getAttribute('Id') : '';
 	}
 
+	/**
+	 * Every message of a folder read (or unread) in one request, however many there
+	 * are; no read receipt is sent for them.
+	 *
+	 * @throws MailException
+	 */
+	public function markFolderRead(string $folderId, bool $read = true): void {
+		$this->request(
+			'<m:MarkAllItemsAsRead><m:ReadFlag>' . ($read ? 'true' : 'false') . '</m:ReadFlag>'
+			. '<m:SuppressReadReceipts>true</m:SuppressReadReceipts>'
+			. '<m:FolderIds>' . $this->folderIdXml($folderId) . '</m:FolderIds></m:MarkAllItemsAsRead>'
+		);
+	}
+
 	/** @param string[] $itemIds */
 	public function setRead(array $itemIds, bool $read): void {
 		$this->updateItems($itemIds, 'message:IsRead',

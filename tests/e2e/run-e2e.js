@@ -2882,6 +2882,36 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('folder menu: mark all as read, in one request', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		const row = (name) => '.wm-folder-row:has(.wm-folder-name:text-is("' + name + '"))'
+		await page.click('.wm-folder:has-text("Factures")')
+		await page.waitForSelector('.wm-message.unread')
+		await page.hover(row('Factures'))
+		await page.click(row('Factures') + ' .wm-folder-menu-btn')
+		const [req] = await Promise.all([
+			page.waitForRequest((r) => r.url().endsWith('/folders/read') && r.method() === 'POST'),
+			page.click('.wm-folder-menu button:has-text("Tout marquer comme lu")'),
+		])
+		assert.ok(req)
+		await page.waitForSelector('.wm-toast:has-text("Tous les messages de « Factures » sont lus")')
+		assert.strictEqual(await page.$$eval('.wm-message.unread', (els) => els.length), 0, 'at once on screen')
+		assert.strictEqual(await page.$(row('Factures') + ' .wm-folder-count, ' + row('Factures') + ' .wm-badge'), null, 'no unread count left')
+		// and in Exchange: still read after a reload
+		await page.reload()
+		await page.click('.wm-folder:has-text("Factures")')
+		await page.waitForSelector('.wm-message')
+		await page.waitForTimeout(1500) // the list is refreshed from Exchange
+		assert.strictEqual(await page.$$eval('.wm-message.unread', (els) => els.length), 0)
+		// a folder without unread messages does not offer it
+		await page.hover(row('Factures'))
+		await page.click(row('Factures') + ' .wm-folder-menu-btn')
+		assert.strictEqual(await page.$('.wm-folder-menu button:has-text("Tout marquer comme lu")'), null)
+		await page.keyboard.press('Escape')
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')
