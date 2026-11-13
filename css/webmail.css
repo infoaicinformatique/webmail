@@ -31,6 +31,10 @@
 .wm-account-select { width: 100%; margin: 0; }
 .wm-account-name { padding: 4px 12px; color: var(--color-text-maxcontrast); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wm-folders { list-style: none; margin: 0; padding: 0; flex: 1; }
+/* « Favoris »: pinned folders above the tree */
+.wm-folders.wm-favorites { flex: 0 0 auto; }
+.wm-favorites .wm-folder-icon { color: var(--color-warning, #c28900); }
+.wm-nav-section { padding: 10px 12px 2px; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: .03em; color: var(--color-text-maxcontrast); }
 .wm-folder {
 	display: flex;
 	align-items: center;
