@@ -2354,10 +2354,28 @@
 				h('button', { class: 'wm-unsnooze-btn', onclick: () => unsnooze(m) }, _('Remettre dans la boîte de réception maintenant'))))
 		}
 
-		if (m.hasRemoteContent && !m.remoteAllowed) {
+		const senderEmail = (m.from && m.from.email && !m.from.email.startsWith('/') ? m.from.email : '').toLowerCase()
+		const senderDomain = senderEmail.includes('@') ? senderEmail.slice(senderEmail.lastIndexOf('@')) : ''
+		if (m.hasRemoteContent && !m.remoteAllowed && !m.remoteTrusted) {
+			// « always for this sender »: their next messages show their images at once (as in Outlook)
+			const trust = (entry) => async () => {
+				try {
+					await api('/trusted-images', { method: 'POST', body: { entry } })
+					msgCache.clear()
+					toast(_('Les images de {who} s\'afficheront désormais directement', { who: entry }))
+					openMessage(m.id)
+				} catch (e) { toast(e.message, true) }
+			}
 			detailEl.appendChild(h('div', { class: 'wm-remote-banner' },
 				_('Les images distantes ont été bloquées pour protéger votre vie privée.') + ' ',
-				h('button', { onclick: () => openMessage(m.id, true) }, _('Afficher les images'))))
+				h('button', { onclick: () => openMessage(m.id, true) }, _('Afficher les images')),
+				senderEmail ? h('button', { class: 'wm-trust-sender', onclick: trust(senderEmail) }, _('Toujours pour {who}', { who: senderEmail })) : null,
+				senderDomain ? h('button', { class: 'wm-trust-domain', title: _('Tous les expéditeurs de ce domaine'), onclick: trust(senderDomain) }, _('Toujours pour {who}', { who: senderDomain })) : null))
+		}
+		if (m.remoteTrusted) {
+			detailEl.appendChild(h('div', { class: 'wm-info wm-trusted-banner' },
+				_('Images affichées : {who} fait partie de vos expéditeurs de confiance.', { who: senderEmail }) + ' ',
+				h('button', { class: 'wm-small', onclick: () => openAccountSettings() }, _('Gérer'))))
 		}
 
 		if (m.attachments && m.attachments.length) {
@@ -4110,6 +4128,26 @@
 		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-template-settings' },
 			h('legend', {}, _('Modèles de réponse')), templateList))
 		loadTemplates(true).then(showTemplates, (e) => toast(e.message, true))
+
+		// senders whose remote images show at once
+		const trustedList = h('ul', { class: 'wm-trusted-list' })
+		const showTrusted = (list) => {
+			clear(trustedList)
+			if (!list.length) trustedList.appendChild(h('li', { class: 'wm-muted' }, _('Aucun. Sur un message aux images bloquées, « Toujours pour… » ajoute son expéditeur (ou son domaine).')))
+			list.forEach((entry) => trustedList.appendChild(h('li', { dataset: { entry } },
+				h('span', {}, entry.startsWith('@') ? _('Tout le domaine {domain}', { domain: entry.slice(1) }) : entry),
+				h('button', { type: 'button', class: 'wm-small wm-danger', 'aria-label': _('Retirer {who}', { who: entry }), onclick: async () => {
+					try {
+						showTrusted((await api('/trusted-images/remove', { method: 'POST', body: { entry } })).trusted)
+						msgCache.clear()
+					} catch (e) { toast(e.message, true) }
+				} }, '✕'))))
+		}
+		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-trusted-settings' },
+			h('legend', {}, _('Images des expéditeurs de confiance')),
+			h('p', { class: 'wm-muted' }, _('Leurs messages affichent leurs images distantes directement ; pour les autres, elles restent bloquées (elles peuvent servir à savoir que vous avez lu le message).')),
+			trustedList))
+		api('/trusted-images').then((r) => showTrusted(r.trusted), (e) => toast(e.message, true))
 
 		state.accounts.forEach((a) => {
 			const name = h('input', { type: 'text', value: a.displayName === a.email ? '' : a.displayName, placeholder: _('Nom affiché (facultatif)') })
