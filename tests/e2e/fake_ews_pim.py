@@ -584,6 +584,8 @@ def contact_xml(c, detail):
         x += '<t:PhoneNumbers>%s</t:PhoneNumbers>' % ''.join('<t:Entry Key="%s">%s</t:Entry>' % (el, esc(c[k])) for k, el in phones)
     if detail and c['department']:
         x += '<t:Department>%s</t:Department>' % esc(c['department'])
+    if detail and c.get('matrix'):
+        x += '<t:ImAddresses><t:Entry Key="ImAddress1">%s</t:Entry></t:ImAddresses>' % esc(c['matrix'])
     if c['jobTitle']:
         x += '<t:JobTitle>%s</t:JobTitle>' % esc(c['jobTitle'])
     if detail and c['surname']:
@@ -635,6 +637,9 @@ def apply_contact_fields(c, ct):
     for entry in ct.findall('t:PhoneNumbers/t:Entry', NS):
         key = {'MobilePhone': 'mobilePhone', 'BusinessPhone': 'businessPhone', 'HomePhone': 'homePhone'}[entry.get('Key')]
         c[key] = entry.text or ''
+    for entry in ct.findall('t:ImAddresses/t:Entry', NS):
+        if entry.get('Key') == 'ImAddress1':
+            c['matrix'] = entry.text or ''
     for entry in ct.findall('t:PhysicalAddresses/t:Entry', NS):
         for el, key in (('Street', 'street'), ('City', 'city'), ('CountryOrRegion', 'country'), ('PostalCode', 'postalCode')):
             v = entry.find('t:' + el, NS)
@@ -654,6 +659,8 @@ def delete_contact_field(c, path):
             c['emails'][i] = ''
     elif uri == 'contacts:PhoneNumber':
         c[{'MobilePhone': 'mobilePhone', 'BusinessPhone': 'businessPhone', 'HomePhone': 'homePhone'}[index]] = ''
+    elif uri == 'contacts:ImAddress':
+        c['matrix'] = ''
     elif uri in mapping:
         c[mapping[uri]] = ''
 

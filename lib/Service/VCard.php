@@ -38,6 +38,10 @@ class VCard {
 				$lines[] = 'ADR;TYPE=WORK:;;' . self::esc((string)($c['street'] ?? '')) . ';' . self::esc((string)($c['city'] ?? '')) . ';;'
 					. self::esc((string)($c['postalCode'] ?? '')) . ';' . self::esc((string)($c['country'] ?? ''));
 			}
+			if (($c['matrix'] ?? '') !== '') {
+				// the matrix: URI scheme (« matrix:u/alice:example.org »), read by Element and other apps
+				$lines[] = 'IMPP;X-SERVICE-TYPE=Matrix:matrix:u/' . self::esc(substr((string)$c['matrix'], 1));
+			}
 			if (trim((string)($c['notes'] ?? '')) !== '') {
 				$lines[] = 'NOTE:' . self::esc(trim((string)$c['notes']));
 			}
@@ -151,6 +155,13 @@ class VCard {
 				case 'NOTE':
 					$card['notes'] = self::unesc($value);
 					break;
+				case 'IMPP':
+				case 'X-MATRIX':
+					$id = \OCA\Webmail\Ews\EwsContacts::matrixId(self::unesc($value));
+					if ($id !== null && ($card['matrix'] ?? '') === '') {
+						$card['matrix'] = $id;
+					}
+					break;
 				case 'KIND':
 				case 'X-ADDRESSBOOKSERVER-KIND':
 					$card['group'] = strtolower(trim($value)) === 'group';
@@ -176,6 +187,7 @@ class VCard {
 			'mobilePhone' => '', 'businessPhone' => '', 'homePhone' => '',
 			'street' => '', 'city' => '', 'postalCode' => '', 'country' => '',
 			'notes' => (string)($card['notes'] ?? ''),
+			'matrix' => (string)($card['matrix'] ?? ''),
 		];
 		$rest = [];
 		foreach ($card['phones'] as [$number, $types]) {

@@ -451,7 +451,7 @@ class EwsContacts {
 	private static function detailFields(): string {
 		$fields = '';
 		foreach (['contacts:DisplayName', 'contacts:GivenName', 'contacts:Surname', 'contacts:CompanyName', 'contacts:Department',
-			'contacts:JobTitle', 'contacts:EmailAddresses', 'contacts:PhoneNumbers', 'contacts:PhysicalAddresses', 'item:Body', 'contacts:HasPicture'] as $f) {
+			'contacts:JobTitle', 'contacts:EmailAddresses', 'contacts:PhoneNumbers', 'contacts:PhysicalAddresses', 'contacts:ImAddresses', 'item:Body', 'contacts:HasPicture'] as $f) {
 			$fields .= '<t:FieldURI FieldURI="' . $f . '"/>';
 		}
 		return $fields;
@@ -709,6 +709,8 @@ class EwsContacts {
 			$contact[$key] = (string)$c->text($xp, 't:PhysicalAddresses/t:Entry[@Key="Business"]/t:' . $el, $node);
 		}
 		$contact['office'] = (string)$c->text($xp, 't:OfficeLocation', $node);
+		// the Matrix address (« @alice:example.org »), kept in Exchange's first IM address (also shown by Outlook)
+		$contact['matrix'] = self::matrixId((string)$c->text($xp, 't:ImAddresses/t:Entry[@Key="ImAddress1"]', $node)) ?? '';
 		return $contact;
 	}
 
@@ -746,6 +748,7 @@ class EwsContacts {
 			. ($address !== '' ? '<t:PhysicalAddresses><t:Entry Key="Business">' . $address . '</t:Entry></t:PhysicalAddresses>' : '')
 			. ($phones !== '' ? '<t:PhoneNumbers>' . $phones . '</t:PhoneNumbers>' : '')
 			. $el('Department', $d['department'])
+			. ($d['matrix'] !== '' ? '<t:ImAddresses><t:Entry Key="ImAddress1">' . $c->esc($d['matrix']) . '</t:Entry></t:ImAddresses>' : '')
 			. $el('JobTitle', $d['jobTitle'])
 			. $el('Surname', $d['surname'])
 			. '</t:Contact>';
@@ -791,6 +794,10 @@ class EwsContacts {
 				? $set($path, '<t:PhoneNumbers><t:Entry Key="' . $k . '">' . $c->esc($d[$key]) . '</t:Entry></t:PhoneNumbers>')
 				: $del($path);
 		}
+		$path = '<t:IndexedFieldURI FieldURI="contacts:ImAddress" FieldIndex="ImAddress1"/>';
+		$updates .= $d['matrix'] !== ''
+			? $set($path, '<t:ImAddresses><t:Entry Key="ImAddress1">' . $c->esc($d['matrix']) . '</t:Entry></t:ImAddresses>')
+			: $del($path);
 		foreach (self::ADDRESS as $key => $el) {
 			$path = '<t:IndexedFieldURI FieldURI="contacts:PhysicalAddress:' . $el . '" FieldIndex="Business"/>';
 			$updates .= $d[$key] !== ''
@@ -851,6 +858,24 @@ class EwsContacts {
 	}
 
 	/**
+	 * A Matrix user id, « @alice:example.org », from what was typed or pasted: the id itself,
+	 * a matrix.to link or a matrix: URI (« matrix:u/alice:example.org »); null if it is none.
+	 */
+	public static function matrixId(string $value): ?string {
+		$v = trim($value);
+		if (preg_match('~^https://matrix\.to/#/(@[^/?#\s]+)~i', $v, $m)) {
+			$v = rawurldecode($m[1]);
+		} elseif (preg_match('~^matrix:u/([^/?#\s]+)~i', $v, $m)) {
+			$v = '@' . rawurldecode($m[1]);
+		}
+		// localpart: the characters allowed by the Matrix spec; server: a host name or IP, with a port
+		if (strlen($v) > 255 || !preg_match('~^@[a-z0-9._=\-/+]+:(?:[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?)*|\[[0-9a-f:.]+\])(?::\d{1,5})?$~i', $v)) {
+			return null;
+		}
+		return $v;
+	}
+
+	/**
 	 * @param array<string, mixed> $data
 	 * @return array<string, mixed>
 	 */
@@ -860,6 +885,8 @@ class EwsContacts {
 			$d[$key] = trim((string)($data[$key] ?? ''));
 		}
 		$d['notes'] = (string)($data['notes'] ?? '');
+		$matrix = trim((string)($data['matrix'] ?? ''));
+		$d['matrix'] = $matrix === '' ? '' : (self::matrixId($matrix) ?? throw new MailException('Adresse Matrix invalide : %s (par exemple %s)', [$matrix, '@alice:example.org']));
 
 		$emails = [];
 		foreach ((array)($data['emails'] ?? []) as $e) {

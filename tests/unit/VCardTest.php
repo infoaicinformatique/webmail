@@ -12,7 +12,7 @@ class VCardTest extends TestCase {
 		'displayName' => 'Jean Dupont', 'givenName' => 'Jean', 'surname' => 'Dupont', 'company' => 'Client, Exemple & Cie', 'department' => 'Achats',
 		'jobTitle' => 'Acheteur', 'emails' => ['jean.dupont@client-exemple.fr', 'jd@perso.fr'], 'mobilePhone' => '+33 6 12 34 56 78',
 		'businessPhone' => '04 93 00 00 00', 'homePhone' => '', 'street' => "12 rue de la Paix\nBâtiment B", 'city' => 'Nice', 'postalCode' => '06000',
-		'country' => 'France', 'notes' => "Préfère le téléphone ; rappeler le matin.\nClient depuis 2019.",
+		'country' => 'France', 'notes' => "Préfère le téléphone ; rappeler le matin.\nClient depuis 2019.", 'matrix' => '@jean.dupont:matrix.client-exemple.fr',
 	];
 
 	public function testRoundTrip(): void {
@@ -20,6 +20,7 @@ class VCardTest extends TestCase {
 		$this->assertStringStartsWith("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Jean Dupont\r\nN:Dupont;Jean;;;\r\nORG:Client\\, Exemple & Cie;Achats\r\n", $vcf);
 		$this->assertStringContainsString("EMAIL;TYPE=INTERNET,PREF:jean.dupont@client-exemple.fr\r\n", $vcf);
 		$this->assertStringContainsString("TEL;TYPE=CELL:+33 6 12 34 56 78\r\n", $vcf);
+		$this->assertStringContainsString("IMPP;X-SERVICE-TYPE=Matrix:matrix:u/jean.dupont:matrix.client-exemple.fr\r\n", $vcf);
 		foreach (explode("\r\n", $vcf) as $line) {
 			$this->assertLessThanOrEqual(75, strlen($line), $line);
 		}
@@ -49,5 +50,14 @@ class VCardTest extends TestCase {
 		$this->assertSame(['paul.pro@x.fr', 'paul@x.fr'], $cards[0]['emails']);
 		$this->assertSame('+33-1-00', $cards[0]['homePhone']);
 		$this->assertSame(['Seulement une société', []], [$cards[1]['company'], $cards[1]['emails']]);
+	}
+
+	public function testMatrixFromOtherApps(): void {
+		$card = fn (string $line) => VCard::parse("BEGIN:VCARD\r\nVERSION:4.0\r\nFN:A\r\n" . $line . "\r\nEND:VCARD\r\n")[0]['matrix'];
+		$this->assertSame('@alice:example.org', $card('IMPP:matrix:u/alice:example.org'));
+		$this->assertSame('@alice:example.org', $card('IMPP;PREF=1:https://matrix.to/#/@alice:example.org'));
+		$this->assertSame('@alice:example.org', $card('X-MATRIX:@alice:example.org'));
+		// another messenger: not a Matrix address
+		$this->assertSame('', $card('IMPP:xmpp:alice@example.org'));
 	}
 }
