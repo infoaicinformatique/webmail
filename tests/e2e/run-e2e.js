@@ -3941,12 +3941,14 @@ async function main() {
 			await page.waitForSelector('.wm-matrix-status:has-text("Compte Matrix enregistré")')
 			await page.selectOption('select[name=matrixAlerts]', 'all')
 			await page.waitForSelector('.wm-toast:has-text("Les nouveaux messages seront signalés dans votre salon Matrix")')
+			// (a first check of the account only notes where it stands: messages from now on are new)
+			const newMailJob = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\NewMailJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+			occ('background-job:execute ' + newMailJob + ' --force-execute')
 			await page.click('.wm-compose-btn')
 			await page.fill('input[name=to]', 'user@societe-a.fr')
 			await page.fill('input[name=subject]', 'Livraison des fenêtres')
 			await page.fill('.wm-editor', 'Les fenêtres arrivent jeudi matin.')
 			await submitCompose()
-			const newMailJob = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\NewMailJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
 			occ('background-job:execute ' + newMailJob + ' --force-execute')
 			last = (await sent()).pop()
 			assert.strictEqual(last.room, '!equipe:fake.test')
