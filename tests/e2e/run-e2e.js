@@ -209,7 +209,7 @@ async function main() {
 		assert(await page.$('.wm-message-header'), 'Escape only closed the preview')
 
 		// all of them in one .zip, named after the subject
-		const zipRes = await page.request.get(await page.getAttribute('.wm-zip-btn', 'href'))
+		const zipRes = await page.request.get(await page.$eval('.wm-zip-btn', (a) => a.href))
 		assert.strictEqual(zipRes.status(), 200)
 		assert.strictEqual(zipRes.headers()['content-type'].split(';')[0], 'application/zip')
 		assert.ok(zipRes.headers()['content-disposition'].includes('Photos du chantier.zip'), zipRes.headers()['content-disposition'])
