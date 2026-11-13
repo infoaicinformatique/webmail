@@ -70,6 +70,13 @@ SHARED_MAILBOXES = {
         ('C-JUNK', 'Courrier indésirable', 'C-ROOT', 'junkemail'),
         ('C-DEVIS', 'Demandes de devis', 'C-INBOX', None),
     ]),
+    # a colleague who made user@ their delegate in Outlook: the inbox (and its sub-folders) only
+    'direction@societe-a.fr': dict(name='Sophie Direction', allowed={'user@societe-a.fr'}, delegated={'inbox'}, folders=[
+        ('D-ROOT', 'Haut de la banque d\'informations', None, 'msgfolderroot'),
+        ('D-INBOX', 'Boîte de réception', 'D-ROOT', 'inbox'),
+        ('D-SENT', 'Éléments envoyés', 'D-ROOT', 'sentitems'),
+        ('D-RAPPORTS', 'Rapports mensuels', 'D-INBOX', None),
+    ]),
 }
 for _mb in SHARED_MAILBOXES.values():
     FOLDERS.extend(_mb['folders'])
@@ -153,6 +160,10 @@ def seed_shared():
                 '<p>Bonjour,</p><p>Pourriez-vous me faire un devis pour la rénovation de ma cuisine ?</p><p>Claire Leroux</p>', 45, to=to)
     add_message('C-INBOX', 'Horaires d\'ouverture', ('Marc Petit', 'marc.petit@particulier.example'),
                 '<p>Bonjour, êtes-vous ouverts le samedi ?</p>', 300, is_read=True, to=to)
+    add_message('D-INBOX', 'Point budget du trimestre', ('Paul Durand', 'paul.durand@societe-a.fr'),
+                '<p>Sophie, peux-tu valider le budget avant vendredi ?</p>', 30, to=(('Sophie Direction', 'direction@societe-a.fr'),))
+    add_message('D-RAPPORTS', 'Rapport mensuel d\'octobre', ('Service Comptabilité', 'compta@societe-b.fr'),
+                '<p>Le rapport d\'octobre est prêt.</p>', 3000, is_read=True, to=(('Sophie Direction', 'direction@societe-a.fr'),))
     add_message('C-DEVIS', 'Devis salle de bains', ('Nadia Benali', 'nadia.benali@particulier.example'),
                 '<p>Bonjour, je souhaite un devis pour ma salle de bains.</p>', 60 * 30, is_read=True, to=to)
 
@@ -203,6 +214,8 @@ def folder_id(el):
             shared = SHARED_MAILBOXES.get(mailbox)
             if not shared or CURRENT_USER.lower() not in shared['allowed']:
                 return None
+            if 'delegated' in shared and el.get('Id') not in shared['delegated']:
+                return None  # a delegate only opens the folders shared with them
             return {f[3]: f[0] for f in shared['folders'] if f[3]}.get(el.get('Id'))
         return ROLE_TO_ID.get(el.get('Id'))
     return el.get('Id')
@@ -448,6 +461,11 @@ def handle(op, el, user):
                              % QUOTA_KB)
                 if any(u.get('FieldURI') == 'folder:UnreadCount' for u in el.iter(T + 'FieldURI')):
                     quota += '<t:UnreadCount>%d</t:UnreadCount>' % counts(fid)[1]
+                f = next((x for x in FOLDERS if x[0] == fid), None)
+                if f is not None and el.findtext('m:FolderShape/t:BaseShape', default='', namespaces=NS) == 'Default':
+                    # Default shape: name and counts, like Exchange
+                    msgs.append(ok(op, '<m:Folders>%s</m:Folders>' % folder_xml(f)))
+                    continue
                 msgs.append(ok(op, '<m:Folders><t:Folder><t:FolderId Id="%s" ChangeKey="AQ"/>%s</t:Folder></m:Folders>' % (fid, quota)))
         return wrap(op, msgs)
 
@@ -474,7 +492,17 @@ def handle(op, el, user):
         root = folder_id(el.find('m:ParentFolderIds', NS)[0])
         if root is None:
             return wrap(op, [err(op, 'ErrorFolderNotFound', 'The specified folder could not be found in the store.')])
-        mine = [f for f in FOLDERS if f[3] != 'msgfolderroot' and root_of(f[0]) == root]
+        if any(f[0] == root and f[3] == 'msgfolderroot' for f in FOLDERS):
+            mine = [f for f in FOLDERS if f[3] != 'msgfolderroot' and root_of(f[0]) == root]
+        else:
+            # under a folder (a delegate's inbox): its sub-folders
+            def below(pid):
+                out = []
+                for f in FOLDERS:
+                    if f[2] == pid:
+                        out += [f] + below(f[0])
+                return out
+            mine = below(root)
         folders = ''.join(folder_xml(f, with_size) for f in mine) + (cal if root == 'F-ROOT' else '')
         return wrap(op, [ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Folders>%s</t:Folders></m:RootFolder>'
                             % (len(FOLDERS), folders))])

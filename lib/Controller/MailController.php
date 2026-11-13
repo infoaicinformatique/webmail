@@ -155,13 +155,20 @@ class MailController extends Controller {
 	public function mailboxes(int $id): Response {
 		return $this->handle(function () use ($id) {
 			$this->accounts->find((string)$this->userId, $id);
-			return ['mailboxes' => array_map(fn ($m) => ['email' => $m['email'], 'name' => $m['name']], $this->shared->list(SharedFolderService::MAILBOXES, (string)$this->userId, $id))];
+			return ['mailboxes' => $this->mailboxList($id)];
 		});
+	}
+
+	/** The shared mailboxes added to an account: full access, or delegate of some folders. */
+	private function mailboxList(int $id): array {
+		return array_map(fn ($m) => ['email' => $m['email'], 'name' => $m['name'], 'delegate' => ($m['mode'] ?? 'full') === 'delegate'],
+			$this->shared->list(SharedFolderService::MAILBOXES, (string)$this->userId, $id));
 	}
 
 	/**
 	 * Add a shared mailbox: Exchange must give this account access to it
-	 * (« Accès total » set by the administrator).
+	 * (« Accès total » set by the administrator), or the colleague made us
+	 * their delegate in Outlook (some folders: often the inbox).
 	 */
 	#[NoAdminRequired]
 	#[\OCP\AppFramework\Http\Attribute\UserRateLimit(limit: 20, period: 300)]
@@ -177,6 +184,7 @@ class MailController extends Controller {
 			}
 			$client = $this->accounts->getClient($account);
 			$client->listFolders($unused, $email); // access checked here
+			$mode = $client->mailboxAccess();
 			if (trim($name) === '') {
 				// its name in the directory (« Contact Société A »), else its address
 				try {
@@ -190,8 +198,8 @@ class MailController extends Controller {
 				}
 			}
 			$name = trim($name) !== '' ? trim($name) : $email;
-			$this->shared->save(SharedFolderService::MAILBOXES, (string)$this->userId, $id, ['email' => $email, 'name' => $name, 'mode' => 'full', 'canEdit' => true]);
-			return ['mailboxes' => array_map(fn ($m) => ['email' => $m['email'], 'name' => $m['name']], $this->shared->list(SharedFolderService::MAILBOXES, (string)$this->userId, $id))];
+			$this->shared->save(SharedFolderService::MAILBOXES, (string)$this->userId, $id, ['email' => $email, 'name' => $name, 'mode' => $mode, 'canEdit' => true]);
+			return ['mailboxes' => $this->mailboxList($id)];
 		});
 	}
 
@@ -200,7 +208,7 @@ class MailController extends Controller {
 		return $this->handle(function () use ($id, $email) {
 			$this->accounts->find((string)$this->userId, $id);
 			$this->shared->remove(SharedFolderService::MAILBOXES, (string)$this->userId, $id, $email);
-			return ['mailboxes' => array_map(fn ($m) => ['email' => $m['email'], 'name' => $m['name']], $this->shared->list(SharedFolderService::MAILBOXES, (string)$this->userId, $id))];
+			return ['mailboxes' => $this->mailboxList($id)];
 		});
 	}
 

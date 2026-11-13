@@ -167,9 +167,16 @@ class EwsClient {
 	 */
 	public function listFolders(?int &$usedBytes = null, ?string $mailbox = null): array {
 		$roles = $this->distinguishedFolderIds(['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'outbox', 'msgfolderroot'], $mailbox);
-		if ($mailbox !== null && !isset($roles['msgfolderroot']) && !isset($roles['inbox'])) {
-			throw new MailException('Vous n\'avez pas accès à la boîte ' . $mailbox . ' (demandez à l\'administrateur Exchange le droit « Accès total » sur cette boîte)');
+		if ($mailbox !== null && !isset($roles['msgfolderroot'])) {
+			if ($roles === []) {
+				throw new MailException('Vous n\'avez pas accès à la boîte ' . $mailbox . ' : demandez à son propriétaire de vous en faire délégué dans Outlook (au moins la boîte de réception), ou à l\'administrateur Exchange le droit « Accès total »');
+			}
+			// a delegate (Outlook « Accès délégué »): only the folders shared with us
+			$usedBytes = 0;
+			$this->mailboxAccess = 'delegate';
+			return $this->delegatedFolders($roles);
 		}
+		$this->mailboxAccess = 'full';
 		$rootId = $roles['msgfolderroot'] ?? null;
 		unset($roles['msgfolderroot']);
 		$roleById = array_flip($roles);
@@ -208,6 +215,68 @@ class EwsClient {
 				'unread' => (int)$this->text($xp, 't:UnreadCount', $node),
 				'role' => $roleById[$id] ?? null,
 			];
+		}
+		return $folders;
+	}
+
+	/** Access to the last mailbox listed by listFolders(): 'full', or 'delegate' (some folders only). */
+	private string $mailboxAccess = 'full';
+
+	public function mailboxAccess(): string {
+		return $this->mailboxAccess;
+	}
+
+	/**
+	 * The folders of a colleague who made us their delegate: the well-known
+	 * folders we may open (often the inbox only), and their sub-folders.
+	 * @param array<string, string> $roles distinguished name => FolderId
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function delegatedFolders(array $roles): array {
+		$ids = '';
+		foreach ($roles as $id) {
+			$ids .= '<t:FolderId Id="' . $this->esc($id) . '"/>';
+		}
+		$xp = $this->request('<m:GetFolder><m:FolderShape><t:BaseShape>Default</t:BaseShape></m:FolderShape><m:FolderIds>' . $ids . '</m:FolderIds></m:GetFolder>', false);
+		$roleById = array_flip($roles);
+		$folders = [];
+		foreach ($xp->query('//m:GetFolderResponseMessage[@ResponseClass="Success"]/m:Folders/*') as $node) {
+			$id = $this->attr($xp, 't:FolderId', 'Id', $node);
+			if ($id === null) {
+				continue;
+			}
+			$folders[] = [
+				'id' => $id,
+				'name' => (string)$this->text($xp, 't:DisplayName', $node),
+				'parentId' => null,
+				'total' => (int)$this->text($xp, 't:TotalCount', $node),
+				'unread' => (int)$this->text($xp, 't:UnreadCount', $node),
+				'role' => $roleById[$id] ?? null,
+			];
+		}
+		// their sub-folders, when the delegation reaches them
+		foreach ($folders as $top) {
+			$sub = $this->request(
+				'<m:FindFolder Traversal="Deep"><m:FolderShape><t:BaseShape>Default</t:BaseShape><t:AdditionalProperties>'
+				. '<t:FieldURI FieldURI="folder:FolderClass"/><t:FieldURI FieldURI="folder:ParentFolderId"/></t:AdditionalProperties></m:FolderShape>'
+				. '<m:ParentFolderIds><t:FolderId Id="' . $this->esc($top['id']) . '"/></m:ParentFolderIds></m:FindFolder>',
+				false
+			);
+			foreach ($sub->query('//m:FindFolderResponseMessage[@ResponseClass="Success"]//t:Folders/t:Folder') as $node) {
+				$class = $this->text($sub, 't:FolderClass', $node);
+				$id = $this->attr($sub, 't:FolderId', 'Id', $node);
+				if ($id === null || ($class !== null && $class !== '' && !str_starts_with($class, 'IPF.Note'))) {
+					continue;
+				}
+				$folders[] = [
+					'id' => $id,
+					'name' => (string)$this->text($sub, 't:DisplayName', $node),
+					'parentId' => $this->attr($sub, 't:ParentFolderId', 'Id', $node),
+					'total' => (int)$this->text($sub, 't:TotalCount', $node),
+					'unread' => (int)$this->text($sub, 't:UnreadCount', $node),
+					'role' => null,
+				];
+			}
 		}
 		return $folders;
 	}
@@ -1217,7 +1286,7 @@ class EwsClient {
 			'ErrorItemNotFound' => 'Ce message n\'existe plus (déplacé ou supprimé)',
 			'ErrorFolderNotFound' => 'Dossier introuvable',
 			'ErrorAccessDenied' => 'Accès refusé par Exchange (élément non partagé ou droits insuffisants)',
-			'ErrorSendAsDenied' => 'Vous n\'avez pas le droit d\'envoyer au nom de cette boîte (demandez à l\'administrateur Exchange le droit « Envoyer en tant que »)',
+			'ErrorSendAsDenied' => 'Vous n\'avez pas le droit d\'envoyer au nom de cette boîte : il faut le droit « Envoyer en tant que » (administrateur Exchange) ou être délégué de cette personne dans Outlook (le message part alors « de la part de »)',
 			'ErrorQuotaExceeded' => 'Boîte aux lettres pleine',
 			'ErrorMessageSizeExceeded' => 'Message trop volumineux',
 			'ErrorInvalidRecipients', 'ErrorInvalidSmtpAddress' => 'Adresse de destinataire invalide',

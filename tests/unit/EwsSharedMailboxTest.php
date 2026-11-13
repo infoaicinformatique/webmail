@@ -22,10 +22,32 @@ class EwsSharedMailboxTest extends EwsTestCase {
 		$this->queue(self::ok('FindFolder', '<m:RootFolder TotalItemsInView="1" IncludesLastItemInRange="true"><t:Folders>'
 			. '<t:Folder><t:FolderId Id="S-INBOX"/><t:ParentFolderId Id="S-ROOT"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Boîte de réception</t:DisplayName><t:TotalCount>3</t:TotalCount><t:ChildFolderCount>0</t:ChildFolderCount><t:UnreadCount>2</t:UnreadCount></t:Folder>'
 			. '</t:Folders></m:RootFolder>'));
-		$folders = $this->client()->listFolders($used, 'contact@example.fr');
+		$client = $this->client();
+		$folders = $client->listFolders($used, 'contact@example.fr');
+		$this->assertSame('full', $client->mailboxAccess());
 		$this->assertSame([['id' => 'S-INBOX', 'name' => 'Boîte de réception', 'parentId' => null, 'total' => 3, 'unread' => 2, 'role' => 'inbox']], $folders);
 		$this->assertStringContainsString('<t:DistinguishedFolderId Id="inbox"><t:Mailbox><t:EmailAddress>contact@example.fr</t:EmailAddress></t:Mailbox></t:DistinguishedFolderId>', $this->requests[0]);
 		$this->assertStringContainsString('<m:ParentFolderIds><t:DistinguishedFolderId Id="msgfolderroot"><t:Mailbox><t:EmailAddress>contact@example.fr</t:EmailAddress></t:Mailbox></t:DistinguishedFolderId></m:ParentFolderIds>', $this->lastRequest());
+	}
+
+	public function testDelegateOfTheInboxOnly(): void {
+		// a colleague made us their delegate in Outlook: the inbox only, no access to the top of the mailbox
+		$this->queue(self::folderIds(['D-INBOX', null, null, null, null, null, null]));
+		$this->queue(self::ok('GetFolder', '<m:Folders><t:Folder><t:FolderId Id="D-INBOX"/><t:DisplayName>Boîte de réception</t:DisplayName>'
+			. '<t:TotalCount>4</t:TotalCount><t:ChildFolderCount>1</t:ChildFolderCount><t:UnreadCount>1</t:UnreadCount></t:Folder></m:Folders>'));
+		$this->queue(self::ok('FindFolder', '<m:RootFolder TotalItemsInView="2" IncludesLastItemInRange="true"><t:Folders>'
+			. '<t:Folder><t:FolderId Id="D-RAPPORTS"/><t:ParentFolderId Id="D-INBOX"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Rapports</t:DisplayName><t:TotalCount>2</t:TotalCount><t:ChildFolderCount>0</t:ChildFolderCount><t:UnreadCount>0</t:UnreadCount></t:Folder>'
+			. '<t:Folder><t:FolderId Id="D-CAL"/><t:ParentFolderId Id="D-INBOX"/><t:FolderClass>IPF.Appointment</t:FolderClass><t:DisplayName>x</t:DisplayName><t:TotalCount>0</t:TotalCount><t:ChildFolderCount>0</t:ChildFolderCount></t:Folder>'
+			. '</t:Folders></m:RootFolder>'));
+		$client = $this->client();
+		$folders = $client->listFolders($used, 'direction@example.fr');
+		$this->assertSame('delegate', $client->mailboxAccess());
+		$this->assertSame([
+			['id' => 'D-INBOX', 'name' => 'Boîte de réception', 'parentId' => null, 'total' => 4, 'unread' => 1, 'role' => 'inbox'],
+			['id' => 'D-RAPPORTS', 'name' => 'Rapports', 'parentId' => 'D-INBOX', 'total' => 2, 'unread' => 0, 'role' => null],
+		], $folders);
+		$this->assertSame(0, $used);
+		$this->assertStringContainsString('<m:ParentFolderIds><t:FolderId Id="D-INBOX"/></m:ParentFolderIds>', $this->lastRequest());
 	}
 
 	public function testNoAccess(): void {
