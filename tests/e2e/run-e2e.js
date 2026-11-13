@@ -2884,6 +2884,51 @@ async function main() {
 		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
 	})
 
+	await step('task reminder: set in the form, rings in the bell of Nextcloud, its link opens the task, gone when removed', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\ReminderJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		assert(jobId, 'background job registered')
+		const runJob = () => occ('background-job:execute ' + jobId + ' --force-execute')
+		const mine = () => page.evaluate(async () => {
+			const r = await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })
+			// (the account tested: the fake server gives the same tasks to every mailbox)
+			return (await r.json()).ocs.data.filter((n) => n.app === 'webmail' && n.subject === 'Tâche : Renouveler le nom de domaine' && n.message.includes('user@societe-a.fr'))
+		})
+		const task = '.wm-task:has-text("Renouveler le nom de domaine")'
+		const open = async () => {
+			await page.click('.wm-tab[data-module="tasks"]')
+			await page.click(task + ' .wm-task-subject')
+			await page.waitForFunction(() => document.querySelector('.wm-task-form input[name=subject]')?.value === 'Renouveler le nom de domaine')
+		}
+		await open()
+		// a minute ago: due at once
+		const d = new Date(Date.now() - 60000)
+		const pad = (n) => String(n).padStart(2, '0')
+		await page.fill('input[name=reminder]', d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()))
+		await page.click('.wm-task-form button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Tâche enregistrée")')
+		await page.waitForSelector(task + ' .wm-task-reminder')
+		runJob()
+		let found = await mine()
+		assert.strictEqual(found.length, 1, 'one notification')
+		assert.ok(found[0].message.includes('user@societe-a.fr'), found[0].message)
+		// once only
+		runJob()
+		assert.strictEqual((await mine()).length, 1)
+		// its link: the task open
+		await page.goto(found[0].link)
+		await page.waitForFunction(() => document.querySelector('.wm-task-form input[name=subject]')?.value === 'Renouveler le nom de domaine')
+		assert.ok(await page.inputValue('input[name=reminder]'))
+		// removed: gone from the bell
+		await page.click('.wm-task-form button:text-is("Aucun")')
+		await page.click('.wm-task-form button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Tâche enregistrée")')
+		await page.locator(task + ' .wm-task-reminder').waitFor({ state: 'detached' })
+		runJob()
+		assert.strictEqual((await mine()).length, 0)
+		await page.click('.wm-tab[data-module="mail"]')
+	})
+
 	await step('tab memory: after a reload, the mailbox shows before Exchange answers', async () => {
 		await page.click('.wm-tab[data-module="mail"]')
 		await page.waitForSelector('.wm-message')

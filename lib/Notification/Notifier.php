@@ -39,6 +39,9 @@ class Notifier implements INotifier {
 		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'event_reminder') {
 			return $this->prepareReminder($notification, $l);
 		}
+		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'task_reminder') {
+			return $this->prepareTaskReminder($notification, $l);
+		}
 		if ($notification->getApp() !== Application::APP_ID || $notification->getSubject() !== 'new_message') {
 			// Nextcloud 30+ expects this exception, older versions an InvalidArgumentException
 			throw class_exists(UnknownNotificationException::class) ? new UnknownNotificationException() : new \InvalidArgumentException();
@@ -52,6 +55,24 @@ class Notifier implements INotifier {
 			->setParsedMessage($message)
 			->setLink($this->url->linkToRouteAbsolute('webmail.page.index') . '?' . http_build_query(['account' => $p['account'] ?? '', 'message' => $p['itemId'] ?? '']))
 			->setIcon($this->url->getAbsoluteURL($this->url->imagePath(Application::APP_ID, 'app-dark.svg')));
+		return $notification;
+	}
+
+	/** "Tâche : Relancer le cabinet" — "Échéance : 20 nov. · user@…" */
+	private function prepareTaskReminder(INotification $notification, IL10N $l): INotification {
+		$p = $notification->getSubjectParameters();
+		$subject = trim((string)($p['subject'] ?? '')) !== '' ? (string)$p['subject'] : $l->t('(sans titre)');
+		$parts = [];
+		$due = (string)($p['due'] ?? '');
+		if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $due)) {
+			$parts[] = $l->t('Échéance : %s', [(string)$l->l('date', new \DateTime($due . 'T12:00:00Z'), ['width' => 'medium'])]);
+		}
+		$parts[] = (string)($p['email'] ?? '');
+		$notification->setParsedSubject($l->t('Tâche : %s', [$subject]))
+			->setRichSubject($l->t('Tâche : %s', ['{task}']), ['task' => ['type' => 'highlight', 'id' => 'task', 'name' => $subject]])
+			->setParsedMessage(implode(' · ', array_filter($parts)))
+			->setLink($this->url->linkToRouteAbsolute('webmail.page.index') . '?' . http_build_query(['account' => $p['account'] ?? '', 'module' => 'tasks', 'task' => $p['taskId'] ?? '']))
+			->setIcon($this->url->getAbsoluteURL($this->url->imagePath('core', 'actions/checkmark.svg')));
 		return $notification;
 	}
 
