@@ -4806,6 +4806,7 @@
 		const linkMessage = link.get('message')
 		const linkMailto = link.get('mailto')
 		const linkEvent = link.get('event')
+		const linkTask = link.get('task')
 		if (link.toString()) {
 			try { history.replaceState(history.state, '', window.location.pathname) } catch (e) { /* ignore */ }
 		}
@@ -4821,6 +4822,7 @@
 		// ?mailto=…: a mailto: link of another site, the webmail being the browser's mail program
 		if (linkMailto && state.module === 'mail') openCompose('new', null, parseMailto(linkMailto))
 		if (linkEvent && state.module === 'calendar' && window.WebmailModules.calendar.openLinked) window.WebmailModules.calendar.openLinked(core, linkEvent)
+		if (linkTask && state.module === 'tasks' && window.WebmailModules.tasks.openLinked) window.WebmailModules.tasks.openLinked(core, linkTask)
 		startBackground()
 	}
 

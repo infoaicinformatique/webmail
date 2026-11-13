@@ -496,6 +496,10 @@ def seed():
     contact('', '', 'Plombier Express', 'contact@plombier-express.fr', business='04 92 11 11 11')
     # a contact with its photo (set in Outlook)
     next(c for c in CONTACTS.values() if c.get('displayName') == 'Anne Bernard')['photo'] = ('image/png', PNG_BLUE)
+    # a birthday in 3 days, as Outlook saves it from Paris: midnight there, the day before at 23:00 UTC
+    soon = dt.date.today() + dt.timedelta(days=3)
+    born = dt.datetime(1980, soon.month, soon.day) - dt.timedelta(hours=1)
+    next(c for c in CONTACTS.values() if c.get('displayName') == 'Anne Bernard')['birthday'] = born.strftime('%Y-%m-%dT%H:%M:%SZ')
     gid = new_id('DL')
     CONTACTS[gid] = dict(id=gid, kind='DistributionList', displayName='Équipe projet', folder='F-CONTACTS',
                          members=[('Anne Bernard', 'anne@cabinet-bernard.fr'), ('Lucas Petit', 'lucas.petit@exemple.org')])
@@ -582,6 +586,8 @@ def contact_xml(c, detail):
     phones = [(k, el) for k, el in (('mobilePhone', 'MobilePhone'), ('businessPhone', 'BusinessPhone'), ('homePhone', 'HomePhone')) if c[k]]
     if phones:
         x += '<t:PhoneNumbers>%s</t:PhoneNumbers>' % ''.join('<t:Entry Key="%s">%s</t:Entry>' % (el, esc(c[k])) for k, el in phones)
+    if c.get('birthday'):
+        x += '<t:Birthday>%s</t:Birthday>' % c['birthday']
     if detail and c['department']:
         x += '<t:Department>%s</t:Department>' % esc(c['department'])
     if detail and c.get('matrix'):
@@ -640,6 +646,9 @@ def apply_contact_fields(c, ct):
     for entry in ct.findall('t:ImAddresses/t:Entry', NS):
         if entry.get('Key') == 'ImAddress1':
             c['matrix'] = entry.text or ''
+    b = ct.find('t:Birthday', NS)
+    if b is not None:
+        c['birthday'] = b.text or ''
     for entry in ct.findall('t:PhysicalAddresses/t:Entry', NS):
         for el, key in (('Street', 'street'), ('City', 'city'), ('CountryOrRegion', 'country'), ('PostalCode', 'postalCode')):
             v = entry.find('t:' + el, NS)
@@ -661,6 +670,8 @@ def delete_contact_field(c, path):
         c[{'MobilePhone': 'mobilePhone', 'BusinessPhone': 'businessPhone', 'HomePhone': 'homePhone'}[index]] = ''
     elif uri == 'contacts:ImAddress':
         c['matrix'] = ''
+    elif uri == 'contacts:Birthday':
+        c['birthday'] = ''
     elif uri in mapping:
         c[mapping[uri]] = ''
 
