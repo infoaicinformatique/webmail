@@ -3273,7 +3273,11 @@
 				c.removedNodes.forEach((n) => {
 					if (n.nodeType !== 1 || !n.classList.contains('wm-overlay') || openDialog()) return
 					const lost = !document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected
-					if (lost && opener && opener.isConnected) opener.focus()
+					if (!lost || !opener) return
+					// the opener itself, or the one that replaced it when its pane was redrawn meanwhile
+					const same = opener.isConnected ? opener : [...document.querySelectorAll(opener.tagName)]
+						.find((x) => x.className === opener.className && x.textContent === opener.textContent && x.getClientRects().length > 0)
+					if (same) same.focus()
 				})
 			})
 		}).observe(document.body, { childList: true })
