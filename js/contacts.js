@@ -582,6 +582,7 @@
 		el.appendChild(h('div', { class: 'wm-toolbar' },
 			h('button', { class: 'wm-back wm-mobile-only', 'aria-label': _('Retour'), onclick: () => core.setView('list') }, '←'),
 			c.emails.length ? h('button', { class: 'primary', onclick: () => writeTo(c.emails[0]) }, '✉️ ' + _('Écrire')) : null,
+			c.matrix ? h('a', { class: 'button wm-matrix-btn', href: 'https://matrix.to/#/' + c.matrix, target: '_blank', rel: 'noopener noreferrer' }, '💬 ' + _('Écrire sur Matrix')) : null,
 			c.isGroup && members.some((m) => m.email) ? h('button', { class: 'primary', onclick: writeToGroup }, '✉️ ' + _('Écrire au groupe')) : null,
 			!book.canEdit ? null : h('button', { onclick: () => (c.isGroup ? openGroupForm(c) : openForm(c)) }, '✏️ ' + _('Modifier')),
 			book.canEdit ? h('button', { class: 'wm-danger', onclick: () => remove(c) }, '🗑 ' + _('Supprimer')) : null,
@@ -599,6 +600,8 @@
 			row('☎️', _('Bureau'), tel(c.businessPhone)),
 			row('🏠', _('Domicile'), tel(c.homePhone)),
 			row('🏢', _('Site'), c.office || null),
+			// Matrix (Element…): matrix.to opens the conversation in the app chosen by the person
+			row('💬', _('Matrix'), c.matrix ? h('a', { class: 'wm-matrix-link', href: 'https://matrix.to/#/' + c.matrix, target: '_blank', rel: 'noopener noreferrer', title: _('Écrire sur Matrix (Element)') }, c.matrix) : null),
 			row('📍', _('Adresse'), address ? h('a', { href: 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(address), target: '_blank', rel: 'noopener noreferrer' }, address) : null),
 			(c.notes || '').trim() ? h('div', { class: 'wm-event-body' }, c.notes.trim()) : null,
 			c.isGroup ? h('div', { class: 'wm-group-members' },
@@ -696,7 +699,7 @@
 	async function copyToMine(c) {
 		const data = {}
 		;['givenName', 'surname', 'displayName', 'company', 'department', 'jobTitle', 'mobilePhone', 'businessPhone', 'homePhone',
-			'street', 'postalCode', 'city', 'country', 'notes'].forEach((k) => { data[k] = c[k] || '' })
+			'street', 'postalCode', 'city', 'country', 'notes', 'matrix'].forEach((k) => { data[k] = c[k] || '' })
 		data.emails = c.emails || []
 		try {
 			await api('/accounts/' + core.accountId + '/contacts', { method: 'POST', body: { contact: data, book: 'contacts' } })
@@ -742,12 +745,14 @@
 			mobilePhone: input('mobilePhone', _('Mobile'), 'tel'),
 			businessPhone: input('businessPhone', _('Tél. bureau'), 'tel'),
 			homePhone: input('homePhone', _('Tél. domicile'), 'tel'),
+			matrix: input('matrix', _('Matrix')),
 			street: input('street', _('Rue')),
 			postalCode: input('postalCode', _('Code postal')),
 			city: input('city', _('Ville')),
 			country: input('country', _('Pays')),
 		}
 		f.displayName.i.placeholder = _('Calculé à partir du prénom et du nom')
+		f.matrix.i.placeholder = '@prenom.nom:matrix.example.org'
 		const emails = [0, 1, 2].map((i) => h('input', { type: 'email', name: 'email' + (i + 1), value: c.emails[i] || '' }))
 		const notes = h('textarea', { name: 'notes', rows: '4', placeholder: _('Notes') })
 		notes.value = c.notes || ''
@@ -818,7 +823,7 @@
 		photoRow,
 		f.givenName.el, f.surname.el, f.displayName.el, f.company.el, f.department.el, f.jobTitle.el,
 		emails.map((i, n) => h('label', { class: 'wm-field' }, h('span', {}, n === 0 ? _('E-mail') : _('E-mail {n}', { n: n + 1 })), i)),
-		f.mobilePhone.el, f.businessPhone.el, f.homePhone.el,
+		f.mobilePhone.el, f.businessPhone.el, f.homePhone.el, f.matrix.el,
 		f.street.el, f.postalCode.el, f.city.el, f.country.el,
 		notes,
 		err,

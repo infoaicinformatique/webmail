@@ -2222,6 +2222,30 @@ async function main() {
 		assert(card.includes('jean@perso.example') && !card.includes('06 12 34 56 78'), card)
 	})
 
+	await step('contacts: a Matrix address, to write on Matrix (Element), kept by Exchange', async () => {
+		await page.click('.wm-contact:has-text("Jean Dupont")')
+		await page.click('.wm-toolbar button:has-text("Modifier")')
+		await page.fill('input[name=matrix]', 'jean.dupont@matrix')
+		await page.click('.wm-contact-form button[type=submit]')
+		await page.waitForSelector('.wm-form-error:has-text("Adresse Matrix invalide")')
+		// a matrix.to link pasted: its address is kept
+		await page.fill('input[name=matrix]', 'https://matrix.to/#/@jean.dupont:matrix.client-exemple.fr')
+		await page.click('.wm-contact-form button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Contact enregistré")')
+		await page.waitForSelector('.wm-contact-card .wm-matrix-link:text-is("@jean.dupont:matrix.client-exemple.fr")')
+		assert.strictEqual(await page.getAttribute('.wm-matrix-btn:has-text("Écrire sur Matrix")', 'href'), 'https://matrix.to/#/@jean.dupont:matrix.client-exemple.fr')
+		assert.strictEqual(await page.getAttribute('.wm-matrix-btn', 'target'), '_blank')
+		await shot('78-contact-matrix')
+		// read again from Exchange
+		await page.click('.wm-toolbar button:has-text("Modifier")')
+		assert.strictEqual(await page.inputValue('input[name=matrix]'), '@jean.dupont:matrix.client-exemple.fr')
+		// removed
+		await page.fill('input[name=matrix]', '')
+		await page.click('.wm-contact-form button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Contact enregistré")')
+		await page.locator('.wm-matrix-btn').waitFor({ state: 'detached' })
+	})
+
 	await step('contacts: create, write to, delete', async () => {
 		await page.click('.wm-compose-btn:has-text("Nouveau contact")')
 		await page.click('.wm-contact-form button[type=submit]')

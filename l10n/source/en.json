@@ -1185,5 +1185,9 @@
 	"Rejoindre la visio : {url}": "Join the visio: {url}",
 	"Salle de visio ajoutée : son lien est dans le lieu et la description": "Visio room added: its link is in the place and the description",
 	"Visio": "Visio",
-	"Visio Element": "Element visio"
+	"Visio Element": "Element visio",
+	"Adresse Matrix invalide : %s (par exemple %s)": "Invalid Matrix address: %s (for example %s)",
+	"Matrix": "Matrix",
+	"Écrire sur Matrix (Element)": "Write on Matrix (Element)",
+	"Écrire sur Matrix": "Write on Matrix"
 }

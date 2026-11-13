@@ -179,7 +179,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Partager mes contacts | Bouton 🔗 à côté de chacun de vos carnets : choisissez ce que **toute l'organisation** et **chaque personne** peuvent faire (aucun accès, lecture, lecture et ajout de contacts, modification), **sans en faire un délégué**. C'est le réglage « Autorisations » du dossier dans Outlook ; les niveaux personnalisés créés dans Outlook sont affichés et conservés tels quels. Vos collègues ajoutent ensuite votre carnet avec « Ajouter les contacts d'un collègue » ; pour un carnet autre que « Contacts », rangez-le dans « Contacts » ou donnez-leur aussi le droit « Dossier visible » sur votre boîte |
 | Dossiers publics | « Ajouter un carnet des dossiers publics » : parcourez les dossiers publics Exchange comme dans Outlook et ajoutez les carnets d'adresses qui s'y trouvent. L'accès, **lecture** ou **modification**, est celui défini par l'administrateur Exchange ; une suppression y est définitive et vaut pour tout le monde. La recherche porte sur le nom, la société et l'e-mail (Exchange n'indexe pas les dossiers publics). Le webmail trouve la boîte des dossiers publics par Autodiscover (Exchange 2013 et suivants) ; si votre offre Exchange n'a pas de dossiers publics, la fenêtre l'indique |
 | Annuaire de l'entreprise | Toutes les personnes et listes de diffusion de l'organisation Exchange, avec service, fonction, téléphone et site. Exchange ne permet que la **recherche**, à partir de 2 lettres et dans la limite de 100 résultats. Lecture seule, avec « Écrire » et « Ajouter à mes contacts » |
-| Fiche | Société, fonction, jusqu'à 3 e-mails, mobile, téléphone du bureau et du domicile, adresse (lien vers la carte), notes |
+| Fiche | Société, fonction, jusqu'à 3 e-mails, mobile, téléphone du bureau et du domicile, **adresse Matrix** (`@prenom.nom:serveur`, ou un lien matrix.to collé ; « 💬 Écrire sur Matrix » ouvre la discussion dans Element ou l'application Matrix de la personne ; gardée dans la 1re adresse de messagerie instantanée d'Exchange, donc aussi dans Outlook, et en `IMPP:matrix:` dans les vCard), adresse (lien vers la carte), notes |
 | Actions | Créer (dans le carnet choisi), modifier, supprimer, **écrire** (ouvre un nouveau message), appeler (lien `tel:`) |
 | Import / export | « ⬇ » au-dessus de la liste : tout le carnet affiché dans un fichier **vCard** (.vcf) pour Outlook, un téléphone, Nextcloud Contacts… « ⬆ » : les contacts d'un fichier vCard (2.1, 3.0 ou 4.0, celui d'Outlook ou d'un téléphone) sont ajoutés au carnet ; ceux déjà présents (même adresse e-mail) sont ignorés, et le bilan s'affiche |
 | Groupes | Les **groupes de contacts** d'Outlook (listes de distribution personnelles) : leurs membres s'affichent, « ✉️ Écrire au groupe » adresse le message à tous. « 👥 Nouveau groupe » en crée un, « ✏️ Modifier » ajoute des membres (complétion depuis les contacts et l'annuaire, ou adresse saisie) ou en retire. Les groupes sont enregistrés dans Exchange et retrouvés dans Outlook |
@@ -241,7 +241,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.78.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.79.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -284,7 +284,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.78 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.79 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

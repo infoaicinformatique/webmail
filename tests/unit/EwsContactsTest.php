@@ -74,6 +74,38 @@ class EwsContactsTest extends EwsTestCase {
 		$this->assertStringContainsString('<t:FileAs>Jean D.</t:FileAs>', $req);
 	}
 
+	public function testMatrixAddress(): void {
+		// read from the first IM address, written there (Outlook shows it too)
+		$this->queue(self::ok('GetItem', '<m:Items><t:Contact><t:ItemId Id="C1"/><t:DisplayName>Alice</t:DisplayName>'
+			. '<t:ImAddresses><t:Entry Key="ImAddress1">@alice:matrix.example.org</t:Entry></t:ImAddresses></t:Contact></m:Items>'));
+		$this->queue(self::ok('CreateItem', '<m:Items><t:Contact><t:ItemId Id="NEWC"/></t:Contact></m:Items>'));
+		$this->queue(self::ok('UpdateItem', '<m:Items/>'));
+		$this->queue(self::ok('UpdateItem', '<m:Items/>'));
+		$c = $this->contacts();
+		$this->assertSame('@alice:matrix.example.org', $c->getContact('C1')['matrix']);
+		$this->assertStringContainsString('<t:FieldURI FieldURI="contacts:ImAddresses"/>', $this->lastRequest());
+
+		// a matrix.to link pasted: its id; between Department and JobTitle (schema order)
+		$c->createContact(['displayName' => 'Bob', 'department' => 'Achats', 'jobTitle' => 'Acheteur', 'matrix' => ' https://matrix.to/#/@bob:example.org ']);
+		$this->assertStringContainsString('<t:Department>Achats</t:Department><t:ImAddresses><t:Entry Key="ImAddress1">@bob:example.org</t:Entry></t:ImAddresses><t:JobTitle>', $this->lastRequest());
+
+		$c->updateContact('C1', ['displayName' => 'Alice', 'matrix' => 'matrix:u/alice:example.org']);
+		$this->assertStringContainsString('<t:SetItemField><t:IndexedFieldURI FieldURI="contacts:ImAddress" FieldIndex="ImAddress1"/><t:Contact><t:ImAddresses><t:Entry Key="ImAddress1">@alice:example.org</t:Entry>', $this->lastRequest());
+		$c->updateContact('C1', ['displayName' => 'Alice', 'matrix' => '']);
+		$this->assertStringContainsString('<t:DeleteItemField><t:IndexedFieldURI FieldURI="contacts:ImAddress" FieldIndex="ImAddress1"/></t:DeleteItemField>', $this->lastRequest());
+	}
+
+	public function testMatrixIds(): void {
+		foreach (['@alice:example.org', '@a.b_c=d-e/f+g:matrix.example.org:8448', '@bob:[2001:db8::1]'] as $ok) {
+			$this->assertSame($ok, EwsContacts::matrixId($ok), $ok);
+		}
+		foreach (['alice:example.org', '@alice', '@ali ce:example.org', '@alice:exa mple.org', 'https://evil.example/#/@a:b.c', '@alice:example.org"onclick=x', 'javascript:alert(1)'] as $bad) {
+			$this->assertNull(EwsContacts::matrixId($bad), $bad);
+		}
+		$this->expectException(MailException::class);
+		$this->contacts()->createContact(['displayName' => 'X', 'matrix' => 'alice@example.org']);
+	}
+
 	public function testDeleteContact(): void {
 		$this->queue(self::ok('DeleteItem'));
 		$this->contacts()->deleteContact('C1');
