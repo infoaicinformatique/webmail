@@ -3355,6 +3355,38 @@ async function main() {
 		await page.waitForSelector(row)
 	})
 
+	await step('undo: a message moved or deleted by mistake goes back to its folder with « Annuler »', async () => {
+		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°5"))'
+		await page.click('.wm-folder >> nth=0')
+		await page.click(row)
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°5")')
+		// moved to « Factures », then undone
+		await page.selectOption('.wm-move', { label: 'Factures' })
+		await page.waitForSelector('.wm-toast:has-text("Message déplacé vers « Factures »") .wm-toast-action:has-text("Annuler")')
+		await page.locator(row).waitFor({ state: 'detached' })
+		await shot('80-undo')
+		await page.click('.wm-toast .wm-toast-action:has-text("Annuler")')
+		await page.waitForSelector('.wm-toast:has-text("Annulé")')
+		await page.waitForSelector(row)
+		await page.click('.wm-folder:has-text("Factures")')
+		await page.waitForSelector('.wm-message')
+		assert.strictEqual(await page.locator(row).count(), 0, 'not in « Factures »')
+		// deleted, then undone
+		await page.click('.wm-folder >> nth=0')
+		await page.click(row)
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°5")')
+		await page.click('.wm-toolbar button:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Message placé dans les éléments supprimés") .wm-toast-action')
+		await page.locator(row).waitFor({ state: 'detached' })
+		await page.click('.wm-toast:has-text("Message placé dans les éléments supprimés") .wm-toast-action')
+		await page.waitForSelector(row)
+		await page.click('.wm-folder:has-text("Éléments supprimés")')
+		await page.waitForSelector('.wm-message, .wm-empty')
+		assert.strictEqual(await page.locator(row).count(), 0, 'not in the trash')
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector(row)
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')
