@@ -3,6 +3,7 @@
 	'use strict'
 
 	const PAGE = 100
+	const _ = (s, vars) => (window.t ? window.t('webmail', s, vars, undefined, { escape: false }) : s)
 	const ct = {
 		items: [],
 		total: 0,
@@ -26,13 +27,13 @@
 	}
 
 	function currentBook() {
-		return ct.books.find((b) => b.key === ct.book) || { key: 'contacts', name: 'Contacts', kind: 'own', canEdit: true }
+		return ct.books.find((b) => b.key === ct.book) || { key: 'contacts', name: _('Contacts'), kind: 'own', canEdit: true }
 	}
 
 	async function loadBooks(force) {
 		if (!force && ct.booksFor === core.accountId && ct.books.length) return
 		const accountId = core.accountId
-		let books = [{ key: 'contacts', name: 'Contacts', kind: 'own', canEdit: true }]
+		let books = [{ key: 'contacts', name: _('Contacts'), kind: 'own', canEdit: true }]
 		try {
 			books = (await api('/accounts/' + accountId + '/contacts/books')).books
 		} catch (e) { core.toast(e.message, true) }
@@ -86,10 +87,10 @@
 	function photoDataUrl(file) {
 		return new Promise((resolve, reject) => {
 			const r = new FileReader()
-			r.onerror = () => reject(new Error('Image illisible'))
+			r.onerror = () => reject(new Error(_('Image illisible')))
 			r.onload = () => {
 				const img = new Image()
-				img.onerror = () => reject(new Error('Ce fichier n\'est pas une image'))
+				img.onerror = () => reject(new Error(_('Ce fichier n\'est pas une image')))
 				img.onload = () => {
 					// a centred square, like the avatars
 					const side = Math.min(img.naturalWidth, img.naturalHeight)
@@ -146,8 +147,8 @@
 
 	function renderNav(navEl) {
 		const h = core.h
-		navEl.appendChild(h('button', { class: 'wm-compose-btn primary', onclick: () => openForm(null) }, '＋  Nouveau contact'))
-		navEl.appendChild(h('button', { class: 'wm-new-group', onclick: () => openGroupForm(null) }, '👥  Nouveau groupe'))
+		navEl.appendChild(h('button', { class: 'wm-compose-btn primary', onclick: () => openForm(null) }, '＋  ' + _('Nouveau contact')))
+		navEl.appendChild(h('button', { class: 'wm-new-group', onclick: () => openGroupForm(null) }, '👥  ' + _('Nouveau groupe')))
 		const sel = core.accountSelector()
 		if (sel) navEl.appendChild(sel)
 		navEl.appendChild(bookList())
@@ -157,9 +158,9 @@
 
 	/** "Contacts de Marie Martin", "« Clients VIP » de Marie Martin", or the book's own name */
 	function bookTitle(b) {
-		if (b.kind === 'public') return '« ' + b.name + ' » (dossiers publics)'
+		if (b.kind === 'public') return _('« {name} » (dossiers publics)', { name: b.name })
 		if (b.kind !== 'shared') return b.name
-		return (b.folderName ? '« ' + b.folderName + ' »' : 'Contacts') + ' de ' + b.name
+		return b.folderName ? _('« {folder} » de {name}', { folder: b.folderName, name: b.name }) : _('Contacts de {name}', { name: b.name })
 	}
 
 	function bookList() {
@@ -168,31 +169,31 @@
 			h('a', {
 				href: '#',
 				class: 'wm-book-link',
-				title: b.kind === 'public' ? 'Dossiers publics › ' + (b.path || b.name) : (b.email || b.name),
+				title: b.kind === 'public' ? _('Dossiers publics') + ' › ' + (b.path || b.name) : (b.email || b.name),
 				onclick: (e) => { e.preventDefault(); selectBook(b.key) },
 			},
 			h('span', { class: 'wm-book-icon', 'aria-hidden': 'true' }, { directory: '🏢', shared: '👥', public: '🗂️' }[b.kind] || '📇'),
 			h('span', { class: 'wm-cal-name' }, b.kind === 'shared' && b.folderName ? b.folderName + ' (' + b.name + ')' : b.name)),
-			b.kind === 'shared' || b.kind === 'public' ? h('span', { class: 'wm-cal-mode' + (b.canEdit ? ' wm-cal-mode-edit' : '') }, b.canEdit ? 'modification' : 'lecture') : null,
+			b.kind === 'shared' || b.kind === 'public' ? h('span', { class: 'wm-cal-mode' + (b.canEdit ? ' wm-cal-mode-edit' : '') }, b.canEdit ? _('modification') : _('lecture')) : null,
 			b.kind === 'own' ? h('button', {
 				type: 'button',
 				class: 'wm-cal-share',
-				title: 'Partager ce carnet',
-				'aria-label': 'Partager ' + b.name,
+				title: _('Partager ce carnet'),
+				'aria-label': _('Partager {name}', { name: b.name }),
 				onclick: () => openShare(b),
 			}, '🔗') : null,
 			b.kind === 'shared' ? h('button', {
 				type: 'button',
 				class: 'wm-cal-remove',
-				title: 'Retirer ce carnet',
-				'aria-label': 'Retirer ' + bookTitle(b),
+				title: _('Retirer ce carnet'),
+				'aria-label': _('Retirer {name}', { name: bookTitle(b) }),
 				onclick: () => removeShared(b),
 			}, '✕') : null,
 			b.kind === 'public' ? h('button', {
 				type: 'button',
 				class: 'wm-cal-remove',
-				title: 'Retirer ce carnet',
-				'aria-label': 'Retirer ' + b.name,
+				title: _('Retirer ce carnet'),
+				'aria-label': _('Retirer {name}', { name: b.name }),
 				onclick: () => removePublic(b),
 			}, '✕') : null)
 		const own = ct.books.filter((b) => b.kind === 'own')
@@ -200,14 +201,14 @@
 		const publicBooks = ct.books.filter((b) => b.kind === 'public')
 		const directory = ct.books.filter((b) => b.kind === 'directory')
 		return h('div', { class: 'wm-cal-list' },
-			h('div', { class: 'wm-cal-section' }, 'Mes carnets'),
+			h('div', { class: 'wm-cal-section' }, _('Mes carnets')),
 			h('ul', {}, own.map(row)),
-			h('div', { class: 'wm-cal-section' }, 'Contacts partagés'),
+			h('div', { class: 'wm-cal-section' }, _('Contacts partagés')),
 			shared.length ? h('ul', {}, shared.map(row)) : null,
-			h('button', { type: 'button', class: 'wm-cal-add', onclick: openAddShared }, '＋ Ajouter les contacts d\'un collègue'),
-			h('div', { class: 'wm-cal-section' }, 'Dossiers publics'),
+			h('button', { type: 'button', class: 'wm-cal-add', onclick: openAddShared }, '＋ ' + _('Ajouter les contacts d\'un collègue')),
+			h('div', { class: 'wm-cal-section' }, _('Dossiers publics')),
 			publicBooks.length ? h('ul', {}, publicBooks.map(row)) : null,
-			h('button', { type: 'button', class: 'wm-cal-add wm-public-add', onclick: openAddPublic }, '＋ Ajouter un carnet des dossiers publics'),
+			h('button', { type: 'button', class: 'wm-cal-add wm-public-add', onclick: openAddPublic }, '＋ ' + _('Ajouter un carnet des dossiers publics')),
 			directory.length ? h('ul', { class: 'wm-directory' }, directory.map(row)) : null)
 	}
 
@@ -218,20 +219,18 @@
 	function openShare(b) {
 		const base = '/accounts/' + core.accountId + '/contacts/permissions'
 		window.WebmailSharing.open(core, {
-			title: 'Partager « ' + b.name + ' »',
-			intro: 'Choisissez qui peut consulter ou modifier ce carnet d\'adresses, sans en faire un délégué. '
-				+ 'C\'est le réglage « Autorisations » du dossier dans Outlook. Vos collègues l\'ajoutent ensuite avec « Ajouter les contacts d\'un collègue ». '
-				+ 'Pour un carnet autre que « Contacts », donnez aussi le droit « Dossier visible » sur votre boîte (dans Outlook) ou rangez-le dans « Contacts ».',
+			title: _('Partager « {name} »', { name: b.name }),
+			intro: _('Choisissez qui peut consulter ou modifier ce carnet d\'adresses, sans en faire un délégué. C\'est le réglage « Autorisations » du dossier dans Outlook. Vos collègues l\'ajoutent ensuite avec « Ajouter les contacts d\'un collègue ». Pour un carnet autre que « Contacts », donnez aussi le droit « Dossier visible » sur votre boîte (dans Outlook) ou rangez-le dans « Contacts ».'),
 			levels: [
-				['None', 'Aucun accès'],
-				['Reviewer', 'Lecture'],
-				['Author', 'Lecture et ajout de contacts'],
-				['Editor', 'Modification'],
+				['None', _('Aucun accès')],
+				['Reviewer', _('Lecture')],
+				['Author', _('Lecture et ajout de contacts')],
+				['Editor', _('Modification')],
 			],
 			newLevel: 'Reviewer',
 			load: async () => (await api(base, { query: { book: b.key } })).permissions,
 			save: (permissions) => api(base, { method: 'POST', body: { book: b.key, permissions } }),
-			savedMessage: 'Partage de « ' + b.name + ' » enregistré',
+			savedMessage: _('Partage de « {name} » enregistré', { name: b.name }),
 		})
 	}
 
@@ -242,10 +241,10 @@
 	function openAddShared() {
 		const h = core.h
 		const base = '/accounts/' + core.accountId + '/contacts/shared'
-		const email = h('input', { type: 'text', name: 'sharedEmail', required: true, placeholder: 'prenom.nom@exemple.fr' })
+		const email = h('input', { type: 'text', name: 'sharedEmail', required: true, placeholder: _('prenom.nom@exemple.fr') })
 		const choices = h('div', { class: 'wm-shared-choices' })
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
-		const btn = h('button', { type: 'submit', class: 'primary' }, 'Ajouter')
+		const btn = h('button', { type: 'submit', class: 'primary' }, _('Ajouter'))
 		const overlay = h('div', { class: 'wm-overlay' })
 		const close = () => overlay.remove()
 		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
@@ -254,14 +253,14 @@
 			offered = r
 			email.readOnly = true
 			core.clear(choices)
-			choices.appendChild(h('p', {}, r.name + ' vous partage ' + r.choices.length + ' carnets. Cochez ceux à ajouter :'))
+			choices.appendChild(h('p', {}, _('{name} vous partage {count} carnets. Cochez ceux à ajouter :', { name: r.name, count: r.choices.length })))
 			choices.appendChild(h('ul', { class: 'wm-choice-list' }, r.choices.map((b) => h('li', {},
 				h('label', {},
 					h('input', { type: 'checkbox', name: 'sharedFolder', value: b.folder, checked: b.added || b.folder === '', disabled: b.added }),
-					' ' + (b.folderName || 'Contacts') + ' ',
-					h('span', { class: 'wm-cal-mode' + (b.canEdit ? ' wm-cal-mode-edit' : '') }, b.canEdit ? 'modification' : 'lecture'),
-					b.added ? h('span', { class: 'wm-muted' }, ' déjà ajouté') : null)))))
-			btn.textContent = 'Ajouter les carnets cochés'
+					' ' + (b.folderName || _('Contacts')) + ' ',
+					h('span', { class: 'wm-cal-mode' + (b.canEdit ? ' wm-cal-mode-edit' : '') }, b.canEdit ? _('modification') : _('lecture')),
+					b.added ? h('span', { class: 'wm-muted' }, ' ' + _('déjà ajouté')) : null)))))
+			btn.textContent = _('Ajouter les carnets cochés')
 		}
 		const form = h('form', {
 			class: 'wm-event-form',
@@ -271,11 +270,11 @@
 				const body = { email: email.value }
 				if (offered) {
 					body.folders = [...choices.querySelectorAll('input[name=sharedFolder]:checked:not(:disabled)')].map((c) => c.value)
-					if (!body.folders.length) { err.textContent = 'Cochez au moins un carnet'; return }
+					if (!body.folders.length) { err.textContent = _('Cochez au moins un carnet'); return }
 				}
 				const label = btn.textContent
 				btn.disabled = true
-				btn.textContent = offered ? 'Ajout…' : 'Recherche des carnets partagés…'
+				btn.textContent = offered ? _('Ajout…') : _('Recherche des carnets partagés…')
 				try {
 					const r = await api(base, { method: 'POST', body })
 					btn.disabled = false
@@ -283,10 +282,10 @@
 					if (r.choices) { showChoices(r); return }
 					close()
 					const one = r.added[0]
-					const mode = (b) => (b.canEdit ? 'modification' : 'lecture')
+					const mode = (b) => (b.canEdit ? _('modification') : _('lecture'))
 					core.toast(r.added.length > 1
-						? r.added.length + ' carnets de ' + r.name + ' ajoutés'
-						: (one.folderName ? '« ' + one.folderName + ' » de ' + r.name + ' ajouté' : 'Contacts de ' + r.name + ' ajoutés') + ' (' + mode(one) + ')')
+						? _('{count} carnets de {name} ajoutés', { count: r.added.length, name: r.name })
+						: (one.folderName ? _('« {folder} » de {name} ajouté', { folder: one.folderName, name: r.name }) : _('Contacts de {name} ajoutés', { name: r.name })) + ' (' + mode(one) + ')')
 					await loadBooks(true)
 					selectBook(one.key)
 				} catch (ex) {
@@ -296,16 +295,14 @@
 				}
 			},
 		},
-		h('p', { class: 'wm-muted' }, 'Indiquez l\'adresse d\'un collègue qui vous a partagé un carnet d\'adresses dans Outlook '
-			+ '(clic droit sur le carnet → Propriétés → Autorisations). Le niveau d\'accès, lecture ou modification, est détecté automatiquement. '
-			+ 'Ses autres carnets apparaissent s\'ils sont rangés dans son dossier « Contacts » partagé, ou si sa boîte vous donne le droit « Dossier visible ».'),
-		h('label', { class: 'wm-field' }, h('span', {}, 'Adresse'), core.attachAutocomplete(email)),
+		h('p', { class: 'wm-muted' }, _('Indiquez l\'adresse d\'un collègue qui vous a partagé un carnet d\'adresses dans Outlook (clic droit sur le carnet → Propriétés → Autorisations). Le niveau d\'accès, lecture ou modification, est détecté automatiquement. Ses autres carnets apparaissent s\'ils sont rangés dans son dossier « Contacts » partagé, ou si sa boîte vous donne le droit « Dossier visible ».')),
+		h('label', { class: 'wm-field' }, h('span', {}, _('Adresse')), core.attachAutocomplete(email)),
 		choices,
 		err,
-		h('div', { class: 'wm-compose-actions' }, btn, h('button', { type: 'button', onclick: close }, 'Annuler')))
-		overlay.appendChild(h('div', { class: 'wm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Ajouter des contacts partagés' },
-			h('div', { class: 'wm-modal-header' }, h('h2', {}, 'Ajouter les contacts d\'un collègue'),
-				h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
+		h('div', { class: 'wm-compose-actions' }, btn, h('button', { type: 'button', onclick: close }, _('Annuler'))))
+		overlay.appendChild(h('div', { class: 'wm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': _('Ajouter des contacts partagés') },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, _('Ajouter les contacts d\'un collègue')),
+				h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
 			form))
 		document.body.appendChild(overlay)
 		email.focus()
@@ -318,11 +315,10 @@
 	function openAddPublic() {
 		publicPicker(core, {
 			base: '/accounts/' + core.accountId + '/contacts/public',
-			title: 'Ajouter un carnet des dossiers publics',
-			intro: 'Les dossiers publics sont partagés par toute l\'organisation. Ouvrez les dossiers pour trouver les carnets d\'adresses ; '
-				+ 'le niveau d\'accès, lecture ou modification, est celui défini par l\'administrateur Exchange.',
+			title: _('Ajouter un carnet des dossiers publics'),
+			intro: _('Les dossiers publics sont partagés par toute l\'organisation. Ouvrez les dossiers pour trouver les carnets d\'adresses ; le niveau d\'accès, lecture ou modification, est celui défini par l\'administrateur Exchange.'),
 			icon: '📇',
-			empty: 'Aucun carnet d\'adresses ici.',
+			empty: _('Aucun carnet d\'adresses ici.'),
 			onAdded: async (b) => { await loadBooks(true); selectBook(b.key) },
 		})
 	}
@@ -339,10 +335,10 @@
 		const onKey = (e) => { if (e.key === 'Escape') close() }
 		document.addEventListener('keydown', onKey)
 		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
-		const crumbs = h('nav', { class: 'wm-pf-path', 'aria-label': 'Emplacement' })
+		const crumbs = h('nav', { class: 'wm-pf-path', 'aria-label': _('Emplacement') })
 		const list = h('ul', { class: 'wm-pf-list' })
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
-		const path = [{ id: '', name: 'Dossiers publics' }]
+		const path = [{ id: '', name: _('Dossiers publics') }]
 		let seq = 0
 
 		const open = async () => {
@@ -376,10 +372,10 @@
 						? h('a', { href: '#', class: 'wm-pf-open', onclick: (e) => { e.preventDefault(); path.push({ id: f.id, name: f.name }); open() } },
 							h('span', { 'aria-hidden': 'true' }, f.isContacts ? opts.icon + ' ' : '📁 '), f.name, h('span', { class: 'wm-muted' }, ' ›'))
 						: h('span', {}, h('span', { 'aria-hidden': 'true' }, opts.icon + ' '), f.name),
-					f.isContacts ? h('span', { class: 'wm-cal-mode' + (f.canEdit ? ' wm-cal-mode-edit' : '') }, f.canEdit ? 'modification' : 'lecture') : null,
+					f.isContacts ? h('span', { class: 'wm-cal-mode' + (f.canEdit ? ' wm-cal-mode-edit' : '') }, f.canEdit ? _('modification') : _('lecture')) : null,
 					f.isContacts
 						? (f.added
-							? h('span', { class: 'wm-muted' }, 'déjà ajouté')
+							? h('span', { class: 'wm-muted' }, _('déjà ajouté'))
 							: h('button', {
 								type: 'button',
 								class: 'wm-pf-add',
@@ -388,34 +384,34 @@
 									try {
 										const b = await core.api(base, { method: 'POST', body: { folder: f.id, path: where } })
 										close()
-										core.toast('« ' + b.name + ' » ajouté (' + (b.canEdit ? 'modification' : 'lecture') + ')')
+										core.toast(_('« {name} » ajouté ({mode})', { name: b.name, mode: b.canEdit ? _('modification') : _('lecture') }))
 										await opts.onAdded(b)
 									} catch (ex) {
 										err.textContent = ex.message
 										e.target.disabled = false
 									}
 								},
-							}, 'Ajouter'))
+							}, _('Ajouter')))
 						: null))
 			})
 		}
 
 		overlay.appendChild(h('div', { class: 'wm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': opts.title },
 			h('div', { class: 'wm-modal-header' }, h('h2', {}, opts.title),
-				h('button', { class: 'wm-modal-close', 'aria-label': 'Fermer', onclick: close }, '✕')),
+				h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
 			h('div', { class: 'wm-event-form' },
 				h('p', { class: 'wm-muted' }, opts.intro),
 				crumbs, list, err,
-				h('div', { class: 'wm-compose-actions' }, h('button', { type: 'button', onclick: close }, 'Fermer')))))
+				h('div', { class: 'wm-compose-actions' }, h('button', { type: 'button', onclick: close }, _('Fermer'))))))
 		document.body.appendChild(overlay)
 		open()
 	}
 
 	async function removePublic(b) {
-		if (!window.confirm('Retirer « ' + b.name + ' » de la liste ? (rien n\'est supprimé dans Exchange)')) return
+		if (!window.confirm(_('Retirer « {name} » de la liste ? (rien n\'est supprimé dans Exchange)', { name: b.name }))) return
 		try {
 			await api('/accounts/' + core.accountId + '/contacts/public/delete', { method: 'POST', body: { folder: b.folder } })
-			core.toast('Carnet retiré')
+			core.toast(_('Carnet retiré'))
 			if (ct.book === b.key) ct.book = 'contacts'
 			await loadBooks(true)
 			selectBook(ct.book)
@@ -423,10 +419,10 @@
 	}
 
 	async function removeShared(b) {
-		if (!window.confirm('Retirer ' + bookTitle(b) + ' de la liste ? (rien n\'est supprimé dans Exchange)')) return
+		if (!window.confirm(_('Retirer {name} de la liste ? (rien n\'est supprimé dans Exchange)', { name: bookTitle(b) }))) return
 		try {
 			await api('/accounts/' + core.accountId + '/contacts/shared/delete', { method: 'POST', body: { email: b.email, folder: b.folder || '' } })
-			core.toast('Carnet retiré')
+			core.toast(_('Carnet retiré'))
 			if (ct.book === b.key) ct.book = 'contacts'
 			await loadBooks(true)
 			selectBook(ct.book)
@@ -448,13 +444,17 @@
 			const fd = new FormData()
 			fd.append('file', file, file.name)
 			fd.append('book', book.key)
-			core.toast('Import de « ' + file.name + ' »…')
+			core.toast(_('Import de « {name} »…', { name: file.name }))
 			try {
 				const r = await api('/accounts/' + core.accountId + '/contacts/import', { method: 'POST', body: fd })
-				const parts = [r.created + ' contact' + (r.created > 1 ? 's importés' : ' importé') + ' dans « ' + (book.folderName || book.name) + ' »']
-				if (r.skipped) parts.push(r.skipped + ' déjà présent' + (r.skipped > 1 ? 's' : '') + ' (même adresse e-mail)')
-				if (r.failed.length) parts.push(r.failed.length + ' refusé' + (r.failed.length > 1 ? 's' : '') + ' : ' + r.failed.slice(0, 3).map((f) => f.name + ' (' + f.error + ')').join(', '))
-				core.toast(parts.join(' ; '), r.failed.length > 0 && !r.created)
+				const into = { count: r.created, name: book.folderName || book.name }
+				const parts = [r.created > 1 ? _('{count} contacts importés dans « {name} »', into) : _('{count} contact importé dans « {name} »', into)]
+				if (r.skipped) parts.push(r.skipped > 1 ? _('{count} déjà présents (même adresse e-mail)', { count: r.skipped }) : _('{count} déjà présent (même adresse e-mail)', { count: r.skipped }))
+				if (r.failed.length) {
+					const list = r.failed.slice(0, 3).map((f) => f.name + ' (' + f.error + ')').join(', ')
+					parts.push(r.failed.length > 1 ? _('{count} refusés : {list}', { count: r.failed.length, list }) : _('{count} refusé : {list}', { count: r.failed.length, list }))
+				}
+				core.toast(parts.join(_(' ; ')), r.failed.length > 0 && !r.created)
 				load(true)
 			} catch (e) {
 				core.toast(e.message, true)
@@ -473,29 +473,29 @@
 		const search = h('input', {
 			type: 'search',
 			class: 'wm-search',
-			placeholder: isDirectory ? 'Chercher dans l\'annuaire (nom, adresse…)' : 'Rechercher dans ' + (book.kind === 'shared' && book.folderName ? book.folderName : book.name),
+			placeholder: isDirectory ? _('Chercher dans l\'annuaire (nom, adresse…)') : _('Rechercher dans {name}', { name: book.kind === 'shared' && book.folderName ? book.folderName : book.name }),
 			value: ct.query,
-			'aria-label': 'Rechercher un contact',
+			'aria-label': _('Rechercher un contact'),
 		})
 		el.appendChild(h('form', {
 			class: 'wm-list-header',
 			onsubmit: (e) => { e.preventDefault(); ct.query = search.value.trim(); load(true) },
 		},
-		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': 'Menu', onclick: () => core.setView('nav') }, '☰'),
+		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Menu'), onclick: () => core.setView('nav') }, '☰'),
 		search,
 		isDirectory ? null : h('a', {
 			class: 'button wm-icon-btn wm-vcf-export',
 			href: OC.generateUrl('/apps/webmail/api/accounts/' + core.accountId + '/contacts/export') + '?' + new URLSearchParams({ book: ct.book, name: book.folderName || book.name }),
 			download: '',
-			title: 'Exporter ce carnet (fichier vCard .vcf, pour Outlook, un téléphone, Nextcloud Contacts…)',
-			'aria-label': 'Exporter ce carnet',
+			title: _('Exporter ce carnet (fichier vCard .vcf, pour Outlook, un téléphone, Nextcloud Contacts…)'),
+			'aria-label': _('Exporter ce carnet'),
 		}, '⬇\uFE0E'),
-		book.canEdit && !isDirectory ? h('button', { type: 'button', class: 'wm-icon-btn wm-vcf-import', title: 'Importer des contacts (fichier vCard .vcf)', 'aria-label': 'Importer des contacts', onclick: () => importVcf(book) }, '⬆\uFE0E') : null,
-		h('button', { type: 'button', class: 'wm-icon-btn primary wm-mobile-only', 'aria-label': 'Nouveau contact', onclick: () => openForm(null) }, '＋')))
+		book.canEdit && !isDirectory ? h('button', { type: 'button', class: 'wm-icon-btn wm-vcf-import', title: _('Importer des contacts (fichier vCard .vcf)'), 'aria-label': _('Importer des contacts'), onclick: () => importVcf(book) }, '⬆\uFE0E') : null,
+		h('button', { type: 'button', class: 'wm-icon-btn primary wm-mobile-only', 'aria-label': _('Nouveau contact'), onclick: () => openForm(null) }, '＋')))
 
 		if (ct.query) {
-			el.appendChild(h('div', { class: 'wm-search-info' }, 'Résultats pour « ' + ct.query + ' » ',
-				h('a', { href: '#', onclick: (e) => { e.preventDefault(); ct.query = ''; load(true) } }, 'effacer')))
+			el.appendChild(h('div', { class: 'wm-search-info' }, _('Résultats pour « {query} »', { query: ct.query }) + ' ',
+				h('a', { href: '#', onclick: (e) => { e.preventDefault(); ct.query = ''; load(true) } }, _('effacer'))))
 		}
 		if (ct.loading && ct.items.length === 0) {
 			el.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
@@ -503,13 +503,13 @@
 		}
 		if (ct.items.length === 0) {
 			el.appendChild(h('div', { class: 'wm-empty' }, isDirectory && ct.query.length < 2
-				? 'Tapez au moins 2 lettres pour chercher dans l\'annuaire de l\'entreprise.'
-				: (ct.query ? 'Aucun contact trouvé' : 'Aucun contact')))
+				? _('Tapez au moins 2 lettres pour chercher dans l\'annuaire de l\'entreprise.')
+				: (ct.query ? _('Aucun contact trouvé') : _('Aucun contact'))))
 			if (isDirectory) setTimeout(() => search.focus(), 0)
 			return
 		}
 		if (isDirectory && ct.items.length >= 100) {
-			el.appendChild(h('div', { class: 'wm-search-info' }, 'Exchange limite la recherche à 100 résultats : précisez votre recherche.'))
+			el.appendChild(h('div', { class: 'wm-search-info' }, _('Exchange limite la recherche à 100 résultats : précisez votre recherche.')))
 		}
 		const ul = h('ul', { class: 'wm-messages wm-contacts', role: 'list' })
 		let letter = null
@@ -528,20 +528,20 @@
 			},
 			avatar(c.displayName, photoUrl(c)),
 			h('div', { class: 'wm-contact-text' },
-				h('div', { class: 'wm-contact-name' }, c.displayName || '(sans nom)', c.isGroup ? h('span', { class: 'wm-muted' }, ' · groupe') : null),
+				h('div', { class: 'wm-contact-name' }, c.displayName || _('(sans nom)'), c.isGroup ? h('span', { class: 'wm-muted' }, ' · ' + _('groupe')) : null),
 				h('div', { class: 'wm-message-preview' }, [c.email, c.company].filter(Boolean).join(' · ') || c.phone || ''))))
 		})
 		el.appendChild(ul)
 		if (ct.hasMore) {
 			el.appendChild(h('div', { class: 'wm-center' },
-				h('button', { onclick: () => load(false) }, 'Charger plus (' + ct.items.length + ' / ' + ct.total + ')')))
+				h('button', { onclick: () => load(false) }, _('Charger plus ({shown} / {total})', { shown: ct.items.length, total: ct.total }))))
 		}
 	}
 
 	function renderEmpty() {
 		const h = core.h
 		core.clear(core.detailEl)
-		core.detailEl.appendChild(h('div', { class: 'wm-empty wm-empty-detail' }, h('div', { class: 'wm-empty-icon' }, '👤'), 'Sélectionnez un contact'))
+		core.detailEl.appendChild(h('div', { class: 'wm-empty wm-empty-detail' }, h('div', { class: 'wm-empty-icon' }, '👤'), _('Sélectionnez un contact')))
 	}
 
 	async function openContact(id) {
@@ -558,7 +558,7 @@
 			c = String(id).startsWith('directory:')
 				? ct.items.find((x) => x.id === id)
 				: await api('/accounts/' + core.accountId + '/contact', { query: { contactId: id, book: book.key } })
-			if (!c) throw new Error('Contact introuvable')
+			if (!c) throw new Error(_('Contact introuvable'))
 		} catch (e) {
 			core.clear(el)
 			el.appendChild(h('div', { class: 'wm-empty' }, e.message))
@@ -576,33 +576,33 @@
 		const writeToGroup = () => core.openCompose('new', null, { to: members.filter((m) => m.email).map((m) => (m.name && m.name !== m.email ? m.name + ' <' + m.email + '>' : m.email)).join(', ') + ', ' })
 
 		el.appendChild(h('div', { class: 'wm-toolbar' },
-			h('button', { class: 'wm-back wm-mobile-only', 'aria-label': 'Retour', onclick: () => core.setView('list') }, '←'),
-			c.emails.length ? h('button', { class: 'primary', onclick: () => writeTo(c.emails[0]) }, '✉️ Écrire') : null,
-			c.isGroup && members.some((m) => m.email) ? h('button', { class: 'primary', onclick: writeToGroup }, '✉️ Écrire au groupe') : null,
-			!book.canEdit ? null : h('button', { onclick: () => (c.isGroup ? openGroupForm(c) : openForm(c)) }, '✏️ Modifier'),
-			book.canEdit ? h('button', { class: 'wm-danger', onclick: () => remove(c) }, '🗑 Supprimer') : null,
-			!book.canEdit && !c.isGroup ? h('button', { onclick: () => copyToMine(c) }, '＋ Ajouter à mes contacts') : null,
-			!book.canEdit ? h('span', { class: 'wm-muted' }, book.kind === 'directory' ? '🏢 Annuaire de l\'entreprise' : '🔒 ' + bookTitle(book) + ' (lecture seule)') : null))
+			h('button', { class: 'wm-back wm-mobile-only', 'aria-label': _('Retour'), onclick: () => core.setView('list') }, '←'),
+			c.emails.length ? h('button', { class: 'primary', onclick: () => writeTo(c.emails[0]) }, '✉️ ' + _('Écrire')) : null,
+			c.isGroup && members.some((m) => m.email) ? h('button', { class: 'primary', onclick: writeToGroup }, '✉️ ' + _('Écrire au groupe')) : null,
+			!book.canEdit ? null : h('button', { onclick: () => (c.isGroup ? openGroupForm(c) : openForm(c)) }, '✏️ ' + _('Modifier')),
+			book.canEdit ? h('button', { class: 'wm-danger', onclick: () => remove(c) }, '🗑 ' + _('Supprimer')) : null,
+			!book.canEdit && !c.isGroup ? h('button', { onclick: () => copyToMine(c) }, '＋ ' + _('Ajouter à mes contacts')) : null,
+			!book.canEdit ? h('span', { class: 'wm-muted' }, book.kind === 'directory' ? '🏢 ' + _('Annuaire de l\'entreprise') : '🔒 ' + _('{name} (lecture seule)', { name: bookTitle(book) })) : null))
 
 		el.appendChild(h('div', { class: 'wm-contact-card' },
 			h('div', { class: 'wm-contact-head' }, avatar(c.displayName, photoUrl(c)),
 				h('div', {},
-					h('h2', { class: 'wm-subject' }, c.displayName || '(sans nom)'),
+					h('h2', { class: 'wm-subject' }, c.displayName || _('(sans nom)')),
 					h('div', { class: 'wm-muted' }, [c.jobTitle, c.department, c.company].filter(Boolean).join(' · ')))),
-			c.emails.map((e, i) => row('✉️', i === 0 ? 'E-mail' : 'E-mail ' + (i + 1),
+			c.emails.map((e, i) => row('✉️', i === 0 ? _('E-mail') : _('E-mail {n}', { n: i + 1 }),
 				h('a', { href: '#', onclick: (ev) => { ev.preventDefault(); writeTo(e) } }, e))),
-			row('📱', 'Mobile', tel(c.mobilePhone)),
-			row('☎️', 'Bureau', tel(c.businessPhone)),
-			row('🏠', 'Domicile', tel(c.homePhone)),
-			row('🏢', 'Site', c.office || null),
-			row('📍', 'Adresse', address ? h('a', { href: 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(address), target: '_blank', rel: 'noopener noreferrer' }, address) : null),
+			row('📱', _('Mobile'), tel(c.mobilePhone)),
+			row('☎️', _('Bureau'), tel(c.businessPhone)),
+			row('🏠', _('Domicile'), tel(c.homePhone)),
+			row('🏢', _('Site'), c.office || null),
+			row('📍', _('Adresse'), address ? h('a', { href: 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(address), target: '_blank', rel: 'noopener noreferrer' }, address) : null),
 			(c.notes || '').trim() ? h('div', { class: 'wm-event-body' }, c.notes.trim()) : null,
 			c.isGroup ? h('div', { class: 'wm-group-members' },
-				h('strong', {}, members.length + ' membre' + (members.length > 1 ? 's' : '')),
+				h('strong', {}, members.length > 1 ? _('{count} membres', { count: members.length }) : _('{count} membre', { count: members.length })),
 				h('ul', { class: 'wm-attendees' }, members.map((m) => h('li', {}, m.email
 					? h('a', { href: '#', onclick: (ev) => { ev.preventDefault(); core.openCompose('new', null, { to: (m.name !== m.email ? m.name + ' <' + m.email + '>' : m.email) + ', ' }) } },
 						m.name !== m.email ? m.name + ' <' + m.email + '>' : m.email)
-					: h('span', { class: 'wm-muted', title: 'Adresse interne d\'Exchange' }, m.name))))) : null))
+					: h('span', { class: 'wm-muted', title: _('Adresse interne d\'Exchange') }, m.name))))) : null))
 	}
 
 	/**
@@ -616,21 +616,21 @@
 		core.setView('detail')
 		const el = core.detailEl
 		core.clear(el)
-		const name = h('input', { type: 'text', name: 'groupName', required: true, value: g ? g.displayName : '', placeholder: 'Équipe chantier, Clients VIP…' })
-		const who = h('input', { type: 'text', name: 'groupMember', placeholder: 'Nom ou adresse (complétion)', autocomplete: 'off' })
+		const name = h('input', { type: 'text', name: 'groupName', required: true, value: g ? g.displayName : '', placeholder: _('Équipe chantier, Clients VIP…') })
+		const who = h('input', { type: 'text', name: 'groupMember', placeholder: _('Nom ou adresse (complétion)'), autocomplete: 'off' })
 		const list = h('ul', { class: 'wm-group-edit' })
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
-		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? 'Créer le groupe' : 'Enregistrer')
+		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? _('Créer le groupe') : _('Enregistrer'))
 		const writable = ct.books.filter((b) => b.canEdit)
 		const bookSelect = isNew && writable.length > 1
-			? h('select', { name: 'book', 'aria-label': 'Carnet' }, writable.map((b) => h('option', { value: b.key, selected: b.key === (currentBook().canEdit ? ct.book : 'contacts') }, bookTitle(b))))
+			? h('select', { name: 'book', 'aria-label': _('Carnet') }, writable.map((b) => h('option', { value: b.key, selected: b.key === (currentBook().canEdit ? ct.book : 'contacts') }, bookTitle(b))))
 			: null
 		const render = () => {
 			core.clear(list)
-			if (!members.length) list.appendChild(h('li', { class: 'wm-muted' }, 'Aucun membre pour l\'instant'))
+			if (!members.length) list.appendChild(h('li', { class: 'wm-muted' }, _('Aucun membre pour l\'instant')))
 			members.forEach((m, i) => list.appendChild(h('li', { dataset: { email: m.email } },
 				m.name && m.name !== m.email ? m.name + ' <' + m.email + '>' : (m.email || m.name), ' ',
-				h('button', { type: 'button', class: 'wm-small wm-icon-btn', 'aria-label': 'Retirer ' + (m.email || m.name), onclick: () => { members.splice(i, 1); render() } }, '✕'))))
+				h('button', { type: 'button', class: 'wm-small wm-icon-btn', 'aria-label': _('Retirer {name}', { name: m.email || m.name }), onclick: () => { members.splice(i, 1); render() } }, '✕'))))
 		}
 		/** "Jean Dupont <jean@x.fr>, paul@x.fr" → members */
 		const addFromInput = () => {
@@ -643,7 +643,7 @@
 				if (!members.some((x) => x.email === email)) members.push({ name: label || email, email })
 			})
 			who.value = bad.join(', ')
-			err.textContent = bad.length ? 'Adresse invalide : ' + bad.join(', ') : ''
+			err.textContent = bad.length ? _('Adresse invalide : {list}', { list: bad.join(', ') }) : ''
 			render()
 		}
 		who.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addFromInput() } })
@@ -665,7 +665,7 @@
 					} else {
 						await api('/accounts/' + core.accountId + '/contacts/update', { method: 'POST', body: { contactId: g.id, contact: data, book: ct.book } })
 					}
-					core.toast(isNew ? 'Groupe créé' : 'Groupe enregistré')
+					core.toast(isNew ? _('Groupe créé') : _('Groupe enregistré'))
 					await load(true)
 					openContact(id)
 				} catch (ex) {
@@ -675,16 +675,16 @@
 			},
 		},
 		h('div', { class: 'wm-compose-title' },
-			h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': 'Retour', onclick: () => core.setView('list') }, '←'),
-			h('h2', {}, isNew ? 'Nouveau groupe' : 'Modifier le groupe')),
-		bookSelect ? h('label', { class: 'wm-field' }, h('span', {}, 'Carnet'), bookSelect) : null,
-		h('label', { class: 'wm-field' }, h('span', {}, 'Nom du groupe'), name),
-		h('div', { class: 'wm-field' }, h('span', {}, 'Ajouter'), core.attachAutocomplete(who),
-			h('button', { type: 'button', class: 'wm-small', onclick: addFromInput }, 'Ajouter')),
-		h('div', { class: 'wm-field wm-field-top' }, h('span', {}, 'Membres'), list),
+			h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Retour'), onclick: () => core.setView('list') }, '←'),
+			h('h2', {}, isNew ? _('Nouveau groupe') : _('Modifier le groupe'))),
+		bookSelect ? h('label', { class: 'wm-field' }, h('span', {}, _('Carnet')), bookSelect) : null,
+		h('label', { class: 'wm-field' }, h('span', {}, _('Nom du groupe')), name),
+		h('div', { class: 'wm-field' }, h('span', {}, _('Ajouter')), core.attachAutocomplete(who),
+			h('button', { type: 'button', class: 'wm-small', onclick: addFromInput }, _('Ajouter'))),
+		h('div', { class: 'wm-field wm-field-top' }, h('span', {}, _('Membres')), list),
 		err,
 		h('div', { class: 'wm-compose-actions' }, save,
-			h('button', { type: 'button', onclick: () => (isNew ? (renderEmpty(), core.setView('list')) : openContact(g.id)) }, 'Annuler'))))
+			h('button', { type: 'button', onclick: () => (isNew ? (renderEmpty(), core.setView('list')) : openContact(g.id)) }, _('Annuler')))))
 		name.focus()
 	}
 
@@ -696,17 +696,19 @@
 		data.emails = c.emails || []
 		try {
 			await api('/accounts/' + core.accountId + '/contacts', { method: 'POST', body: { contact: data, book: 'contacts' } })
-			core.toast((c.displayName || 'Contact') + ' ajouté à vos contacts')
+			core.toast(_('{name} ajouté à vos contacts', { name: c.displayName || _('Contact') }))
 		} catch (e) { core.toast(e.message, true) }
 	}
 
 	async function remove(c) {
 		const isPublic = currentBook().kind === 'public'
-		if (!window.confirm('Supprimer ' + (isPublic ? 'définitivement ' : '') + 'le contact « ' + (c.displayName || '') + ' »'
-			+ (isPublic ? ' du dossier public ? Il sera supprimé pour tout le monde.' : ' ?'))) return
+		const name = { name: c.displayName || '' }
+		if (!window.confirm(isPublic
+			? _('Supprimer définitivement le contact « {name} » du dossier public ? Il sera supprimé pour tout le monde.', name)
+			: _('Supprimer le contact « {name} » ?', name))) return
 		try {
 			await api('/accounts/' + core.accountId + '/contacts/delete', { method: 'POST', body: { contactId: c.id, book: ct.book } })
-			core.toast('Contact supprimé')
+			core.toast(_('Contact supprimé'))
 			ct.items = ct.items.filter((x) => x.id !== c.id)
 			ct.selectedId = null
 			renderList()
@@ -727,23 +729,23 @@
 			return { i, el: h('label', { class: 'wm-field' }, h('span', {}, label), i) }
 		}
 		const f = {
-			givenName: input('givenName', 'Prénom'),
-			surname: input('surname', 'Nom'),
-			displayName: input('displayName', 'Nom affiché'),
-			company: input('company', 'Société'),
-			department: input('department', 'Service'),
-			jobTitle: input('jobTitle', 'Fonction'),
-			mobilePhone: input('mobilePhone', 'Mobile', 'tel'),
-			businessPhone: input('businessPhone', 'Tél. bureau', 'tel'),
-			homePhone: input('homePhone', 'Tél. domicile', 'tel'),
-			street: input('street', 'Rue'),
-			postalCode: input('postalCode', 'Code postal'),
-			city: input('city', 'Ville'),
-			country: input('country', 'Pays'),
+			givenName: input('givenName', _('Prénom')),
+			surname: input('surname', _('Nom')),
+			displayName: input('displayName', _('Nom affiché')),
+			company: input('company', _('Société')),
+			department: input('department', _('Service')),
+			jobTitle: input('jobTitle', _('Fonction')),
+			mobilePhone: input('mobilePhone', _('Mobile'), 'tel'),
+			businessPhone: input('businessPhone', _('Tél. bureau'), 'tel'),
+			homePhone: input('homePhone', _('Tél. domicile'), 'tel'),
+			street: input('street', _('Rue')),
+			postalCode: input('postalCode', _('Code postal')),
+			city: input('city', _('Ville')),
+			country: input('country', _('Pays')),
 		}
-		f.displayName.i.placeholder = 'Calculé à partir du prénom et du nom'
+		f.displayName.i.placeholder = _('Calculé à partir du prénom et du nom')
 		const emails = [0, 1, 2].map((i) => h('input', { type: 'email', name: 'email' + (i + 1), value: c.emails[i] || '' }))
-		const notes = h('textarea', { name: 'notes', rows: '4', placeholder: 'Notes' })
+		const notes = h('textarea', { name: 'notes', rows: '4', placeholder: _('Notes') })
 		notes.value = c.notes || ''
 		// the photo: changed with the contact (undefined: unchanged, '': removed, data: URL: new)
 		let pendingPhoto
@@ -761,14 +763,14 @@
 			if (!file) return
 			try { pendingPhoto = await photoDataUrl(file); showPhoto() } catch (e) { core.toast(e.message, true) }
 		})
-		const removePhoto = h('button', { type: 'button', class: 'wm-small', onclick: () => { pendingPhoto = ''; showPhoto() } }, 'Retirer la photo')
-		const photoRow = h('div', { class: 'wm-field wm-photo-field' }, h('span', {}, 'Photo'), photoBox,
-			h('button', { type: 'button', class: 'wm-small', onclick: () => photoInput.click() }, '📷 Choisir une photo'), removePhoto, photoInput)
+		const removePhoto = h('button', { type: 'button', class: 'wm-small', onclick: () => { pendingPhoto = ''; showPhoto() } }, _('Retirer la photo'))
+		const photoRow = h('div', { class: 'wm-field wm-photo-field' }, h('span', {}, _('Photo')), photoBox,
+			h('button', { type: 'button', class: 'wm-small', onclick: () => photoInput.click() }, '📷 ' + _('Choisir une photo')), removePhoto, photoInput)
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
-		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? 'Créer le contact' : 'Enregistrer')
+		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? _('Créer le contact') : _('Enregistrer'))
 		const writable = ct.books.filter((b) => b.canEdit)
 		const bookSelect = isNew && writable.length > 1
-			? h('select', { name: 'book', 'aria-label': 'Carnet' }, writable.map((b) => h('option', { value: b.key, selected: b.key === (currentBook().canEdit ? ct.book : 'contacts') },
+			? h('select', { name: 'book', 'aria-label': _('Carnet') }, writable.map((b) => h('option', { value: b.key, selected: b.key === (currentBook().canEdit ? ct.book : 'contacts') },
 				bookTitle(b))))
 			: null
 
@@ -796,7 +798,7 @@
 						await api('/accounts/' + core.accountId + '/contacts/photo', { method: 'POST', body: { contactId: id, photo: pendingPhoto, book: ct.book } })
 						ct.photoV[id] = Date.now()
 					}
-					core.toast(isNew ? 'Contact créé' : 'Contact enregistré')
+					core.toast(isNew ? _('Contact créé') : _('Contact enregistré'))
 					await load(true)
 					openContact(id)
 				} catch (ex) {
@@ -806,18 +808,18 @@
 			},
 		},
 		h('div', { class: 'wm-compose-title' },
-			h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': 'Retour', onclick: () => core.setView('list') }, '←'),
-			h('h2', {}, isNew ? 'Nouveau contact' : 'Modifier le contact')),
-		bookSelect ? h('label', { class: 'wm-field' }, h('span', {}, 'Carnet'), bookSelect) : null,
+			h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Retour'), onclick: () => core.setView('list') }, '←'),
+			h('h2', {}, isNew ? _('Nouveau contact') : _('Modifier le contact'))),
+		bookSelect ? h('label', { class: 'wm-field' }, h('span', {}, _('Carnet')), bookSelect) : null,
 		photoRow,
 		f.givenName.el, f.surname.el, f.displayName.el, f.company.el, f.department.el, f.jobTitle.el,
-		emails.map((i, n) => h('label', { class: 'wm-field' }, h('span', {}, n === 0 ? 'E-mail' : 'E-mail ' + (n + 1)), i)),
+		emails.map((i, n) => h('label', { class: 'wm-field' }, h('span', {}, n === 0 ? _('E-mail') : _('E-mail {n}', { n: n + 1 })), i)),
 		f.mobilePhone.el, f.businessPhone.el, f.homePhone.el,
 		f.street.el, f.postalCode.el, f.city.el, f.country.el,
 		notes,
 		err,
 		h('div', { class: 'wm-compose-actions' }, save,
-			h('button', { type: 'button', onclick: () => (isNew ? (renderEmpty(), core.setView('list')) : openContact(c.id)) }, 'Annuler'))))
+			h('button', { type: 'button', onclick: () => (isNew ? (renderEmpty(), core.setView('list')) : openContact(c.id)) }, _('Annuler')))))
 		showPhoto()
 		f.givenName.i.focus()
 	}

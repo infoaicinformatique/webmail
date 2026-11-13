@@ -2646,6 +2646,19 @@ async function main() {
 			await page.click('.wm-account-card:has-text("user@societe-a.fr") button:has-text("Délégués")')
 			await page.waitForSelector('.wm-delegates h2:has-text("Delegates of user@societe-a.fr")')
 			await page.waitForSelector('.wm-delegates h3:has-text("Meeting requests")')
+			// contacts
+			await page.click('.wm-tab[data-module="contacts"]')
+			await page.waitForSelector('.wm-compose-btn:has-text("New contact")')
+			await page.waitForSelector('.wm-cal-section:has-text("My address books")')
+			await page.waitForSelector('.wm-cal-add:has-text("Add a colleague\'s contacts")')
+			await page.waitForSelector('.wm-empty-detail:has-text("Select a contact")')
+			await page.click('.wm-contact >> nth=0')
+			await page.waitForSelector('.wm-toolbar button:has-text("Edit")')
+			await page.click('.wm-toolbar button:has-text("Edit")')
+			await page.waitForSelector('.wm-contact-form h2:has-text("Edit the contact")')
+			await page.waitForSelector('.wm-contact-form .wm-field:has-text("First name")')
+			await shot('69-english-contacts')
+			await page.click('.wm-contact-form button:has-text("Cancel")')
 		} finally {
 			occ('user:setting admin core lang fr')
 		}
