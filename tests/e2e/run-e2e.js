@@ -3034,6 +3034,49 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('follow-up flag with a due date: tomorrow, a chosen date, then cleared; kept by Exchange', async () => {
+		const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+		const now = new Date()
+		const tomorrow = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
+		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°2"))'
+		await page.click(row)
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°2")')
+		await page.click('.wm-flag-menu-btn')
+		await page.waitForSelector('.wm-flag-menu [data-choice="today"]')
+		assert.strictEqual(await page.locator('.wm-flag-menu [data-choice="clear"]').count(), 0, 'not flagged yet')
+		await shot('75-flag-menu')
+		const sent = page.waitForRequest((r) => r.url().endsWith('/flags') && r.method() === 'POST')
+		await page.click('.wm-flag-menu [data-choice="tomorrow"]')
+		assert.deepStrictEqual(JSON.parse((await sent).postData()), { itemIds: [await page.getAttribute(row, 'data-id')], flag: 'flagged', value: true, due: tomorrow })
+		await page.waitForSelector('.wm-flag-btn.on:has-text("Suivi : Demain")')
+		await page.waitForSelector(row + ' .wm-flag.on')
+		await page.waitForSelector(row + ' .wm-flag-due:has-text("Demain")')
+
+		// kept by Exchange: after a reload, from the server
+		const listed = page.waitForResponse((r) => /\/api\/accounts\/\d+\/(messages|conversations)(\?|$)/.test(r.url()) && r.status() === 200)
+		await page.reload()
+		await listed
+		await page.waitForSelector(row + ' .wm-flag-due:has-text("Demain")')
+
+		// a date of one's own
+		const later = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 10)
+		await page.click(row)
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°2")')
+		await page.click('.wm-flag-menu-btn')
+		await page.fill('.wm-flag-menu input[name=flagDue]', ymd(later))
+		await page.click('.wm-flag-menu button:has-text("OK")')
+		const label = later.toLocaleDateString('fr', { weekday: 'short', day: 'numeric', month: 'short' })
+		await page.waitForSelector(row + ' .wm-flag-due:has-text("' + label + '")')
+		await page.waitForSelector('.wm-flag-btn:has-text("Suivi : ' + label + '")')
+
+		// no more follow-up
+		await page.click('.wm-flag-menu-btn')
+		await page.click('.wm-flag-menu [data-choice="clear"]')
+		await page.waitForFunction(() => document.querySelector('.wm-flag-btn')?.textContent === '⚑ Suivi')
+		await page.locator(row + ' .wm-flag-due').waitFor({ state: 'detached' })
+		assert.ok(!(await page.$(row + ' .wm-flag.on')))
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')

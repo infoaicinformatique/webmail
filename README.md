@@ -29,6 +29,7 @@ et sur les téléphones, et inversement.
 | Recherche | Recherche Exchange (AQS) dans le dossier courant **ou dans tous les dossiers** (le dossier de chaque résultat est indiqué, 200 résultats au plus). Bouton ⏷ : filtres **Non lus**, **Pièces jointes**, **Suivis** et **période** (7 jours, 30 jours, 12 mois), seuls ou avec des mots |
 | Lecture | Le HTML est nettoyé côté serveur et affiché dans une iframe isolée, sans aucun script. Les images intégrées (`cid:`) s'affichent. Les images distantes sont bloquées tant que l'utilisateur ne clique pas sur « Afficher les images » |
 | Actions | Marquer comme lu ou non lu, suivi, déplacer, supprimer (vers « Éléments supprimés », puis suppression définitive) |
+| Suivi avec échéance | « ▾ » à côté de « ⚑ Suivi » : **Aujourd'hui**, **Demain**, **Cette semaine** (vendredi), **La semaine prochaine**, sans date ou une date choisie, et « Retirer le suivi ». L'échéance s'affiche dans la liste (« Demain », « En retard » en rouge) ; c'est l'indicateur d'Exchange, le même que dans Outlook (liste « Tâches » / To-Do) et sur le téléphone |
 | Courrier indésirable | « ⛔ Indésirable » déplace le message dans « Courrier indésirable » et **bloque l'expéditeur** (ses prochains messages y iront directement) ; dans ce dossier, « ✔ Pas indésirable » le remet dans la boîte de réception et **fait confiance à l'expéditeur**. Comme dans Outlook, les listes d'expéditeurs bloqués et fiables sont celles d'Exchange. Aussi pour plusieurs messages à la fois |
 | En-têtes Internet | « 🧾 » dans la barre d'un message : les contrôles du serveur de réception (**SPF**, **DKIM**, **DMARC** : réussi, échoué…) avec un **avertissement** si l'expéditeur n'a pas pu être authentifié (usurpation possible), le **trajet** du message de serveur en serveur avec le temps de chaque étape, puis tous les en-têtes et « Copier les en-têtes » pour le support ; comme « Propriétés du message » d'Outlook |
 | Plusieurs messages | Case à cocher devant chaque message (au survol), **Ctrl+clic** pour en ajouter, **Maj+clic** pour une plage, `x` au clavier ; une barre propose alors Tout sélectionner, Lu, Non lu, Suivi, Déplacer vers… et Supprimer, pour tous d'un coup. Échap annule la sélection. **Glisser-déposer** un message (ou la sélection) sur un dossier le déplace |
@@ -239,7 +240,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.73.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.74.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -282,7 +283,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.73 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.74 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

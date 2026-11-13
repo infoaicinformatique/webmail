@@ -588,6 +588,7 @@ class EwsClient {
 			'hasAttachments' => $this->text($xp, 't:HasAttachments', $node) === 'true',
 			'importance' => $this->text($xp, 't:Importance', $node) ?? 'Normal',
 			'flagged' => $this->text($xp, 't:Flag/t:FlagStatus', $node) === 'Flagged',
+			'flagDue' => $this->flagDue($xp, $node),
 			'categories' => $this->strings($xp, 't:Categories/t:String', $node),
 			'preview' => mb_substr((string)$this->text($xp, 't:Preview', $node), 0, 200),
 			'isMeeting' => $node->localName !== 'Message',
@@ -898,6 +899,7 @@ class EwsClient {
 			'isRead' => $this->text($xp, 't:IsRead', $node) !== 'false',
 			'importance' => $this->text($xp, 't:Importance', $node) ?? 'Normal',
 			'flagged' => $this->text($xp, 't:Flag/t:FlagStatus', $node) === 'Flagged',
+			'flagDue' => $this->flagDue($xp, $node),
 			'categories' => $this->strings($xp, 't:Categories/t:String', $node),
 			'conversationId' => $this->attr($xp, 't:ConversationId', 'Id', $node),
 			'messageId' => $this->text($xp, 't:InternetMessageId', $node),
@@ -1075,10 +1077,25 @@ class EwsClient {
 			'<t:Message><t:IsRead>' . ($read ? 'true' : 'false') . '</t:IsRead></t:Message>');
 	}
 
-	/** @param string[] $itemIds */
-	public function setFlagged(array $itemIds, bool $flagged): void {
-		$this->updateItems($itemIds, 'item:Flag',
-			'<t:Message><t:Flag><t:FlagStatus>' . ($flagged ? 'Flagged' : 'NotFlagged') . '</t:FlagStatus></t:Flag></t:Message>');
+	/**
+	 * Follow-up flag of messages, with a due date (as Outlook's « Today », « Tomorrow »… ;
+	 * the message then shows in Outlook's To-Do list) or without.
+	 *
+	 * @param string[] $itemIds
+	 * @param ?string $due Y-m-d, or null / '' for a flag without a date
+	 * @throws MailException
+	 */
+	public function setFlagged(array $itemIds, bool $flagged, ?string $due = null): void {
+		$flag = '<t:FlagStatus>' . ($flagged ? 'Flagged' : 'NotFlagged') . '</t:FlagStatus>';
+		if ($flagged && $due !== null && $due !== '') {
+			if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $due, $d) || !checkdate((int)$d[2], (int)$d[3], (int)$d[1])) {
+				throw new MailException('Date invalide');
+			}
+			// Exchange wants a start with the due date, not after it; dates at midnight UTC, as Outlook writes them
+			$start = min(gmdate('Y-m-d'), $due);
+			$flag .= '<t:StartDate>' . $start . 'T00:00:00Z</t:StartDate><t:DueDate>' . $due . 'T00:00:00Z</t:DueDate>';
+		}
+		$this->updateItems($itemIds, 'item:Flag', '<t:Message><t:Flag>' . $flag . '</t:Flag></t:Message>');
 	}
 
 	/**
@@ -1646,6 +1663,15 @@ class EwsClient {
 	public function text(\DOMXPath $xp, string $query, ?\DOMNode $ctx = null): ?string {
 		$n = $xp->query($query, $ctx)->item(0);
 		return $n?->textContent;
+	}
+
+	/** The due date (Y-m-d) of a flagged item, or null. */
+	private function flagDue(\DOMXPath $xp, \DOMNode $node): ?string {
+		if ($this->text($xp, 't:Flag/t:FlagStatus', $node) !== 'Flagged') {
+			return null;
+		}
+		$due = (string)$this->text($xp, 't:Flag/t:DueDate', $node);
+		return preg_match('/^\d{4}-\d{2}-\d{2}/', $due) ? substr($due, 0, 10) : null;
 	}
 
 	/** @return string[] the texts of every node found */
