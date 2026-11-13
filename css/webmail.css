@@ -979,3 +979,15 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 .wm-remote-banner .wm-trust-sender, .wm-remote-banner .wm-trust-domain { margin-inline-start: 6px; }
 .wm-trusted-list { list-style: none; margin: 0; padding: 0; }
 .wm-trusted-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--color-border); }
+
+/* touch: a message swiped in the list (left: delete, right: read / unread) */
+.wm-message.wm-swiping { position: relative; transition: none; z-index: 1; }
+.wm-message.wm-swipe-left { background: color-mix(in srgb, var(--color-error) 15%, var(--color-main-background)); }
+.wm-message.wm-swipe-right { background: color-mix(in srgb, var(--color-primary-element, #0082c9) 15%, var(--color-main-background)); }
+.wm-message.wm-swipe-left.wm-swipe-armed { background: var(--color-error); color: #fff; }
+.wm-message.wm-swipe-right.wm-swipe-armed { background: var(--color-primary-element, #0082c9); color: #fff; }
+.wm-message.wm-swiping::after { content: attr(data-swipe); position: absolute; top: 50%; transform: translateY(-50%); font-weight: bold; white-space: nowrap; }
+.wm-message.wm-swipe-left::after { right: 12px; }
+.wm-message.wm-swipe-right::after { left: 12px; }
+/* (on the list pane, already scrolling: a list itself clipping would shrink in its flex column) */
+.wm-list { overflow-x: hidden; }
