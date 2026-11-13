@@ -4355,13 +4355,18 @@
 		return card
 	}
 
-	/** The text of a message, for Matrix: subject, sender, date, the beginning of the text. */
+	/** The text of a message, for Matrix: subject, sender, date, the beginning of the text (its paragraphs kept). */
 	function mailSummaryForMatrix(m) {
-		const text = (new DOMParser().parseFromString(m.body || '', 'text/html').body.textContent || '').replace(/[ \t]+/g, ' ').replace(/\n\s*\n\s*/g, '\n\n').trim()
+		const doc = new DOMParser().parseFromString(m.body || '', 'text/html')
+		doc.querySelectorAll('script, style, title').forEach((e) => e.remove())
+		doc.querySelectorAll('br').forEach((e) => e.replaceWith('\n'))
+		doc.querySelectorAll('p, div, li, tr, h1, h2, h3, h4, h5, h6, blockquote, pre, table').forEach((e) => e.append('\n'))
+		const text = (doc.body.textContent || '').replace(/[ \t\u00a0]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 		const from = m.from ? (m.from.name && m.from.name !== m.from.email ? m.from.name + ' <' + m.from.email + '>' : m.from.email) : ''
 		const date = m.date ? new Date(m.date).toLocaleString(locale(), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
+		// (the address put in after the translation: it would take « <address> » for an HTML tag and drop it)
 		return '✉️ ' + (m.subject || _('(sans objet)')) + '\n'
-			+ _('De : {from}', { from }) + (date ? ' · ' + date : '') + '\n\n'
+			+ _('De : {from}').replace('{from}', from) + (date ? ' · ' + date : '') + '\n\n'
 			+ (text.length > 600 ? text.slice(0, 600).trim() + '…' : text)
 	}
 
