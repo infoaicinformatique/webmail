@@ -1283,5 +1283,12 @@
 	"Expéditeur (Z → A)": "Sender (Z → A)",
 	"Objet (A → Z)": "Subject (A → Z)",
 	"Plus volumineux": "Largest first",
-	"Trier par": "Sort by"
+	"Trier par": "Sort by",
+	"Garder ce message comme note (Nextcloud Notes)": "Keep this message as a note (Nextcloud Notes)",
+	"Créer une note": "Create a note",
+	"Note créée : {path}": "Note created: {path}",
+	"Ouvrir dans Notes": "Open in Notes",
+	"Ouvrir dans Fichiers": "Open in Files",
+	"Ouvrir dans le webmail": "Open in the webmail",
+	"Le dossier des notes n'est pas accessible en écriture": "The notes folder cannot be written to"
 }

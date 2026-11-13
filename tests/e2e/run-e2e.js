@@ -3468,6 +3468,29 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 	})
 
+	await step('note: a message kept as a note (Markdown in the Notes folder), opened in Files without the Notes app', async () => {
+		await page.click('.wm-folder >> nth=0')
+		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+		await page.click('.wm-note-btn')
+		await page.waitForSelector('.wm-toast:has-text("Note créée : /Notes/Devis pour la maintenance annuelle")')
+		await page.waitForSelector('.wm-toast .wm-toast-action:text-is("Ouvrir dans Fichiers")')
+		const path = (await page.textContent('.wm-toast:has-text("Note créée")')).match(/\/Notes\/[^]*?\.md/)[0]
+		// what is in the file
+		const md = await page.evaluate(async (p) => {
+			const r = await fetch('/remote.php/dav/files/admin' + p.split('/').map(encodeURIComponent).join('/'), { headers: { requesttoken: OC.requestToken } })
+			return r.ok ? r.text() : 'HTTP ' + r.status
+		}, path)
+		assert.ok(md.startsWith('# Devis pour la maintenance annuelle\n\n**De :** Jean Dupont <jean.dupont@client-exemple.fr>'), md)
+		assert.ok(md.includes('Veuillez trouver ci-joint notre devis pour la maintenance 2027.'), md)
+		assert.ok(!md.includes('alert('), 'no script')
+		assert.ok(/\[Ouvrir dans le webmail\]\(http[^)]+\/apps\/webmail\/\?account=\d+&message=/.test(md), md)
+		// removed: the test leaves nothing behind
+		await page.evaluate(async (p) => {
+			await fetch('/remote.php/dav/files/admin' + p.split('/').map(encodeURIComponent).join('/'), { method: 'DELETE', headers: { requesttoken: OC.requestToken } })
+		}, path)
+	})
+
 	await step('Internet headers: the SPF, DKIM and DMARC checks, the way of the message, every header', async () => {
 		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')

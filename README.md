@@ -40,6 +40,7 @@ et sur les téléphones, et inversement.
 | Plusieurs messages | Case à cocher devant chaque message (au survol), **Ctrl+clic** pour en ajouter, **Maj+clic** pour une plage, `x` au clavier ; une barre propose alors Tout sélectionner, Lu, Non lu, Suivi, Déplacer vers… et Supprimer, pour tous d'un coup. Échap annule la sélection. **Glisser-déposer** un message (ou la sélection) sur un dossier le déplace |
 | Envoi | Nouveau message, Répondre, Répondre à tous, Transférer (Exchange cite le message d'origine et garde ses pièces jointes), Cc/Cci, importance, signature ; `Ctrl+Entrée` envoie **Réponse rapide** : sous chaque message, « Répondre à … » : quelques lignes, `Ctrl+Entrée` ou « Envoyer » (signature, délai d'annulation et alerte de pièce jointe oubliée compris), « Répondre à tous » s'il y a d'autres destinataires, et « Plus d'options… » pour continuer dans le formulaire complet avec le texte déjà tapé |
 | Transférer en pièce jointe | « 📎 » à côté de « Transférer » joint le message entier (fichier .eml, avec ses propres pièces jointes) à un nouveau message ; « ↪ Transférer » dans la barre de sélection fait de même pour plusieurs messages (20 au plus) : un seul envoi, chaque message en pièce jointe, que Outlook ou Thunderbird ouvrent comme un message |
+| Note depuis un message | « 📝 » garde le message comme **note Nextcloud Notes** : un fichier Markdown dans votre dossier de notes (celui réglé dans Notes, « Notes » sinon), avec l'objet en titre, l'expéditeur, la date, le texte et le lien « Ouvrir dans le webmail ». « Ouvrir dans Notes » (ou dans Fichiers sans l'application Notes) |
 | Tâche depuis un message | « ✅ » dans la barre d'un message ouvre une **nouvelle tâche** Exchange : titre repris de l'objet (sans « RE: »), notes avec l'expéditeur, la date et le texte du message ; il reste à choisir l'échéance. Pour ne pas oublier de traiter un message, comme « Assurer un suivi » d'Outlook mais en vraie tâche |
 | Événement depuis un message | « 📅 » dans la barre d'un message ouvre un **nouvel événement** de l'agenda : titre repris de l'objet (sans « RE: »), description avec le texte du message, expéditeur et destinataires (sauf soi) proposés comme participants ; comme « Répondre par une réunion » d'Outlook |
 | Ajouter l'expéditeur | « 👤＋ » à côté de l'expéditeur d'un message l'ajoute à « Contacts » (prénom et nom tirés du nom affiché) ; s'il y est déjà avec cette adresse, rien n'est créé en double |
@@ -249,7 +250,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.99.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.108.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -292,7 +293,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.99 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.108 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
