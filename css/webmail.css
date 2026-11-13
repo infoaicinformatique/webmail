@@ -237,7 +237,8 @@
 }
 .wm-toast-error { background: var(--color-error); color: #fff; }
 .wm-toast-hide { opacity: 0; }
-.wm-toast-undo { display: flex; align-items: center; gap: 8px; }
+/* the only toast with buttons: it takes the clicks (the others let them through) */
+.wm-toast-undo { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
 .wm-toast-action { margin: 0; min-height: 30px; padding: 2px 10px; }
 
 /* ---------- responsive ---------- */
