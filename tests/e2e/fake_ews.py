@@ -105,6 +105,8 @@ PNG_1PX = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlE
 
 MESSAGES = {}
 ATTACHMENTS = {}
+# conversations ignored (« Ignorer la conversation »)
+IGNORED = set()
 
 
 # pull subscriptions to the inbox: id -> True; the new messages of the inbox, in order (watermark = their count)
@@ -265,6 +267,10 @@ def deliver_to_self(m, user):
     """A message sent to oneself also arrives in the inbox (unread)."""
     if any(email.lower() == user.lower() for _, email in m['to'] + m['cc']):
         mid = add_message('F-INBOX', m['subject'], ('Utilisateur', user), m['body'], 0, to=m['to'], cc=m['cc'])
+        if conversation_id(MESSAGES[mid]) in IGNORED:
+            # an ignored conversation: straight to the deleted items
+            MESSAGES[mid]['folder'] = 'F-DELETED'
+            return
         rules.apply(user, MESSAGES[mid], lambda msg, folder: move_message(msg['id'], folder))
 
 
@@ -766,6 +772,31 @@ def handle(op, el, user):
                     m['flag_due'] = upd.findtext('.//t:Flag/t:DueDate', default=None, namespaces=NS) if fs == 'Flagged' else None
             m['ck'] = 'CK-%d' % next(COUNTER)
             msgs.append(ok(op, '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/></t:Message></m:Items><m:ConflictResults><t:Count>0</t:Count></m:ConflictResults>' % (m['id'], m['ck'])))
+        return wrap(op, msgs)
+
+    if op == 'ApplyConversationAction':
+        msgs = []
+        for act in el.find('m:ConversationActions', NS):
+            action = act.findtext('t:Action', namespaces=NS)
+            cid = act.find('t:ConversationId', NS).get('Id')
+            mine = [m for m in MESSAGES.values() if conversation_id(m) == cid and m['folder'].startswith('F-')]
+            if action == 'AlwaysDelete':
+                if act.findtext('t:EnableAlwaysDelete', namespaces=NS) == 'true':
+                    IGNORED.add(cid)
+                else:
+                    IGNORED.discard(cid)
+                if act.findtext('t:ProcessRightAway', namespaces=NS) == 'true':
+                    for m in mine:
+                        if m['folder'] not in ('F-DELETED', 'F-DRAFTS', 'F-SENT'):
+                            m['folder'] = 'F-DELETED'
+            elif action == 'Move':
+                ctx = act.find('t:ContextFolderId', NS)
+                src = folder_id(ctx[0]) if ctx is not None else None
+                dst = folder_id(act.find('t:DestinationFolderId', NS)[0])
+                for m in mine:
+                    if src is None or m['folder'] == src:
+                        m['folder'] = dst
+            msgs.append(ok(op, ''))
         return wrap(op, msgs)
 
     if op == 'MarkAsJunk':

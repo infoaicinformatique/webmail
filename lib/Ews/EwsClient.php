@@ -858,6 +858,26 @@ class EwsClient {
 	}
 
 	/**
+	 * « Ignorer la conversation » (as in Outlook): its messages go to « Éléments supprimés »,
+	 * and so will those that come later. $ignore false: no longer ignored, and the messages
+	 * put in « Éléments supprimés » go back to the inbox.
+	 *
+	 * @throws MailException
+	 */
+	public function ignoreConversation(string $conversationId, bool $ignore): void {
+		$id = '<t:ConversationId Id="' . $this->esc($conversationId) . '"/>';
+		$actions = '<t:ConversationAction><t:Action>AlwaysDelete</t:Action>' . $id
+			. '<t:ProcessRightAway>' . ($ignore ? 'true' : 'false') . '</t:ProcessRightAway>'
+			. '<t:EnableAlwaysDelete>' . ($ignore ? 'true' : 'false') . '</t:EnableAlwaysDelete></t:ConversationAction>';
+		if (!$ignore) {
+			$actions .= '<t:ConversationAction><t:Action>Move</t:Action>' . $id
+				. '<t:ContextFolderId><t:DistinguishedFolderId Id="deleteditems"/></t:ContextFolderId>'
+				. '<t:DestinationFolderId><t:DistinguishedFolderId Id="inbox"/></t:DestinationFolderId></t:ConversationAction>';
+		}
+		$this->request('<m:ApplyConversationAction><m:ConversationActions>' . $actions . '</m:ConversationActions></m:ApplyConversationAction>');
+	}
+
+	/**
 	 * Every message of a conversation, in every folder (the replies sent are
 	 * in « Éléments envoyés »), oldest first. Deleted items and drafts are
 	 * left out.

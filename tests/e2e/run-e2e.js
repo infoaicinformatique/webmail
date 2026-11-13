@@ -3274,6 +3274,45 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('ignore a conversation: to the deleted items, « Annuler », then the next messages go there directly', async () => {
+		const sendToSelf = async (subject) => {
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'user@societe-a.fr')
+			await page.fill('input[name=subject]', subject)
+			await page.fill('.wm-editor', 'Où en est le chantier ?')
+			await submitCompose()
+		}
+		const inbox = async () => { await page.click('.wm-folder >> nth=0'); await page.waitForSelector('.wm-messages .wm-message') }
+		const row = (subject) => '.wm-message:has(.wm-message-subject:text-is("' + subject + '"))'
+		await page.click('.wm-folder >> nth=0')
+		await sendToSelf('Point travaux Antibes')
+		await inbox()
+		await page.click(row('Point travaux Antibes'))
+		await page.waitForSelector('.wm-message-header h2:has-text("Point travaux Antibes")')
+		await page.click('.wm-ignore-btn')
+		await page.waitForSelector('.wm-toast:has-text("Conversation ignorée")')
+		await page.locator(row('Point travaux Antibes')).waitFor({ state: 'detached' })
+		// changed one's mind: back in the inbox
+		await page.click('.wm-toast:has-text("Conversation ignorée") .wm-toast-action')
+		await page.waitForSelector('.wm-toast:has-text("La conversation n\'est plus ignorée")')
+		await page.waitForSelector(row('Point travaux Antibes'))
+		// ignored for good: the answer goes straight to the deleted items
+		await page.click(row('Point travaux Antibes'))
+		await page.click('.wm-ignore-btn')
+		await page.locator(row('Point travaux Antibes')).waitFor({ state: 'detached' })
+		await sendToSelf('RE: Point travaux Antibes')
+		await inbox()
+		assert.strictEqual(await page.$(row('RE: Point travaux Antibes')), null)
+		await page.click('.wm-folder:has-text("Éléments supprimés")')
+		await page.waitForSelector(row('RE: Point travaux Antibes'))
+		await page.waitForSelector(row('Point travaux Antibes'))
+		// (in the deleted items: nothing to ignore)
+		await page.click(row('Point travaux Antibes'))
+		await page.waitForSelector('.wm-message-header h2:has-text("Point travaux Antibes")')
+		assert.strictEqual(await page.$('.wm-ignore-btn'), null)
+		await inbox()
+	})
+
 	await step('Internet headers: the SPF, DKIM and DMARC checks, the way of the message, every header', async () => {
 		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')

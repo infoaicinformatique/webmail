@@ -2410,6 +2410,9 @@
 			moveSelect,
 			h('button', { class: 'wm-danger', onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
 			junkButton([m.id], role),
+			m.conversationId && role !== 'deleteditems' && role !== 'sentitems' && role !== 'drafts'
+				? h('button', { class: 'wm-ignore-btn', title: _('Ignorer la conversation : ses messages, et ceux qui arriveront, vont dans les éléments supprimés'), 'aria-label': _('Ignorer la conversation'), onclick: () => ignoreConversation(m) }, '🔇')
+				: null,
 			// (the folder shown: a message back from « Reportés » may still be remembered there)
 			role === 'inbox' || folderRole() === 'inbox' || state.snoozes.has(m.id)
 				? h('button', { class: 'wm-snooze-btn', title: _('Ne plus voir ce message jusqu\'à l\'heure choisie : il revient alors dans la boîte de réception, non lu'), 'aria-haspopup': 'menu', onclick: (e) => snoozeMenu(e.currentTarget, m) }, '⏰ ' + _('Reporter'))
@@ -3605,6 +3608,33 @@
 			// empty editor: no signature
 			value: () => (ed.textContent.trim() || ed.querySelector('img') ? ed.innerHTML : ''),
 		}
+	}
+
+	/**
+	 * « Ignorer la conversation » (as in Outlook): the conversation leaves the folders for the
+	 * deleted items, and its next messages go there directly. « Annuler » brings it back.
+	 */
+	async function ignoreConversation(m) {
+		const accountId = state.accountId
+		const send = (ignore) => api('/accounts/' + accountId + '/conversation/ignore', { method: 'POST', body: { conversationId: m.conversationId, ignore } })
+		try {
+			await send(true)
+		} catch (e) { toast(e.message, true); return }
+		if (accountId !== state.accountId) return
+		removeFromList([m.id])
+		toast(_('Conversation ignorée : ses messages, et les suivants, vont dans les éléments supprimés'), false, {
+			label: _('Annuler'),
+			run: async () => {
+				try {
+					await send(false)
+					toast(_('La conversation n\'est plus ignorée'))
+				} catch (e) { toast(e.message, true) }
+				if (accountId === state.accountId) { loadFolders(); loadMessages(true) }
+			},
+		})
+		// the other messages of the conversation shown in the list
+		loadFolders()
+		loadMessages(true)
 	}
 
 	function openCompose(mode, original, prefill) {

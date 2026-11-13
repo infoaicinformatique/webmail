@@ -55,6 +55,7 @@ et sur les téléphones, et inversement.
 | Boîtes partagées | Dans « Comptes et signature », « 📮 Boîtes partagées » : ajoutez une boîte commune (contact@, accueil@…) dont l'administrateur Exchange vous a donné l'**accès total**. Ses dossiers s'affichent sous les vôtres (avec les non-lus) : lecture, réponse, déplacement entre ses dossiers, suppression. En répondant depuis la boîte partagée, « De : » propose cette boîte (il faut le droit « **Envoyer en tant que** ») ; la liste « De : » permet aussi d'écrire un nouveau message en son nom. Retirer une boîte du webmail ne supprime rien dans Exchange |
 | Boîtes des collègues (délégation) | Si un collègue vous a fait **délégué** de sa boîte de réception dans Outlook (Fichier → Paramètres du compte → Accès délégué), ajoutez son adresse au même endroit que les boîtes partagées. Elle s'affiche avec 👥, avec **seulement les dossiers qu'il vous a partagés** (sa boîte de réception et ses sous-dossiers, par exemple). On peut lire, classer et **répondre de sa part** : « De : » propose son adresse, et le message part « de la part de » lui. Mention « (délégué) » dans « Comptes et signature » |
 | Conversations | Sous l'en-tête d'un message : « ▸ Conversation : 3 messages » quand il fait partie d'un échange. Tous les messages de la conversation, **dans tous les dossiers** (vos réponses dans « Éléments envoyés » comprises, sauf brouillons et éléments supprimés), du plus ancien au plus récent, avec l'expéditeur, la date, le dossier et le début du texte. Un clic déplie un message sur place (avec « Ouvrir ce message » et « Répondre ») ; la conversation reste dépliée ou repliée d'un message à l'autre |
+| Ignorer une conversation | « 🔇 » dans un message : comme dans Outlook, la conversation part dans « Éléments supprimés » et ses **prochains messages y vont directement** (règle tenue par Exchange, aussi pour Outlook et le téléphone). « Annuler » la remet dans la boîte de réception |
 | Liste par conversation | Le bouton « 🗨 » en haut de la liste **regroupe les messages par conversation**, comme « Afficher en tant que conversations » d'Outlook : une ligne par échange, avec ses expéditeurs, la date du dernier message et le **nombre de messages** (en couleur s'il y a des non-lus). Un clic ouvre le message le plus récent, avec toute la conversation dessous. Le choix est retenu ; une recherche affiche toujours les messages un par un. Les cases à cocher et le glisser-déposer restent disponibles dans l'affichage message par message |
 | Catégories | Les **catégories Outlook** s'affichent en pastilles de couleur dans la liste et sur le message (mêmes noms et couleurs qu'Outlook, lus dans la boîte). Bouton « 🏷 » sur un message, ou « 🏷 Catégoriser » pour plusieurs messages cochés : cocher / décocher une catégorie, ou en **créer une** avec sa couleur (25 couleurs d'Outlook), ajoutée à la liste de la boîte. Un clic sur une pastille du message affiche tous les messages de cette catégorie, dans tous les dossiers |
 | Règles | « 📋 Règles » (dans « Comptes et signature ») ou « 📋 Règle… » sur un message (son expéditeur est déjà rempli) : les règles qu'Exchange applique à chaque message reçu, **même webmail fermé**. Conditions : expéditeur, mots dans l'expéditeur, l'objet ou le texte, destinataire, pièce jointe, envoyé à moi seul, importance. Actions : déplacer, copier, mettre à la corbeille, marquer comme lu, importance, catégorie, transférer, ne pas appliquer les règles suivantes. Activer / désactiver, changer l'ordre, supprimer. Les règles faites dans Outlook avec d'autres réglages sont affichées (« créée dans Outlook ») et peuvent être activées, désactivées, déplacées ou supprimées sans être abîmées. Comme dans Outlook sur le web, la première modification remplace la copie des règles gardée par Outlook pour Windows : ses règles « côté client uniquement » (qui ne fonctionnent qu'Outlook ouvert) sont alors à refaire |
@@ -242,7 +243,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.92.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.97.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -285,7 +286,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.92 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.97 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
