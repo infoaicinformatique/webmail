@@ -1240,7 +1240,7 @@
 				return link ? h('div', { class: 'wm-event-join' },
 					h('a', { class: 'button primary wm-join-btn', href: link.url, target: '_blank', rel: 'noopener noreferrer' }, link.talk ? '🎥 ' + _('Rejoindre la visio Nextcloud Talk') : '🎥 ' + _('Rejoindre la réunion en ligne'))) : null
 			})(),
-			ev.isMeeting && ev.organizer ? h('div', {}, '👤 ' + _('Organisateur : {name}', { name: core.personLabel(ev.organizer) })) : null,
+			ev.isMeeting && ev.organizer ? h('div', {}, '👤 ' + _('Organisateur : {name}').replace('{name}', core.personLabel(ev.organizer))) : null,
 			ev.attendees.length ? h('div', {}, h('strong', {}, _('Participants')), h('ul', { class: 'wm-attendees' }, people(ev.attendees))) : null,
 			ev.optionalAttendees.length ? h('div', {}, h('strong', {}, _('Facultatifs')), h('ul', { class: 'wm-attendees' }, people(ev.optionalAttendees))) : null,
 			(ev.resources || []).length ? h('div', { class: 'wm-event-rooms' }, h('strong', {}, _('Salle')), h('ul', { class: 'wm-attendees' }, ev.resources.map((a) => h('li', {}, '🚪 ' + (a.name || a.email),
@@ -1330,6 +1330,8 @@
 		const h = core.h
 		const isNew = !ev
 		const isSeries = !!(opts && opts.series)
+		// a new event filled from elsewhere (a message: its subject, text and people)
+		const prefill = (isNew && opts && opts.prefill) || {}
 		let start
 		let end
 		if (ev) {
@@ -1348,7 +1350,7 @@
 			end = new Date(start.getTime() + 3600000)
 		}
 
-		const subject = h('input', { type: 'text', name: 'subject', required: true, value: ev ? ev.subject : '', placeholder: _('Titre') })
+		const subject = h('input', { type: 'text', name: 'subject', required: true, value: ev ? ev.subject : (prefill.subject || ''), placeholder: _('Titre') })
 		const writable = cal.calendars.filter((c) => c.canEdit)
 		let lastCalendar = 'calendar'
 		try { lastCalendar = localStorage.getItem('webmail.lastcal.' + core.accountId) || 'calendar' } catch (e) { /* ignore */ }
@@ -1363,11 +1365,11 @@
 		const endTime = h('input', { type: 'time', name: 'endTime', value: hm(end), step: '300', 'aria-label': _('Heure de fin') })
 		const location = h('input', { type: 'text', name: 'location', value: ev ? ev.location : '', placeholder: _('Salle, adresse ou lien visio') })
 		const attendees = h('input', { type: 'text', name: 'attendees', placeholder: _('Inviter des participants (adresses e-mail)'),
-			value: ev ? ev.attendees.map((a) => a.email).filter((e) => e && !e.startsWith('/')).join(', ') : '' })
+			value: ev ? ev.attendees.map((a) => a.email).filter((e) => e && !e.startsWith('/')).join(', ') : (prefill.attendees || []).join(', ') })
 		const optional = h('input', { type: 'text', name: 'optionalAttendees', placeholder: _('Facultatif'),
 			value: ev ? ev.optionalAttendees.map((a) => a.email).filter((e) => e && !e.startsWith('/')).join(', ') : '' })
 		const description = h('textarea', { name: 'body', rows: '5', placeholder: _('Description') })
-		description.value = ev ? ev.body : ''
+		description.value = ev ? ev.body : (prefill.body || '')
 
 		// ---- meeting rooms (Exchange room lists): booked as resources, the room answers itself
 		const rooms = ((ev && ev.resources) || []).filter((r) => r.email).map((r) => ({ name: r.name || r.email, email: r.email }))
@@ -1752,6 +1754,12 @@
 		renderNav(navEl, c) {
 			core = c
 			renderNav(navEl)
+		},
+		/** A new event from a message (button 📅 of the mail): its subject, text and people. */
+		async newFromMessage(c, prefill) {
+			core = c
+			await loadCalendars(false)
+			openForm(null, null, false, { prefill })
 		},
 		/** A link to an event (unified search, dashboard): show its day, open it. */
 		async openLinked(c, eventId) {
