@@ -484,6 +484,22 @@ async function main() {
 		const res = await visitor.request.get(big + '/download')
 		assert.strictEqual(res.status(), 200)
 		assert.strictEqual((await res.body()).length, 16 * 1024 * 1024)
+		// protected: an expiry, a password given apart (not in the message), another link
+		await page.click('.wm-link-options summary')
+		await page.selectOption('select[name=linkExpiry]', '7')
+		await page.check('input[name=linkPassword]')
+		await page.click('.wm-link-btn')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-editor a').length === 4)
+		const toastText = await (await page.waitForSelector('.wm-toast:has-text("Mot de passe du lien « devis-2027.pdf »")')).textContent()
+		const password = toastText.match(/: ([A-Za-z0-9]{12}) —/)[1]
+		const editorText = await page.textContent('.wm-editor')
+		assert.ok(editorText.includes('protégé par un mot de passe') && editorText.includes('lien valable jusqu'), editorText)
+		assert.ok(!editorText.includes(password), 'the password is not in the message')
+		const protectedHref = (await page.$$eval('.wm-editor a', (els) => els.map((e) => e.getAttribute('href')))).pop()
+		assert.notStrictEqual(protectedHref, hrefs[0])
+		// without the password: no file
+		const locked = await visitor.request.get(protectedHref + '/download', { maxRedirects: 5 })
+		assert.notStrictEqual((await locked.body()).toString('latin1', 0, 5), '%PDF-', 'protected')
 		await visitor.close()
 		await page.click('.wm-compose button[type=submit]')
 		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')

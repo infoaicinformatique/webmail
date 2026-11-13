@@ -1283,5 +1283,13 @@
 	"Expéditeur (Z → A)": "Sender (Z → A)",
 	"Objet (A → Z)": "Subject (A → Z)",
 	"Plus volumineux": "Largest first",
-	"Trier par": "Sort by"
+	"Trier par": "Sort by",
+	"Expiration des liens": "Link expiry",
+	"Sans expiration": "No expiry",
+	"Expire dans {count} jours": "Expires in {count} days",
+	"Protéger les liens": "Protect the links",
+	"Mot de passe du lien « {name} » : {password} — à transmettre autrement (téléphone, Matrix…)": "Password of the link “{name}”: {password} — pass it on another way (phone, Matrix…)",
+	"Copier": "Copy",
+	"protégé par un mot de passe": "protected by a password",
+	"Date d'expiration invalide (de demain à un an)": "Invalid expiry date (tomorrow to a year)"
 }

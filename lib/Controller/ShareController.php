@@ -34,7 +34,7 @@ class ShareController extends Controller {
 
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: 60, period: 300)]
-	public function link(string $path): Response {
-		return $this->handle(fn () => $this->links->link((string)$this->userId, $path));
+	public function link(string $path, string $expires = '', bool $password = false): Response {
+		return $this->handle(fn () => $this->links->link((string)$this->userId, $path, $expires, $password));
 	}
 }

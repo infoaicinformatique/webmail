@@ -4031,6 +4031,7 @@
 			const html = links.map((l) => '<div>' + (l.isFolder ? '📁 ' : '📎 ') + '<a href="' + escapeHtml(l.url) + '">' + escapeHtml(l.name) + '</a>'
 				+ (l.isFolder ? '' : ' (' + formatSize(l.size) + ')')
 				+ (l.expires ? ' — ' + _('lien valable jusqu\'au {date}', { date: new Date(l.expires + 'T12:00:00').toLocaleDateString(locale(), { day: 'numeric', month: 'long', year: 'numeric' }) }) : '')
+				+ (l.password ? ' — ' + _('protégé par un mot de passe') : '')
 				+ '</div>').join('')
 			const tmp = document.createElement('div')
 			tmp.innerHTML = html
@@ -4050,11 +4051,28 @@
 			}
 			changed()
 		}
+		// protection of the links made: an expiry, a password (passed on another way, never in the message)
+		const linkExpiry = h('select', { name: 'linkExpiry', 'aria-label': _('Expiration des liens') },
+			h('option', { value: '' }, _('Sans expiration')),
+			[7, 30, 90].map((n) => h('option', { value: String(n) }, _('Expire dans {count} jours', { count: n }))))
+		const linkPassword = h('input', { type: 'checkbox', name: 'linkPassword' })
+		const linkOptions = h('details', { class: 'wm-link-options' },
+			h('summary', {}, '🔒 ' + _('Protéger les liens')),
+			linkExpiry, h('label', { class: 'wm-radio' }, linkPassword, ' ' + _('Mot de passe')))
+		const expiryDate = () => {
+			if (!linkExpiry.value) return ''
+			const d = new Date(Date.now() + parseInt(linkExpiry.value, 10) * 86400000)
+			return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+		}
+		const showPassword = (l) => {
+			const copy = () => { try { navigator.clipboard.writeText(l.password) } catch (e) { /* shown anyway */ } }
+			toast(_('Mot de passe du lien « {name} » : {password} — à transmettre autrement (téléphone, Matrix…)', { name: l.name, password: l.password }), false, { label: _('Copier'), run: copy })
+		}
 		const shareLinks = async (paths) => {
 			const links = []
 			for (const path of paths) {
 				try {
-					links.push(await api('/share-link', { method: 'POST', body: { path } }))
+					links.push(await api('/share-link', { method: 'POST', body: { path, expires: expiryDate(), password: linkPassword.checked } }))
 				} catch (e) {
 					toast(e.message, true)
 				}
@@ -4062,6 +4080,7 @@
 			if (links.length) {
 				insertLinks(links)
 				toast(links.length > 1 ? _('{count} liens ajoutés au message', { count: links.length }) : _('Lien ajouté au message'))
+				links.filter((l) => l.password).forEach(showPassword)
 			}
 			return links.length === paths.length
 		}
@@ -4371,6 +4390,7 @@
 			h('label', { class: 'wm-file-label button' }, '📎 ' + _('Joindre'), files),
 			h('button', { type: 'button', onclick: pickFromFiles }, '☁️ ' + _('Depuis Fichiers')),
 			h('button', { type: 'button', class: 'wm-link-btn', onclick: pickLinks, title: _('Un lien de téléchargement Nextcloud dans le message, au lieu d\'une pièce jointe') }, '🔗 ' + _('Lien Nextcloud')),
+			linkOptions,
 			importance,
 			h('button', { type: 'button', onclick: cancel, title: _('Fermer (le brouillon est gardé)') }, _('Annuler')),
 			deleteDraftBtn),
