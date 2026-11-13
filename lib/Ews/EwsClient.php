@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Webmail\Ews;
 
 use OCA\Webmail\Exception\MailException;
+use OCA\Webmail\Service\MailHeaders;
 
 /**
  * Small, dependency-free Exchange Web Services (EWS) SOAP client.
@@ -1002,6 +1003,27 @@ class EwsClient {
 			'contentType' => 'message/rfc822',
 			'content' => (string)base64_decode($mime),
 		];
+	}
+
+	/**
+	 * The Internet headers of a message (PR_TRANSPORT_MESSAGE_HEADERS, 0x007D): who sent it through
+	 * which servers, and the SPF / DKIM / DMARC checks. None for a message written in the mailbox.
+	 *
+	 * @return array{raw: string, headers: list<array{name: string, value: string}>,
+	 *               auth: array<string, string>, hops: list<array{from: string, by: string, date: ?string}>}
+	 * @throws MailException
+	 */
+	public function getHeaders(string $itemId): array {
+		$xp = $this->request(
+			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape>'
+			. '<t:AdditionalProperties><t:ExtendedFieldURI PropertyTag="0x007D" PropertyType="String"/></t:AdditionalProperties></m:ItemShape>'
+			. '<m:ItemIds><t:ItemId Id="' . $this->esc($itemId) . '"/></m:ItemIds></m:GetItem>'
+		);
+		$item = $xp->query('//m:Items/*')->item(0);
+		if ($item === null) {
+			throw new MailException('Message introuvable');
+		}
+		return MailHeaders::parse((string)$this->text($xp, 't:ExtendedProperty/t:Value', $item));
 	}
 
 	/** Largest .eml imported (Exchange refuses bigger messages anyway). */

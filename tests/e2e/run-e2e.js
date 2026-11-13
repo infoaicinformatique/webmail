@@ -2991,6 +2991,49 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('Internet headers: the SPF, DKIM and DMARC checks, the way of the message, every header', async () => {
+		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+		await page.click('.wm-headers-btn')
+		await page.waitForSelector('.wm-headers .wm-auth-checks')
+		for (const k of ['spf', 'dkim', 'dmarc']) await page.waitForSelector('.wm-headers .wm-auth-pass[data-check="' + k + '"]')
+		assert.ok((await page.textContent('.wm-auth[data-check="dkim"]')).includes('DKIM : réussi'))
+		assert.strictEqual(await page.locator('.wm-auth-warning').count(), 0)
+		// the sender's server first, then 2 seconds to the mailbox server
+		const hops = await page.locator('.wm-hops li').allTextContents()
+		assert.strictEqual(hops.length, 2, hops.join(' | '))
+		assert.ok(hops[0].startsWith('mail.client-exemple.fr → mx1.mail.ovh.net'), hops[0])
+		assert.ok(hops[1].startsWith('EX3.mail.ovh.net → EX3.mail.ovh.net') && hops[1].includes('(+2 s)'), hops[1])
+		await page.click('.wm-headers-all summary:has-text("Tous les en-têtes (6)")')
+		await page.waitForSelector('.wm-headers-all tr:has(th:text-is("Authentication-Results")) td:has-text("dkim=pass header.d=client-exemple.fr")')
+		await shot('74-internet-headers')
+		await page.keyboard.press('Escape')
+		await page.locator('.wm-overlay').waitFor({ state: 'detached' })
+		assert.ok(await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('wm-headers-btn')), 'the focus goes back to the button')
+
+		// a forged-looking sender: a warning
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°1"))')
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°1")')
+		await page.click('.wm-headers-btn')
+		await page.waitForSelector('.wm-headers .wm-auth-fail[data-check="dkim"]')
+		await page.waitForSelector('.wm-headers .wm-auth-fail[data-check="dmarc"]')
+		await page.waitForSelector('.wm-headers .wm-auth-pass[data-check="spf"]')
+		await page.waitForSelector('.wm-auth-warning:has-text("ce message peut être une usurpation")')
+		await page.click('.wm-headers .wm-modal-close')
+		await page.locator('.wm-overlay').waitFor({ state: 'detached' })
+
+		// a message I sent: written here, no Internet headers
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.click('.wm-message:has-text("Re: Planning")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Re: Planning")')
+		await page.click('.wm-headers-btn')
+		await page.waitForSelector('.wm-headers:has-text("Ce message n\'a pas d\'en-têtes Internet")')
+		await page.keyboard.press('Escape')
+		await page.locator('.wm-overlay').waitFor({ state: 'detached' })
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')

@@ -303,6 +303,12 @@ class MailController extends Controller {
 		});
 	}
 
+	/** The Internet headers of a message, with the SPF / DKIM / DMARC checks and the servers it went through. */
+	#[NoAdminRequired]
+	public function headers(int $id, string $itemId): Response {
+		return $this->handle(fn () => $this->client($id)->getHeaders($itemId));
+	}
+
 	/** A message as an .eml file, to download. */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]

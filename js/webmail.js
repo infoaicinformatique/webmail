@@ -1975,6 +1975,7 @@
 			junkButton([m.id], role),
 			h('button', { class: 'wm-cat-btn', title: _('Catégoriser'), 'aria-label': _('Catégoriser'), onclick: (e) => categoryMenu(e.currentTarget, () => [m]) }, '🏷'),
 			h('button', { class: 'wm-print-btn', title: _('Imprimer'), 'aria-label': _('Imprimer'), onclick: () => printMessage(m) }, '🖨'),
+			h('button', { class: 'wm-headers-btn', title: _('En-têtes Internet : expéditeur réel, serveurs traversés, contrôles SPF, DKIM et DMARC'), 'aria-label': _('Afficher les en-têtes Internet'), onclick: () => showHeaders(m) }, '🧾'),
 			h('a', {
 				class: 'button wm-eml-btn',
 				href: OC.generateUrl('/apps/webmail/api/accounts/' + state.accountId + '/message/eml') + '?' + new URLSearchParams({ itemId: m.id }),
@@ -2241,6 +2242,82 @@
 	}
 
 	/** Print a message: its headers and its (already cleaned) content, in a page of its own. */
+	/**
+	 * The Internet headers of a message, read for a person: did the receiving server authenticate
+	 * the sender (SPF, DKIM, DMARC), through which servers did it come, then every header (to copy for support).
+	 */
+	async function showHeaders(m) {
+		if (document.querySelector('.wm-overlay')) return
+		const opener = document.activeElement
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true); if (opener && opener.isConnected) opener.focus() }
+		const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close() } }
+		document.addEventListener('keydown', onKey, true)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const body = h('div', { class: 'wm-headers-body' }, h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
+		const closeBtn = h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')
+		overlay.appendChild(h('div', { class: 'wm-modal wm-headers', role: 'dialog', 'aria-modal': 'true', 'aria-label': _('En-têtes Internet') },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, _('En-têtes Internet')), closeBtn), body))
+		document.body.appendChild(overlay)
+		closeBtn.focus()
+		let r
+		try {
+			r = await api('/accounts/' + state.accountId + '/message/headers', { query: { itemId: m.id } })
+		} catch (e) {
+			clear(body)
+			body.appendChild(h('p', { class: 'wm-form-error' }, e.message))
+			return
+		}
+		clear(body)
+		if (!r.headers.length) {
+			body.appendChild(h('p', {}, _('Ce message n\'a pas d\'en-têtes Internet : il a été écrit dans cette boîte (brouillon, message envoyé…).')))
+			return
+		}
+		// the checks of the receiving server
+		const LABELS = { pass: _('réussi'), fail: _('échoué'), softfail: _('douteux'), neutral: _('neutre'), none: _('absent'), temperror: _('erreur'), permerror: _('erreur') }
+		const checks = [['spf', 'SPF', _('Le serveur d\'envoi est autorisé par le domaine de l\'expéditeur')],
+			['dkim', 'DKIM', _('Le message est signé par le domaine et n\'a pas été modifié en route')],
+			['dmarc', 'DMARC', _('L\'adresse affichée dans « De » correspond au domaine vérifié')]]
+		const failed = checks.some(([k]) => ['fail', 'softfail', 'permerror'].includes(r.auth[k]))
+		body.appendChild(h('div', { class: 'wm-auth-checks' }, checks.map(([k, name, help]) => {
+			const v = r.auth[k]
+			const cls = v === 'pass' ? 'pass' : (['fail', 'softfail', 'permerror'].includes(v) ? 'fail' : 'unknown')
+			return h('span', { class: 'wm-auth wm-auth-' + cls, dataset: { check: k }, title: help },
+				(cls === 'pass' ? '✔ ' : cls === 'fail' ? '✖ ' : '? ') + name + ' : ' + (v ? (LABELS[v] || v) : _('non vérifié')))
+		})))
+		if (failed) {
+			body.appendChild(h('p', { class: 'wm-auth-warning', role: 'alert' }, '⚠ ' + _('L\'expéditeur n\'a pas pu être authentifié : ce message peut être une usurpation. Méfiez-vous de ses liens et de ses pièces jointes.')))
+		}
+		// the way of the message, with the time taken by each step
+		if (r.hops.length) {
+			let prev = null
+			body.appendChild(h('h3', {}, _('Trajet du message')))
+			body.appendChild(h('ol', { class: 'wm-hops' }, r.hops.map((hop) => {
+				const t = hop.date ? new Date(hop.date) : null
+				const delay = t && prev ? Math.round((t - prev) / 1000) : null
+				if (t) prev = t
+				return h('li', {},
+					h('span', { class: 'wm-hop-servers' }, (hop.from || '?') + ' → ' + (hop.by || '?')),
+					t ? h('span', { class: 'wm-hop-date' }, ' · ' + t.toLocaleString(locale(), { dateStyle: 'short', timeStyle: 'medium' })) : null,
+					delay !== null && delay >= 0 ? h('span', { class: 'wm-hop-delay' + (delay > 300 ? ' slow' : '') }, ' (+' + _('{n} s', { n: delay }) + ')') : null)
+			})))
+		}
+		const copy = h('button', {
+			type: 'button',
+			class: 'wm-headers-copy',
+			onclick: async () => {
+				try {
+					await navigator.clipboard.writeText(r.raw)
+					toast(_('En-têtes copiés'))
+				} catch (e) { toast(_('Copie impossible : sélectionnez le texte et copiez-le'), true) }
+			},
+		}, '📋 ' + _('Copier les en-têtes'))
+		body.appendChild(h('details', { class: 'wm-headers-all' },
+			h('summary', {}, _('Tous les en-têtes ({n})', { n: r.headers.length })),
+			h('table', {}, h('tbody', {}, r.headers.map((x) => h('tr', {}, h('th', {}, x.name), h('td', {}, x.value)))))))
+		body.appendChild(h('div', { class: 'wm-compose-actions' }, copy))
+	}
+
 	function printMessage(m) {
 		const w = window.open('', '_blank')
 		if (!w) { toast(_('Le navigateur a bloqué la fenêtre d\'impression'), true); return }

@@ -314,6 +314,24 @@ def mime_of(m):
     return bytes(msg)
 
 
+def headers_of(m):
+    """Internet headers of a received message: two servers on the way, and the checks of the receiving one
+    (the newsletter's domain fails DKIM and DMARC)."""
+    email = m['sender'][1]
+    if email == 'user@societe-a.fr':
+        return ''
+    domain = email.split('@')[1]
+    bad = domain == 'exemple.org'
+    return ('Received: from EX3.mail.ovh.net (10.0.0.3) by EX3.mail.ovh.net (10.0.0.3) with Microsoft SMTP Server;\r\n'
+            ' Fri, 13 Nov 2026 09:12:05 +0100\r\n'
+            'Received: from mail.%s (mail.%s [203.0.113.7])\r\n\tby mx1.mail.ovh.net (Postfix) with ESMTPS id 4A1B2;\r\n'
+            ' Fri, 13 Nov 2026 09:12:03 +0100\r\n'
+            'Authentication-Results: mx1.mail.ovh.net; spf=pass smtp.mailfrom=%s;\r\n dkim=%s header.d=%s; dmarc=%s header.from=%s\r\n'
+            'From: %s\r\nSubject: %s\r\nMessage-ID: <%s@%s>\r\n'
+            % (domain, domain, domain, 'fail' if bad else 'pass', domain, 'fail' if bad else 'pass', domain,
+               '%s <%s>' % m['sender'], m['subject'], m['id'], domain))
+
+
 def item_full_xml(m):
     xml = _item_full_xml(m).replace('<t:Importance>', categories_xml(m) + '<t:Importance>', 1)
     # (Exchange gives item:Preview with the other properties)
@@ -653,6 +671,12 @@ def handle(op, el, user):
                 msgs.append(ok(op, '<m:Items><t:Message><t:MimeContent CharacterSet="UTF-8">%s</t:MimeContent>'
                                    '<t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject></t:Message></m:Items>'
                                % (base64.b64encode(mime_of(m)).decode(), m['id'], m['ck'], esc(m['subject']))))
+            elif el.find('m:ItemShape/t:AdditionalProperties/t:ExtendedFieldURI[@PropertyTag="0x007D"]', NS) is not None:
+                # the Internet headers (PR_TRANSPORT_MESSAGE_HEADERS): none for a message written in the mailbox
+                raw = headers_of(m)
+                prop = ('<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0x7d" PropertyType="String"/><t:Value>%s</t:Value></t:ExtendedProperty>'
+                        % esc(raw)) if raw else ''
+                msgs.append(ok(op, '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/>%s</t:Message></m:Items>' % (m['id'], m['ck'], prop)))
             elif shape == 'IdOnly' and el.find('m:ItemShape/t:AdditionalProperties', NS) is None:
                 msgs.append(ok(op, '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/></t:Message></m:Items>' % (m['id'], m['ck'])))
             else:
