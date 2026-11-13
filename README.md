@@ -232,7 +232,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.50.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.51.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -254,7 +254,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.50 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.51 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -300,6 +300,7 @@ Les requêtes vers Exchange suivent les réglages réseau de Nextcloud, comme se
 
 - Réglez les tâches de fond de Nextcloud sur **Cron** : les notifications de nouveaux messages (toutes les 5 minutes) et les rappels des rendez-vous (chaque minute) en dépendent.
 - Une exécution encore en cours n'est pas relancée à côté d'elle. Chaque requête faite en tâche de fond abandonne au bout de 20 secondes, pour qu'un serveur injoignable ne retarde pas les autres comptes.
+- Les nouveaux messages passent par un **abonnement Exchange** à la boîte de réception (« pull subscription ») : Exchange garde les nouveaux messages entre deux vérifications, et une vérification sans nouveau message ne coûte qu'une petite requête. Si Exchange a oublié l'abonnement (plus d'une heure sans vérification), le webmail se réabonne et rattrape par les dates, sans annoncer deux fois un message.
 - Les rappels ne demandent les prochains rendez-vous à Exchange qu'une fois toutes les 5 minutes par compte. Le calcul se refait chaque minute sans requête, et immédiatement après une modification de l'agenda dans le webmail.
 - Un cache partagé est recommandé, par exemple **Redis** dans `memcache.distributed`. Le tableau de bord, les rappels, l'espace utilisé et la boîte des dossiers publics y sont gardés. APCu seul ne sert pas aux tâches de fond, qui tournent chacune dans un nouveau processus. Sans cache, tout fonctionne, avec plus de requêtes vers Exchange.
 
@@ -366,5 +367,4 @@ templates/          page principale et page d'administration
 ## Évolutions possibles
 
 **Nextcloud et serveur**
-- Notifications Exchange en direct (abonnement « streaming ») à la place de la vérification régulière
 - Traduction (anglais)

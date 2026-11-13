@@ -630,6 +630,87 @@ class EwsClient {
 		];
 	}
 
+	// ------------------------------------------------------------------
+	// Pull subscription to the inbox: Exchange keeps the new messages for
+	// us between two checks; a check then costs one small request
+	// ------------------------------------------------------------------
+
+	/**
+	 * Subscribe to the new messages of the inbox.
+	 * @param int $timeout minutes without a check after which Exchange drops the subscription
+	 * @return array{id: string, watermark: string}
+	 */
+	public function subscribeInbox(int $timeout = 30): array {
+		$xp = $this->request(
+			'<m:Subscribe><m:PullSubscriptionRequest><t:FolderIds><t:DistinguishedFolderId Id="inbox"/></t:FolderIds>'
+			. '<t:EventTypes><t:EventType>NewMailEvent</t:EventType></t:EventTypes>'
+			. '<t:Timeout>' . max(1, min(1440, $timeout)) . '</t:Timeout></m:PullSubscriptionRequest></m:Subscribe>'
+		);
+		$id = (string)$this->text($xp, '//m:SubscriptionId');
+		$watermark = (string)$this->text($xp, '//m:Watermark');
+		if ($id === '' || $watermark === '') {
+			throw new MailException('Exchange n\'a pas accepté l\'abonnement aux nouveaux messages');
+		}
+		return ['id' => $id, 'watermark' => $watermark];
+	}
+
+	/**
+	 * The messages arrived since the last check of a subscription.
+	 * @return ?array{itemIds: string[], watermark: string} null when Exchange
+	 *         no longer knows the subscription (expired): subscribe again
+	 */
+	public function newMailEvents(string $subscriptionId, string $watermark): ?array {
+		$ids = [];
+		for ($i = 0; $i < 10; $i++) {
+			$xp = $this->request(
+				'<m:GetEvents><m:SubscriptionId>' . $this->esc($subscriptionId) . '</m:SubscriptionId>'
+				. '<m:Watermark>' . $this->esc($watermark) . '</m:Watermark></m:GetEvents>',
+				false
+			);
+			$msg = $xp->query('//m:GetEventsResponseMessage')->item(0);
+			if (!$msg instanceof \DOMElement || $msg->getAttribute('ResponseClass') !== 'Success') {
+				return null;
+			}
+			foreach ($xp->query('m:Notification/*', $msg) as $event) {
+				$w = $this->text($xp, 't:Watermark', $event);
+				if ($w !== null && $w !== '') {
+					$watermark = $w;
+				}
+				if ($event->localName === 'NewMailEvent') {
+					$id = $this->attr($xp, 't:ItemId', 'Id', $event);
+					if ($id !== null) {
+						$ids[] = $id;
+					}
+				}
+			}
+			if ($this->text($xp, 'm:Notification/t:MoreEvents', $msg) !== 'true') {
+				break;
+			}
+		}
+		return ['itemIds' => array_values(array_unique($ids)), 'watermark' => $watermark];
+	}
+
+	/**
+	 * Summaries of some messages (those gone meanwhile are left out).
+	 * @param string[] $ids
+	 * @return list<array<string, mixed>>
+	 */
+	public function summaries(array $ids): array {
+		if ($ids === []) {
+			return [];
+		}
+		$xp = $this->request(
+			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $this->summaryFields(true) . '</t:AdditionalProperties></m:ItemShape>'
+			. '<m:ItemIds>' . $this->itemIdsXml($ids) . '</m:ItemIds></m:GetItem>',
+			false
+		);
+		$out = [];
+		foreach ($xp->query('//m:GetItemResponseMessage[@ResponseClass="Success"]/m:Items/*') as $node) {
+			$out[] = $this->summary($xp, $node);
+		}
+		return $out;
+	}
+
 	public function findItems(string $folderId, int $offset = 0, int $limit = 50, ?string $query = null): array {
 		$fields = $this->summaryFields();
 		$queryXml = '';

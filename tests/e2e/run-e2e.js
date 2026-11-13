@@ -887,6 +887,18 @@ async function main() {
 		// not announced twice
 		runJob()
 		assert.strictEqual((await bell()).filter((n) => n.message.startsWith('« Budget du chantier »')).length, 1)
+		// through the subscription to the inbox; Exchange forgot it (no check for a long while): announced all the same,
+		// by the dates, and subscribed again
+		const settings = occ('user:setting admin webmail')
+		const subKey = (settings.match(/bell_sub_\d+/) || [])[0]
+		assert(subKey && /SUB-\d+/.test(settings), settings)
+		occ('user:setting admin webmail ' + subKey + ' \'{"id":"SUB-gone","watermark":"W0"}\'')
+		await sendToSelf('Devis après une coupure')
+		runJob()
+		assert.strictEqual((await bell()).filter((n) => n.message.startsWith('« Devis après une coupure »')).length, 1)
+		assert(!occ('user:setting admin webmail ' + subKey).includes('SUB-gone'), 'subscribed again')
+		runJob()
+		assert.strictEqual((await bell()).filter((n) => n.message.startsWith('« Devis après une coupure »')).length, 1, 'once')
 		// in Nextcloud's bell
 		await page.reload()
 		await page.click('.notifications-button')
@@ -895,6 +907,12 @@ async function main() {
 		// its link opens the message, which leaves the bell
 		await page.goto(mine[0].link)
 		await page.waitForSelector('.wm-message-header h2:has-text("Budget du chantier")')
+		const left = async () => (await bell()).filter((n) => n.message.startsWith('« Budget du chantier »')).length
+		for (let i = 0; i < 20 && await left(); i++) await page.waitForTimeout(250)
+		assert.strictEqual(await left(), 0)
+		// (the other one read as well)
+		await page.click('.wm-message:has-text("Devis après une coupure")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Devis après une coupure")')
 		for (let i = 0; i < 20 && (await bell()).length; i++) await page.waitForTimeout(250)
 		assert.deepStrictEqual(await bell(), [])
 		// switched off for this account

@@ -107,6 +107,11 @@ MESSAGES = {}
 ATTACHMENTS = {}
 
 
+# pull subscriptions to the inbox: id -> True; the new messages of the inbox, in order (watermark = their count)
+SUBSCRIPTIONS = {}
+INBOX_EVENTS = []
+
+
 def add_message(folder, subject, sender, body, minutes_ago, is_read=False, attachments=(), importance='Normal',
                 flagged=False, to=(('Utilisateur', 'user@societe-a.fr'),), cc=()):
     mid = 'MSG-%d' % next(COUNTER)
@@ -115,6 +120,9 @@ def add_message(folder, subject, sender, body, minutes_ago, is_read=False, attac
         aid = 'ATT-%d' % next(COUNTER)
         ATTACHMENTS[aid] = dict(a, id=aid)
         atts.append(aid)
+    if folder == 'F-INBOX':
+        # what pull subscriptions report (GetEvents)
+        INBOX_EVENTS.append(mid)
     MESSAGES[mid] = dict(id=mid, ck='CK-%d' % next(COUNTER), folder=folder, subject=subject, sender=sender, body=body,
                          date=now(minutes_ago), is_read=is_read, attachments=atts, importance=importance,
                          flagged=flagged, to=list(to), cc=list(cc))
@@ -430,6 +438,25 @@ def handle_user_configuration(op, el, user):
 def handle(op, el, user):
     global CURRENT_USER
     CURRENT_USER = user
+    if op == 'Subscribe':
+        sub = el.find('m:PullSubscriptionRequest', NS)
+        if sub is None or [f.get('Id') for f in sub.findall('t:FolderIds/t:DistinguishedFolderId', NS)] != ['inbox']:
+            return wrap(op, [err(op, 'ErrorInvalidSubscriptionRequest', 'inbox pull subscriptions only')])
+        sid = 'SUB-%d' % next(COUNTER)
+        SUBSCRIPTIONS[sid] = True
+        return wrap(op, [ok(op, '<m:SubscriptionId>%s</m:SubscriptionId><m:Watermark>W%d</m:Watermark>' % (sid, len(INBOX_EVENTS)))])
+    if op == 'GetEvents':
+        sid = el.findtext('m:SubscriptionId', default='', namespaces=NS)
+        if sid not in SUBSCRIPTIONS:
+            return wrap(op, [err(op, 'ErrorSubscriptionNotFound', 'The specified subscription was not found.')])
+        start = int(el.findtext('m:Watermark', default='W0', namespaces=NS)[1:])
+        new = INBOX_EVENTS[start:]
+        events = ''.join('<t:NewMailEvent><t:Watermark>W%d</t:Watermark><t:TimeStamp>%s</t:TimeStamp><t:ItemId Id="%s" ChangeKey="CK"/>'
+                         '<t:ParentFolderId Id="F-INBOX" ChangeKey="AQ"/></t:NewMailEvent>' % (start + i + 1, now(0), mid) for i, mid in enumerate(new)) \
+            or '<t:StatusEvent><t:Watermark>W%d</t:Watermark></t:StatusEvent>' % start
+        return wrap(op, [ok(op, '<m:Notification><t:SubscriptionId>%s</t:SubscriptionId><t:PreviousWatermark>W%d</t:PreviousWatermark>'
+                                '<t:MoreEvents>false</t:MoreEvents>%s</m:Notification>' % (sid, start, events))])
+
     if op == 'FindConversation':
         fid = folder_id(el.find('m:ParentFolderId', NS)[0])
         if fid is None:
