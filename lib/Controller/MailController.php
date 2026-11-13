@@ -151,7 +151,7 @@ class MailController extends Controller {
 	private function sharedMailbox(int $id, string $email): array {
 		$entry = $this->shared->find(SharedFolderService::MAILBOXES, (string)$this->userId, $id, $email);
 		if ($entry === null) {
-			throw new MailException('Boîte partagée inconnue : ' . $email);
+			throw new MailException('Boîte partagée inconnue : %s', [$email]);
 		}
 		return $entry;
 	}
@@ -387,7 +387,7 @@ class MailController extends Controller {
 		$bcc = self::splitAddresses((string)$this->request->getParam('bcc', ''));
 		foreach (array_merge($to, $cc, $bcc) as $addr) {
 			if (!filter_var($addr, FILTER_VALIDATE_EMAIL)) {
-				throw new MailException('Adresse invalide : ' . $addr);
+				throw new MailException('Adresse invalide : %s', [$addr]);
 			}
 		}
 		if ($forSending && ($mode === 'new' || $mode === 'forward') && $to === [] && $cc === [] && $bcc === []) {
@@ -449,7 +449,8 @@ class MailController extends Controller {
 			$size = array_sum(array_map(fn ($a) => strlen($a['content']), $new))
 				+ array_sum(array_column($client->draftAttachments($draftId), 'size'));
 			if ($size > self::MAX_ATTACHMENTS_BYTES) {
-				throw new MailException('Pièces jointes trop lourdes (' . round($size / 1048576, 1) . ' Mo, ' . (self::MAX_ATTACHMENTS_BYTES / 1048576) . ' Mo au plus) : envoyez les plus grosses en lien Nextcloud');
+				throw new MailException('Pièces jointes trop lourdes (%1$s Mo, %2$s Mo au plus) : envoyez les plus grosses en lien Nextcloud',
+					[round($size / 1048576, 1), self::MAX_ATTACHMENTS_BYTES / 1048576]);
 			}
 			return ['attachments' => $client->addDraftAttachments($draftId, $new)];
 		});
@@ -495,7 +496,8 @@ class MailController extends Controller {
 			$m['html'] = $inline['html'];
 			$size = array_sum(array_map(fn ($a) => strlen($a['content']), array_merge($attachments, $inline['images'])));
 			if ($size > self::MAX_ATTACHMENTS_BYTES) {
-				throw new MailException('Pièces jointes et images trop lourdes (' . round($size / 1048576, 1) . ' Mo, ' . (self::MAX_ATTACHMENTS_BYTES / 1048576) . ' Mo au plus) : envoyez les plus grosses en lien Nextcloud');
+				throw new MailException('Pièces jointes et images trop lourdes (%1$s Mo, %2$s Mo au plus) : envoyez les plus grosses en lien Nextcloud',
+					[round($size / 1048576, 1), self::MAX_ATTACHMENTS_BYTES / 1048576]);
 			}
 			$attachments = array_merge($attachments, $inline['images']);
 			$draftId = (string)$this->request->getParam('draftId', '');
@@ -552,7 +554,7 @@ class MailController extends Controller {
 					continue;
 				}
 				if (($errors[$i] ?? 1) !== UPLOAD_ERR_OK || !is_uploaded_file((string)$tmp[$i])) {
-					throw new MailException('Échec de l\'envoi de la pièce jointe « ' . $name . ' » (fichier trop gros ?)');
+					throw new MailException('Échec de l\'envoi de la pièce jointe « %s » (fichier trop gros ?)', [$name]);
 				}
 				$content = (string)file_get_contents((string)$tmp[$i]);
 				$total += strlen($content);
@@ -567,10 +569,10 @@ class MailController extends Controller {
 				try {
 					$node = $userFolder->get((string)$path);
 				} catch (NotFoundException) {
-					throw new MailException('Fichier introuvable : ' . $path);
+					throw new MailException('Fichier introuvable : %s', [$path]);
 				}
 				if (!$node instanceof File || !$node->isReadable()) {
-					throw new MailException('Impossible de joindre : ' . $path);
+					throw new MailException('Impossible de joindre : %s', [$path]);
 				}
 				$total += $node->getSize();
 				if ($total > self::MAX_ATTACHMENTS_BYTES) {

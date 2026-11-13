@@ -63,10 +63,10 @@ class ServerConfigService {
 				continue;
 			}
 			if ($domain !== '*' && !preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/', $domain)) {
-				throw new MailException('Domaine invalide : ' . $domain);
+				throw new MailException('Domaine invalide : %s', [$domain]);
 			}
 			if (isset($seen[$domain])) {
-				throw new MailException('Domaine en double : ' . $domain);
+				throw new MailException('Domaine en double : %s', [$domain]);
 			}
 			$seen[$domain] = true;
 			$clean[] = [
@@ -93,10 +93,10 @@ class ServerConfigService {
 		}
 		$parts = parse_url($url);
 		if ($parts === false || empty($parts['host'])) {
-			throw new MailException('Adresse de serveur invalide : ' . $url);
+			throw new MailException('Adresse de serveur invalide : %s', [$url]);
 		}
 		if (strtolower($parts['scheme'] ?? '') !== 'https') {
-			throw new MailException('Le serveur Exchange doit être en HTTPS : ' . $url);
+			throw new MailException('Le serveur Exchange doit être en HTTPS : %s', [$url]);
 		}
 		$path = $parts['path'] ?? '';
 		if ($path === '' || $path === '/') {
@@ -113,7 +113,7 @@ class ServerConfigService {
 		if ($url !== null) {
 			return $url;
 		}
-		throw new MailException(sprintf('Aucun serveur Exchange n\'est configuré pour le domaine « %s ». Contactez votre administrateur.', self::domainOf($email)));
+		throw new MailException('Aucun serveur Exchange n\'est configuré pour le domaine « %s ». Contactez votre administrateur.', [self::domainOf($email)]);
 	}
 
 	/**
@@ -168,7 +168,7 @@ class ServerConfigService {
 				continue;
 			}
 			if (!preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/', $h)) {
-				throw new MailException('Nom de serveur invalide : ' . $h);
+				throw new MailException('Nom de serveur invalide : %s', [$h]);
 			}
 			$clean[$h] = true;
 		}

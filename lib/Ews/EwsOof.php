@@ -89,7 +89,7 @@ class EwsOof {
 		$xp = $this->client->request($body, false);
 		$msg = $xp->query('//m:ResponseMessage')->item(0);
 		if ($msg instanceof \DOMElement && $msg->getAttribute('ResponseClass') === 'Error') {
-			throw new MailException(EwsClient::translateError($this->client->text($xp, 'm:ResponseCode', $msg), $this->client->text($xp, 'm:MessageText', $msg)));
+			throw EwsClient::exchangeError($this->client->text($xp, 'm:ResponseCode', $msg), $this->client->text($xp, 'm:MessageText', $msg));
 		}
 		return $xp;
 	}

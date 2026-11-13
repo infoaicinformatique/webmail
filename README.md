@@ -232,7 +232,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.55.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.56.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -254,7 +254,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.55 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.56 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -351,7 +351,7 @@ make test
   (corps et en-têtes) avec le même schéma. L'étape Autodiscover suppose une seconde instance du serveur factice sur le port 443 et,
   dans le conteneur Nextcloud, `autodiscover.societe-c.fr` dirigé vers elle (`/etc/hosts`).
 
-Traductions : l'app est écrite en français ; chaque texte de la page passe par `_('…')` (la fonction `t` de Nextcloud), le texte français servant de clé (le fichier `fr` est vide, mais nécessaire : sans lui, Nextcloud chargerait l'anglais pour un compte en français). Les traductions sont dans `l10n/source/<langue>.json` (texte français → traduction) ; `php l10n/build.php` produit les fichiers que Nextcloud charge (`l10n/<langue>.js` et `.json`, `en` et `en_GB` pour l'anglais). La langue suivie est celle du compte Nextcloud (Paramètres personnels → Langue) :
+Traductions : l'app est écrite en français ; chaque texte de la page passe par `_('…')` (la fonction `t` de Nextcloud), et côté serveur par `IL10N::t()` (messages d'erreur `MailException('… %s', [$param])`, notifications, widgets, page d'administration), le texte français servant de clé (le fichier `fr` est vide, mais nécessaire : sans lui, Nextcloud chargerait l'anglais pour un compte en français). Les traductions sont dans `l10n/source/<langue>.json` (texte français → traduction) ; `php l10n/build.php` produit les fichiers que Nextcloud charge (`l10n/<langue>.js` et `.json`, `en` et `en_GB` pour l'anglais). La langue suivie est celle du compte Nextcloud (Paramètres personnels → Langue) :
 
 ![Le courrier en anglais](docs/capture-anglais.png)
 
@@ -372,5 +372,4 @@ templates/          page principale et page d'administration
 
 ## Évolutions possibles
 
-**Nextcloud et serveur**
-- Traduction anglaise : en cours (toute la page est traduite : courrier, agenda, contacts, tâches, règles, délégués, partage ; les messages du serveur et la page d'administration suivent)
+Toutes les évolutions envisagées sont réalisées ; la dernière est la traduction anglaise (version 1.56 : la page, les messages du serveur, les notifications, les widgets et la page d'administration suivent la langue du compte Nextcloud).

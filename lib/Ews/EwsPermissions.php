@@ -81,7 +81,7 @@ class EwsPermissions {
 					$user = trim($m[1]);
 				}
 				if (!filter_var($user, FILTER_VALIDATE_EMAIL)) {
-					throw new MailException('Adresse invalide : ' . $user);
+					throw new MailException('Adresse invalide : %s', [$user]);
 				}
 				if (strcasecmp($user, $ownEmail) === 0) {
 					throw new MailException('Vous êtes déjà propriétaire de ce dossier');
@@ -89,19 +89,19 @@ class EwsPermissions {
 			}
 			$key = strtolower($user);
 			if (isset($seen[$key])) {
-				throw new MailException('Personne en double : ' . $user);
+				throw new MailException('Personne en double : %s', [$user]);
 			}
 			$seen[$key] = true;
 
 			if ($level === 'keep') {
 				if (!isset($byUser[$key])) {
-					throw new MailException('Autorisation introuvable pour ' . $user);
+					throw new MailException('Autorisation introuvable pour %s', [$user]);
 				}
 				$xml .= $this->rebuild($byUser[$key]);
 				continue;
 			}
 			if (!in_array($level, $this->levels, true)) {
-				throw new MailException('Niveau de partage inconnu : ' . $level);
+				throw new MailException('Niveau de partage inconnu : %s', [$level]);
 			}
 			$xml .= $this->entry($distinguished
 				? '<t:DistinguishedUser>' . $user . '</t:DistinguishedUser>'

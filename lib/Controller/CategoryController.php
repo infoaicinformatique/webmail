@@ -39,7 +39,7 @@ class CategoryController extends Controller {
 
 	#[NoAdminRequired]
 	public function index(int $id): Response {
-		return $this->handle(fn () => ['categories' => $this->categories($id)->list(), 'colors' => EwsCategories::COLORS, 'colorNames' => EwsCategories::COLOR_NAMES]);
+		return $this->handle(fn () => ['categories' => $this->categories($id)->list(), 'colors' => EwsCategories::COLORS, 'colorNames' => $this->colorNames()]);
 	}
 
 	#[NoAdminRequired]
@@ -62,5 +62,15 @@ class CategoryController extends Controller {
 			$this->accounts->getClient($this->accounts->find((string)$this->userId, $id))->setCategories($itemIds, $categories);
 			return ['status' => 'ok'];
 		});
+	}
+
+	/**
+	 * The names of Outlook's preset colours, in the language of the user
+	 * (EwsCategories::COLOR_NAMES are the French texts, translation keys).
+	 * @return string[]
+	 */
+	private function colorNames(): array {
+		$l = $this->l10n();
+		return array_map(fn (string $name) => $l->t($name), EwsCategories::COLOR_NAMES);
 	}
 }

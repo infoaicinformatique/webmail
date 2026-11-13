@@ -2684,6 +2684,17 @@ async function main() {
 			await shot('69-english-calendar')
 			await page.click('.wm-modal button:has-text("Cancel")')
 			await page.evaluate((v) => (v ? localStorage.setItem('webmail.calview', v) : localStorage.removeItem('webmail.calview')), calView)
+			// a message of the server, in English too
+			await page.click('.wm-cal-add:has-text("Add a shared calendar")')
+			await page.fill('input[name=sharedEmail]', 'not-an-address')
+			await page.click('.wm-modal button[type=submit]')
+			await page.waitForSelector('.wm-modal .wm-form-error:has-text("Invalid e-mail address")')
+			await page.click('.wm-modal button:has-text("Cancel")')
+			// the administration page
+			await page.goto(NC + '/settings/admin/webmail')
+			await page.waitForSelector('#webmail-admin h2:has-text("Exchange Webmail — servers")')
+			await shot('69-english-admin')
+			await page.goto(NC + '/apps/webmail/')
 		} finally {
 			occ('user:setting admin core lang fr')
 		}

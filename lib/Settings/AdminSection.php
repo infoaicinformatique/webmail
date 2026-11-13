@@ -20,7 +20,7 @@ class AdminSection implements IIconSection {
 	}
 
 	public function getName(): string {
-		return 'Webmail Exchange';
+		return $this->l->t('Webmail Exchange');
 	}
 
 	public function getPriority(): int {

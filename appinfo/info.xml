@@ -13,8 +13,9 @@
 * Tableau de bord Nextcloud : widgets « Courrier non lu » et « Agenda Exchange » (prochains rendez-vous) ; nouveaux messages signalés dans les notifications Nextcloud, même webmail fermé ; messages et rendez-vous Exchange dans la recherche unifiée ; rappels des rendez-vous dans les notifications Nextcloud.
 * Délégués : gestion de l'accès délégué de chaque boîte (droits sur l'agenda, le courrier, les contacts et les tâches, copie des invitations).
 * Contacts Exchange : plusieurs carnets, contacts partagés par les collègues (tous leurs carnets partagés), partage de ses carnets sans délégation, carnets des dossiers publics, annuaire de l'entreprise, consultation, recherche, création, modification, groupes de contacts, photos, import et export vCard ; complétion des adresses (contacts + annuaire).
-* Tâches Exchange : liste à faire / terminées, échéances (en retard en rouge), importance, état, notes ; ajout rapide, case pour terminer, modification, suppression.]]></description>
-	<version>1.55.0</version>
+* Tâches Exchange : liste à faire / terminées, échéances (en retard en rouge), importance, état, notes ; ajout rapide, case pour terminer, modification, suppression.
+* En français ou en anglais, selon la langue du compte Nextcloud.]]></description>
+	<version>1.56.0</version>
 	<licence>agpl</licence>
 	<author>AIC Informatique</author>
 	<namespace>Webmail</namespace>

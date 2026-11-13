@@ -87,7 +87,7 @@ class SharedFolderService {
 		$entry += ['folder' => '', 'folderName' => ''];
 		$list = array_values(array_filter($this->list($type, $userId, $accountId), fn ($c) => !self::same($c, $entry['email'], $entry['folder'])));
 		if (count($list) >= self::MAX) {
-			throw new MailException('Trop d\'éléments partagés (maximum ' . self::MAX . ')');
+			throw new MailException('Trop d\'éléments partagés (maximum %s)', [self::MAX]);
 		}
 		$entry['email'] = strtolower($entry['email']);
 		$list[] = $entry;

@@ -37,7 +37,7 @@ class ShareLinkService {
 		try {
 			$node = $this->rootFolder->getUserFolder($userId)->get($path);
 		} catch (NotFoundException) {
-			throw new MailException('Fichier introuvable : ' . $path);
+			throw new MailException('Fichier introuvable : %s', [$path]);
 		}
 		if (!$node->isShareable()) {
 			throw new MailException('Ce fichier ne peut pas être partagé');
@@ -61,7 +61,7 @@ class ShareLinkService {
 			$share = $this->shares->createShare($share);
 		} catch (\Exception $e) {
 			$hint = method_exists($e, 'getHint') ? (string)$e->getHint() : '';
-			throw new MailException('Lien de partage impossible : ' . ($hint !== '' ? $hint : $e->getMessage()));
+			throw new MailException('Lien de partage impossible : %s', [$hint !== '' ? $hint : $e->getMessage()]);
 		}
 		return $this->describe($share, $node);
 	}

@@ -10,6 +10,7 @@ use OCA\Webmail\Db\AccountMapper;
 use OCA\Webmail\Ews\EwsClient;
 use OCA\Webmail\Exception\MailException;
 use OCP\IConfig;
+use OCP\IL10N;
 use OCP\IUserManager;
 use OCP\Notification\IManager;
 use Psr\Log\LoggerInterface;
@@ -228,20 +229,32 @@ class MailNotificationService {
 	}
 
 	/**
+	 * "Nouveau message de Paul", "Nouveau message d'Anne", "Nouveau message".
+	 * @param ?string $shown what stands for the sender in the text (the « {sender} » of a rich subject), the name by default
+	 */
+	public static function title(string $from, ?IL10N $l = null, ?string $shown = null): string {
+		if ($from === '') {
+			return L10n::t($l, 'Nouveau message');
+		}
+		return self::fromWord($from) === "d'"
+			? L10n::t($l, 'Nouveau message d\'%s', [$shown ?? $from])
+			: L10n::t($l, 'Nouveau message de %s', [$shown ?? $from]);
+	}
+
+	/**
 	 * What the notification says. Nextcloud shows the message on one line:
 	 * the parts are separated by dashes, not line breaks.
 	 * @param array<string, mixed> $p subject parameters
 	 * @return array{0: string, 1: string} subject, message
 	 */
-	public static function texts(array $p, string $preview): array {
+	public static function texts(array $p, string $preview, ?IL10N $l = null): array {
 		$subject = trim((string)($p['subject'] ?? ''));
-		$parts = ['« ' . ($subject !== '' ? $subject : '(sans objet)') . ' »'];
+		$parts = [L10n::t($l, '« %s »', [$subject !== '' ? $subject : L10n::t($l, '(sans objet)')])];
 		$preview = trim(preg_replace('/\s+/u', ' ', $preview) ?? $preview);
 		if ($preview !== '') {
 			$parts[] = mb_strlen($preview) > 140 ? mb_substr($preview, 0, 139) . '…' : $preview;
 		}
 		$message = implode(' — ', $parts) . ' · ' . (string)($p['email'] ?? '');
-		$from = self::sender($p);
-		return [$from !== '' ? 'Nouveau message ' . self::fromWord($from) . $from : 'Nouveau message', $message];
+		return [self::title(self::sender($p), $l), $message];
 	}
 }
