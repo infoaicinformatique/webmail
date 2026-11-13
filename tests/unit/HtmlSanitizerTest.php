@@ -82,4 +82,44 @@ class HtmlSanitizerTest extends TestCase {
 		$this->assertStringContainsString('<a href="https://x.fr">le site</a>', $out, 'existing links untouched');
 		$this->assertStringContainsString('<ul><li><b>1 200 €</b> é</li></ul>', $out);
 	}
+
+	public function testCommentsCannotHideMarkup(): void {
+		// « <!--> » is an empty comment for a browser, the start of a long one for libxml
+		foreach (['<p>a</p><!--><img src=https://t/x onerror=alert(1)>-->', '<p>a<!--->b<img src=x onerror=alert(1)>--></p>', '<p>a</p><!-- ok -->'] as $html) {
+			$out = $this->clean($html)['html'];
+			$this->assertStringNotContainsString('<!--', $out, $html);
+			$this->assertStringNotContainsString('onerror', $out, $html);
+		}
+	}
+
+	public function testRemoteImagesOfASrcset(): void {
+		$r = $this->clean('<img srcset="data:image/png;base64,AA 1w, https://t/x 9999w" sizes="9999px">');
+		$this->assertStringNotContainsString('https://t/x', $r['html']);
+		$this->assertTrue($r['hasRemoteContent']);
+		// without a space after the comma: still two images
+		$this->assertStringNotContainsString('https://', $this->clean('<img srcset="data:image/png;base64,AA 1w,https://t/x 9w">')['html']);
+		// an inline image keeps its srcset; remote ones are kept once allowed
+		$this->assertStringContainsString('srcset="data:image/png;base64,AA 1x"', $this->clean('<img srcset="data:image/png;base64,AA 1x">')['html']);
+		$this->assertStringContainsString('srcset="https://t/a 1x, https://t/b 2x"', $this->clean('<img srcset="https://t/a 1x, https://t/b 2x">', [], true)['html']);
+		// as a browser: an address runs up to a space, so « a.png,b(1).png » is one address
+		$this->assertSame(['data:image/png;base64,AA', 'https://t/x', 'a.png,b(1).png', 'c.png'], HtmlSanitizer::srcsetUrls('data:image/png;base64,AA 1w,https://t/x 9w, a.png,b(1).png 2x, c.png'));
+	}
+
+	public function testRemoteImagesHiddenInCss(): void {
+		foreach (['background:u\\72l(https://t/z)', 'background:image-set("https://t/y" 1x)', 'background:-webkit-image-set(\'//t/w\' 1x)'] as $css) {
+			$r = $this->clean('<p style="' . htmlspecialchars($css) . '">x</p>');
+			$this->assertDoesNotMatchRegularExpression('#//t/#', $r['html'], $css);
+			$this->assertTrue($r['hasRemoteContent'], $css);
+		}
+		// the same addresses are kept once remote content is allowed
+		$this->assertStringContainsString('https://t/y', $this->clean('<p style="background:image-set(&quot;https://t/y&quot; 1x)">x</p>', [], true)['html']);
+	}
+
+	public function testCssEscapesCannotCloseTheStyle(): void {
+		$out = $this->clean('<style>p{color:red}\\3c/style\\3e\\3cscript\\3e alert(1)\\3c/script\\3e</style><p>x</p>')['html'];
+		$this->assertStringNotContainsString('<script', $out);
+		$this->assertSame(1, substr_count($out, '</style>'));
+		// ordinary escapes still work
+		$this->assertStringContainsString('content:"“"', $this->clean('<p style="content:&quot;\\201C&quot;">x</p>')['html']);
+	}
 }

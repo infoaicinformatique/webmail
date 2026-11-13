@@ -101,10 +101,13 @@ class AccountService {
 		}
 		foreach (EwsClient::autodiscoverUrls($domain) as $endpoint) {
 			$host = (string)parse_url($endpoint, PHP_URL_HOST);
-			if (!$this->servers->isReachableHost($host)) {
+			$ips = $this->servers->reachableIps($host);
+			if ($ips === null) {
 				continue;
 			}
-			$found = $this->buildClient($endpoint, $email, $password, 20)->discoverEwsUrl($endpoint);
+			$client = $this->buildClient($endpoint, $email, $password, 20);
+			$client->pinHost($host, $ips);
+			$found = $client->discoverEwsUrl($endpoint);
 			if ($found === null) {
 				continue;
 			}

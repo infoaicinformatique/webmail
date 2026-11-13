@@ -442,7 +442,12 @@ class ContactController extends Controller {
 			$none->cacheFor($seconds);
 			return $none;
 		}
-		$response = new DataDisplayResponse($img['content'], Http::STATUS_OK, ['Content-Type' => $img['contentType']]);
+		$response = new DataDisplayResponse($img['content'], Http::STATUS_OK, [
+			'Content-Type' => $img['contentType'],
+			// never read as anything but this image
+			'X-Content-Type-Options' => 'nosniff',
+			'Content-Disposition' => 'inline; filename="photo"',
+		]);
 		$response->cacheFor($seconds);
 		return $response;
 	}

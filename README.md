@@ -232,7 +232,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.61.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.62.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -275,7 +275,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.61 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.62 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -340,8 +340,14 @@ Les requêtes vers Exchange suivent les réglages réseau de Nextcloud, comme se
 - Les mots de passe Exchange sont chiffrés avec la clé de l'instance Nextcloud (`ICrypto`).
   Un utilisateur ne voit que ses propres comptes. Les comptes sont supprimés en même temps que l'utilisateur Nextcloud.
 - Les utilisateurs ne choisissent pas l'URL du serveur : seuls les serveurs définis par l'administrateur sont contactés, et uniquement en HTTPS.
-- Le corps des messages est nettoyé (scripts, formulaires, objets, gestionnaires `on*`, URL `javascript:`, CSS dangereux)
+- Le corps des messages est nettoyé (scripts, formulaires, objets, gestionnaires `on*`, URL `javascript:`, CSS dangereux,
+  commentaires HTML — qu'un navigateur ne termine pas toujours au même endroit que le serveur)
   puis affiché dans une iframe `sandbox` sans `allow-scripts`. La politique CSP de Nextcloud bloque en plus les scripts en ligne.
+  Les images distantes restent bloquées sous toutes leurs formes (`src`, `srcset`, CSS `url()` même échappé, `image-set()`).
+- Les photos de contacts sont servies avec le type de l'image elle-même (JPEG, PNG ou GIF), jamais celui déclaré dans
+  Exchange, et avec `X-Content-Type-Options: nosniff`.
+- Autodiscover se connecte uniquement aux adresses publiques vérifiées juste avant (une seconde réponse DNS ne peut pas
+  rediriger la requête vers le réseau local).
 - L'ajout de compte est limité à 10 tentatives par 5 minutes et par utilisateur.
 - Le certificat TLS du serveur Exchange est vérifié. Pour un environnement de test uniquement, cette vérification se désactive avec
   `occ config:app:set webmail verify_tls --value=no`.

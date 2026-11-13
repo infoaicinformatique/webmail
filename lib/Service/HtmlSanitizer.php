@@ -48,6 +48,11 @@ class HtmlSanitizer {
 		foreach (iterator_to_array($xp->query('//processing-instruction()')) as $pi) {
 			$pi->parentNode?->removeChild($pi);
 		}
+		// comments: libxml and browsers do not end them at the same place (« <!--> » is an
+		// empty comment for a browser), so what follows could come back to life as markup
+		foreach (iterator_to_array($xp->query('//comment()')) as $comment) {
+			$comment->parentNode?->removeChild($comment);
+		}
 
 		/** @var \DOMElement $el */
 		foreach (iterator_to_array($xp->query('//*')) as $el) {
@@ -78,6 +83,24 @@ class HtmlSanitizer {
 
 				if ($name === 'href') {
 					continue; // links are fine (opened in a new tab)
+				}
+
+				// several images, the browser picks one: each candidate follows the rules below
+				if ($name === 'srcset') {
+					$keep = true;
+					foreach (self::srcsetUrls($value) as $candidate) {
+						$url = strtolower((string)preg_replace('/[\x00-\x1f]+/', '', $candidate));
+						if (preg_match('#^(https?:)?//#', $url)) {
+							$hasRemote = true;
+							$keep = $keep && $allowRemote;
+						} elseif (!str_starts_with($url, 'data:image/') || str_starts_with($url, 'data:image/svg')) {
+							$keep = false;
+						}
+					}
+					if (!$keep) {
+						$el->removeAttribute($attr->nodeName);
+					}
+					continue;
 				}
 
 				// resource attributes (src, background, ...)
@@ -136,13 +159,62 @@ class HtmlSanitizer {
 		return ['html' => $out, 'hasRemoteContent' => $hasRemote];
 	}
 
+	/**
+	 * The addresses of a srcset, cut as a browser does (HTML standard): an address runs
+	 * up to a space (a data: address keeps its commas), its descriptors up to a comma.
+	 *
+	 * @return string[]
+	 */
+	public static function srcsetUrls(string $value): array {
+		$urls = [];
+		$i = 0;
+		$n = strlen($value);
+		$space = static fn (string $c): bool => $c === ' ' || $c === "\t" || $c === "\n" || $c === "\r" || $c === "\f";
+		while ($i < $n) {
+			while ($i < $n && ($space($value[$i]) || $value[$i] === ',')) {
+				$i++;
+			}
+			if ($i >= $n) {
+				break;
+			}
+			$start = $i;
+			while ($i < $n && !$space($value[$i])) {
+				$i++;
+			}
+			$url = substr($value, $start, $i - $start);
+			if (str_ends_with($url, ',')) {
+				// no descriptors: the next address follows
+				$urls[] = rtrim($url, ',');
+				continue;
+			}
+			$urls[] = $url;
+			$depth = 0;
+			while ($i < $n) {
+				$c = $value[$i++];
+				if ($c === '(') {
+					$depth++;
+				} elseif ($c === ')') {
+					$depth = max(0, $depth - 1);
+				} elseif ($c === ',' && $depth === 0) {
+					break;
+				}
+			}
+		}
+		return $urls;
+	}
+
 	private function cleanCss(string $css, bool $allowRemote, bool &$hasRemote): string {
+		// CSS escapes (« u\72l( » is « url( »): decoded first, so that the rules below see them
+		$css = (string)preg_replace_callback('/\\\\([0-9a-fA-F]{1,6})\s?/', fn (array $m) => mb_chr((int)hexdec($m[1])) ?: '', $css);
+		$css = (string)preg_replace('/\\\\(.)/su', '$1', $css);
+		// « < » has no use in CSS, and decoded it could close a <style> element (« \3c/style\3e »)
+		$css = str_replace('<', '', $css);
 		// legacy IE script vectors
 		$css = (string)preg_replace('/expression\s*\(|behaviou?r\s*:|-moz-binding\s*:|javascript\s*:/i', 'blocked(', $css);
 		$css = (string)preg_replace('/@import[^;]*;?/i', '', $css);
 		// position:fixed could overlay the UI if the iframe ever grew
 		$css = (string)preg_replace('/position\s*:\s*fixed/i', 'position:static', $css);
-		return (string)preg_replace_callback('/url\s*\(\s*([\'"]?)(.*?)\1\s*\)/i', function (array $m) use ($allowRemote, &$hasRemote): string {
+		$css = (string)preg_replace_callback('/url\s*\(\s*([\'"]?)(.*?)\1\s*\)/i', function (array $m) use ($allowRemote, &$hasRemote): string {
 			$url = strtolower(trim($m[2]));
 			if (str_starts_with($url, 'data:image/') && !str_starts_with($url, 'data:image/svg')) {
 				return $m[0];
@@ -152,6 +224,11 @@ class HtmlSanitizer {
 				return $allowRemote ? $m[0] : 'none';
 			}
 			return 'none';
+		}, $css);
+		// image-set("https://…" 1x), src("…"), and any other address written as a plain string
+		return (string)preg_replace_callback('/([\'"])\s*((?:https?:)?\/\/[^\'"]*)\1/i', function (array $m) use ($allowRemote, &$hasRemote): string {
+			$hasRemote = true;
+			return $allowRemote ? $m[0] : '""';
 		}, $css);
 	}
 
