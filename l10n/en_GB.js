@@ -1107,6 +1107,7 @@ OC.L10N.register(
     "refusée (déjà prise ?)": "declined (already taken?)",
     "retirer": "remove",
     "revenir à l'agenda": "back to the calendar",
+    "récent": "recent",
     "réservation provisoire": "tentatively booked",
     "réservée": "booked",
     "réussi": "passed",

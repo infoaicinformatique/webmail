@@ -3504,6 +3504,33 @@ async function main() {
 		assert.strictEqual(await tracker(), false, 'blocked again')
 	})
 
+	await step('recent recipients: the people written to come first in the completion, from the first letter', async () => {
+		await page.click('.wm-folder >> nth=0')
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'Claire Martin <claire.martin@exemple.net>')
+		await page.fill('input[name=subject]', 'Planning de la semaine')
+		await page.fill('.wm-editor', 'Bonjour Claire, voici le planning.')
+		await submitCompose()
+		const resolves = []
+		const onRequest = (r) => { if (r.url().includes('/contacts/resolve')) resolves.push(r.url()) }
+		page.on('request', onRequest)
+		try {
+			await page.click('.wm-compose-btn')
+			await page.click('input[name=to]')
+			await page.keyboard.type('c')
+			// at once, without asking Exchange (one letter)
+			await page.waitForSelector('.wm-ac-item.active:has-text("Claire Martin"):has-text("claire.martin@exemple.net · récent")', { timeout: 2000 })
+			assert.deepStrictEqual(resolves, [])
+			await shot('84-recent-recipients')
+			await page.keyboard.press('Enter')
+			assert.strictEqual(await page.inputValue('input[name=to]'), 'Claire Martin <claire.martin@exemple.net>, ')
+		} finally {
+			page.off('request', onRequest)
+		}
+		await page.click('.wm-compose button:has-text("Annuler")')
+		await page.waitForSelector('.wm-compose', { state: 'detached' })
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')
