@@ -3518,10 +3518,15 @@ async function main() {
 			await page.click('.wm-compose-btn')
 			await page.click('input[name=to]')
 			await page.keyboard.type('c')
-			// at once, without asking Exchange (one letter)
-			await page.waitForSelector('.wm-ac-item.active:has-text("Claire Martin"):has-text("claire.martin@exemple.net · récent")', { timeout: 2000 })
+			// at once, without asking Exchange (one letter): the recent ones only
+			await page.waitForSelector('.wm-ac-item:has-text("Claire Martin"):has-text("claire.martin@exemple.net · récent")', { timeout: 2000 })
+			const first = await page.$$eval('.wm-ac-item', (els) => els.map((e) => e.textContent))
+			assert.ok(first.length <= 5 && first.every((t) => t.endsWith('· récent')), first.join(' | '))
 			assert.deepStrictEqual(resolves, [])
 			await shot('84-recent-recipients')
+			// a few more letters: the one meant, first (before the contacts and the directory)
+			await page.keyboard.type('laire m')
+			await page.waitForSelector('.wm-ac-item.active:has-text("claire.martin@exemple.net · récent")')
 			await page.keyboard.press('Enter')
 			assert.strictEqual(await page.inputValue('input[name=to]'), 'Claire Martin <claire.martin@exemple.net>, ')
 		} finally {
