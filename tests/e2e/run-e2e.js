@@ -1024,6 +1024,48 @@ async function main() {
 		await page.click('.wm-folder:has-text("Boîte de réception")')
 	})
 
+	await step('attachments kept with the draft', async () => {
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'client@exemple.fr')
+		await page.fill('input[name=subject]', 'Dossier de subvention')
+		await page.setInputFiles('.wm-file-input', [
+			{ name: 'formulaire.txt', mimeType: 'text/plain', buffer: Buffer.from('formulaire rempli') },
+			{ name: 'brouillon-budget.txt', mimeType: 'text/plain', buffer: Buffer.from('budget provisoire') },
+		])
+		// saved in Exchange with the draft at once
+		await page.waitForSelector('.wm-draft-att:has-text("formulaire.txt")')
+		await page.waitForSelector('.wm-draft-att:has-text("brouillon-budget.txt")')
+		await page.waitForSelector('.wm-draft-status:has-text("Pièces jointes enregistrées dans le brouillon")')
+		await shot('63-draft-attachments')
+		// the window closed: nothing lost
+		await page.click('.wm-compose button:has-text("Annuler")')
+		await page.waitForSelector('.wm-compose', { state: 'detached' })
+		await page.click('.wm-folder:has-text("Brouillons")')
+		const draft = '.wm-message:has-text("Dossier de subvention")'
+		await page.waitForSelector(draft + ' .wm-attach-icon')
+		await page.click(draft)
+		await page.waitForSelector('.wm-compose h2:has-text("Brouillon")')
+		await page.waitForSelector('.wm-draft-att:has-text("formulaire.txt")')
+		// one removed, one added (from Files)
+		await page.click('.wm-draft-att:has-text("brouillon-budget.txt") button:has-text("retirer")')
+		await page.waitForSelector('.wm-draft-att:has-text("brouillon-budget.txt")', { state: 'detached' })
+		await page.evaluate(() => { OC.dialogs.filepicker = (t, cb) => cb(['/Documents/devis-2027.pdf']) })
+		await page.click('.wm-compose button:has-text("Depuis Fichiers")')
+		await page.waitForSelector('.wm-draft-att:has-text("devis-2027.pdf")')
+		assert.strictEqual(await page.$$eval('.wm-draft-att', (els) => els.length), 2)
+		await page.click('.wm-compose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		await page.waitForSelector(draft, { state: 'detached' })
+		// sent once, with these two files
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.click('.wm-message:has-text("Dossier de subvention")')
+		await page.waitForSelector('.wm-attachment-name')
+		const atts = await page.$$eval('.wm-attachment-name', (els) => els.map((e) => e.textContent).sort())
+		assert.deepStrictEqual(atts, ['📎 devis-2027.pdf', '📎 formulaire.txt'])
+		assert.strictEqual(await page.$$eval('.wm-message', (els) => els.filter((e) => e.textContent.includes('Dossier de subvention')).length), 1)
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+	})
+
 	await step('images in the text: pasted screenshot, inserted image, sent inline', async () => {
 		await page.click('.wm-compose-btn')
 		await page.fill('input[name=to]', 'client@exemple.fr')

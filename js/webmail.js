@@ -2514,6 +2514,7 @@
 				Array.from(files.files).concat(others).forEach((f) => dt.items.add(f))
 				files.files = dt.files
 				renderAttachList()
+				persistFiles()
 			}
 		})
 		imagePicker.addEventListener('change', () => { insertImages(imagePicker.files); imagePicker.value = '' })
@@ -2598,8 +2599,57 @@
 		// Exchange (OVH) refuses messages over about 25 MB once encoded
 		const HEAVY = 15 * 1024 * 1024
 
+		// files kept in Exchange with the draft (a new message, or a draft opened from « Brouillons »);
+		// a reply or a forward is created again at each save: its files are sent with it
+		const keepsFiles = mode === 'new' || isDraft
+		let savedAtts = isDraft ? (original.attachments || []).filter((a) => !a.isInline && !a.isItem).map((a) => ({ id: a.id, name: a.name, size: a.size })) : []
+		let persisting = Promise.resolve()
+		const persistFiles = () => {
+			persisting = persisting.then(async () => {
+				if (!keepsFiles || closed) return
+				// heavy files stay here: they may still be sent as a Nextcloud link
+				const local = Array.from(files.files).filter((f) => f.size < HEAVY)
+				const paths = ncFiles.slice()
+				if (!local.length && !paths.length) return
+				if (!draftId) { dirty = true; await saveDraft() }
+				if (!draftId) return
+				const fd = new FormData()
+				fd.append('draftId', draftId)
+				local.forEach((f) => fd.append('files[]', f, f.name))
+				paths.forEach((p) => fd.append('filePaths[]', p))
+				draftStatus.textContent = 'Enregistrement des pièces jointes…'
+				try {
+					const r = await api('/accounts/' + state.accountId + '/draft/attachments', { method: 'POST', body: fd })
+					savedAtts = r.attachments
+					const dt = new DataTransfer()
+					Array.from(files.files).filter((f) => !local.includes(f)).forEach((f) => dt.items.add(f))
+					files.files = dt.files
+					ncFiles.splice(0, ncFiles.length, ...ncFiles.filter((p) => !paths.includes(p)))
+					draftStatus.textContent = 'Pièces jointes enregistrées dans le brouillon'
+				} catch (e) {
+					draftStatus.textContent = 'Pièces jointes non enregistrées : ' + e.message + ' (elles partiront avec le message)'
+				}
+				renderAttachList()
+			})
+			return persisting
+		}
+
 		const renderAttachList = () => {
 			clear(attachList)
+			savedAtts.forEach((a) => attachList.appendChild(h('li', { class: 'wm-draft-att', dataset: { id: a.id } },
+				'📎 ' + a.name + (a.size ? ' (' + formatSize(a.size) + ')' : '') + ' ',
+				h('span', { class: 'wm-muted' }, '· dans le brouillon '),
+				h('button', {
+					type: 'button',
+					class: 'wm-small',
+					onclick: async (e) => {
+						e.currentTarget.disabled = true
+						try {
+							savedAtts = (await api('/accounts/' + state.accountId + '/draft/attachments/delete', { method: 'POST', body: { draftId, attachmentId: a.id } })).attachments
+						} catch (err) { toast(err.message, true) }
+						renderAttachList()
+					},
+				}, 'retirer'))))
 			const local = Array.from(files.files)
 			const total = local.reduce((n, f) => n + f.size, 0)
 			local.forEach((f) => {
@@ -2615,13 +2665,15 @@
 					'Pièces jointes lourdes (' + formatSize(total) + ') : Exchange peut refuser le message. Préférez « 🔗 Envoyer en lien » : le fichier est déposé dans vos Fichiers et le destinataire reçoit un lien de téléchargement.'))
 			}
 		}
-		files.addEventListener('change', renderAttachList)
+		files.addEventListener('change', () => { renderAttachList(); persistFiles() })
+		renderAttachList()
 
 		const pickFromFiles = () => {
 			if (!(OC.dialogs && OC.dialogs.filepicker)) { toast('Sélecteur de fichiers indisponible', true); return }
 			OC.dialogs.filepicker('Joindre depuis Fichiers', (paths) => {
 				(Array.isArray(paths) ? paths : [paths]).forEach((p) => { if (p && !ncFiles.includes(p)) ncFiles.push(p) })
 				renderAttachList()
+				persistFiles()
 			}, true, null, true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
 		}
 
@@ -2726,9 +2778,12 @@
 				e.preventDefault()
 				// a save in progress must end first: the draft it creates is deleted after sending
 				clearTimeout(draftTimer)
+				await persisting
 				await saving
 				const fd = new FormData()
 				Object.entries(fields()).forEach(([k, v]) => fd.append(k, v))
+				// a new message saved with its files: the draft itself is sent
+				if (mode === 'new' && draftId && savedAtts.length) fd.set('mode', 'draft')
 				if (receipt.checked) fd.append('readReceipt', '1')
 				if (later.checked) {
 					const at = new Date(laterAt.value)
@@ -2772,9 +2827,6 @@
 		h('label', { class: 'wm-field' }, h('span', {}, 'Cci'), attachAutocomplete(bcc)),
 		h('label', { class: 'wm-field' }, h('span', {}, 'Objet'), subject),
 		h('div', { class: 'wm-editor-wrap' }, editorBar, body),
-		isDraft && original.attachments && original.attachments.length
-			? h('div', { class: 'wm-info wm-muted' }, 'Déjà joint : ' + original.attachments.map((a) => a.name).join(', '))
-			: null,
 		original && !isDraft ? h('div', { class: 'wm-info wm-muted' }, mode === 'forward'
 			? 'Le message d\'origine et ses pièces jointes seront ajoutés automatiquement sous votre texte.'
 			: 'Le message d\'origine sera cité automatiquement sous votre réponse.') : null,

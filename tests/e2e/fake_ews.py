@@ -678,6 +678,20 @@ def handle(op, el, user):
             msgs.append(ok(op, items))
         return wrap(op, msgs)
 
+    if op == 'DeleteAttachment':
+        out = []
+        for a in el.findall('m:AttachmentIds/t:AttachmentId', NS):
+            aid = a.get('Id')
+            parent = next((m for m in MESSAGES.values() if aid in m['attachments']), None)
+            if parent is None:
+                out.append(err(op, 'ErrorInvalidAttachmentId', 'The attachment id is invalid.'))
+                continue
+            parent['attachments'].remove(aid)
+            ATTACHMENTS.pop(aid, None)
+            parent['ck'] = 'CK-%d' % next(COUNTER)
+            out.append(ok(op, '<m:RootItemId RootItemId="%s" RootItemChangeKey="%s"/>' % (parent['id'], parent['ck'])))
+        return wrap(op, out)
+
     if op == 'CreateAttachment':
         parent = MESSAGES.get(el.find('m:ParentItemId', NS).get('Id'))
         if parent is None:

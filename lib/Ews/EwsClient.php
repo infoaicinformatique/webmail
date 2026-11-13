@@ -988,6 +988,44 @@ class EwsClient {
 	}
 
 	/**
+	 * Files joined to a draft while it is written: kept in Exchange with the
+	 * draft, so nothing is lost when the window is closed.
+	 * @param array<int, array{name: string, contentType: string, content: string}> $attachments
+	 * @return list<array{id: string, name: string, size: int}> the files of the draft now
+	 */
+	public function addDraftAttachments(string $draftId, array $attachments): array {
+		if ($attachments !== []) {
+			$this->addAttachments($draftId, $attachments);
+		}
+		return $this->draftAttachments($draftId);
+	}
+
+	/** @return list<array{id: string, name: string, size: int}> the files of a draft (not the images in its text) */
+	public function draftAttachments(string $draftId): array {
+		$xp = $this->request(
+			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:FieldURI FieldURI="item:Attachments"/></t:AdditionalProperties></m:ItemShape>'
+			. '<m:ItemIds><t:ItemId Id="' . $this->esc($draftId) . '"/></m:ItemIds></m:GetItem>'
+		);
+		$out = [];
+		foreach ($xp->query('//m:Items/*/t:Attachments/t:FileAttachment') as $att) {
+			if ($this->text($xp, 't:IsInline', $att) === 'true') {
+				continue;
+			}
+			$out[] = [
+				'id' => (string)$this->attr($xp, 't:AttachmentId', 'Id', $att),
+				'name' => (string)($this->text($xp, 't:Name', $att) ?? 'piece-jointe'),
+				'size' => (int)$this->text($xp, 't:Size', $att),
+			];
+		}
+		return $out;
+	}
+
+	public function deleteAttachment(string $attachmentId): void {
+		$this->request('<m:DeleteAttachment><m:AttachmentIds><t:AttachmentId Id="' . $this->esc($attachmentId) . '"/></m:AttachmentIds></m:DeleteAttachment>');
+	}
+
+	/**
 	 * Send a draft as it is in Exchange (after updateDraft), with extra attachments.
 	 */
 	public function sendSavedDraft(string $id, array $attachments = []): void {

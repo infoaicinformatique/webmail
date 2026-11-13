@@ -405,12 +405,50 @@ class MailController extends Controller {
 			$client = $this->client($id);
 			$m = $this->composed(false);
 			$draftId = (string)$this->request->getParam('draftId', '');
-			if ($m['mode'] === 'draft') {
+			// a draft opened from « Brouillons », or a new message already saved once:
+			// changed in place, so that the files joined to it stay
+			if ($m['mode'] === 'draft' || ($m['mode'] === 'new' && $draftId !== '')) {
 				$client->updateDraft($draftId, $m['subject'], $m['html'], $m['to'], $m['cc'], $m['bcc'], $m['importance']);
 				return ['draftId' => $draftId];
 			}
 			return ['draftId' => $client->saveDraft($draftId !== '' ? $draftId : null, $m['mode'], $m['subject'], $m['html'],
 				$m['to'], $m['cc'], $m['bcc'], $m['referenceId'], $m['importance'])];
+		});
+	}
+
+	/**
+	 * Files joined to a draft (multipart: draftId, files[], filePaths[]):
+	 * saved in Exchange with it.
+	 */
+	#[NoAdminRequired]
+	#[\OCP\AppFramework\Http\Attribute\UserRateLimit(limit: 60, period: 300)]
+	public function draftAttachments(int $id): Response {
+		return $this->handle(function () use ($id) {
+			$draftId = (string)$this->request->getParam('draftId', '');
+			if ($draftId === '') {
+				throw new MailException('Brouillon manquant');
+			}
+			$client = $this->client($id);
+			$new = $this->collectAttachments();
+			$size = array_sum(array_map(fn ($a) => strlen($a['content']), $new))
+				+ array_sum(array_column($client->draftAttachments($draftId), 'size'));
+			if ($size > self::MAX_ATTACHMENTS_BYTES) {
+				throw new MailException('Pièces jointes trop lourdes (' . round($size / 1048576, 1) . ' Mo, ' . (self::MAX_ATTACHMENTS_BYTES / 1048576) . ' Mo au plus) : envoyez les plus grosses en lien Nextcloud');
+			}
+			return ['attachments' => $client->addDraftAttachments($draftId, $new)];
+		});
+	}
+
+	#[NoAdminRequired]
+	public function deleteDraftAttachment(int $id, string $draftId, string $attachmentId): Response {
+		return $this->handle(function () use ($id, $draftId, $attachmentId) {
+			$client = $this->client($id);
+			// only a file of this draft
+			if (!in_array($attachmentId, array_column($client->draftAttachments($draftId), 'id'), true)) {
+				throw new MailException('Pièce jointe introuvable dans le brouillon');
+			}
+			$client->deleteAttachment($attachmentId);
+			return ['attachments' => $client->draftAttachments($draftId)];
 		});
 	}
 
