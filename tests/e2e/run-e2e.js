@@ -2665,6 +2665,14 @@ async function main() {
 		assert.ok(firstPages >= 0, 'first page of 25 then 25 more: ' + JSON.stringify(listRequests.slice(0, 12)))
 		// after a reload (empty message memory), the first unread messages of the inbox are loaded while idle
 		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		for (const subject of ['Préchargé 1', 'Préchargé 2']) {
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'user@societe-a.fr')
+			await page.fill('input[name=subject]', subject)
+			await page.fill('.wm-editor', 'Message à lire.')
+			await submitCompose()
+		}
 		const fetched = []
 		const onRequest = (r) => { if (r.url().includes('/message?')) fetched.push(new URL(r.url()).searchParams) }
 		page.on('request', onRequest)
