@@ -813,15 +813,19 @@ class Handler(BaseHTTPRequestHandler):
         ad = 'http://schemas.microsoft.com/exchange/2010/Autodiscover'
         root = ET.fromstring(raw)
         mailbox = root.findtext('.//{%s}Mailbox' % ad, default='')
-        setting = root.findtext('.//{%s}Setting' % ad, default='')
-        if setting != 'PublicFolderInformation' or self.headers.get('SOAPAction', '').strip('"') != ad + '/Autodiscover/GetUserSettings':
+        settings = [s.text for s in root.iter('{%s}Setting' % ad)]
+        if not settings or self.headers.get('SOAPAction', '').strip('"') != ad + '/Autodiscover/GetUserSettings':
             self.send(400, '')
             return
+        # the EWS address of a domain served here (societe-c.fr: found by Autodiscover, not in the admin table)
+        values = {'PublicFolderInformation': pim.PF_MAILBOX if mailbox else '',
+                  'ExternalEwsUrl': 'https://ex3.fake.test:8443/EWS/Exchange.asmx'}
+        found = ''.join('<UserSetting xmlns:i="http://www.w3.org/2001/XMLSchema-instance" i:type="StringSetting"><Name>%s</Name><Value>%s</Value></UserSetting>'
+                        % (n, values[n]) for n in settings if n in values)
         body = ('<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>'
                 '<GetUserSettingsResponseMessage xmlns="%s"><Response><ErrorCode>NoError</ErrorCode><UserResponses><UserResponse>'
-                '<ErrorCode>NoError</ErrorCode><UserSettings><UserSetting xmlns:i="http://www.w3.org/2001/XMLSchema-instance" i:type="StringSetting">'
-                '<Name>PublicFolderInformation</Name><Value>%s</Value></UserSetting></UserSettings></UserResponse></UserResponses>'
-                '</Response></GetUserSettingsResponseMessage></s:Body></s:Envelope>' % (ad, pim.PF_MAILBOX if mailbox else ''))
+                '<ErrorCode>NoError</ErrorCode><UserSettings>%s</UserSettings></UserResponse></UserResponses>'
+                '</Response></GetUserSettingsResponseMessage></s:Body></s:Envelope>' % (ad, found))
         self.send(200, body)
 
     def do_POST(self):

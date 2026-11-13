@@ -1215,6 +1215,59 @@ async function main() {
 		await shot('05-inbox')
 	})
 
+	await step('Autodiscover: the server of a domain missing from the table', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		// (the fake servers are on the local network: allowed here only)
+		occ('config:system:set allow_local_remote_servers --value=true --type=boolean')
+		const admin = async (enabled, hosts) => {
+			await page.goto(NC + '/settings/admin/webmail')
+			await page.waitForSelector('#webmail-admin')
+			await page.setChecked('#webmail-autodiscover', enabled)
+			await page.fill('#webmail-autodiscover-hosts', hosts)
+			await page.click('#webmail-save')
+			await page.waitForSelector('#webmail-admin-msg.success')
+		}
+		const add = async () => {
+			await page.goto(NC + '/apps/webmail/')
+			await page.click('text=Comptes et signature')
+			await page.fill('.wm-add-account input[type=email]', 'jean@societe-c.fr')
+			await page.fill('.wm-add-account input[type=password]', 'secret')
+			await page.click('.wm-add-account button[type=submit]')
+		}
+		try {
+			// off (the default): the usual message
+			await add()
+			await page.waitForSelector('.wm-add-account .wm-form-error:has-text("Aucun serveur Exchange n\'est configuré pour le domaine « societe-c.fr »")')
+			// on, but the server found is not among those allowed
+			await admin(true, 'mail.ovh.net')
+			await add()
+			await page.waitForSelector('.wm-add-account .wm-form-error:has-text("n\'est pas parmi ceux autorisés")')
+			// allowed: the account works, the server is remembered for the domain
+			await admin(true, 'fake.test')
+			await add()
+			await page.waitForFunction(() => [...document.querySelectorAll('.wm-account-select option')].some((o) => o.textContent === 'jean@societe-c.fr'))
+			await page.click('text=Comptes et signature')
+			await page.waitForSelector('.wm-domains-hint:has-text("Pour les autres, le serveur est cherché automatiquement")')
+			await page.goto(NC + '/settings/admin/webmail')
+			await page.waitForSelector('#webmail-discovered li[data-domain="societe-c.fr"]:has-text("https://ex3.fake.test:8443/EWS/Exchange.asmx")')
+			await shot('68-autodiscover')
+			// forgotten
+			await page.click('#webmail-discovered li[data-domain="societe-c.fr"] .wm-forget')
+			await page.waitForSelector('#webmail-discovered li[data-domain="societe-c.fr"]', { state: 'detached' })
+			await admin(false, 'mail.ovh.net')
+		} finally {
+			occ('config:system:delete allow_local_remote_servers')
+		}
+		// the account removed
+		await page.goto(NC + '/apps/webmail/')
+		await page.click('text=Comptes et signature')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-account-card:has-text("jean@societe-c.fr") button:has-text("Retirer ce compte")')
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-account-select option')].some((o) => o.textContent === 'jean@societe-c.fr'))
+		await page.selectOption('.wm-account-select', { label: 'user@societe-a.fr' })
+		await page.waitForSelector('.wm-message')
+	})
+
 	// ------------------------------------------------------------------ meeting invitation in the inbox
 	await step('meeting invitation e-mail: accept', async () => {
 		await page.selectOption('.wm-account-select', { label: 'user@societe-a.fr' })

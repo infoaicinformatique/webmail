@@ -101,5 +101,6 @@ return [
 
 		['name' => 'admin#get', 'url' => '/api/admin/servers', 'verb' => 'GET'],
 		['name' => 'admin#save', 'url' => '/api/admin/servers', 'verb' => 'PUT'],
+		['name' => 'admin#forgetDiscovered', 'url' => '/api/admin/discovered/delete', 'verb' => 'POST'],
 	],
 ];

@@ -127,6 +127,31 @@ class EwsClient {
 			return null;
 		}
 		$url = $parts['scheme'] . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '') . '/autodiscover/autodiscover.svc';
+		$value = (string)($this->userSettings($url, ['PublicFolderInformation'])['PublicFolderInformation'] ?? '');
+		return filter_var($value, FILTER_VALIDATE_EMAIL) ? $value : null;
+	}
+
+	/** The Autodiscover addresses tried for a mail domain, in Outlook's order. */
+	public static function autodiscoverUrls(string $domain): array {
+		return ['https://autodiscover.' . $domain . '/autodiscover/autodiscover.svc', 'https://' . $domain . '/autodiscover/autodiscover.svc'];
+	}
+
+	/**
+	 * The EWS address of this account given by an Autodiscover server
+	 * (GetUserSettings: ExternalEwsUrl, else InternalEwsUrl).
+	 */
+	public function discoverEwsUrl(string $autodiscoverUrl): ?string {
+		$s = $this->userSettings($autodiscoverUrl, ['ExternalEwsUrl', 'InternalEwsUrl']);
+		$url = trim((string)($s['ExternalEwsUrl'] ?? $s['InternalEwsUrl'] ?? ''));
+		return $url !== '' ? $url : null;
+	}
+
+	/**
+	 * SOAP Autodiscover (GetUserSettings) for the account.
+	 * @param string[] $names
+	 * @return array<string, string> the settings the server gave
+	 */
+	private function userSettings(string $url, array $names): array {
 		$ns = 'http://schemas.microsoft.com/exchange/2010/Autodiscover';
 		$action = $ns . '/Autodiscover/GetUserSettings';
 		$envelope = '<?xml version="1.0" encoding="utf-8"?>'
@@ -135,7 +160,7 @@ class EwsClient {
 			. '<wsa:Action>' . $action . '</wsa:Action><wsa:To>' . $this->esc($url) . '</wsa:To></soap:Header>'
 			. '<soap:Body><a:GetUserSettingsRequestMessage><a:Request>'
 			. '<a:Users><a:User><a:Mailbox>' . $this->esc($this->username) . '</a:Mailbox></a:User></a:Users>'
-			. '<a:RequestedSettings><a:Setting>PublicFolderInformation</a:Setting></a:RequestedSettings>'
+			. '<a:RequestedSettings>' . implode('', array_map(fn ($n) => '<a:Setting>' . $this->esc($n) . '</a:Setting>', $names)) . '</a:RequestedSettings>'
 			. '</a:Request></a:GetUserSettingsRequestMessage></soap:Body></soap:Envelope>';
 		try {
 			$headers = ['SOAPAction: "' . $action . '"'];
@@ -143,16 +168,23 @@ class EwsClient {
 				? ($this->transport)($url, $envelope, $headers)
 				: $this->httpPost($envelope, $headers, $url);
 		} catch (MailException) {
-			return null;
+			return [];
 		}
 		$doc = new \DOMDocument();
 		if ($status !== 200 || $response === '' || !@$doc->loadXML($response, LIBXML_NONET)) {
-			return null;
+			return [];
 		}
 		$xp = new \DOMXPath($doc);
 		$xp->registerNamespace('a', $ns);
-		$value = trim((string)$xp->evaluate('string(//a:UserSetting[a:Name="PublicFolderInformation"]/a:Value)'));
-		return filter_var($value, FILTER_VALIDATE_EMAIL) ? $value : null;
+		$out = [];
+		foreach ($xp->query('//a:UserSetting') as $setting) {
+			$name = trim((string)$xp->evaluate('string(a:Name)', $setting));
+			$value = trim((string)$xp->evaluate('string(a:Value)', $setting));
+			if ($name !== '' && $value !== '') {
+				$out[$name] = $value;
+			}
+		}
+		return $out;
 	}
 
 	// ------------------------------------------------------------------

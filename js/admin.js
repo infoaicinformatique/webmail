@@ -29,6 +29,33 @@
 			}
 		})
 
+		const discovered = document.getElementById('webmail-discovered')
+		const showDiscovered = (map) => {
+			discovered.innerHTML = ''
+			Object.entries(map || {}).forEach(([domain, url]) => {
+				const li = document.createElement('li')
+				li.dataset.domain = domain
+				li.append(domain + ' → ')
+				const code = document.createElement('code')
+				code.textContent = url
+				const forget = document.createElement('button')
+				forget.type = 'button'
+				forget.className = 'wm-forget'
+				forget.textContent = 'Oublier'
+				li.append(code, ' ', forget)
+				discovered.appendChild(li)
+			})
+		}
+		discovered.addEventListener('click', async (e) => {
+			if (!e.target.classList.contains('wm-forget')) return
+			const res = await fetch(OC.generateUrl('/apps/webmail/api/admin/discovered/delete'), {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', requesttoken: OC.requestToken },
+				body: JSON.stringify({ domain: e.target.closest('li').dataset.domain }),
+			})
+			if (res.ok) showDiscovered((await res.json()).discovered)
+		})
+
 		document.getElementById('webmail-save').addEventListener('click', async () => {
 			const servers = Array.from(tbody.querySelectorAll('tr')).map((tr) => ({
 				domain: tr.querySelector('.wm-domain').value.trim(),
@@ -42,7 +69,13 @@
 				const res = await fetch(OC.generateUrl('/apps/webmail/api/admin/servers'), {
 					method: 'PUT',
 					headers: { 'Content-Type': 'application/json', requesttoken: OC.requestToken },
-					body: JSON.stringify({ servers }),
+					body: JSON.stringify({
+						servers,
+						autodiscover: {
+							enabled: document.getElementById('webmail-autodiscover').checked,
+							hosts: document.getElementById('webmail-autodiscover-hosts').value.split(/[,;\s]+/).filter(Boolean),
+						},
+					}),
 				})
 				const data = await res.json()
 				if (!res.ok) throw new Error(data.message || 'Erreur')
@@ -55,6 +88,9 @@
 					tr.querySelector('.wm-url').value = s.url
 					tbody.appendChild(tr)
 				})
+				document.getElementById('webmail-autodiscover').checked = data.autodiscover.enabled
+				document.getElementById('webmail-autodiscover-hosts').value = data.autodiscover.hosts.join(', ')
+				showDiscovered(data.discovered)
 				msg.textContent = 'Enregistré'
 				msg.className = 'msg success'
 			} catch (e) {

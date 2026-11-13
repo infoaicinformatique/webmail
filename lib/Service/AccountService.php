@@ -65,8 +65,17 @@ class AccountService {
 			}
 		}
 
-		$url = $this->servers->resolveUrl($email);
+		$url = $this->servers->findUrl($email);
+		$discovered = false;
+		if ($url === null) {
+			// a domain missing from the table: its server found by Autodiscover, if the administrator allows it
+			$url = $this->discover($email, $password);
+			$discovered = true;
+		}
 		$this->buildClient($url, $email, $password)->testConnection();
+		if ($discovered) {
+			$this->servers->rememberDiscovered(ServerConfigService::domainOf($email), $url);
+		}
 
 		$account = new Account();
 		$account->setUserId($userId);
@@ -75,6 +84,46 @@ class AccountService {
 		$account->setPassword($this->crypto->encrypt($password));
 		$account->setSignature(null);
 		return $this->mapper->insert($account);
+	}
+
+	/**
+	 * The EWS server of an address, found by Autodiscover (as Outlook does:
+	 * autodiscover.<domain>, then <domain>), on a server the administrator
+	 * allows, never on the local network.
+	 * @throws MailException
+	 */
+	public function discover(string $email, string $password): string {
+		$domain = ServerConfigService::domainOf($email);
+		$settings = $this->servers->getAutodiscover();
+		if (!$settings['enabled']) {
+			// the usual message: the domain is missing from the table
+			$this->servers->resolveUrl($email);
+		}
+		foreach (EwsClient::autodiscoverUrls($domain) as $endpoint) {
+			$host = (string)parse_url($endpoint, PHP_URL_HOST);
+			if (!$this->servers->isReachableHost($host)) {
+				continue;
+			}
+			$found = $this->buildClient($endpoint, $email, $password, 20)->discoverEwsUrl($endpoint);
+			if ($found === null) {
+				continue;
+			}
+			try {
+				$url = ServerConfigService::normalizeUrl($found);
+			} catch (MailException) {
+				continue;
+			}
+			$ewsHost = (string)parse_url($url, PHP_URL_HOST);
+			if (!ServerConfigService::isAllowedHost($ewsHost, $settings['hosts'])) {
+				$this->logger->warning('Webmail: Autodiscover of ' . $domain . ' gave ' . $ewsHost . ', not among the servers allowed by the administrator', ['app' => 'webmail']);
+				throw new MailException(sprintf('Le serveur Exchange trouvé pour « %s » (%s) n\'est pas parmi ceux autorisés par l\'administrateur.', $domain, $ewsHost));
+			}
+			if (!$this->servers->isReachableHost($ewsHost)) {
+				continue;
+			}
+			return $url;
+		}
+		throw new MailException(sprintf('Aucun serveur Exchange n\'a été trouvé automatiquement pour le domaine « %s ». Vérifiez l\'adresse et le mot de passe, ou demandez à votre administrateur d\'ajouter ce domaine.', $domain));
 	}
 
 	/**

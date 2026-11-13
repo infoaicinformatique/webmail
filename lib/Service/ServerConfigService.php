@@ -109,7 +109,19 @@ class ServerConfigService {
 	 * @throws MailException when no server is configured for this address
 	 */
 	public function resolveUrl(string $email): string {
-		$domain = strtolower(substr((string)strrchr($email, '@'), 1));
+		$url = $this->findUrl($email);
+		if ($url !== null) {
+			return $url;
+		}
+		throw new MailException(sprintf('Aucun serveur Exchange n\'est configuré pour le domaine « %s ». Contactez votre administrateur.', self::domainOf($email)));
+	}
+
+	/**
+	 * The server of an address: the one set for its domain, else the one
+	 * found by Autodiscover for it, else the default one (« * »).
+	 */
+	public function findUrl(string $email): ?string {
+		$domain = self::domainOf($email);
 		$fallback = null;
 		foreach ($this->getServers() as $s) {
 			if ($s['domain'] === $domain) {
@@ -119,10 +131,122 @@ class ServerConfigService {
 				$fallback = $s['url'];
 			}
 		}
-		if ($fallback !== null) {
-			return $fallback;
+		return $this->getDiscovered()[$domain] ?? $fallback;
+	}
+
+	public static function domainOf(string $email): string {
+		return strtolower(substr((string)strrchr($email, '@'), 1));
+	}
+
+	// ------------------------------------------------------------------
+	// Autodiscover: the server of a domain missing from the table, found
+	// the way Outlook does; only on servers whose name the administrator
+	// allows (by default OVH's: mail.ovh.net)
+	// ------------------------------------------------------------------
+
+	public const DEFAULT_AUTODISCOVER_HOSTS = ['mail.ovh.net'];
+
+	/** @return array{enabled: bool, hosts: string[]} */
+	public function getAutodiscover(): array {
+		$hosts = json_decode($this->config->getAppValue(Application::APP_ID, 'autodiscover_hosts', ''), true);
+		return [
+			'enabled' => $this->config->getAppValue(Application::APP_ID, 'autodiscover', 'no') === 'yes',
+			'hosts' => is_array($hosts) ? array_values(array_filter(array_map('strval', $hosts))) : self::DEFAULT_AUTODISCOVER_HOSTS,
+		];
+	}
+
+	/**
+	 * @param string[] $hosts host names (or the end of them: « mail.ovh.net »)
+	 * @return array{enabled: bool, hosts: string[]}
+	 * @throws MailException
+	 */
+	public function setAutodiscover(bool $enabled, array $hosts): array {
+		$clean = [];
+		foreach ($hosts as $h) {
+			$h = strtolower(trim(ltrim(trim((string)$h), '*.')));
+			if ($h === '') {
+				continue;
+			}
+			if (!preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/', $h)) {
+				throw new MailException('Nom de serveur invalide : ' . $h);
+			}
+			$clean[$h] = true;
 		}
-		throw new MailException(sprintf('Aucun serveur Exchange n\'est configuré pour le domaine « %s ». Contactez votre administrateur.', $domain));
+		if ($enabled && $clean === []) {
+			throw new MailException('Indiquez au moins un serveur autorisé pour la découverte automatique (par exemple mail.ovh.net)');
+		}
+		$this->config->setAppValue(Application::APP_ID, 'autodiscover', $enabled ? 'yes' : 'no');
+		$this->config->setAppValue(Application::APP_ID, 'autodiscover_hosts', json_encode(array_keys($clean)));
+		return $this->getAutodiscover();
+	}
+
+	/** @return array<string, string> domain => EWS URL found by Autodiscover */
+	public function getDiscovered(): array {
+		$data = json_decode($this->config->getAppValue(Application::APP_ID, 'discovered', '{}'), true);
+		$out = [];
+		foreach (is_array($data) ? $data : [] as $domain => $url) {
+			try {
+				$out[(string)$domain] = self::normalizeUrl((string)$url);
+			} catch (MailException) {
+			}
+		}
+		return $out;
+	}
+
+	public function rememberDiscovered(string $domain, string $url): void {
+		$all = $this->getDiscovered();
+		$all[$domain] = $url;
+		ksort($all);
+		$this->config->setAppValue(Application::APP_ID, 'discovered', json_encode($all, JSON_UNESCAPED_SLASHES));
+	}
+
+	public function forgetDiscovered(string $domain): void {
+		$all = $this->getDiscovered();
+		unset($all[strtolower($domain)]);
+		$this->config->setAppValue(Application::APP_ID, 'discovered', json_encode($all, JSON_UNESCAPED_SLASHES));
+	}
+
+	/** A server name allowed by the administrator (« mail.ovh.net » allows ex3.mail.ovh.net). */
+	public static function isAllowedHost(string $host, array $allowed): bool {
+		$host = strtolower(rtrim($host, '.'));
+		foreach ($allowed as $a) {
+			$a = strtolower((string)$a);
+			if ($a !== '' && ($host === $a || str_ends_with($host, '.' . $a))) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Addresses of the Internet only: a mail domain is chosen by whoever
+	 * types an address, it must not make Nextcloud call its local network
+	 * (unless config.php allows it: « allow_local_remote_servers »).
+	 * @param string[] $ips
+	 */
+	public static function arePublicIps(array $ips): bool {
+		if ($ips === []) {
+			return false;
+		}
+		foreach ($ips as $ip) {
+			if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	public function isReachableHost(string $host): bool {
+		if ($this->config->getSystemValueBool('allow_local_remote_servers', false)) {
+			return true;
+		}
+		$ips = @gethostbynamel($host) ?: [];
+		foreach (@dns_get_record($host, DNS_AAAA) ?: [] as $r) {
+			if (!empty($r['ipv6'])) {
+				$ips[] = $r['ipv6'];
+			}
+		}
+		return self::arePublicIps($ips);
 	}
 
 	/** @return string[] */

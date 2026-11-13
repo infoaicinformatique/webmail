@@ -3027,8 +3027,9 @@
 		const btn = h('button', { type: 'submit', class: 'primary' }, 'Connecter')
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
 
-		const domainsHint = state.domains.length
-			? h('p', { class: 'wm-muted' }, 'Domaines pris en charge : ' + state.domains.join(', '))
+		const domainsHint = state.domains.length || state.autodiscover
+			? h('p', { class: 'wm-muted wm-domains-hint' }, (state.domains.length ? 'Domaines pris en charge : ' + state.domains.join(', ') + '. ' : '')
+				+ (state.autodiscover ? (state.domains.length ? 'Pour les autres, le serveur est cherché automatiquement.' : 'Le serveur de votre adresse est cherché automatiquement.') : ''))
 			: h('p', { class: 'wm-warning' }, 'Aucun serveur Exchange n\'est encore configuré. ',
 				state.isAdmin
 					? h('a', { href: OC.generateUrl('/settings/admin/webmail') }, 'Configurer les serveurs (administration)')
@@ -3110,6 +3111,7 @@
 		root = document.getElementById('webmail-app')
 		if (!root) return
 		try { state.domains = JSON.parse(root.dataset.domains || '[]') } catch (e) { state.domains = [] }
+		state.autodiscover = root.dataset.autodiscover === '1'
 		state.isAdmin = root.dataset.isAdmin === '1'
 
 		try {
