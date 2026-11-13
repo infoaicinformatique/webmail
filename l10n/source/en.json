@@ -1208,5 +1208,17 @@
 	"Plus d'options…": "More options…",
 	"Envoi annulé": "Sending cancelled",
 	"La semaine dernière": "Last week",
-	"Ce mois-ci": "This month"
+	"Ce mois-ci": "This month",
+	"Adresse ou domaine invalide : %s": "Invalid address or domain: %s",
+	"Trop d'expéditeurs de confiance (%s au plus)": "Too many trusted senders (%s at most)",
+	"Les images de {who} s'afficheront désormais directement": "Images from {who} will now show at once",
+	"Toujours pour {who}": "Always for {who}",
+	"Tous les expéditeurs de ce domaine": "All the senders of this domain",
+	"Images affichées : {who} fait partie de vos expéditeurs de confiance.": "Images shown: {who} is one of your trusted senders.",
+	"Gérer": "Manage",
+	"Aucun. Sur un message aux images bloquées, « Toujours pour… » ajoute son expéditeur (ou son domaine).": "None. On a message with blocked images, “Always for…” adds its sender (or its domain).",
+	"Tout le domaine {domain}": "The whole domain {domain}",
+	"Retirer {who}": "Remove {who}",
+	"Images des expéditeurs de confiance": "Images of trusted senders",
+	"Leurs messages affichent leurs images distantes directement ; pour les autres, elles restent bloquées (elles peuvent servir à savoir que vous avez lu le message).": "Their messages show their remote images at once; for the others they stay blocked (they can be used to know you read the message)."
 }

@@ -14,6 +14,9 @@ return [
 		['name' => 'template#index', 'url' => '/api/templates', 'verb' => 'GET'],
 		['name' => 'template#save', 'url' => '/api/templates', 'verb' => 'POST'],
 		['name' => 'template#delete', 'url' => '/api/templates/delete', 'verb' => 'POST'],
+		['name' => 'trusted_images#index', 'url' => '/api/trusted-images', 'verb' => 'GET'],
+		['name' => 'trusted_images#add', 'url' => '/api/trusted-images', 'verb' => 'POST'],
+		['name' => 'trusted_images#remove', 'url' => '/api/trusted-images/remove', 'verb' => 'POST'],
 
 		['name' => 'mail#folders', 'url' => '/api/accounts/{id}/folders', 'verb' => 'GET'],
 		['name' => 'mail#mailboxes', 'url' => '/api/accounts/{id}/mailboxes', 'verb' => 'GET'],

@@ -13,6 +13,7 @@ use OCA\Webmail\Service\HtmlSanitizer;
 use OCA\Webmail\Service\MailNotificationService;
 use OCA\Webmail\Service\SharedFolderService;
 use OCA\Webmail\Service\SnoozeService;
+use OCA\Webmail\Service\TrustedImagesService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
@@ -40,6 +41,7 @@ class MailController extends Controller {
 		private MailNotificationService $bell,
 		private SharedFolderService $shared,
 		private SnoozeService $snooze,
+		private TrustedImagesService $trustedImages,
 		private IRootFolder $rootFolder,
 		private IURLGenerator $urlGenerator,
 		private LoggerInterface $logger,
@@ -252,9 +254,12 @@ class MailController extends Controller {
 			if (strtoupper((string)$msg['bodyType']) !== 'HTML') {
 				$body = '<pre style="white-space:pre-wrap;font-family:inherit">' . htmlspecialchars($body, ENT_QUOTES, 'UTF-8') . '</pre>';
 			}
-			$clean = $this->sanitizer->sanitize($body, $cidMap, $remote);
+			// a sender trusted by the user: their images at once
+			$trusted = !$remote && !empty($msg['from']['email']) && $this->trustedImages->trusts((string)$this->userId, (string)$msg['from']['email']);
+			$clean = $this->sanitizer->sanitize($body, $cidMap, $remote || $trusted);
 			$msg['body'] = $clean['html'];
 			$msg['hasRemoteContent'] = $clean['hasRemoteContent'];
+			$msg['remoteTrusted'] = $trusted && $clean['hasRemoteContent'];
 
 			// Inline images referenced from the body are not listed as attachments
 			$used = [];

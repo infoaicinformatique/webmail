@@ -974,3 +974,8 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 
 /* a slot being drawn with the mouse in the week grid */
 .wm-slot-ghost { position: absolute; left: 1px; width: calc(100% - 3px); border-radius: var(--border-radius, 4px); background: var(--color-primary-element-light, rgba(0, 130, 201, .2)); border: 1px dashed var(--color-primary-element, #0082c9); pointer-events: none; z-index: 2; padding: 2px 4px; box-sizing: border-box; font-size: 0.8em; }
+
+/* trusted senders: their remote images at once */
+.wm-remote-banner .wm-trust-sender, .wm-remote-banner .wm-trust-domain { margin-inline-start: 6px; }
+.wm-trusted-list { list-style: none; margin: 0; padding: 0; }
+.wm-trusted-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--color-border); }

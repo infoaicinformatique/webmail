@@ -3469,6 +3469,33 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('trusted senders: « Toujours pour… » shows a sender\'s remote images at once, until removed', async () => {
+		const row = '.wm-message:has-text("Devis pour la maintenance annuelle")'
+		const tracker = () => page.evaluate(() => !!document.querySelector('.wm-body-frame').contentDocument.querySelector('img[src*="tracker.example"]'))
+		await page.click('.wm-folder >> nth=0')
+		await page.click(row)
+		await page.waitForSelector('.wm-remote-banner .wm-trust-sender:has-text("Toujours pour jean.dupont@client-exemple.fr")')
+		await page.waitForSelector('.wm-remote-banner .wm-trust-domain:has-text("Toujours pour @client-exemple.fr")')
+		await page.waitForSelector('.wm-body-frame')
+		assert.strictEqual(await tracker(), false, 'blocked')
+		await page.click('.wm-trust-sender')
+		await page.waitForSelector('.wm-toast:has-text("Les images de jean.dupont@client-exemple.fr s\'afficheront désormais directement")')
+		await page.waitForSelector('.wm-trusted-banner:has-text("jean.dupont@client-exemple.fr fait partie de vos expéditeurs de confiance")')
+		await page.locator('.wm-remote-banner').waitFor({ state: 'detached' })
+		await page.waitForFunction(() => { const f = document.querySelector('.wm-body-frame'); return f && f.contentDocument && f.contentDocument.querySelector('img[src*="tracker.example"]') })
+		await shot('83-trusted-sender')
+		// in the settings, removed: blocked again
+		await page.click('.wm-trusted-banner button:has-text("Gérer")')
+		await page.waitForSelector('.wm-trusted-list li[data-entry="jean.dupont@client-exemple.fr"]')
+		await page.click('.wm-trusted-list li[data-entry="jean.dupont@client-exemple.fr"] button')
+		await page.waitForSelector('.wm-trusted-list li.wm-muted')
+		await page.click('.wm-folder >> nth=0')
+		await page.click(row)
+		await page.waitForSelector('.wm-remote-banner .wm-trust-sender')
+		await page.waitForSelector('.wm-body-frame')
+		assert.strictEqual(await tracker(), false, 'blocked again')
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')
