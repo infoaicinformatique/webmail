@@ -3539,8 +3539,7 @@ async function main() {
 	await step('touch: a message swiped to the right is read / unread, to the left goes to the trash (with « Annuler »)', async () => {
 		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°2"))'
 		// a finger on the row, moved by a fraction of its width (touch events, as a phone sends them)
-		const swipe = (fraction) => page.evaluate(([sel, f]) => {
-			const el = document.querySelector(sel)
+		const swipe = (fraction) => page.locator(row).evaluate((el, f) => {
 			const r = el.getBoundingClientRect()
 			const x = r.left + r.width / 2
 			const y = r.top + r.height / 2
@@ -3548,7 +3547,7 @@ async function main() {
 			el.dispatchEvent(new TouchEvent('touchstart', { touches: [t(x)], bubbles: true, cancelable: true }))
 			for (let i = 1; i <= 10; i++) el.dispatchEvent(new TouchEvent('touchmove', { touches: [t(x + r.width * f * i / 10)], bubbles: true, cancelable: true }))
 			el.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [t(x + r.width * f)], bubbles: true, cancelable: true }))
-		}, [row, fraction])
+		}, fraction)
 		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector(row)
 		assert.ok(!(await page.$(row + '.unread')), 'read to start with')
