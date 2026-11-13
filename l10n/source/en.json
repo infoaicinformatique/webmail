@@ -1200,5 +1200,6 @@
 	"Aucune commande": "No command",
 	"Commandes": "Commands",
 	"Ctrl+K": "Ctrl+K",
-	"Palette de commandes : aller à un dossier, créer, rechercher": "Command palette: go to a folder, create, search"
+	"Palette de commandes : aller à un dossier, créer, rechercher": "Command palette: go to a folder, create, search",
+	"Annulé": "Undone"
 }

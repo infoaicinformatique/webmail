@@ -493,9 +493,10 @@ class MailController extends Controller {
 	#[NoAdminRequired]
 	public function move(int $id, array $itemIds, string $target): Response {
 		return $this->handle(function () use ($id, $itemIds, $target) {
-			$this->client($id)->moveItems($itemIds, $target);
+			// (the ids in the new folder: what « Annuler » moves back)
+			$ids = $this->client($id)->moveItems($itemIds, $target);
 			$this->dismiss($itemIds);
-			return ['status' => 'ok'];
+			return ['status' => 'ok', 'ids' => $ids];
 		});
 	}
 

@@ -111,6 +111,7 @@ OC.L10N.register(
     "Annuler l'envoi": "Undo",
     "Annuler la sélection": "Clear the selection",
     "Annuler la sélection (Échap)": "Clear the selection (Esc)",
+    "Annulé": "Undone",
     "Aperçu": "Preview",
     "Aperçu de la pièce jointe": "Attachment preview",
     "Aperçu de {name}": "Preview of {name}",

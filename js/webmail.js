@@ -232,17 +232,34 @@
 
 	function clear(e) { while (e.firstChild) e.removeChild(e.firstChild) }
 
-	function toast(message, isError) {
+	/**
+	 * A short message at the bottom; with an action (« Annuler »), a button that stays a little longer
+	 * (and while the pointer is on it).
+	 */
+	function toast(message, isError, action) {
 		let box = document.getElementById('wm-toasts')
 		if (!box) {
 			box = h('div', { id: 'wm-toasts', 'aria-live': 'polite' })
 			document.body.appendChild(box)
 		}
-		const t = h('div', { class: 'wm-toast' + (isError ? ' wm-toast-error' : ''), role: 'status' }, message)
+		const t = h('div', { class: 'wm-toast' + (isError ? ' wm-toast-error' : '') + (action ? ' wm-toast-undo' : ''), role: 'status' }, message)
 		box.appendChild(t)
 		while (box.children.length > 3) box.firstChild.remove()
-		setTimeout(() => t.classList.add('wm-toast-hide'), 4000)
-		setTimeout(() => t.remove(), 4600)
+		let timers = []
+		const leave = () => {
+			timers.forEach(clearTimeout)
+			timers = [setTimeout(() => t.classList.add('wm-toast-hide'), action ? 8000 : 4000), setTimeout(() => t.remove(), action ? 8600 : 4600)]
+		}
+		if (action) {
+			t.appendChild(h('button', {
+				type: 'button',
+				class: 'wm-toast-action',
+				onclick: () => { t.remove(); action.run() },
+			}, action.label))
+			t.addEventListener('mouseenter', () => { timers.forEach(clearTimeout); t.classList.remove('wm-toast-hide') })
+			t.addEventListener('mouseleave', leave)
+		}
+		leave()
 	}
 
 	// ------------------------------------------------------------------
@@ -2852,15 +2869,51 @@
 		}
 	}
 
+	/**
+	 * « Annuler » after a move or a delete: the messages go back where each one was
+	 * (with their new ids: Exchange gives an item another id in another folder).
+	 * @param {Array<{id: ?string, from: string}>} moved
+	 */
+	function undoMove(moved) {
+		const back = moved.filter((x) => x.id && x.from)
+		if (!back.length) return null
+		return {
+			label: _('Annuler'),
+			run: async () => {
+				const byFolder = new Map()
+				back.forEach((x) => byFolder.set(x.from, (byFolder.get(x.from) || []).concat(x.id)))
+				try {
+					for (const [folder, ids] of byFolder) {
+						await api('/accounts/' + state.accountId + '/move', { method: 'POST', body: { itemIds: ids, target: folder } })
+						listCache.delete(state.accountId + '|' + folder)
+					}
+					toast(_('Annulé'))
+					if (byFolder.has(state.folderId) || isSearching()) loadMessages(true)
+					loadFolders()
+				} catch (e) { toast(e.message, true) }
+			},
+		}
+	}
+
+	/** Where each message was before it left the list (in a search of all folders, its own folder). */
+	function originsOf(ids) {
+		return ids.map((id) => {
+			const m = state.messages.find((x) => x.id === id)
+			return (m && m.folderId) || state.folderId
+		})
+	}
+
 	async function moveMessages(ids, target, targetName) {
+		const from = originsOf(ids)
 		const undo = removeFromList(ids)
 		try {
-			await api('/accounts/' + state.accountId + '/move', { method: 'POST', body: { itemIds: ids, target } })
+			const r = await api('/accounts/' + state.accountId + '/move', { method: 'POST', body: { itemIds: ids, target } })
 			const name = targetName || folderName(target)
 			const count = ids.length
 			toast(name
 				? (count > 1 ? _('{count} messages déplacés vers « {name} »', { count, name }) : _('Message déplacé vers « {name} »', { name }))
-				: (count > 1 ? _('{count} messages déplacés', { count }) : _('Message déplacé')))
+				: (count > 1 ? _('{count} messages déplacés', { count }) : _('Message déplacé')),
+			false, undoMove(((r && r.ids) || []).map((id, i) => ({ id, from: from[i] }))))
 			listCache.delete(state.accountId + '|' + target)
 			loadFolders()
 		} catch (e) {
@@ -2872,14 +2925,23 @@
 	async function deleteMessages(ids, permanent) {
 		if (permanent && !window.confirm(ids.length > 1 ? _('Supprimer définitivement ces {count} messages ?', { count: ids.length }) : _('Supprimer définitivement ce message ?'))) return
 		ids.forEach((id) => state.checked.delete(id))
+		const from = originsOf(ids)
+		// the « Éléments supprimés » of the mailbox shown: the messages are moved there, so that it can be undone
+		const trash = state.folders.find((f) => f.role === 'deleteditems')
 		const undo = removeFromList(ids)
 		try {
-			await api('/accounts/' + state.accountId + '/delete', { method: 'POST', body: { itemIds: ids, permanent: !!permanent } })
+			let back = null
+			if (!permanent && trash && !from.includes(trash.id)) {
+				const r = await api('/accounts/' + state.accountId + '/move', { method: 'POST', body: { itemIds: ids, target: trash.id } })
+				back = undoMove(((r && r.ids) || []).map((id, i) => ({ id, from: from[i] })))
+			} else {
+				await api('/accounts/' + state.accountId + '/delete', { method: 'POST', body: { itemIds: ids, permanent: !!permanent } })
+			}
 			const count = ids.length
 			toast(permanent
 				? (count > 1 ? _('{count} messages supprimés définitivement', { count }) : _('Message supprimé définitivement'))
-				: (count > 1 ? _('{count} messages placés dans les éléments supprimés', { count }) : _('Message placé dans les éléments supprimés')))
-			const trash = state.folders.find((f) => f.role === 'deleteditems')
+				: (count > 1 ? _('{count} messages placés dans les éléments supprimés', { count }) : _('Message placé dans les éléments supprimés')),
+			false, back)
 			if (trash) listCache.delete(state.accountId + '|' + trash.id)
 			loadFolders()
 		} catch (e) {
