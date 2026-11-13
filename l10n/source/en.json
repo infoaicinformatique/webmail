@@ -1189,5 +1189,16 @@
 	"Adresse Matrix invalide : %s (par exemple %s)": "Invalid Matrix address: %s (for example %s)",
 	"Matrix": "Matrix",
 	"Écrire sur Matrix (Element)": "Write on Matrix (Element)",
-	"Écrire sur Matrix": "Write on Matrix"
+	"Écrire sur Matrix": "Write on Matrix",
+	"Aller à": "Go to",
+	"Réglages": "Settings",
+	"Comptes": "Accounts",
+	"Rechercher « {text} » dans tout le courrier": "Search “{text}” in all the mail",
+	"Aller à un dossier, créer, rechercher…": "Go to a folder, create, search…",
+	"Commande": "Command",
+	"Palette de commandes": "Command palette",
+	"Aucune commande": "No command",
+	"Commandes": "Commands",
+	"Ctrl+K": "Ctrl+K",
+	"Palette de commandes : aller à un dossier, créer, rechercher": "Command palette: go to a folder, create, search"
 }
