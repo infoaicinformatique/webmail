@@ -2639,7 +2639,7 @@ async function main() {
 		const listCall = /\/apps\/webmail\/api\/accounts\/\d+\/(messages|conversations)\?/
 		let release
 		const held = new Promise((resolve) => { release = resolve })
-		await page.route(listCall, async (route) => { await held; await route.continue() })
+		await page.route(listCall, async (route) => { await held; await route.continue().catch(() => null) }) // may already be let through by unroute
 		try {
 			const t0 = Date.now()
 			await page.reload()
