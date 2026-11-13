@@ -272,6 +272,8 @@ Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.50 ne modi
 
 ### Découverte automatique (Autodiscover)
 
+![Découverte automatique](docs/capture-autodiscover.png)
+
 Pour les domaines absents du tableau, cochez « **Chercher automatiquement le serveur des autres domaines** ». Quand un utilisateur ajoute une adresse d'un autre domaine, le webmail cherche son serveur comme Outlook : `autodiscover.<domaine>`, puis `<domaine>`, avec l'adresse et le mot de passe saisis. Le serveur trouvé est **retenu pour ce domaine** et affiché sous le tableau (« Oublier » pour le chercher à nouveau).
 
 Par sécurité :
