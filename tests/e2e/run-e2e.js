@@ -2864,7 +2864,8 @@ async function main() {
 	await step('Nextcloud unified search: messages and events, the link opens them', async () => {
 		const search = async (term, section) => {
 			await page.goto(NC + '/apps/files/')
-			await page.click('header button[aria-label="Recherche unifiée"]')
+			// up to Nextcloud 33: a button that opens the search; Nextcloud 34: a field in the header
+			await page.click('header button[aria-label="Recherche unifiée"], .unified-search-input__button')
 			await page.keyboard.type(term)
 			await page.waitForSelector('text=' + section)
 		}
