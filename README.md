@@ -26,7 +26,7 @@ et sur les téléphones, et inversement.
 | Liste | Défilement continu (50 messages à la fois), aperçu, pièce jointe, importance, suivi (drapeau), actualisation toutes les 2 minutes |
 | Fluidité | Un dossier déjà ouvert s'affiche **immédiatement**, à la même position, puis se met à jour. Les messages voisins de celui que vous lisez (et celui que survole la souris) sont chargés à l'avance, **sans être marqués comme lus**. Supprimer, déplacer, marquer ou suivre un message est **instantané** (annulé si Exchange refuse) ; après une suppression, le message suivant s'ouvre. L'agenda charge aussi à l'avance la semaine ou le mois précédent et suivant, et les carnets d'adresses déjà vus s'affichent tout de suite. Côté serveur, une seule connexion HTTPS vers Exchange par requête, réponses compressées **Onglets instantanés** : pendant les temps morts de la boîte de réception, l'agenda (la période qui s'ouvre en premier), les tâches à faire et les contacts sont chargés à l'avance, l'un après l'autre ; leur onglet s'affiche alors aussitôt, puis se met à jour (une fois par compte, à nouveau après 10 minutes ; jamais en mode économie de données) Les identifiants des dossiers fixes (boîte de réception, envoyés, agenda, contacts…) sont gardés en cache par Nextcloud : chaque mise à jour de la liste des dossiers, de l'agenda ou des carnets fait **une requête Exchange de moins** Au démarrage, la liste des comptes arrive **avec la page** : les dossiers et les messages sont demandés à Exchange aussitôt, sans requête préalable |
 | Clavier | `j`/`k` (ou ↓/↑) message suivant/précédent, `r` répondre, `a` répondre à tous, `f` transférer, `n` nouveau message, `Suppr` supprimer, `u` non lu, `s` suivi, `/` rechercher, `Échap` revenir à la liste, `?` aide (aussi dans « Raccourcis clavier » en bas à gauche) **Palette de commandes** : `Ctrl+K` (`⌘K` sur Mac), depuis n'importe quel onglet, ou « 🔎 Commandes » en bas à gauche : quelques lettres (sans accents) pour aller à un dossier (« fact » → Factures), au courrier, à l'agenda, aux contacts ou aux tâches, créer un message, un événement, un contact ou une tâche, changer de compte, ou rechercher le texte tapé dans tout le courrier ; ↑/↓ puis Entrée |
-| Recherche | Recherche Exchange (AQS) dans le dossier courant **ou dans tous les dossiers** (le dossier de chaque résultat est indiqué, 200 résultats au plus). Bouton ⏷ : filtres **Non lus**, **Pièces jointes**, **Suivis** et **période** (7 jours, 30 jours, 12 mois), seuls ou avec des mots |
+| Recherche | Recherche Exchange (AQS) dans le dossier courant **ou dans tous les dossiers** (le dossier de chaque résultat est indiqué, 200 résultats au plus). Bouton ⏷ : filtres **Non lus**, **Pièces jointes**, **Suivis** et **période** (7 jours, 30 jours, 12 mois), seuls ou avec des mots Les résultats arrivent **pendant la frappe**, après une courte pause (350 ms, dès 2 caractères ; Entrée cherche tout de suite) ; vider le champ remet le dossier |
 | Lecture | Le HTML est nettoyé côté serveur et affiché dans une iframe isolée, sans aucun script. Les images intégrées (`cid:`) s'affichent. Les images distantes sont bloquées tant que l'utilisateur ne clique pas sur « Afficher les images » |
 | Actions | Marquer comme lu ou non lu, suivi, déplacer, supprimer (vers « Éléments supprimés », puis suppression définitive) |
 | Reporter | « ⏰ Reporter » dans la barre d'un message de la boîte de réception : **Plus tard aujourd'hui** (18 h), **Demain matin** (8 h), **Ce week-end** (samedi 9 h), **La semaine prochaine** (lundi 8 h) ou une date et une heure choisies. Le message part dans le dossier « Reportés » (créé la première fois) et **revient dans la boîte de réception, non lu**, à l'heure dite, même webmail fermé (tâche de fond de Nextcloud, toutes les 5 minutes). Dans « Reportés », chaque message affiche quand il revient, avec « Remettre dans la boîte de réception maintenant » |
@@ -241,7 +241,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.82.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.83.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -284,7 +284,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.82 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.83 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

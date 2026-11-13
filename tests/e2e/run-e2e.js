@@ -240,6 +240,31 @@ async function main() {
 		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 62)
 	})
 
+	await step('search while typing: results after a short pause, one request for the word typed, the folder back when emptied', async () => {
+		const searches = []
+		const onRequest = (r) => { const u = new URL(r.url()); if (/\/api\/accounts\/\d+\/(messages|conversations)$/.test(u.pathname) && u.searchParams.get('q')) searches.push(u.searchParams.get('q')) }
+		page.on('request', onRequest)
+		try {
+			await page.click('.wm-search')
+			// typed at an ordinary pace: no request for « r », « ré »… only for the word
+			await page.keyboard.type('réunion', { delay: 60 })
+			await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 1)
+			assert.strictEqual(await page.textContent('.wm-message-subject'), 'Réunion de lundi')
+			assert.deepStrictEqual(searches, ['réunion'])
+			// still where one types
+			assert.ok(await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('wm-search')), 'focus kept')
+			// one letter: not searched yet
+			await page.fill('.wm-search', 'z')
+			await page.waitForTimeout(800)
+			assert.deepStrictEqual(searches, ['réunion'])
+			// emptied: the folder again
+			await page.fill('.wm-search', '')
+			await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 62)
+		} finally {
+			page.off('request', onRequest)
+		}
+	})
+
 	await step('search filters and search in all folders', async () => {
 		const subjects = () => page.$$eval('.wm-message-subject', (els) => els.map((e) => e.textContent))
 		const settle = () => page.waitForFunction(() => !document.querySelector('.wm-list .icon-loading') && document.querySelector('.wm-search-info, .wm-message'))
