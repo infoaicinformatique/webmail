@@ -131,6 +131,23 @@ class EwsClientTest extends EwsTestCase {
 		$this->assertStringContainsString('<t:FieldURI FieldURI="message:IsRead"/><t:FieldURIOrConstant><t:Constant Value="false"/>', $this->requests[0]);
 	}
 
+	public function testNewMessagesEmptyInboxStartsBeforeAnyMessage(): void {
+		// not Nextcloud's clock: if it is ahead of Exchange's, the messages received
+		// meanwhile would be dated before the starting point and never announced
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="0" IncludesLastItemInRange="true"><t:Items/></m:RootFolder>'));
+		$this->queue($this->inboxUnread(0));
+		$this->assertSame('1970-01-01T00:00:00Z', $this->client()->newMessages(null)['latest']);
+		// the next check then finds whatever arrived, read or not by then
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="1" IncludesLastItemInRange="true"><t:Items>'
+			. '<t:Message><t:ItemId Id="F1" ChangeKey="c"/><t:Subject>Premier</t:Subject><t:DateTimeReceived>2026-11-12T09:00:00Z</t:DateTimeReceived><t:IsRead>false</t:IsRead></t:Message>'
+			. '</t:Items></m:RootFolder>'));
+		$this->queue($this->inboxUnread(1));
+		$r = $this->client()->newMessages('1970-01-01T00:00:00Z');
+		$this->assertSame(['F1'], array_column($r['items'], 'id'));
+		$this->assertSame('2026-11-12T09:00:00Z', $r['latest']);
+		$this->assertStringContainsString('<t:Constant Value="1970-01-01T00:00:00Z"/>', $this->requests[2]);
+	}
+
 	public function testNewMessagesNothingNew(): void {
 		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="0" IncludesLastItemInRange="true"><t:Items/></m:RootFolder>'));
 		$this->queue($this->inboxUnread(0));

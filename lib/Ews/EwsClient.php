@@ -20,6 +20,9 @@ class EwsClient {
 	public const NS_T = 'http://schemas.microsoft.com/exchange/services/2006/types';
 
 	/** Folders that can be addressed by their well-known name. */
+	/** Where new messages start from when the inbox is empty (newMessages). */
+	public const BEFORE_ANY_MESSAGE = '1970-01-01T00:00:00Z';
+
 	public const DISTINGUISHED = ['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'outbox', 'msgfolderroot', 'archivemsgfolderroot'];
 
 	/** @var null|callable(string $url, string $body, string[] $headers): array{0: int, 1: string} */
@@ -511,7 +514,9 @@ class EwsClient {
 		if ($since !== null) {
 			$dates[] = $since;
 		}
-		$latest = $dates !== [] ? max($dates) : gmdate('Y-m-d\TH:i:s\Z');
+		// empty inbox: whatever arrives is new. Not Nextcloud's clock, which can be ahead
+		// of Exchange's: the messages received meanwhile would be dated before it, never announced
+		$latest = $dates !== [] ? max($dates) : self::BEFORE_ANY_MESSAGE;
 		$folder = $this->request(
 			'<m:GetFolder><m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties><t:FieldURI FieldURI="folder:UnreadCount"/></t:AdditionalProperties></m:FolderShape>'
 			. '<m:FolderIds><t:DistinguishedFolderId Id="inbox"/></m:FolderIds></m:GetFolder>'
