@@ -3003,6 +3003,8 @@
 			closed = true
 			clearTimeout(draftTimer)
 			if (folderRole() === 'drafts') loadMessages(true)
+			// while the draft was being saved, another message or a new one was opened: leave it
+			if (!form.isConnected) return
 			if (state.current && !isDraft) renderMessage(); else renderEmptyDetail()
 			setView(state.current && !isDraft ? 'detail' : 'list')
 		}
