@@ -763,7 +763,7 @@ async function main() {
 			buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') })
 		await page.waitForSelector('.wm-account-card .wm-signature-editor img')
 		await shot('61-signature')
-		await page.click('.wm-account-card button:has-text("Enregistrer") >> nth=0')
+		await page.click('.wm-account-card:has(.wm-signature-editor) button:has-text("Enregistrer") >> nth=0')
 		await page.waitForSelector('.wm-toast:has-text("Compte mis à jour")')
 		// kept by the server, formatted, after a reload
 		await page.reload()

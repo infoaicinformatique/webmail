@@ -4580,7 +4580,7 @@
 				matrix.rooms.forEach((r) => roomList.appendChild(h('option', { value: r.id }, r.name)))
 			} catch (e) { /* the list is a help only */ }
 		}
-		const save = h('button', { type: 'submit', class: 'primary' }, _('Enregistrer'))
+		const save = h('button', { type: 'submit', class: 'primary' }, _('Connecter'))
 		const form = h('form', {
 			class: 'wm-matrix-form',
 			onsubmit: async (e) => {
