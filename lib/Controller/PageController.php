@@ -44,6 +44,7 @@ class PageController extends Controller {
 		$user = $this->userSession->getUser();
 		$response = new TemplateResponse(Application::APP_ID, 'main', [
 			'domains' => $this->servers->getDomains(),
+			'autodiscover' => $this->servers->getAutodiscover()['enabled'],
 			'isAdmin' => $user !== null && $this->groupManager->isAdmin($user->getUID()),
 			// Nextcloud Talk: video meetings in the invitations
 			'talk' => $user !== null && $this->apps->isEnabledForUser('spreed', $user),

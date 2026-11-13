@@ -30,13 +30,36 @@ class AdminController extends Controller {
 	}
 
 	public function get(): Response {
-		return $this->handle(fn () => ['servers' => $this->servers->getServers()]);
+		return $this->handle(fn () => $this->state());
 	}
 
 	/**
 	 * @param array<int, array<string, string>> $servers
+	 * @param ?array{enabled?: bool, hosts?: string[]} $autodiscover
 	 */
-	public function save(array $servers = []): Response {
-		return $this->handle(fn () => ['servers' => $this->servers->setServers($servers)]);
+	public function save(array $servers = [], ?array $autodiscover = null): Response {
+		return $this->handle(function () use ($servers, $autodiscover) {
+			$this->servers->setServers($servers);
+			if ($autodiscover !== null) {
+				$this->servers->setAutodiscover(!empty($autodiscover['enabled']), (array)($autodiscover['hosts'] ?? []));
+			}
+			return $this->state();
+		});
+	}
+
+	/** A domain found by Autodiscover is forgotten: the next account of this domain looks again. */
+	public function forgetDiscovered(string $domain): Response {
+		return $this->handle(function () use ($domain) {
+			$this->servers->forgetDiscovered($domain);
+			return $this->state();
+		});
+	}
+
+	private function state(): array {
+		return [
+			'servers' => $this->servers->getServers(),
+			'autodiscover' => $this->servers->getAutodiscover(),
+			'discovered' => $this->servers->getDiscovered(),
+		];
 	}
 }

@@ -34,6 +34,27 @@ if ($servers === []) {
 			<?php endforeach; ?>
 		</tbody>
 	</table>
+	<h3>Découverte automatique (Autodiscover)</h3>
+	<p class="settings-hint">
+		Pour une adresse dont le domaine n'est pas dans le tableau, le webmail peut chercher son serveur comme Outlook
+		(<code>autodiscover.&lt;domaine&gt;</code>), avec l'adresse et le mot de passe saisis. Le serveur trouvé est retenu pour ce domaine.
+		Par sécurité, seuls les serveurs dont le nom se termine par l'un de ceux indiqués ci-dessous sont acceptés
+		(<code>mail.ovh.net</code> pour OVH Hosted Exchange), et jamais une adresse du réseau local.
+	</p>
+	<p>
+		<input type="checkbox" id="webmail-autodiscover" class="checkbox" <?php if ($_['autodiscover']['enabled']) { p('checked'); } ?>>
+		<label for="webmail-autodiscover">Chercher automatiquement le serveur des autres domaines</label>
+	</p>
+	<p>
+		<label for="webmail-autodiscover-hosts">Serveurs autorisés</label>
+		<input type="text" id="webmail-autodiscover-hosts" value="<?php p(implode(', ', $_['autodiscover']['hosts'])); ?>" placeholder="mail.ovh.net" size="40">
+	</p>
+	<ul id="webmail-discovered">
+		<?php foreach ($_['discovered'] as $domain => $url): ?>
+		<li data-domain="<?php p($domain); ?>"><?php p($domain); ?> → <code><?php p($url); ?></code>
+			<button type="button" class="wm-forget" title="Oublier : le prochain compte de ce domaine le cherchera à nouveau">Oublier</button></li>
+		<?php endforeach; ?>
+	</ul>
 	<p>
 		<button type="button" id="webmail-add">Ajouter un domaine</button>
 		<button type="button" id="webmail-save" class="primary">Enregistrer</button>

@@ -232,7 +232,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.49.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.50.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -254,7 +254,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.49 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.50 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -269,6 +269,19 @@ Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.49 ne modi
   (champ « Serveur »). Il suffit de saisir le nom d'hôte : l'URL complète
   `https://exN.mail.ovh.net/EWS/Exchange.asmx` est ajoutée à l'enregistrement.
 - Le domaine `*` sert de serveur par défaut pour tous les autres domaines.
+
+### Découverte automatique (Autodiscover)
+
+![Découverte automatique](docs/capture-autodiscover.png)
+
+Pour les domaines absents du tableau, cochez « **Chercher automatiquement le serveur des autres domaines** ». Quand un utilisateur ajoute une adresse d'un autre domaine, le webmail cherche son serveur comme Outlook : `autodiscover.<domaine>`, puis `<domaine>`, avec l'adresse et le mot de passe saisis. Le serveur trouvé est **retenu pour ce domaine** et affiché sous le tableau (« Oublier » pour le chercher à nouveau).
+
+Par sécurité :
+
+- seuls les serveurs dont le nom se termine par l'un des « **Serveurs autorisés** » sont acceptés (`mail.ovh.net` par défaut : `ex3.mail.ovh.net`, `ex5.mail.ovh.net`…) ;
+- aucune adresse du réseau local n'est contactée, sauf si `config.php` contient `'allow_local_remote_servers' => true`, comme pour les autres connexions de Nextcloud.
+
+La découverte est désactivée par défaut. Les domaines du tableau et le domaine `*` restent prioritaires.
 
 La même configuration peut se faire en ligne de commande :
 
@@ -334,7 +347,8 @@ make test
   signature, deux serveurs), les invitations, la complétion d'adresses, l'agenda (vues, détail, modification, création avec
   invitation, répétition, suppression de série, réponse), les contacts (recherche, fiche, modification, création, suppression)
   et l'affichage mobile. `validate_logged_requests.php` vérifie ensuite chaque requête reçue par le serveur factice
-  (corps et en-têtes) avec le même schéma.
+  (corps et en-têtes) avec le même schéma. L'étape Autodiscover suppose une seconde instance du serveur factice sur le port 443 et,
+  dans le conteneur Nextcloud, `autodiscover.societe-c.fr` dirigé vers elle (`/etc/hosts`).
 
 Structure :
 
@@ -353,5 +367,4 @@ templates/          page principale et page d'administration
 
 **Nextcloud et serveur**
 - Notifications Exchange en direct (abonnement « streaming ») à la place de la vérification régulière
-- Découverte automatique (Autodiscover) à la place de la table domaine/serveur
 - Traduction (anglais)

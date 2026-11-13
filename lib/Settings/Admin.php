@@ -21,6 +21,8 @@ class Admin implements ISettings {
 		Util::addStyle(Application::APP_ID, 'admin');
 		return new TemplateResponse(Application::APP_ID, 'settings/admin', [
 			'servers' => $this->servers->getServers(),
+			'autodiscover' => $this->servers->getAutodiscover(),
+			'discovered' => $this->servers->getDiscovered(),
 		], '');
 	}
 
