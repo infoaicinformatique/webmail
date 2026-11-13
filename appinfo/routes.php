@@ -35,6 +35,7 @@ return [
 		['name' => 'mail#deleteDraft', 'url' => '/api/accounts/{id}/draft/delete', 'verb' => 'POST'],
 		['name' => 'mail#newMessages', 'url' => '/api/accounts/{id}/new', 'verb' => 'GET'],
 		['name' => 'mail#attachment', 'url' => '/api/accounts/{id}/attachment', 'verb' => 'GET'],
+		['name' => 'mail#attachmentsZip', 'url' => '/api/accounts/{id}/attachments/zip', 'verb' => 'GET'],
 		['name' => 'mail#saveAttachment', 'url' => '/api/accounts/{id}/attachment/save', 'verb' => 'POST'],
 		['name' => 'mail#headers', 'url' => '/api/accounts/{id}/message/headers', 'verb' => 'GET'],
 		['name' => 'mail#eml', 'url' => '/api/accounts/{id}/message/eml', 'verb' => 'GET'],

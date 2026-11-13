@@ -1150,5 +1150,10 @@
 	"Sans date": "No date",
 	"Échéance du suivi": "Follow-up due date",
 	"Date personnalisée": "Custom date",
-	"OK": "OK"
+	"OK": "OK",
+	"Toutes les pièces jointes dans un fichier .zip": "All the attachments in one .zip file",
+	"Tout télécharger (.zip)": "Download all (.zip)",
+	"Aucune pièce jointe": "No attachment",
+	"Trop de pièces jointes": "Too many attachments",
+	"Impossible de préparer le fichier .zip": "Could not make the .zip file"
 }

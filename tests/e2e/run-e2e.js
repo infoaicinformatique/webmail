@@ -208,6 +208,21 @@ async function main() {
 		await page.waitForSelector('.wm-preview', { state: 'detached' })
 		assert(await page.$('.wm-message-header'), 'Escape only closed the preview')
 
+		// all of them in one .zip, named after the subject
+		const zipRes = await page.request.get(await page.getAttribute('.wm-zip-btn', 'href'))
+		assert.strictEqual(zipRes.status(), 200)
+		assert.strictEqual(zipRes.headers()['content-type'].split(';')[0], 'application/zip')
+		assert.ok(zipRes.headers()['content-disposition'].includes('Photos du chantier.zip'), zipRes.headers()['content-disposition'])
+		const zipBytes = await zipRes.body()
+		const zipFiles = {}
+		// the local file headers of the .zip: « PK\x03\x04 », sizes at 18, name length at 26, extra length at 28, name at 30
+		for (let i = zipBytes.indexOf('PK\x03\x04'); i >= 0; i = zipBytes.indexOf('PK\x03\x04', i + 4)) {
+			const nameLen = zipBytes.readUInt16LE(i + 26)
+			zipFiles[zipBytes.toString('utf8', i + 30, i + 30 + nameLen)] = zipBytes.readUInt32LE(i + 22)
+		}
+		assert.deepStrictEqual(Object.keys(zipFiles).sort(), ['archive.zip', 'facade.png', 'plan.pdf', 'releve.txt', 'toiture.png'])
+		assert.strictEqual(zipFiles['plan.pdf'], 16, 'plan.pdf whole')
+
 		await page.evaluate(() => { OC.dialogs.filepicker = (t, cb) => cb('/Documents') })
 		await page.click('button:has-text("Tout enregistrer dans Fichiers")')
 		await page.waitForSelector('.wm-toast:has-text("5 pièces jointes enregistrées dans /Documents/")')

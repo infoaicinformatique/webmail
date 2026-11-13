@@ -8,6 +8,7 @@ use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Ews\EwsClient;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
+use OCA\Webmail\Service\AttachmentZip;
 use OCA\Webmail\Service\HtmlSanitizer;
 use OCA\Webmail\Service\MailNotificationService;
 use OCA\Webmail\Service\SharedFolderService;
@@ -291,6 +292,30 @@ class MailController extends Controller {
 			]);
 			$response->cacheFor(3600);
 			return $response;
+		});
+	}
+
+	/**
+	 * The attachments of a message in one .zip file.
+	 *
+	 * @param string[] $ids the attachments (those of the message shown)
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function attachmentsZip(int $id, array $ids = [], string $name = ''): Response {
+		return $this->handle(function () use ($id, $ids, $name) {
+			$ids = array_values(array_unique(array_filter(array_map('strval', $ids), fn ($x) => $x !== '')));
+			if (count($ids) > AttachmentZip::MAX_FILES) {
+				throw new MailException('Trop de pièces jointes');
+			}
+			$client = $this->client($id);
+			$files = [];
+			foreach ($ids as $attachmentId) {
+				$att = $client->getAttachment($attachmentId);
+				$files[] = ['name' => $att['name'], 'content' => $att['content']];
+			}
+			$zipName = AttachmentZip::safeName($name, 'pieces-jointes') . '.zip';
+			return new DataDownloadResponse(AttachmentZip::build($files), $zipName, 'application/zip');
 		});
 	}
 
