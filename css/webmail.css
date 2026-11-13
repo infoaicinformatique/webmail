@@ -886,3 +886,8 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark); }
 .wm-photo-field { flex-wrap: wrap; }
 .wm-photo-preview .wm-avatar { width: 56px; height: 56px; font-size: 20px; }
+
+/* List grouped by conversation */
+.wm-group-toggle.active { background: var(--color-primary-element-light, var(--color-background-dark)) !important; }
+.wm-thread-count { flex: none; min-width: 20px; padding: 0 6px; border-radius: 10px; background: var(--color-background-dark); color: var(--color-text-maxcontrast); font-size: 12px; font-weight: normal; text-align: center; }
+.wm-message.unread .wm-thread-count { background: var(--color-primary-element); color: var(--color-primary-element-text, #fff); }

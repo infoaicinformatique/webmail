@@ -627,6 +627,59 @@ class EwsClient {
 	}
 
 	/**
+	 * The conversations of a folder, newest first (FindConversation, like
+	 * Outlook's « Afficher en tant que conversations »): one row each, with
+	 * its senders, its number of messages and unread ones. The row opens the
+	 * conversation's newest message of this folder.
+	 * @return array{items: list<array<string, mixed>>, total: int, hasMore: bool}
+	 */
+	public function findConversations(string $folderId, int $offset = 0, int $limit = 50): array {
+		$xp = $this->request(
+			'<m:FindConversation>'
+			. '<m:IndexedPageItemView MaxEntriesReturned="' . max(1, $limit) . '" Offset="' . max(0, $offset) . '" BasePoint="Beginning"/>'
+			. '<m:ParentFolderId>' . $this->folderIdXml($folderId) . '</m:ParentFolderId>'
+			. '</m:FindConversation>',
+			false
+		);
+		$root = $xp->query('//m:FindConversationResponse')->item(0);
+		if (!$root instanceof \DOMElement || $root->getAttribute('ResponseClass') !== 'Success') {
+			$code = $root instanceof \DOMElement ? (string)$this->text($xp, 'm:ResponseCode', $root) : '';
+			throw new MailException('Exchange ne donne pas les conversations de ce dossier' . ($code !== '' ? ' (' . $code . ')' : ''));
+		}
+		$items = [];
+		foreach ($xp->query('m:Conversations/t:Conversation', $root) as $c) {
+			$ids = $xp->query('t:ItemIds/t:ItemId', $c);
+			$first = $ids->item(0);
+			if (!$first instanceof \DOMElement) {
+				continue;
+			}
+			$senders = $this->strings($xp, 't:UniqueSenders/t:String', $c);
+			$unread = (int)$this->text($xp, 't:UnreadCount', $c);
+			$items[] = [
+				'id' => $first->getAttribute('Id'),
+				'changeKey' => $first->getAttribute('ChangeKey'),
+				'conversationId' => $this->attr($xp, 't:ConversationId', 'Id', $c),
+				'subject' => (string)$this->text($xp, 't:ConversationTopic', $c),
+				'from' => ['name' => implode(', ', $senders), 'email' => ''],
+				'displayTo' => implode(', ', $this->strings($xp, 't:UniqueRecipients/t:String', $c)),
+				'date' => $this->text($xp, 't:LastDeliveryTime', $c),
+				'isRead' => $unread === 0,
+				'hasAttachments' => $this->text($xp, 't:HasAttachments', $c) === 'true',
+				'importance' => $this->text($xp, 't:Importance', $c) ?? 'Normal',
+				'flagged' => $this->text($xp, 't:FlagStatus', $c) === 'Flagged',
+				'categories' => $this->strings($xp, 't:Categories/t:String', $c),
+				'preview' => mb_substr((string)$this->text($xp, 't:Preview', $c), 0, 200),
+				'isMeeting' => false,
+				'count' => (int)$this->text($xp, 't:MessageCount', $c),
+				'unreadCount' => $unread,
+				'ids' => array_values(array_filter(array_map(fn ($n) => $n instanceof \DOMElement ? $n->getAttribute('Id') : '', iterator_to_array($ids)))),
+			];
+		}
+		$total = (int)$this->text($xp, 'm:TotalConversationsInView', $root);
+		return ['items' => $items, 'total' => $total, 'hasMore' => max(0, $offset) + count($items) < $total];
+	}
+
+	/**
 	 * Every message of a conversation, in every folder (the replies sent are
 	 * in « Éléments envoyés »), oldest first. Deleted items and drafts are
 	 * left out.

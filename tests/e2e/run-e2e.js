@@ -446,6 +446,42 @@ async function main() {
 		await page.waitForSelector('.wm-message-header h2:has-text("Réunion de lundi")')
 	})
 
+	await step('list grouped by conversation', async () => {
+		await page.click('.wm-folder:has-text("Clients")')
+		await page.waitForSelector('.wm-message:has-text("Photos du chantier")')
+		// three messages of the same order: three rows
+		assert.strictEqual(await page.$$eval('.wm-message', (els) => els.filter((e) => e.textContent.includes('Commande 4521')).length), 3)
+		await page.click('.wm-group-toggle')
+		// one row per conversation, with its number of messages; the newest one is unread
+		const conv = '.wm-conversations .wm-message:has-text("Commande 4521")'
+		await page.waitForSelector(conv + ' .wm-thread-count:text-is("3")')
+		await page.waitForSelector(conv + '.unread')
+		assert((await page.textContent(conv + ' .wm-message-from')).includes('Client B, Utilisateur'))
+		assert.strictEqual(await page.$$eval('.wm-conversations .wm-message', (els) => els.length), 2)
+		assert(!(await page.$('.wm-conversations .wm-check')), 'no ticks for conversations')
+		await shot('67-grouped-list')
+		// opened on its newest message, with the whole conversation
+		await page.click(conv)
+		await page.waitForSelector('.wm-body-frame')
+		await page.frameLocator('.wm-body-frame >> nth=0').locator('text=Facture bien reçue.').waitFor()
+		await page.waitForSelector('.wm-thread-toggle:has-text("Conversation : 3 messages")')
+		// remembered, and searching shows the messages again
+		await page.reload()
+		await page.click('.wm-folder:has-text("Clients")')
+		await page.waitForSelector('.wm-group-toggle.active')
+		await page.waitForSelector('.wm-conversations .wm-message:has-text("Commande 4521")')
+		await page.fill('.wm-list .wm-search', 'Commande')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 3 && !document.querySelector('.wm-conversations'))
+		await page.click('.wm-search-info a:has-text("effacer")')
+		// back to one row per message
+		await page.click('.wm-group-toggle')
+		await page.waitForFunction(() => !document.querySelector('.wm-conversations') && document.querySelectorAll('.wm-message').length >= 4)
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.click('.wm-message:has-text("Réunion de lundi")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Réunion de lundi")')
+	})
+
 	await step('forward', async () => {
 		await page.click('.wm-toolbar button:has-text("Transférer")')
 		await page.click('.wm-compose button[type=submit]')
