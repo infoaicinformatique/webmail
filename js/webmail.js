@@ -4302,10 +4302,15 @@
 		const roomList = h('datalist', { id: 'wm-matrix-rooms' })
 		const status = h('p', { class: 'wm-muted wm-matrix-status' })
 		const forget = h('button', { type: 'button', class: 'wm-small wm-danger', hidden: true }, _('Déconnecter'))
-		const show = (st) => {
-			homeserver.value = st.homeserver || ''
-			room.value = st.room || ''
-			token.value = ''
+		// (the saved values arriving after the person started typing do not replace what they typed)
+		const typed = new Set()
+		;[homeserver, token, room].forEach((i) => i.addEventListener('input', () => typed.add(i)))
+		const show = (st, initial) => {
+			const set = (i, v) => { if (!initial || !typed.has(i)) i.value = v }
+			set(homeserver, st.homeserver || '')
+			set(room, st.room || '')
+			set(token, '')
+			if (!initial) typed.clear()
 			token.placeholder = st.hasToken ? _('Enregistré (laisser vide pour le garder)') : _('Jeton d\'accès')
 			forget.hidden = !st.hasToken
 			status.textContent = st.user ? _('Connecté en tant que {user}', { user: st.user }) : (st.hasToken ? _('Compte Matrix enregistré') : '')
@@ -4346,7 +4351,7 @@
 			} catch (ex) { toast(ex.message, true) }
 		}
 		card.appendChild(form)
-		matrixSettingsLoad(true).then((st) => { show(st); if (st.hasToken) fillRooms() }, () => {})
+		matrixSettingsLoad(true).then((st) => { show(st, true); if (st.hasToken) fillRooms() }, () => {})
 		return card
 	}
 
