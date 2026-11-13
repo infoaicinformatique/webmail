@@ -40,6 +40,20 @@ async function main() {
 		console.log('ok')
 	}
 	const shot = (name) => page.screenshot({ path: path.join(SHOTS, name + '.png') })
+	/**
+	 * Send the message being written and wait until Exchange has it. Not just the
+	 * "Message envoyé" toast: the one of a message sent a moment before may still
+	 * be shown, and a check for new messages started then can run before this one
+	 * is delivered (then only announced at the next check, a minute later).
+	 */
+	const submitCompose = async () => {
+		const [sent] = await Promise.all([
+			page.waitForResponse((r) => r.url().endsWith('/send') && r.request().method() === 'POST'),
+			page.click('.wm-compose button[type=submit]'),
+		])
+		assert(sent.ok(), 'send: HTTP ' + sent.status() + ' ' + await sent.text())
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+	}
 
 	await step('login', async () => {
 		await page.goto(NC + '/login')
@@ -802,8 +816,7 @@ async function main() {
 			await page.fill('input[name=to]', 'user@societe-a.fr')
 			await page.fill('input[name=subject]', subject)
 			await page.fill('.wm-editor', 'Bonjour, point rapide sur le budget.')
-			await page.click('.wm-compose button[type=submit]')
-			await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+			await submitCompose()
 		}
 		// on by default, for each account
 		await page.click('text=Comptes et signature')
@@ -2304,8 +2317,7 @@ async function main() {
 			await page.fill('input[name=to]', 'user@societe-a.fr')
 			await page.fill('input[name=subject]', subject)
 			await page.fill('.wm-editor', 'À ne pas oublier.')
-			await page.click('.wm-compose button[type=submit]')
-			await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+			await submitCompose()
 		}
 		const check = () => page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
 
