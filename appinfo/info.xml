@@ -27,7 +27,7 @@
 * Contacts Exchange : plusieurs carnets, contacts partagés par les collègues (tous leurs carnets partagés), partage de ses carnets sans délégation, carnets des dossiers publics, annuaire de l'entreprise, consultation, recherche, création, modification, groupes de contacts, photos, import et export vCard ; complétion des adresses (contacts + annuaire).
 * Tâches Exchange : liste à faire / terminées, échéances (en retard en rouge), importance, état, notes ; ajout rapide, case pour terminer, modification, suppression.
 * En français ou en anglais, selon la langue du compte Nextcloud.]]></description>
-	<version>1.59.0</version>
+	<version>1.60.0</version>
 	<licence>agpl</licence>
 	<author>AIC Informatique</author>
 	<namespace>Webmail</namespace>
@@ -43,7 +43,7 @@
 	<screenshot>https://raw.githubusercontent.com/infoaicinformatique/webmail/main/docs/capture-anglais.png</screenshot>
 	<dependencies>
 		<php min-version="8.1"/>
-		<nextcloud min-version="28" max-version="32"/>
+		<nextcloud min-version="28" max-version="34"/>
 	</dependencies>
 	<background-jobs>
 		<job>OCA\Webmail\BackgroundJob\NewMailJob</job>

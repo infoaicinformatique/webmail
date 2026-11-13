@@ -1710,7 +1710,7 @@ async function main() {
 		await page.waitForSelector('.wm-toast:has-text("Salle de visio créée")')
 		assert.deepStrictEqual(asked, { method: 'POST', body: { roomType: 3, roomName: 'Point visio client' }, ocs: 'true' })
 		const url = await page.inputValue('.wm-modal input[name=location]')
-		assert(/^http:\/\/localhost:8080\/(index\.php\/)?call\/k3tq7wzp$/.test(url), url)
+		assert(new RegExp('^' + NC.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/(index\\.php/)?call/k3tq7wzp$').test(url), url)
 		assert.strictEqual(await page.inputValue('.wm-modal textarea[name=body]'), 'Rejoindre la visio Nextcloud Talk : ' + url)
 		assert(await page.isHidden('.wm-modal .wm-talk-btn'), 'one room per event')
 		await shot('54-talk')

@@ -221,7 +221,7 @@ Les deux sont actualisés toutes les quelques minutes ; Exchange n'est interrog�
 
 ## Prérequis
 
-- Nextcloud 28 à 32, PHP 8.1 ou plus récent, avec les extensions `curl` et `dom`
+- Nextcloud 28 à 34, PHP 8.1 à 8.5, avec les extensions `curl` et `dom`
 - Le serveur Nextcloud doit pouvoir joindre `https://exN.mail.ovh.net` (port 443 sortant)
 - Aucune dépendance Composer ni étape de compilation n'est nécessaire à l'exécution
 
@@ -232,7 +232,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.59.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.60.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -275,7 +275,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.59 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.60 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -373,6 +373,9 @@ make test
   et l'affichage mobile. `validate_logged_requests.php` vérifie ensuite chaque requête reçue par le serveur factice
   (corps et en-têtes) avec le même schéma. L'étape Autodiscover suppose une seconde instance du serveur factice sur le port 443 et,
   dans le conteneur Nextcloud, `autodiscover.societe-c.fr` dirigé vers elle (`/etc/hosts`).
+- Versions testées : le scénario complet passe sur **Nextcloud 31** (PHP 8.3) et **Nextcloud 34** (PHP 8.5),
+  et les tests unitaires sur PHP 8.3 et 8.5. Pour viser une autre instance : `NC_URL=http://localhost:8081
+  OCC='docker exec -u www-data nc34 php occ' node tests/e2e/run-e2e.js`.
 
 Traductions : l'app est écrite en français ; chaque texte de la page passe par `_('…')` (la fonction `t` de Nextcloud), et côté serveur par `IL10N::t()` (messages d'erreur `MailException('… %s', [$param])`, notifications, widgets, page d'administration), le texte français servant de clé (le fichier `fr` est vide, mais nécessaire : sans lui, Nextcloud chargerait l'anglais pour un compte en français). Les traductions sont dans `l10n/source/<langue>.json` (texte français → traduction) ; `php l10n/build.php` produit les fichiers que Nextcloud charge (`l10n/<langue>.js` et `.json`, `en` et `en_GB` pour l'anglais). La langue suivie est celle du compte Nextcloud (Paramètres personnels → Langue) :
 
