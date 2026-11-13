@@ -911,3 +911,23 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 .wm-template-list { list-style: none; margin: 0; padding: 0; }
 .wm-template-list li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--color-border); flex-wrap: wrap; }
 .wm-template-preview { flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Internet headers of a message */
+.wm-headers { width: min(760px, calc(100vw - 32px)); }
+.wm-headers-body { max-height: 70vh; overflow: auto; }
+.wm-auth-checks { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 10px; }
+.wm-auth { padding: 3px 10px; border-radius: var(--border-radius-pill, 12px); border: 1px solid var(--color-border); font-weight: bold; }
+.wm-auth-pass { color: var(--color-success-text, var(--color-success)); border-color: var(--color-success); }
+.wm-auth-fail { color: #fff; background: var(--color-error); border-color: var(--color-error); }
+.wm-auth-unknown { color: var(--color-text-maxcontrast); }
+.wm-auth-warning { color: var(--color-error-text, var(--color-error)); font-weight: bold; }
+.wm-headers h3 { font-size: 1em; margin: 12px 0 4px; }
+.wm-hops { margin: 0 0 8px; padding-inline-start: 22px; }
+.wm-hops li { list-style: decimal; margin: 2px 0; overflow-wrap: anywhere; }
+.wm-hop-servers { font-family: var(--font-face-monospace, monospace); font-size: 0.9em; }
+.wm-hop-date, .wm-hop-delay { color: var(--color-text-maxcontrast); }
+.wm-hop-delay.slow { color: var(--color-error-text, var(--color-error)); }
+.wm-headers-all summary { cursor: pointer; margin: 8px 0; }
+.wm-headers-all table { border-collapse: collapse; width: 100%; table-layout: fixed; font-family: var(--font-face-monospace, monospace); font-size: 0.85em; }
+.wm-headers-all th, .wm-headers-all td { text-align: start; vertical-align: top; padding: 3px 6px; border-bottom: 1px solid var(--color-border); overflow-wrap: anywhere; }
+.wm-headers-all th { width: 34%; }

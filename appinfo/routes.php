@@ -36,6 +36,7 @@ return [
 		['name' => 'mail#newMessages', 'url' => '/api/accounts/{id}/new', 'verb' => 'GET'],
 		['name' => 'mail#attachment', 'url' => '/api/accounts/{id}/attachment', 'verb' => 'GET'],
 		['name' => 'mail#saveAttachment', 'url' => '/api/accounts/{id}/attachment/save', 'verb' => 'POST'],
+		['name' => 'mail#headers', 'url' => '/api/accounts/{id}/message/headers', 'verb' => 'GET'],
 		['name' => 'mail#eml', 'url' => '/api/accounts/{id}/message/eml', 'verb' => 'GET'],
 		['name' => 'mail#saveEml', 'url' => '/api/accounts/{id}/message/eml/save', 'verb' => 'POST'],
 		['name' => 'mail#importEml', 'url' => '/api/accounts/{id}/import', 'verb' => 'POST'],
