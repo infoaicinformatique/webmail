@@ -1231,5 +1231,12 @@
 	"Désabonnement demandé": "Unsubscribe requested",
 	"Ce message vient d'une liste de diffusion.": "This message comes from a mailing list.",
 	"Ouvre la page de désinscription de la liste": "Opens the list's unsubscribe page",
-	"Se désabonner": "Unsubscribe"
+	"Se désabonner": "Unsubscribe",
+	"Plus récents": "Newest first",
+	"Plus anciens": "Oldest first",
+	"Expéditeur (A → Z)": "Sender (A → Z)",
+	"Expéditeur (Z → A)": "Sender (Z → A)",
+	"Objet (A → Z)": "Subject (A → Z)",
+	"Plus volumineux": "Largest first",
+	"Trier par": "Sort by"
 }
