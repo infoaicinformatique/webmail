@@ -390,7 +390,7 @@ class ContactController extends Controller {
 	 * Address autocompletion (personal contacts + company directory).
 	 */
 	/**
-	 * The photo of a contact (an image), 404 when it has none.
+	 * The photo of a contact (an image), nothing (204) when it has none.
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
@@ -437,7 +437,10 @@ class ContactController extends Controller {
 	/** @param ?array{contentType: string, content: string} $img */
 	private static function image(?array $img, int $seconds): Response {
 		if ($img === null) {
-			return new DataDisplayResponse('', Http::STATUS_NOT_FOUND, ['Content-Type' => 'text/plain']);
+			// no photo: nothing (not an error: the page shows the initials instead), remembered as well
+			$none = new DataDisplayResponse('', Http::STATUS_NO_CONTENT, ['Content-Type' => 'image/png']);
+			$none->cacheFor($seconds);
+			return $none;
 		}
 		$response = new DataDisplayResponse($img['content'], Http::STATUS_OK, ['Content-Type' => $img['contentType']]);
 		$response->cacheFor($seconds);
