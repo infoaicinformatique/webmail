@@ -2818,6 +2818,35 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('mailto: an address in a message, and a mailto: link of another site, open a new message here', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-folder >> nth=0')
+		await page.click('.wm-message:has-text("Votre facture OVH")')
+		await page.waitForSelector('.wm-body-frame')
+		await page.frameLocator('.wm-body-frame').locator('a:has-text("facturation@ovh.example")').click()
+		await page.waitForSelector('.wm-compose')
+		assert.strictEqual(await page.inputValue('input[name=to]'), 'facturation@ovh.example, ')
+		assert.strictEqual(await page.inputValue('input[name=subject]'), 'Facture OVH')
+		assert.ok((await page.textContent('.wm-editor')).startsWith('Bonjour,'))
+		assert.strictEqual(page.context().pages().length, 1, 'no other window')
+		await page.click('.wm-compose button:has-text("Annuler")')
+		// the webmail as the browser's mail program: …/apps/webmail/?mailto=<the link>
+		const link = 'mailto:paul@x.fr,anne@x.fr?cc=claire@x.fr&subject=Devis%20toiture&body=Bonjour%2C%0D%0Avoici%20le%20devis.'
+		await page.goto(NC + '/apps/webmail/?mailto=' + encodeURIComponent(link))
+		await page.waitForSelector('.wm-compose')
+		assert.strictEqual(await page.inputValue('input[name=to]'), 'paul@x.fr, anne@x.fr, ')
+		assert.strictEqual(await page.inputValue('input[name=cc]'), 'claire@x.fr, ')
+		assert.strictEqual(await page.inputValue('input[name=subject]'), 'Devis toiture')
+		assert.ok((await page.textContent('.wm-editor')).includes('voici le devis.'))
+		assert.ok(!page.url().includes('mailto'), 'the address bar is tidied')
+		await page.click('.wm-compose button:has-text("Annuler")')
+		// the setting
+		await page.click('text=Comptes et signature')
+		await page.waitForSelector('.wm-mailto-register')
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')

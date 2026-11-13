@@ -2068,6 +2068,37 @@
 		box.hidden = false
 	}
 
+	/**
+	 * A mailto: address (RFC 6068) as what a new message is filled with:
+	 * « mailto:a@x.fr,b@x.fr?cc=c@x.fr&subject=Devis&body=Bonjour ».
+	 */
+	function parseMailto(uri) {
+		const out = { to: '', cc: '', bcc: '', subject: '', body: '' }
+		const m = /^mailto:([^?]*)(?:\?(.*))?$/is.exec(String(uri || '').trim())
+		if (!m) return out
+		const decode = (v) => { try { return decodeURIComponent(v.replace(/\+/g, '%20')) } catch (e) { return v } }
+		const list = (v) => decode(v).split(/[,;]/).map((x) => x.trim()).filter(Boolean)
+		const to = list(m[1])
+		const cc = []
+		const bcc = []
+		;(m[2] || '').split('&').forEach((pair) => {
+			const i = pair.indexOf('=')
+			if (i < 1) return
+			const key = pair.slice(0, i).toLowerCase()
+			const value = pair.slice(i + 1)
+			if (key === 'to') to.push(...list(value))
+			else if (key === 'cc') cc.push(...list(value))
+			else if (key === 'bcc') bcc.push(...list(value))
+			else if (key === 'subject') out.subject = decode(value)
+			else if (key === 'body') out.body = decode(value)
+		})
+		const field = (xs) => (xs.length ? xs.join(', ') + ', ' : '')
+		out.to = field(to)
+		out.cc = field(cc)
+		out.bcc = field(bcc)
+		return out
+	}
+
 	/** The (already cleaned) HTML of a message in a sandboxed frame, as tall as its content. */
 	function bodyFrame(html) {
 		const frame = h('iframe', {
@@ -2092,6 +2123,15 @@
 		}
 		frame.addEventListener('load', () => {
 			resize()
+			// an e-mail address in the message: a new message here, not another program
+			try {
+				frame.contentDocument.addEventListener('click', (e) => {
+					const a = e.target.closest && e.target.closest('a[href]')
+					if (!a || !/^mailto:/i.test(a.getAttribute('href'))) return
+					e.preventDefault()
+					openCompose('new', null, parseMailto(a.getAttribute('href')))
+				})
+			} catch (e) { /* ignore */ }
 			try {
 				frame.contentDocument.querySelectorAll('img').forEach((img) => img.addEventListener('load', resize))
 			} catch (e) { /* ignore */ }
@@ -2646,6 +2686,8 @@
 			body.innerHTML = '<div><br></div>' + (account && account.signature ? '<div><br></div><div class="wm-signature">-- <br>' + signatureHtml(account.signature) + '</div>' : '')
 			if (prefill) {
 				if (prefill.to) to.value = prefill.to
+				if (prefill.cc) cc.value = prefill.cc
+				if (prefill.bcc) bcc.value = prefill.bcc
 				if (prefill.subject) subject.value = prefill.subject
 				if (prefill.body) body.innerHTML = '<div>' + textHtml(prefill.body) + '</div>' + body.innerHTML
 			}
@@ -3233,10 +3275,23 @@
 			try { localStorage.setItem('webmail.undoSend', undo.value) } catch (e) { /* not kept */ }
 			toast(_('Réglage enregistré pour ce navigateur'))
 		})
+		// the browser's mail program: mailto: links of every site open a new message here
+		const mailtoBtn = typeof navigator.registerProtocolHandler === 'function' ? h('button', {
+			type: 'button',
+			class: 'wm-mailto-register',
+			onclick: () => {
+				try {
+					navigator.registerProtocolHandler('mailto', window.location.origin + OC.generateUrl('/apps/webmail/') + '?mailto=%s')
+					toast(_('Le navigateur vous demande de confirmer'))
+				} catch (e) { toast(_('Ce navigateur refuse : {error}', { error: e.message }), true) }
+			},
+		}, '✉️ ' + _('Ouvrir les liens « mailto: » avec ce webmail')) : null
 		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-send-settings' },
 			h('legend', {}, _('Envoi')),
 			h('label', { class: 'wm-field' }, h('span', {}, _('Délai pour annuler l\'envoi')), undo),
-			h('p', { class: 'wm-muted' }, _('Pendant ce délai, « Annuler » rouvre le message au lieu de l\'envoyer.'))))
+			h('p', { class: 'wm-muted' }, _('Pendant ce délai, « Annuler » rouvre le message au lieu de l\'envoyer.')),
+			mailtoBtn,
+			mailtoBtn ? h('p', { class: 'wm-muted' }, _('Les adresses e-mail cliquées sur les autres sites ouvriront un nouveau message ici (le navigateur demande confirmation). Dans les messages reçus, c\'est déjà le cas.')) : null))
 
 		// reply templates: renamed, removed (they are written from a message, button 📄)
 		const templateList = h('ul', { class: 'wm-template-list' })
@@ -3517,8 +3572,9 @@
 		if (state.accounts.some((a) => a.id === linkAccount)) saved = linkAccount
 		const linkModule = link.get('module')
 		if (['calendar', 'contacts', 'tasks', 'mail'].includes(linkModule)) state.module = linkModule
-		else if (link.get('message')) state.module = 'mail'
+		else if (link.get('message') || link.get('mailto')) state.module = 'mail'
 		const linkMessage = link.get('message')
+		const linkMailto = link.get('mailto')
 		const linkEvent = link.get('event')
 		if (link.toString()) {
 			try { history.replaceState(history.state, '', window.location.pathname) } catch (e) { /* ignore */ }
@@ -3532,6 +3588,8 @@
 		const first = state.accounts.find((a) => a.id === saved) || state.accounts[0]
 		await selectAccount(first.id)
 		if (linkMessage && state.module === 'mail') openMessage(linkMessage)
+		// ?mailto=…: a mailto: link of another site, the webmail being the browser's mail program
+		if (linkMailto && state.module === 'mail') openCompose('new', null, parseMailto(linkMailto))
 		if (linkEvent && state.module === 'calendar' && window.WebmailModules.calendar.openLinked) window.WebmailModules.calendar.openLinked(core, linkEvent)
 		startBackground()
 	}
