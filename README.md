@@ -146,6 +146,8 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Contacts](docs/capture-contacts.png)
 
+![Groupe de contacts](docs/capture-groupe-contacts.png)
+
 ![Import vCard](docs/capture-vcard.png)
 
 ![Contacts partagés](docs/capture-contacts-partages.png)
