@@ -73,4 +73,13 @@ class L10nTest extends TestCase {
 			$this->assertStringContainsString(json_encode(array_key_first($en), JSON_UNESCAPED_UNICODE), (string)file_get_contents(self::root() . '/l10n/' . $code . '.js'));
 		}
 	}
+
+	public function testFrenchUsersKeepTheTexts(): void {
+		// without a French file, Nextcloud would load the English one for French users
+		foreach (['json', 'js'] as $ext) {
+			$this->assertFileExists(self::root() . '/l10n/fr.' . $ext);
+		}
+		$json = json_decode((string)file_get_contents(self::root() . '/l10n/fr.json'), true);
+		$this->assertSame([], $json['translations']);
+	}
 }
