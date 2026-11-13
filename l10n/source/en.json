@@ -1117,5 +1117,7 @@
 	"Aucun fichier à importer": "No file to import",
 	"Fichier illisible ou trop lourd": "File unreadable or too large",
 	"Tout marquer comme lu": "Mark all as read",
-	"Tous les messages de « {folder} » sont lus": "All messages of “{folder}” are read"
+	"Tous les messages de « {folder} » sont lus": "All messages of “{folder}” are read",
+	"Ajouter {email} à mes contacts": "Add {email} to my contacts",
+	"{name} est déjà dans vos contacts": "{name} is already in your contacts"
 }
