@@ -232,7 +232,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.50.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.53.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -254,7 +254,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.50 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.53 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -300,6 +300,7 @@ Les requêtes vers Exchange suivent les réglages réseau de Nextcloud, comme se
 
 - Réglez les tâches de fond de Nextcloud sur **Cron** : les notifications de nouveaux messages (toutes les 5 minutes) et les rappels des rendez-vous (chaque minute) en dépendent.
 - Une exécution encore en cours n'est pas relancée à côté d'elle. Chaque requête faite en tâche de fond abandonne au bout de 20 secondes, pour qu'un serveur injoignable ne retarde pas les autres comptes.
+- Les nouveaux messages passent par un **abonnement Exchange** à la boîte de réception (« pull subscription ») : Exchange garde les nouveaux messages entre deux vérifications, et une vérification sans nouveau message ne coûte qu'une petite requête. Si Exchange a oublié l'abonnement (plus d'une heure sans vérification), le webmail se réabonne et rattrape par les dates, sans annoncer deux fois un message.
 - Les rappels ne demandent les prochains rendez-vous à Exchange qu'une fois toutes les 5 minutes par compte. Le calcul se refait chaque minute sans requête, et immédiatement après une modification de l'agenda dans le webmail.
 - Un cache partagé est recommandé, par exemple **Redis** dans `memcache.distributed`. Le tableau de bord, les rappels, l'espace utilisé et la boîte des dossiers publics y sont gardés. APCu seul ne sert pas aux tâches de fond, qui tournent chacune dans un nouveau processus. Sans cache, tout fonctionne, avec plus de requêtes vers Exchange.
 
@@ -350,6 +351,12 @@ make test
   (corps et en-têtes) avec le même schéma. L'étape Autodiscover suppose une seconde instance du serveur factice sur le port 443 et,
   dans le conteneur Nextcloud, `autodiscover.societe-c.fr` dirigé vers elle (`/etc/hosts`).
 
+Traductions : l'app est écrite en français ; chaque texte de la page passe par `_('…')` (la fonction `t` de Nextcloud), le texte français servant de clé (le fichier `fr` est vide, mais nécessaire : sans lui, Nextcloud chargerait l'anglais pour un compte en français). Les traductions sont dans `l10n/source/<langue>.json` (texte français → traduction) ; `php l10n/build.php` produit les fichiers que Nextcloud charge (`l10n/<langue>.js` et `.json`, `en` et `en_GB` pour l'anglais). La langue suivie est celle du compte Nextcloud (Paramètres personnels → Langue) :
+
+![Tâches en anglais](docs/capture-anglais.png)
+
+Le test `L10nTest` vérifie que chaque texte a sa traduction et qu'il ne reste pas de texte français hors de `_()` dans les fichiers traduits.
+
 Structure :
 
 ```
@@ -366,5 +373,4 @@ templates/          page principale et page d'administration
 ## Évolutions possibles
 
 **Nextcloud et serveur**
-- Notifications Exchange en direct (abonnement « streaming ») à la place de la vérification régulière
-- Traduction (anglais)
+- Traduction anglaise : en cours (les tâches, les contacts, les règles, les délégués et le partage sont traduits ; le courrier, l'agenda et les messages du serveur suivent)

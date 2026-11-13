@@ -2,12 +2,14 @@
 (function () {
 	'use strict'
 
-	const FOLDERS = [['calendar', 'Agenda'], ['inbox', 'Boîte de réception'], ['contacts', 'Contacts'], ['tasks', 'Tâches']]
-	const LEVELS = [['None', 'Aucun accès'], ['Reviewer', 'Lecture'], ['Author', 'Lecture et création'], ['Editor', 'Modification']]
+	/** Translated text (Nextcloud l10n); the French text is the key. */
+	const _ = (s, vars) => (window.t ? window.t('webmail', s, vars, undefined, { escape: false }) : s)
+	const FOLDERS = [['calendar', _('Agenda')], ['inbox', _('Boîte de réception')], ['contacts', _('Contacts')], ['tasks', _('Tâches')]]
+	const LEVELS = [['None', _('Aucun accès')], ['Reviewer', _('Lecture')], ['Author', _('Lecture et création')], ['Editor', _('Modification')]]
 	const DELIVERY = [
-		['DelegatesAndMe', 'à mes délégués et à moi'],
-		['DelegatesAndSendInformationToMe', 'à mes délégués seulement, avec une copie pour information'],
-		['DelegatesOnly', 'à mes délégués seulement'],
+		['DelegatesAndMe', _('à mes délégués et à moi')],
+		['DelegatesAndSendInformationToMe', _('à mes délégués seulement, avec une copie pour information')],
+		['DelegatesOnly', _('à mes délégués seulement')],
 	]
 
 	let core = null
@@ -20,11 +22,9 @@
 		core.clear(el)
 		const wrap = h('div', { class: 'wm-settings wm-delegates', dataset: { account: account.email } },
 			h('div', { class: 'wm-compose-title' },
-				h('button', { type: 'button', class: 'wm-back', 'aria-label': 'Retour', onclick: () => core.openAccountSettings() }, '←'),
-				h('h2', {}, 'Délégués de ' + account.email)),
-			h('p', { class: 'wm-muted' }, 'Un délégué peut gérer votre agenda, votre courrier ou vos contacts selon les droits donnés ci-dessous, '
-				+ 'recevoir vos invitations de réunion et y répondre en votre nom. Ce sont les mêmes réglages que dans Outlook '
-				+ '(Fichier → Paramètres du compte → Accès délégué).'),
+				h('button', { type: 'button', class: 'wm-back', 'aria-label': _('Retour'), onclick: () => core.openAccountSettings() }, '←'),
+				h('h2', {}, _('Délégués de {email}', { email: account.email }))),
+			h('p', { class: 'wm-muted' }, _('Un délégué peut gérer votre agenda, votre courrier ou vos contacts selon les droits donnés ci-dessous, recevoir vos invitations de réunion et y répondre en votre nom. Ce sont les mêmes réglages que dans Outlook (Fichier → Paramètres du compte → Accès délégué).')),
 			h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
 		el.appendChild(wrap)
 		load(account, wrap)
@@ -58,25 +58,25 @@
 		const anyCopies = data.delegates.some((d) => d.receiveCopies)
 		const delivery = h('select', { name: 'deliverMeetingRequests', 'aria-label': 'Envoi des invitations', disabled: !anyCopies },
 			DELIVERY.map(([v, l]) => h('option', { value: v, selected: data.deliverMeetingRequests === v }, l)))
-		delivery.addEventListener('change', () => call('/meeting-requests', { mode: delivery.value }, 'Réglage des invitations enregistré'))
+		delivery.addEventListener('change', () => call('/meeting-requests', { mode: delivery.value }, _('Réglage des invitations enregistré')))
 		wrap.appendChild(h('div', { class: 'wm-account-card' },
-			h('h3', {}, 'Invitations de réunion'),
+			h('h3', {}, _('Invitations de réunion')),
 			h('label', { class: 'wm-field' }, h('span', {}, 'Envoyer mes invitations'), delivery),
 			h('p', { class: 'wm-muted' }, anyCopies
-				? 'Concerne les invitations que vous recevez : les délégués qui « reçoivent une copie » peuvent y répondre en votre nom.'
-				: 'Cochez « Reçoit une copie de mes invitations » pour au moins un délégué pour choisir cette option.')))
+				? _('Concerne les invitations que vous recevez : les délégués qui « reçoivent une copie » peuvent y répondre en votre nom.')
+				: _('Cochez « Reçoit une copie de mes invitations » pour au moins un délégué pour choisir cette option.'))))
 
-		wrap.appendChild(h('h3', {}, data.delegates.length ? 'Délégués actuels' : 'Aucun délégué pour l\'instant'))
+		wrap.appendChild(h('h3', {}, data.delegates.length ? _('Délégués actuels') : _('Aucun délégué pour l\'instant')))
 		data.delegates.forEach((d) => wrap.appendChild(delegateCard(d, false, call)))
 
-		wrap.appendChild(h('h3', {}, 'Ajouter un délégué'))
+		wrap.appendChild(h('h3', {}, _('Ajouter un délégué')))
 		wrap.appendChild(delegateCard({ email: '', name: '', permissions: { calendar: 'Editor', inbox: 'None', contacts: 'None', tasks: 'None' },
 			receiveCopies: true, viewPrivate: false }, true, call))
 	}
 
 	function delegateCard(d, isNew, call) {
 		const h = core.h
-		const email = isNew ? h('input', { type: 'text', name: 'delegateEmail', required: true, placeholder: 'prenom.nom@exemple.fr' }) : null
+		const email = isNew ? h('input', { type: 'text', name: 'delegateEmail', required: true, placeholder: _('prenom.nom@exemple.fr') }) : null
 		const selects = {}
 		const rows = FOLDERS.map(([key, label]) => {
 			selects[key] = h('select', { name: key, 'aria-label': label }, LEVELS.map(([v, l]) => h('option', { value: v, selected: (d.permissions[key] || 'None') === v }, l)))
@@ -94,7 +94,7 @@
 			receiveCopies: copies.checked,
 			viewPrivate: priv.checked,
 		})
-		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? 'Ajouter le délégué' : 'Enregistrer')
+		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? _('Ajouter le délégué') : _('Enregistrer'))
 		const form = h('form', {
 			class: 'wm-account-card wm-delegate' + (isNew ? ' wm-delegate-new' : ''),
 			dataset: { email: d.email || '' },
@@ -102,25 +102,25 @@
 				e.preventDefault()
 				save.disabled = true
 				const v = values()
-				const ok = await call(isNew ? '' : '/update', v, isNew ? 'Délégué ajouté' : 'Délégué mis à jour')
+				const ok = await call(isNew ? '' : '/update', v, isNew ? _('Délégué ajouté') : _('Délégué mis à jour'))
 				if (!ok) save.disabled = false
 			},
 		},
 		isNew
-			? h('label', { class: 'wm-field' }, h('span', {}, 'Adresse'), core.attachAutocomplete(email))
+			? h('label', { class: 'wm-field' }, h('span', {}, _('Adresse')), core.attachAutocomplete(email))
 			: h('div', { class: 'wm-delegate-name' }, h('strong', {}, d.name || d.email), d.name ? h('span', { class: 'wm-muted' }, ' ' + d.email) : null),
 		h('div', { class: 'wm-delegate-grid' }, rows),
-		h('label', { class: 'wm-inline' }, copies, ' Reçoit une copie de mes invitations et peut y répondre en mon nom (agenda en « Modification »)'),
-		h('label', { class: 'wm-inline' }, priv, ' Peut voir mes éléments privés'),
+		h('label', { class: 'wm-inline' }, copies, ' ' + _('Reçoit une copie de mes invitations et peut y répondre en mon nom (agenda en « Modification »)')),
+		h('label', { class: 'wm-inline' }, priv, ' ' + _('Peut voir mes éléments privés')),
 		h('div', { class: 'wm-compose-actions' }, save,
 			isNew ? null : h('button', {
 				type: 'button',
 				class: 'wm-danger',
 				onclick: async () => {
-					if (!window.confirm('Retirer ' + (d.name || d.email) + ' de vos délégués ? Ses droits sur votre agenda, courrier et contacts seront retirés.')) return
-					await call('/delete', { email: d.email }, 'Délégué retiré')
+					if (!window.confirm(_('Retirer {name} de vos délégués ? Ses droits sur votre agenda, courrier et contacts seront retirés.', { name: d.name || d.email }))) return
+					await call('/delete', { email: d.email }, _('Délégué retiré'))
 				},
-			}, 'Retirer')))
+			}, _('Retirer'))))
 		return form
 	}
 

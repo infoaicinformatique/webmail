@@ -32,6 +32,7 @@ class PageController extends Controller {
 	#[NoCSRFRequired]
 	public function index(): TemplateResponse {
 		// modules first: they register themselves in window.WebmailModules
+		// (Util::addScript also loads the translations of the user's language, l10n/<language>.js)
 		Util::addScript(Application::APP_ID, 'sharing');
 		Util::addScript(Application::APP_ID, 'calendar');
 		Util::addScript(Application::APP_ID, 'contacts');

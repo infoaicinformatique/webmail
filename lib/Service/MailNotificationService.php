@@ -7,6 +7,7 @@ namespace OCA\Webmail\Service;
 use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Db\Account;
 use OCA\Webmail\Db\AccountMapper;
+use OCA\Webmail\Ews\EwsClient;
 use OCA\Webmail\Exception\MailException;
 use OCP\IConfig;
 use OCP\IUserManager;
@@ -48,6 +49,7 @@ class MailNotificationService {
 	public function forget(string $userId, int $accountId): void {
 		$this->config->deleteUserValue($userId, Application::APP_ID, 'bell_since_' . $accountId);
 		$this->config->deleteUserValue($userId, Application::APP_ID, 'bell_seen_' . $accountId);
+		$this->config->deleteUserValue($userId, Application::APP_ID, 'bell_sub_' . $accountId);
 	}
 
 	/** @return int notifications sent */
@@ -75,23 +77,87 @@ class MailNotificationService {
 		$id = $account->getId();
 		$since = $this->config->getUserValue($userId, Application::APP_ID, 'bell_since_' . $id, '');
 		$seen = json_decode($this->config->getUserValue($userId, Application::APP_ID, 'bell_seen_' . $id, '[]'), true);
+		$seen = is_array($seen) ? $seen : [];
+		$sub = json_decode($this->config->getUserValue($userId, Application::APP_ID, 'bell_sub_' . $id, ''), true);
 		$client = $this->accounts->getClient($account, AccountService::BACKGROUND_TIMEOUT);
 
 		if ($since === '') {
-			// first check: what is there already is not new
+			// first check: subscribe (nothing arriving from now on is missed), and what is there already is not new
+			try {
+				$this->subscribe($client, $userId, $id);
+			} catch (MailException $e) {
+				$this->logger->info('Webmail: no subscription for ' . $account->getEmail() . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
+			}
 			$r = $client->newMessages(null, 5);
 			[, $nextSeen] = self::fresh($r['items'], [], $r['latest']);
 			$this->remember($userId, $id, $r['latest'], $nextSeen);
 			return 0;
 		}
 
+		// the usual way: Exchange tells which messages arrived since the last check (one small request)
+		if (is_array($sub) && !empty($sub['id']) && !empty($sub['watermark'])) {
+			$events = $client->newMailEvents((string)$sub['id'], (string)$sub['watermark']);
+			if ($events !== null) {
+				$this->config->setUserValue($userId, Application::APP_ID, 'bell_sub_' . $id,
+					json_encode(['id' => $sub['id'], 'watermark' => $events['watermark']]));
+				if ($events['itemIds'] === []) {
+					return 0;
+				}
+				$items = self::unreadNewestFirst($client->summaries($events['itemIds']));
+				$fresh = array_values(array_filter($items, fn ($i) => !in_array($i['id'], $seen, true)));
+				foreach (array_slice($fresh, 0, self::MAX) as $item) {
+					$this->notify($account, $item);
+				}
+				$dates = array_filter(array_map(fn ($i) => (string)$i['date'], $items));
+				$this->remember($userId, $id, $dates !== [] ? max(max($dates), $since) : $since,
+					self::seenIds(array_column($items, 'id'), $seen));
+				return min(count($fresh), self::MAX);
+			}
+		}
+
+		// no subscription, or Exchange dropped it (no check for a long while): subscribe again,
+		// then catch up with the dates (a message reported both ways is announced once)
+		try {
+			$this->subscribe($client, $userId, $id);
+		} catch (MailException $e) {
+			// the dates alone, as before
+			$this->logger->info('Webmail: no subscription for ' . $account->getEmail() . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
+		}
 		$r = $client->newMessages($since, 20);
-		[$fresh, $nextSeen] = self::fresh($r['items'], is_array($seen) ? $seen : [], $r['latest']);
+		[$fresh, $nextSeen] = self::fresh($r['items'], $seen, $r['latest']);
 		foreach (array_slice($fresh, 0, self::MAX) as $item) {
 			$this->notify($account, $item);
 		}
-		$this->remember($userId, $id, $r['latest'], $nextSeen);
+		$this->remember($userId, $id, $r['latest'], self::seenIds(array_merge($nextSeen, array_column($fresh, 'id')), $seen));
 		return min(count($fresh), self::MAX);
+	}
+
+	/** Exchange forgets a subscription not checked for this long (minutes): several missed runs of the job. */
+	public const SUBSCRIPTION_TIMEOUT = 60;
+
+	private function subscribe(EwsClient $client, string $userId, int $accountId): void {
+		$this->config->setUserValue($userId, Application::APP_ID, 'bell_sub_' . $accountId,
+			json_encode($client->subscribeInbox(self::SUBSCRIPTION_TIMEOUT)));
+	}
+
+	/**
+	 * @param list<array<string, mixed>> $items
+	 * @return list<array<string, mixed>> the unread ones, newest first
+	 */
+	public static function unreadNewestFirst(array $items): array {
+		$items = array_values(array_filter($items, fn ($i) => empty($i['isRead'])));
+		usort($items, fn ($a, $b) => strcmp((string)$b['date'], (string)$a['date']));
+		return $items;
+	}
+
+	/**
+	 * The messages already announced, newest first, 50 at most.
+	 * @param string[] $new
+	 * @param string[] $seen
+	 * @return string[]
+	 */
+	public static function seenIds(array $new, array $seen): array {
+		return array_slice(array_values(array_unique(array_merge(array_map('strval', $new), $seen))), 0, 50);
 	}
 
 	/**

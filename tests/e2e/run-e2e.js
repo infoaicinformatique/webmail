@@ -887,6 +887,21 @@ async function main() {
 		// not announced twice
 		runJob()
 		assert.strictEqual((await bell()).filter((n) => n.message.startsWith('« Budget du chantier »')).length, 1)
+		// through the subscription to the inbox; Exchange forgot it (no check for a long while): announced all the same,
+		// by the dates, and subscribed again
+		const accountId = await page.evaluate(async () => {
+			const r = await fetch(OC.generateUrl('/apps/webmail/api/accounts'), { headers: { requesttoken: OC.requestToken } })
+			return (await r.json()).find((a) => a.email === 'user@societe-a.fr').id
+		})
+		const subKey = 'bell_sub_' + accountId
+		assert(/SUB-\d+/.test(occ('user:setting admin webmail ' + subKey)), 'subscribed')
+		occ('user:setting admin webmail ' + subKey + ' \'{"id":"SUB-gone","watermark":"W0"}\'')
+		await sendToSelf('Devis après une coupure')
+		runJob()
+		assert.strictEqual((await bell()).filter((n) => n.message.startsWith('« Devis après une coupure »')).length, 1)
+		assert(!occ('user:setting admin webmail ' + subKey).includes('SUB-gone'), 'subscribed again')
+		runJob()
+		assert.strictEqual((await bell()).filter((n) => n.message.startsWith('« Devis après une coupure »')).length, 1, 'once')
 		// in Nextcloud's bell
 		await page.reload()
 		await page.click('.notifications-button')
@@ -895,6 +910,12 @@ async function main() {
 		// its link opens the message, which leaves the bell
 		await page.goto(mine[0].link)
 		await page.waitForSelector('.wm-message-header h2:has-text("Budget du chantier")')
+		const left = async () => (await bell()).filter((n) => n.message.startsWith('« Budget du chantier »')).length
+		for (let i = 0; i < 20 && await left(); i++) await page.waitForTimeout(250)
+		assert.strictEqual(await left(), 0)
+		// (the other one read as well)
+		await page.click('.wm-message:has-text("Devis après une coupure")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Devis après une coupure")')
 		for (let i = 0; i < 20 && (await bell()).length; i++) await page.waitForTimeout(250)
 		assert.deepStrictEqual(await bell(), [])
 		// switched off for this account
@@ -2601,6 +2622,51 @@ async function main() {
 		await page.locator(devis).waitFor({ state: 'detached' })
 		await page.click('.wm-task-filter[data-filter="todo"]')
 		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
+	})
+
+	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		occ('user:setting admin core lang en')
+		try {
+			await page.reload()
+			await page.click('.wm-tab[data-module="tasks"]')
+			await page.waitForSelector('.wm-compose-btn:has-text("New task")')
+			await page.waitForSelector('.wm-task-filter:has-text("To do")')
+			await page.waitForSelector('input[name=quickTask][placeholder="Add a task (Enter)"]')
+			await page.waitForSelector('.wm-task.late .wm-task-due:has-text("Overdue")')
+			await shot('69-english')
+			// rules and delegates
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('text=Comptes et signature')
+			await page.click('.wm-account-card:has-text("user@societe-a.fr") button:has-text("Règles")')
+			await page.waitForSelector('.wm-rules h2:has-text("Rules of user@societe-a.fr")')
+			await page.waitForSelector('.wm-rule-tag:has-text("created in Outlook")')
+			await page.waitForSelector('.wm-rule-new:has-text("New rule")')
+			await page.click('text=Comptes et signature')
+			await page.click('.wm-account-card:has-text("user@societe-a.fr") button:has-text("Délégués")')
+			await page.waitForSelector('.wm-delegates h2:has-text("Delegates of user@societe-a.fr")')
+			await page.waitForSelector('.wm-delegates h3:has-text("Meeting requests")')
+			// contacts
+			await page.click('.wm-tab[data-module="contacts"]')
+			await page.waitForSelector('.wm-compose-btn:has-text("New contact")')
+			await page.waitForSelector('.wm-cal-section:has-text("My address books")')
+			await page.waitForSelector('.wm-cal-add:has-text("Add a colleague\'s contacts")')
+			await page.waitForSelector('.wm-empty-detail:has-text("Select a contact")')
+			await page.click('.wm-contact >> nth=0')
+			await page.waitForSelector('.wm-toolbar button:has-text("Edit")')
+			await page.click('.wm-toolbar button:has-text("Edit")')
+			await page.waitForSelector('.wm-contact-form h2:has-text("Edit the contact")')
+			await page.waitForSelector('.wm-contact-form .wm-field:has-text("First name")')
+			await shot('69-english-contacts')
+			await page.click('.wm-contact-form button:has-text("Cancel")')
+		} finally {
+			occ('user:setting admin core lang fr')
+		}
+		await page.reload()
+		await page.click('.wm-tab[data-module="tasks"]')
+		await page.waitForSelector('.wm-compose-btn:has-text("Nouvelle tâche")')
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
 	})
 
 	await step('module choice is remembered', async () => {
