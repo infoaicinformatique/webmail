@@ -928,6 +928,6 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 .wm-hop-date, .wm-hop-delay { color: var(--color-text-maxcontrast); }
 .wm-hop-delay.slow { color: var(--color-error-text, var(--color-error)); }
 .wm-headers-all summary { cursor: pointer; margin: 8px 0; }
-.wm-headers-all table { border-collapse: collapse; width: 100%; font-family: var(--font-face-monospace, monospace); font-size: 0.85em; }
+.wm-headers-all table { border-collapse: collapse; width: 100%; table-layout: fixed; font-family: var(--font-face-monospace, monospace); font-size: 0.85em; }
 .wm-headers-all th, .wm-headers-all td { text-align: start; vertical-align: top; padding: 3px 6px; border-bottom: 1px solid var(--color-border); overflow-wrap: anywhere; }
-.wm-headers-all th { white-space: nowrap; width: 1%; }
+.wm-headers-all th { width: 34%; }
