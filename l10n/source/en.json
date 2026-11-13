@@ -1069,5 +1069,15 @@
 	"Date de début": "Start date",
 	"Heure de début": "Start time",
 	"Date de fin": "End date",
-	"Heure de fin": "End time"
+	"Heure de fin": "End time",
+	"Envoi dans {seconds} s": "Sending in {seconds} s",
+	"Envoyer maintenant": "Send now",
+	"Envoi annulé : le message est de nouveau ouvert": "Sending undone: the message is open again",
+	"{seconds} secondes": "{seconds} seconds",
+	"Aucun (envoi immédiat)": "None (send at once)",
+	"Réglage enregistré pour ce navigateur": "Setting saved for this browser",
+	"Envoi": "Sending",
+	"Délai pour annuler l'envoi": "Time to undo sending",
+	"Pendant ce délai, « Annuler » rouvre le message au lieu de l'envoyer.": "During this time, “Undo” reopens the message instead of sending it.",
+	"Annuler l'envoi": "Undo"
 }

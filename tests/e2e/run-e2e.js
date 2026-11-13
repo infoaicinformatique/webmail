@@ -68,6 +68,8 @@ async function main() {
 		await page.fill('#password', process.env.NC_PASS || 'admin-Pass-123')
 		await page.click('button[type=submit]')
 		await page.waitForURL(/apps/)
+		// messages are sent at once in the other steps: the undo delay has its own step
+		await page.evaluate(() => localStorage.setItem('webmail.undoSend', '0'))
 	})
 
 	await step('admin settings page lists both servers', async () => {
@@ -2719,6 +2721,51 @@ async function main() {
 		await page.waitForSelector('.wm-modal', { state: 'detached' })
 		assert.ok(await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('wm-compose-btn')), 'focus back on « Nouvel événement »')
 		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+	})
+
+	await step('undo send: a few seconds to change one\'s mind, then the message is back as it was', async () => {
+		await page.evaluate(() => localStorage.removeItem('webmail.undoSend')) // the default: 5 s
+		await page.click('.wm-tab[data-module="mail"]')
+		const sends = []
+		const onRequest = (r) => { if (r.url().endsWith('/send') && r.method() === 'POST') sends.push(r) }
+		page.on('request', onRequest)
+		try {
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'user@societe-a.fr')
+			await page.fill('input[name=subject]', 'Finalement non')
+			await page.fill('.wm-editor', 'Il manque la pièce jointe.')
+			await page.click('.wm-compose button[type=submit]')
+			await page.waitForSelector('.wm-toast-undo:has-text("Envoi dans")')
+			assert.strictEqual(await page.$('.wm-compose'), null, 'the message leaves the screen')
+			await shot('70-undo-send')
+			await page.click('.wm-toast-undo button:has-text("Annuler l\'envoi")')
+			await page.waitForSelector('.wm-compose')
+			assert.strictEqual(await page.inputValue('input[name=subject]'), 'Finalement non')
+			assert.ok((await page.textContent('.wm-editor')).includes('Il manque la pièce jointe.'))
+			await page.waitForTimeout(6000)
+			assert.strictEqual(sends.length, 0, 'nothing sent')
+			// sent once the delay is over… or at once
+			const [sent] = await Promise.all([
+				page.waitForResponse((r) => r.url().endsWith('/send') && r.request().method() === 'POST'),
+				(async () => {
+					await page.click('.wm-compose button[type=submit]')
+					await page.click('.wm-toast-undo button:has-text("Envoyer maintenant")')
+				})(),
+			])
+			assert.ok(sent.ok())
+			await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
+			assert.strictEqual(sends.length, 1, 'sent once')
+			// the setting, in « Comptes et signature »
+			await page.click('text=Comptes et signature')
+			assert.strictEqual(await page.inputValue('select[name=undoSend]'), '5')
+			await page.selectOption('select[name=undoSend]', '0')
+			assert.strictEqual(await page.evaluate(() => localStorage.getItem('webmail.undoSend')), '0')
+		} finally {
+			page.off('request', onRequest)
+			await page.evaluate(() => localStorage.setItem('webmail.undoSend', '0'))
+		}
+		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector('.wm-message')
 	})
 

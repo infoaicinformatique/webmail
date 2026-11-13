@@ -238,6 +238,44 @@
 		setTimeout(() => t.remove(), 4600)
 	}
 
+	// ------------------------------------------------------------------
+	// undo send: a few seconds to change one's mind (this browser's setting)
+	// ------------------------------------------------------------------
+
+	const UNDO_DELAYS = [0, 5, 10, 20, 30]
+	function undoDelay() {
+		let v = null
+		try { v = localStorage.getItem('webmail.undoSend') } catch (e) { /* default */ }
+		const n = v === null ? 5 : parseInt(v, 10)
+		return UNDO_DELAYS.includes(n) ? n : 5
+	}
+	let pendingSends = 0
+	window.addEventListener('beforeunload', (e) => { if (pendingSends) { e.preventDefault(); e.returnValue = '' } })
+
+	/** « Sending in N s — Undo »: resolves true to send, false when undone. */
+	function undoCountdown(seconds) {
+		let box = document.getElementById('wm-toasts')
+		if (!box) {
+			box = h('div', { id: 'wm-toasts', 'aria-live': 'polite' })
+			document.body.appendChild(box)
+		}
+		return new Promise((resolve) => {
+			let left = seconds
+			const label = h('span', {}, _('Envoi dans {seconds} s', { seconds: left }))
+			const finish = (send) => { clearInterval(timer); t.remove(); pendingSends--; resolve(send) }
+			const undo = h('button', { type: 'button', class: 'wm-toast-action', onclick: () => finish(false) }, _('Annuler l\'envoi'))
+			const now = h('button', { type: 'button', class: 'wm-toast-action', onclick: () => finish(true) }, _('Envoyer maintenant'))
+			const t = h('div', { class: 'wm-toast wm-toast-undo', role: 'status' }, label, undo, now)
+			pendingSends++
+			box.appendChild(t)
+			const timer = setInterval(() => {
+				left--
+				if (left <= 0) finish(true)
+				else label.textContent = _('Envoi dans {seconds} s', { seconds: left })
+			}, 1000)
+		})
+	}
+
 	function formatDate(iso, long) {
 		if (!iso) return ''
 		const d = new Date(iso)
@@ -2940,6 +2978,23 @@
 				}
 				Array.from(files.files).forEach((f) => fd.append('files[]', f, f.name))
 				ncFiles.forEach((p) => fd.append('filePaths[]', p))
+				// a few seconds to undo (not for a later delivery: it can be cancelled in « Boîte d'envoi »)
+				const delay = later.checked ? 0 : undoDelay()
+				if (delay) {
+					closed = true
+					form.remove()
+					if (state.current && !isDraft) renderMessage(); else renderEmptyDetail()
+					if (!await undoCountdown(delay)) {
+						// back to the message, as it was
+						closed = false
+						clear(detailEl)
+						detailEl.appendChild(form)
+						setView('detail')
+						body.focus()
+						toast(_('Envoi annulé : le message est de nouveau ouvert'))
+						return
+					}
+				}
 				sendBtn.disabled = true
 				sendBtn.textContent = _('Envoi…')
 				closed = true
@@ -2958,6 +3013,8 @@
 					toast(err.message, true)
 					sendBtn.disabled = false
 					sendBtn.textContent = _('Envoyer')
+					// put away during the undo delay: back on screen, nothing is lost
+					if (!form.isConnected) { clear(detailEl); detailEl.appendChild(form); setView('detail') }
 				}
 			},
 		},
@@ -3064,6 +3121,17 @@
 		const wrap = h('div', { class: 'wm-settings' },
 			h('button', { class: 'wm-back wm-mobile-only', onclick: () => setView('list'), 'aria-label': _('Retour') }, '←'),
 			h('h2', {}, _('Comptes Exchange')))
+		// this browser's settings
+		const undo = h('select', { name: 'undoSend' }, UNDO_DELAYS.map((n) => h('option', { value: String(n), selected: n === undoDelay() },
+			n ? _('{seconds} secondes', { seconds: n }) : _('Aucun (envoi immédiat)'))))
+		undo.addEventListener('change', () => {
+			try { localStorage.setItem('webmail.undoSend', undo.value) } catch (e) { /* not kept */ }
+			toast(_('Réglage enregistré pour ce navigateur'))
+		})
+		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-send-settings' },
+			h('legend', {}, _('Envoi')),
+			h('label', { class: 'wm-field' }, h('span', {}, _('Délai pour annuler l\'envoi')), undo),
+			h('p', { class: 'wm-muted' }, _('Pendant ce délai, « Annuler » rouvre le message au lieu de l\'envoyer.'))))
 
 		state.accounts.forEach((a) => {
 			const name = h('input', { type: 'text', value: a.displayName === a.email ? '' : a.displayName, placeholder: _('Nom affiché (facultatif)') })
