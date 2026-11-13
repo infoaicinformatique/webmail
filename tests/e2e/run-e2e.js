@@ -2810,6 +2810,20 @@ async function main() {
 		}
 	})
 
+	await step('quick start: the accounts come with the page, the folders and the messages are asked for at once', async () => {
+		const asked = []
+		const onRequest = (r) => { const u = new URL(r.url()); if (u.pathname.includes('/apps/webmail/api/')) asked.push([Date.now(), r.method(), u.pathname]) }
+		page.on('request', onRequest)
+		try {
+			await page.goto(NC + '/apps/webmail/?module=mail')
+			await page.waitForSelector('.wm-message')
+		} finally {
+			page.off('request', onRequest)
+		}
+		assert.ok(!asked.some(([, m, p]) => m === 'GET' && /\/api\/accounts$/.test(p)), 'no request for the accounts: ' + asked.map((a) => a[2]).join(' '))
+		assert.ok(asked.some(([, , p]) => /\/api\/accounts\/\d+\/folders$/.test(p)) && asked.some(([, , p]) => /\/api\/accounts\/\d+\/(messages|conversations)$/.test(p)), asked.map((a) => a[2]).join(' '))
+	})
+
 	await step('instant tabs: the calendar, the tasks and the contacts are loaded while the mail is idle, then show at once', async () => {
 		const ahead = ['/calendar/events', '/tasks?', '/contacts?'].map((part) => page.waitForResponse((r) => r.url().includes(part) && r.status() === 200, { timeout: 30000 }))
 		await page.goto(NC + '/apps/webmail/?module=mail')

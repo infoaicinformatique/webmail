@@ -4011,7 +4011,10 @@
 		window.addEventListener('pagehide', writeTab)
 
 		try {
-			state.accounts = await api('/accounts')
+			// given with the page (no first request); asked for if not
+			let given = null
+			try { given = window.OCP && OCP.InitialState ? OCP.InitialState.loadState('webmail', 'accounts', null) : null } catch (e) { given = null }
+			state.accounts = Array.isArray(given) ? given : await api('/accounts')
 		} catch (e) {
 			clear(root)
 			root.appendChild(h('div', { class: 'wm-empty' }, e.message))

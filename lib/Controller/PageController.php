@@ -5,17 +5,22 @@ declare(strict_types=1);
 namespace OCA\Webmail\Controller;
 
 use OCA\Webmail\AppInfo\Application;
+use OCA\Webmail\Service\AccountService;
+use OCA\Webmail\Service\MailNotificationService;
+use OCA\Webmail\Service\MeetingReminderService;
 use OCA\Webmail\Service\ServerConfigService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\TemplateResponse;
+use OCP\AppFramework\Services\IInitialState;
 use OCP\App\IAppManager;
 use OCP\IGroupManager;
 use OCP\IRequest;
 use OCP\IUserSession;
 use OCP\Util;
+use Psr\Log\LoggerInterface;
 
 class PageController extends Controller {
 	public function __construct(
@@ -24,6 +29,11 @@ class PageController extends Controller {
 		private IUserSession $userSession,
 		private IGroupManager $groupManager,
 		private IAppManager $apps,
+		private AccountService $accounts,
+		private MailNotificationService $bell,
+		private MeetingReminderService $reminders,
+		private IInitialState $initialState,
+		private LoggerInterface $logger,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -43,6 +53,17 @@ class PageController extends Controller {
 		Util::addStyle(Application::APP_ID, 'webmail');
 
 		$user = $this->userSession->getUser();
+		// the accounts with the page: the webmail asks Exchange for the folders and the messages at once,
+		// without a first request for them (the page asks for them itself if this fails)
+		if ($user !== null) {
+			try {
+				$uid = $user->getUID();
+				$this->initialState->provideInitialState('accounts', array_map(
+					fn ($a) => AccountController::describe($a, $this->bell, $this->reminders, $uid), $this->accounts->findAll($uid)));
+			} catch (\Throwable $e) {
+				$this->logger->warning('Webmail: accounts not given with the page', ['app' => Application::APP_ID, 'exception' => $e]);
+			}
+		}
 		$response = new TemplateResponse(Application::APP_ID, 'main', [
 			'domains' => $this->servers->getDomains(),
 			'autodiscover' => $this->servers->getAutodiscover()['enabled'],

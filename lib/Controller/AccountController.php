@@ -36,9 +36,14 @@ class AccountController extends Controller {
 
 	/** The account, and whether new messages are announced in Nextcloud's notifications. */
 	private function out(Account $a): array {
+		return self::describe($a, $this->bell, $this->reminders, (string)$this->userId);
+	}
+
+	/** An account as the webmail gets it (also given with the page, so that it starts without asking). */
+	public static function describe(Account $a, MailNotificationService $bell, MeetingReminderService $reminders, string $userId): array {
 		return $a->jsonSerialize() + [
-			'bell' => $this->bell->isEnabled((string)$this->userId, $a->getId()),
-			'reminders' => $this->reminders->isEnabled((string)$this->userId, $a->getId()),
+			'bell' => $bell->isEnabled($userId, $a->getId()),
+			'reminders' => $reminders->isEnabled($userId, $a->getId()),
 		];
 	}
 
