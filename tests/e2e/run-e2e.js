@@ -633,12 +633,28 @@ async function main() {
 
 	await step('account settings: signature', async () => {
 		await page.click('text=Comptes et signature')
-		await page.fill('.wm-account-card textarea', 'Utilisateur\nSociété A')
-		await page.click('.wm-account-card button:has-text("Enregistrer")')
+		// a formatted signature: a name, a bold company and a logo
+		const ed = '.wm-account-card .wm-signature-editor >> nth=0'
+		await page.click(ed)
+		await page.keyboard.type('Utilisateur')
+		await page.keyboard.press('Enter')
+		await page.click('.wm-account-card .wm-editor-btn[title="Gras"] >> nth=0')
+		await page.keyboard.type('Société A')
+		await page.click('.wm-account-card .wm-editor-btn[title="Gras"] >> nth=0')
+		await page.setInputFiles('.wm-account-card input[name=signatureImage] >> nth=0', { name: 'logo.png', mimeType: 'image/png',
+			buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') })
+		await page.waitForSelector('.wm-account-card .wm-signature-editor img')
+		await shot('61-signature')
+		await page.click('.wm-account-card button:has-text("Enregistrer") >> nth=0')
 		await page.waitForSelector('.wm-toast:has-text("Compte mis à jour")')
+		// kept by the server, formatted, after a reload
+		await page.reload()
+		await page.waitForSelector('.wm-message')
 		await page.click('.wm-compose-btn')
 		const signed = await page.innerText('.wm-editor')
 		assert(/--\s*\nUtilisateur\nSociété A/.test(signed), signed)
+		assert(await page.$('.wm-editor .wm-signature b:has-text("Société A")'), 'bold kept')
+		assert(await page.$('.wm-editor .wm-signature img[src^="data:image/png"]'), 'logo')
 	})
 
 	await step('automatic replies (out of office)', async () => {
@@ -1030,11 +1046,12 @@ async function main() {
 			dt.items.add(new File([blob], 'image.png', { type: 'image/png' }))
 			document.querySelector('.wm-editor').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
 		})
-		await page.waitForFunction(() => { const i = document.querySelector('.wm-editor img'); return i && i.complete && i.naturalWidth === 1600 })
+		await page.waitForFunction(() => { const i = document.querySelector('.wm-editor img:not(.wm-signature *)'); return i && i.complete && i.naturalWidth === 1600 })
 		// an image chosen with the 🖼 button
 		await page.setInputFiles('input[name=inlineImages]', { name: 'logo.png', mimeType: 'image/png',
 			buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') })
-		await page.waitForFunction(() => document.querySelectorAll('.wm-editor img').length === 2)
+		// (the logo of the signature is a third one)
+		await page.waitForFunction(() => document.querySelectorAll('.wm-editor img:not(.wm-signature *)').length === 2)
 		assert.strictEqual(await page.$eval('.wm-editor img[alt="logo.png"]', (i) => i.src.slice(0, 22)), 'data:image/png;base64,')
 		// not shown as attachments: they are in the text
 		assert.strictEqual(await page.$$eval('.wm-compose-attachments li', (els) => els.length), 0)
@@ -1050,7 +1067,7 @@ async function main() {
 		await page.waitForSelector('.wm-body-frame')
 		const loaded = await page.waitForFunction(() => {
 			const imgs = [...document.querySelector('.wm-body-frame').contentDocument.querySelectorAll('img')]
-			return imgs.length === 2 && imgs.every((i) => i.complete && i.naturalWidth > 0 && i.getAttribute('src').includes('/apps/webmail/api/accounts/'))
+			return imgs.length === 3 && imgs.every((i) => i.complete && i.naturalWidth > 0 && i.getAttribute('src').includes('/apps/webmail/api/accounts/'))
 		}, null, { timeout: 10000 }).then(() => true, () => false)
 		assert(loaded, 'inline images shown')
 		assert.strictEqual(await page.$$eval('.wm-attachment-name', (els) => els.length), 0)
