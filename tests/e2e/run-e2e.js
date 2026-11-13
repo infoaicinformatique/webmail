@@ -2776,6 +2776,33 @@ async function main() {
 		await page.waitForSelector('.wm-settings h2:has-text("Comptes Exchange")')
 	})
 
+	await step('tasks: what is typed in « Ajouter une tâche » stays when the list is refreshed meanwhile', async () => {
+		// the tasks shown at once from the cache, the fresh list held back 1.5 s
+		let fetched = false
+		const hold = async (route) => {
+			const response = await route.fetch()
+			fetched = true
+			await new Promise((r) => setTimeout(r, 1500))
+			await route.fulfill({ response })
+		}
+		await page.route('**/api/accounts/*/tasks?*', hold)
+		try {
+			await page.click('.wm-tab[data-module="tasks"]')
+			await page.waitForSelector('input[name=quickTask]')
+			for (let i = 0; i < 100 && !fetched; i++) await page.waitForTimeout(50)
+			await page.click('input[name=quickTask]')
+			await page.keyboard.type('Brouillon de tâche')
+			// the fresh list arrives: the field is still there, with its text and the focus
+			await page.waitForTimeout(1800)
+			assert.strictEqual(await page.inputValue('input[name=quickTask]'), 'Brouillon de tâche')
+			assert.ok(await page.$eval('input[name=quickTask]', (e) => document.activeElement === e))
+		} finally {
+			await page.unroute('**/api/accounts/*/tasks?*', hold)
+		}
+		await page.fill('input[name=quickTask]', '')
+		await page.click('.wm-tab[data-module="mail"]')
+	})
+
 	await step('tasks: add, edit, complete and delete an Exchange task', async () => {
 		await page.click('.wm-tab[data-module="tasks"]')
 		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
