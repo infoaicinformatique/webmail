@@ -2132,9 +2132,20 @@
 					h('button', { class: 'wm-small', onclick: () => saveAttachment(a) }, _('Enregistrer dans Fichiers'))))
 			})
 			detailEl.appendChild(list)
-			if (m.attachments.filter((a) => !a.isItem).length > 1) {
+			if (m.attachments.length > 1) {
+				// every attachment (an attached e-mail as an .eml) in one .zip, named after the subject
+				const zipQuery = new URLSearchParams({ name: m.subject || _('Pièces jointes') })
+				m.attachments.forEach((a) => zipQuery.append('ids[]', a.id))
 				detailEl.appendChild(h('div', { class: 'wm-attachments-all' },
-					h('button', { class: 'wm-small', onclick: () => saveAllAttachments(m.attachments.filter((a) => !a.isItem)) }, '💾 ' + _('Tout enregistrer dans Fichiers'))))
+					h('a', {
+						class: 'button wm-small wm-zip-btn',
+						href: OC.generateUrl('/apps/webmail/api/accounts/' + state.accountId + '/attachments/zip') + '?' + zipQuery,
+						download: '',
+						title: _('Toutes les pièces jointes dans un fichier .zip'),
+					}, '⬇\uFE0E ' + _('Tout télécharger (.zip)')),
+					m.attachments.filter((a) => !a.isItem).length > 1
+						? h('button', { class: 'wm-small', onclick: () => saveAllAttachments(m.attachments.filter((a) => !a.isItem)) }, '💾 ' + _('Tout enregistrer dans Fichiers'))
+						: null))
 			}
 		}
 
@@ -2699,10 +2710,6 @@
 		}
 	}
 
-	/**
-	 * A meeting about a message, as Outlook's « Reply with meeting »: its subject,
-	 * its text, and its sender and recipients (but me) as attendees.
-	 */
 	/** What an event or a task made from a message takes from it: its subject (without « RE : »), « Message de … du … : » and its text. */
 	function messageSummary(m) {
 		// the text of the message, one line per paragraph, line break or table row
