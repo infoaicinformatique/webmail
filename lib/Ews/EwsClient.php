@@ -556,7 +556,7 @@ class EwsClient {
 	 * all of them, results merged newest first. Paging goes up to 200 results.
 	 * @param string[] $folderIds
 	 */
-	public function searchFolders(array $folderIds, int $offset, int $limit, string $query): array {
+	public function searchFolders(array $folderIds, int $offset, int $limit, string $query, string $sort = 'date', bool $desc = true): array {
 		$window = min(200, max(1, $offset + $limit));
 		$ids = '';
 		foreach ($folderIds as $id) {
@@ -566,7 +566,7 @@ class EwsClient {
 			'<m:FindItem Traversal="Shallow">'
 			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $this->summaryFields(true) . '</t:AdditionalProperties></m:ItemShape>'
 			. '<m:IndexedPageItemView MaxEntriesReturned="' . $window . '" Offset="0" BasePoint="Beginning"/>'
-			. '<m:SortOrder><t:FieldOrder Order="Descending"><t:FieldURI FieldURI="item:DateTimeReceived"/></t:FieldOrder></m:SortOrder>'
+			. self::sortOrderXml($sort, $desc)
 			. '<m:ParentFolderIds>' . $ids . '</m:ParentFolderIds>'
 			. '<m:QueryString>' . $this->esc($query) . '</m:QueryString>'
 			. '</m:FindItem>',
@@ -603,7 +603,7 @@ class EwsClient {
 
 	private function summaryFields(bool $withFolder = false): string {
 		$props = ['item:Subject', 'message:From', 'item:DisplayTo', 'item:DateTimeReceived', 'message:IsRead',
-			'item:HasAttachments', 'item:Importance', 'item:Flag', 'item:Preview', 'item:Categories'];
+			'item:HasAttachments', 'item:Importance', 'item:Flag', 'item:Preview', 'item:Categories', 'item:Size'];
 		if ($withFolder) {
 			$props[] = 'item:ParentFolderId';
 		}
@@ -630,6 +630,7 @@ class EwsClient {
 			'flagDue' => $this->flagDue($xp, $node),
 			'categories' => $this->strings($xp, 't:Categories/t:String', $node),
 			'preview' => mb_substr((string)$this->text($xp, 't:Preview', $node), 0, 200),
+			'size' => (int)$this->text($xp, 't:Size', $node),
 			'isMeeting' => $node->localName !== 'Message',
 		];
 		$folder = $this->attr($xp, 't:ParentFolderId', 'Id', $node);
@@ -774,7 +775,29 @@ class EwsClient {
 		return $out;
 	}
 
-	public function findItems(string $folderId, int $offset = 0, int $limit = 50, ?string $query = null): array {
+	/** The orders of the message list: field => what Exchange sorts on. */
+	private const SORTS = [
+		'date' => '<t:FieldURI FieldURI="item:DateTimeReceived"/>',
+		// PR_SENT_REPRESENTING_NAME: the name shown as the sender
+		'from' => '<t:ExtendedFieldURI PropertyTag="0x0042" PropertyType="String"/>',
+		'subject' => '<t:FieldURI FieldURI="item:Subject"/>',
+		'size' => '<t:FieldURI FieldURI="item:Size"/>',
+	];
+
+	/**
+	 * « Trier par » of the message list; then by date, newest first, for equal values.
+	 * Unknown fields: by date. $desc: Z→A, largest, newest first.
+	 */
+	public static function sortOrderXml(string $field = 'date', bool $desc = true): string {
+		$field = isset(self::SORTS[$field]) ? $field : 'date';
+		$xml = '<t:FieldOrder Order="' . ($desc ? 'Descending' : 'Ascending') . '">' . self::SORTS[$field] . '</t:FieldOrder>';
+		if ($field !== 'date') {
+			$xml .= '<t:FieldOrder Order="Descending">' . self::SORTS['date'] . '</t:FieldOrder>';
+		}
+		return '<m:SortOrder>' . $xml . '</m:SortOrder>';
+	}
+
+	public function findItems(string $folderId, int $offset = 0, int $limit = 50, ?string $query = null, string $sort = 'date', bool $desc = true): array {
 		$fields = $this->summaryFields();
 		$queryXml = '';
 		if ($query !== null && trim($query) !== '') {
@@ -785,7 +808,7 @@ class EwsClient {
 			'<m:FindItem Traversal="Shallow">'
 			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $fields . '</t:AdditionalProperties></m:ItemShape>'
 			. '<m:IndexedPageItemView MaxEntriesReturned="' . max(1, $limit) . '" Offset="' . max(0, $offset) . '" BasePoint="Beginning"/>'
-			. '<m:SortOrder><t:FieldOrder Order="Descending"><t:FieldURI FieldURI="item:DateTimeReceived"/></t:FieldOrder></m:SortOrder>'
+			. self::sortOrderXml($sort, $desc)
 			. '<m:ParentFolderIds>' . $this->folderIdXml($folderId) . '</m:ParentFolderIds>'
 			. $queryXml
 			. '</m:FindItem>'

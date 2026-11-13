@@ -3541,6 +3541,35 @@ async function main() {
 		await page.waitForSelector('.wm-message:has-text("Desinscription lettre d\'info")')
 	})
 
+	await step('sort: « Trier par » subject, size, then back to the date (kept after a reload)', async () => {
+		const subjects = () => page.$$eval('.wm-messages .wm-message-subject', (els) => els.map((e) => e.textContent))
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-list-period')
+		await page.selectOption('.wm-sort', 'subject-asc')
+		await page.waitForFunction(() => !document.querySelector('.wm-list-period') && document.querySelector('.wm-messages .wm-message'))
+		await page.waitForFunction(() => {
+			const s = [...document.querySelectorAll('.wm-messages .wm-message-subject')].map((e) => e.textContent.toLowerCase())
+			return s.length > 3 && s.every((x, i) => i === 0 || s[i - 1] <= x)
+		})
+		const sorted = await subjects()
+		assert.ok(sorted[0].toLowerCase() <= sorted[1].toLowerCase(), sorted.slice(0, 5).join(' | '))
+		// kept: a reload shows the same order
+		await page.reload()
+		await page.waitForSelector('.wm-messages .wm-message')
+		assert.strictEqual(await page.$eval('.wm-sort', (e) => e.value), 'subject-asc')
+		await page.waitForFunction((first) => document.querySelector('.wm-messages .wm-message-subject').textContent === first, sorted[0])
+		// the largest first, its size where the date was
+		await page.selectOption('.wm-sort', 'size-desc')
+		await page.waitForSelector('.wm-messages .wm-message:first-child .wm-message-subject:text-is("Devis pour la maintenance annuelle")')
+		const size = await page.textContent('.wm-messages .wm-message:first-child .wm-message-date')
+		assert.ok(/\d.*(o|Ko|Mo)$/.test(size.trim()), size)
+		await shot('86-sort')
+		// back to the date: the headings again
+		await page.selectOption('.wm-sort', 'date-desc')
+		await page.waitForSelector('.wm-list-period')
+		assert.ok(!(await page.$eval('.wm-sort', (e) => e.classList.contains('active'))))
+	})
+
 	await step('recent recipients: the people written to come first in the completion, from the first letter', async () => {
 		await page.click('.wm-folder >> nth=0')
 		await page.click('.wm-compose-btn')

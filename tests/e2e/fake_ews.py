@@ -276,13 +276,18 @@ def item_summary_xml(m, with_folder=False):
     display_to = '; '.join(n for n, _ in m['to'])
     return (('<t:Message><t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject><t:DateTimeReceived>%s</t:DateTimeReceived>'
             '<t:HasAttachments>%s</t:HasAttachments><t:Importance>%s</t:Importance><t:DisplayTo>%s</t:DisplayTo><t:Preview>%s</t:Preview>'
-            '<t:Flag><t:FlagStatus>%s</t:FlagStatus>%s</t:Flag><t:IsRead>%s</t:IsRead><t:From>%s</t:From></t:Message>').replace('Message>', m.get('kind', 'Message') + '>')
+            '<t:Flag><t:FlagStatus>%s</t:FlagStatus>%s</t:Flag><t:IsRead>%s</t:IsRead><t:From>%s</t:From><t:Size>%d</t:Size></t:Message>').replace('Message>', m.get('kind', 'Message') + '>')
             .replace('<t:Importance>', categories_xml(m) + '<t:Importance>', 1)
             .replace('<t:Subject>', ('<t:ParentFolderId Id="%s" ChangeKey="AQ"/>' % m['folder'] if with_folder else '') + '<t:Subject>', 1)
             % (m['id'], m['ck'], esc(m['subject']), m['date'],
                'true' if any(not ATTACHMENTS[a].get('inline') for a in m['attachments']) else 'false',
                m['importance'], esc(display_to), esc(text),
-               'Flagged' if m['flagged'] else 'NotFlagged', flag_dates(m), 'true' if m['is_read'] else 'false', mailbox(*m['sender'])))
+               'Flagged' if m['flagged'] else 'NotFlagged', flag_dates(m), 'true' if m['is_read'] else 'false', mailbox(*m['sender']), size_of(m)))
+
+
+def size_of(m):
+    """The size of a message, as Exchange gives it (item:Size): the body and the attachments."""
+    return 800 + len(m['body'].encode('utf-8')) + sum(len(ATTACHMENTS[a]['content']) for a in m['attachments'])
 
 
 def categories_xml(m):
@@ -668,6 +673,17 @@ def handle(op, el, user):
             if text:
                 msgs = [m for m in msgs if text in m['subject'].lower() or text in m['body'].lower() or text in m['sender'][0].lower()]
             msgs.sort(key=lambda m: m['date'], reverse=True)
+            # « Trier par »: the first field asked (then by date, newest first, as already sorted)
+            first = el.find('m:SortOrder/t:FieldOrder', NS)
+            if first is not None:
+                uri = first.find('t:FieldURI', NS)
+                ext = first.find('t:ExtendedFieldURI', NS)
+                key = {'item:Subject': lambda m: m['subject'].lower(), 'item:Size': size_of,
+                       'item:DateTimeReceived': lambda m: m['date']}.get(uri.get('FieldURI') if uri is not None else '')
+                if ext is not None and ext.get('PropertyTag') == '0x0042':
+                    key = lambda m: m['sender'][0].lower()
+                if key is not None:
+                    msgs.sort(key=key, reverse=first.get('Order') == 'Descending')
             page = msgs[offset:offset + limit]
             last = offset + limit >= len(msgs)
             out.append(ok(op, '<m:RootFolder IndexedPagingOffset="%d" TotalItemsInView="%d" IncludesLastItemInRange="%s"><t:Items>%s</t:Items></m:RootFolder>'
