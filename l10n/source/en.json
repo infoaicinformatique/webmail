@@ -1237,5 +1237,19 @@
 	"Retirer des favoris": "Remove from favorites",
 	"Ajouter aux favoris": "Add to favorites",
 	"Favoris": "Favorites",
-	"Retirer {name} des favoris": "Remove {name} from favorites"
+	"Retirer {name} des favoris": "Remove {name} from favorites",
+	"Confortable (avec aperçu)": "Comfortable (with preview)",
+	"Compact (sans aperçu)": "Compact (no preview)",
+	"Une ligne par message": "One line per message",
+	"Affichage enregistré": "Display saved",
+	"Affichage": "Display",
+	"Liste des messages": "Message list",
+	"Plus compact, plus de messages tiennent à l'écran.": "More compact, more messages fit on the screen.",
+	"Plus récents": "Newest first",
+	"Plus anciens": "Oldest first",
+	"Expéditeur (A → Z)": "Sender (A → Z)",
+	"Expéditeur (Z → A)": "Sender (Z → A)",
+	"Objet (A → Z)": "Subject (A → Z)",
+	"Plus volumineux": "Largest first",
+	"Trier par": "Sort by"
 }

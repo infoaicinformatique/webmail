@@ -126,16 +126,18 @@ class MailController extends Controller {
 	 */
 	#[NoAdminRequired]
 	public function messages(int $id, string $folder = 'inbox', int $offset = 0, int $limit = 50, string $q = '',
-		bool $unread = false, bool $attachments = false, bool $flagged = false, string $since = '', string $scope = 'folder'): Response {
+		bool $unread = false, bool $attachments = false, bool $flagged = false, string $since = '', string $scope = 'folder',
+		string $sort = 'date', string $order = 'desc'): Response {
 		$limit = max(1, min(100, $limit));
-		return $this->handle(function () use ($id, $folder, $offset, $limit, $q, $unread, $attachments, $flagged, $since, $scope) {
+		$desc = $order !== 'asc';
+		return $this->handle(function () use ($id, $folder, $offset, $limit, $q, $unread, $attachments, $flagged, $since, $scope, $sort, $desc) {
 			$client = $this->client($id);
 			$query = EwsClient::searchQuery($q, ['unread' => $unread, 'attachments' => $attachments, 'flagged' => $flagged, 'since' => $since]);
 			if ($scope === 'all' && $query !== null) {
 				$ids = array_column($client->listFolders(), 'id');
-				return $client->searchFolders($ids, max(0, $offset), $limit, $query);
+				return $client->searchFolders($ids, max(0, $offset), $limit, $query, $sort, $desc);
 			}
-			return $client->findItems($folder, max(0, $offset), $limit, $query);
+			return $client->findItems($folder, max(0, $offset), $limit, $query, $sort, $desc);
 		});
 	}
 
