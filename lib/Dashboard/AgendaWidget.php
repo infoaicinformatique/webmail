@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace OCA\Webmail\Dashboard;
 
-use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Service\DashboardService;
 use OCP\Dashboard\IAPIWidgetV2;
 use OCP\Dashboard\IButtonWidget;
