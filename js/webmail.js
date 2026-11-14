@@ -2617,6 +2617,7 @@
 				: null,
 			h('button', { class: 'wm-cat-btn', title: _('Catégoriser'), 'aria-label': _('Catégoriser'), onclick: (e) => categoryMenu(e.currentTarget, () => [m]) }, '🏷'),
 			h('button', { class: 'wm-print-btn', title: _('Imprimer'), 'aria-label': _('Imprimer'), onclick: () => printMessage(m) }, '🖨'),
+			h('button', { class: 'wm-matrix-send-btn', title: _('Envoyer sur Matrix (Element) : un résumé du message dans un salon'), 'aria-label': _('Envoyer sur Matrix'), onclick: () => sendToMatrix(mailSummaryForMatrix(m)) }, '💬'),
 			h('button', { class: 'wm-headers-btn', title: _('En-têtes Internet : expéditeur réel, serveurs traversés, contrôles SPF, DKIM et DMARC'), 'aria-label': _('Afficher les en-têtes Internet'), onclick: () => showHeaders(m) }, '🧾'),
 			h('a', {
 				class: 'button wm-eml-btn',
@@ -4529,6 +4530,147 @@
 		return box
 	}
 
+	// ------------------------------------------------------------------
+	// Matrix (Element): « Envoyer sur Matrix » with the user's own Matrix account
+	// ------------------------------------------------------------------
+
+	const matrix = { settings: null, rooms: null }
+
+	async function matrixSettingsLoad(force) {
+		if (!matrix.settings || force) matrix.settings = await api('/matrix')
+		return matrix.settings
+	}
+
+	/** The card of « Comptes et signature »: homeserver, access token (kept encrypted), default room. */
+	function matrixSettings() {
+		const card = h('fieldset', { class: 'wm-account-card wm-matrix-settings' }, h('legend', {}, '💬 ' + _('Matrix (Element)')))
+		// (text: « matrix.example.org » alone is accepted, https is added by the server)
+		const homeserver = h('input', { type: 'text', inputmode: 'url', autocapitalize: 'off', spellcheck: 'false', name: 'matrixHomeserver', placeholder: 'https://matrix.example.org' })
+		const token = h('input', { type: 'password', name: 'matrixToken', autocomplete: 'off' })
+		const room = h('input', { type: 'text', name: 'matrixRoom', placeholder: '#equipe:example.org', list: 'wm-matrix-rooms' })
+		const roomList = h('datalist', { id: 'wm-matrix-rooms' })
+		const status = h('p', { class: 'wm-muted wm-matrix-status' })
+		const forget = h('button', { type: 'button', class: 'wm-small wm-danger', hidden: true }, _('Déconnecter'))
+		// (the saved values arriving after the person started typing do not replace what they typed)
+		const typed = new Set()
+		;[homeserver, token, room].forEach((i) => i.addEventListener('input', () => typed.add(i)))
+		const show = (st, initial) => {
+			const set = (i, v) => { if (!initial || !typed.has(i)) i.value = v }
+			set(homeserver, st.homeserver || '')
+			set(room, st.room || '')
+			set(token, '')
+			if (!initial) typed.clear()
+			token.placeholder = st.hasToken ? _('Enregistré (laisser vide pour le garder)') : _('Jeton d\'accès')
+			forget.hidden = !st.hasToken
+			status.textContent = st.user ? _('Connecté en tant que {user}', { user: st.user }) : (st.hasToken ? _('Compte Matrix enregistré') : '')
+		}
+		const fillRooms = async () => {
+			try {
+				matrix.rooms = (await api('/matrix/rooms')).rooms
+				clear(roomList)
+				matrix.rooms.forEach((r) => roomList.appendChild(h('option', { value: r.id }, r.name)))
+			} catch (e) { /* the list is a help only */ }
+		}
+		const save = h('button', { type: 'submit', class: 'primary' }, _('Connecter'))
+		const form = h('form', {
+			class: 'wm-matrix-form',
+			onsubmit: async (e) => {
+				e.preventDefault()
+				save.disabled = true
+				try {
+					const st = await api('/matrix', { method: 'POST', body: { homeserver: homeserver.value, token: token.value, room: room.value } })
+					matrix.settings = st
+					show(st)
+					toast(_('Compte Matrix enregistré'))
+					fillRooms()
+				} catch (ex) { toast(ex.message, true) } finally { save.disabled = false }
+			},
+		},
+		h('label', { class: 'wm-field' }, h('span', {}, _('Serveur')), homeserver),
+		h('label', { class: 'wm-field' }, h('span', {}, _('Jeton d\'accès')), token),
+		h('label', { class: 'wm-field' }, h('span', {}, _('Salon par défaut')), room, roomList),
+		h('p', { class: 'wm-muted' }, _('Le jeton se trouve dans Element : Paramètres › Aide et à propos › Avancé › Jeton d\'accès. Il est gardé chiffré et ne sert qu\'à poster ce que vous envoyez sur Matrix.')),
+		status,
+		h('div', { class: 'wm-compose-actions' }, save, forget))
+		forget.onclick = async () => {
+			try {
+				show(matrix.settings = await api('/matrix/forget', { method: 'POST' }))
+				matrix.rooms = null
+				toast(_('Compte Matrix déconnecté'))
+			} catch (ex) { toast(ex.message, true) }
+		}
+		card.appendChild(form)
+		matrixSettingsLoad(true).then((st) => { show(st, true); if (st.hasToken) fillRooms() }, () => {})
+		return card
+	}
+
+	/** The text of a message, for Matrix: subject, sender, date, the beginning of the text (its paragraphs kept). */
+	function mailSummaryForMatrix(m) {
+		const doc = new DOMParser().parseFromString(m.body || '', 'text/html')
+		doc.querySelectorAll('script, style, title').forEach((e) => e.remove())
+		doc.querySelectorAll('br').forEach((e) => e.replaceWith('\n'))
+		doc.querySelectorAll('p, div, li, tr, h1, h2, h3, h4, h5, h6, blockquote, pre, table').forEach((e) => e.append('\n'))
+		const text = (doc.body.textContent || '').replace(/[ \t\u00a0]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+		const from = m.from ? (m.from.name && m.from.name !== m.from.email ? m.from.name + ' <' + m.from.email + '>' : m.from.email) : ''
+		const date = m.date ? new Date(m.date).toLocaleString(locale(), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
+		// (the address put in after the translation: it would take « <address> » for an HTML tag and drop it)
+		return '✉️ ' + (m.subject || _('(sans objet)')) + '\n'
+			+ _('De : {from}').replace('{from}', from) + (date ? ' · ' + date : '') + '\n\n'
+			+ (text.length > 600 ? text.slice(0, 600).trim() + '…' : text)
+	}
+
+	/**
+	 * « Envoyer sur Matrix »: the text (to change if need be) and the room, then posted.
+	 * Also used by the calendar (an event).
+	 */
+	async function sendToMatrix(text) {
+		let st
+		try { st = await matrixSettingsLoad() } catch (e) { toast(e.message, true); return }
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const body = h('div', { class: 'wm-modal-body' })
+		overlay.appendChild(h('div', { class: 'wm-modal wm-matrix-send', role: 'dialog', 'aria-modal': 'true', 'aria-label': _('Envoyer sur Matrix') },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, '💬 ' + _('Envoyer sur Matrix')), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			body))
+		document.body.appendChild(overlay)
+		if (!st.hasToken) {
+			body.appendChild(h('p', {}, _('Connectez d\'abord votre compte Matrix : serveur et jeton d\'accès d\'Element.')))
+			body.appendChild(h('button', { class: 'primary', onclick: () => { close(); openAccountSettings() } }, _('Connecter mon compte Matrix')))
+			return
+		}
+		const roomSel = h('select', { name: 'matrixSendRoom', 'aria-label': _('Salon') }, h('option', { value: st.room || '' }, st.room || _('Choisissez un salon')))
+		const textarea = h('textarea', { name: 'matrixText', rows: '9' })
+		textarea.value = text
+		const send = h('button', { type: 'submit', class: 'primary' }, _('Envoyer'))
+		body.appendChild(h('form', {
+			onsubmit: async (e) => {
+				e.preventDefault()
+				send.disabled = true
+				try {
+					await api('/matrix/send', { method: 'POST', body: { room: roomSel.value, text: textarea.value } })
+					close()
+					const r = (matrix.rooms || []).find((x) => x.id === roomSel.value)
+					toast(_('Envoyé sur Matrix dans {room}', { room: r ? r.name : roomSel.value }))
+				} catch (ex) { toast(ex.message, true); send.disabled = false }
+			},
+		},
+		h('label', { class: 'wm-field' }, h('span', {}, _('Salon')), roomSel),
+		h('label', { class: 'wm-field wm-field-top' }, h('span', {}, _('Message')), textarea),
+		h('div', { class: 'wm-compose-actions' }, send, h('button', { type: 'button', onclick: close }, _('Annuler')))))
+		textarea.focus()
+		// the joined rooms, the default one chosen
+		try {
+			if (!matrix.rooms) matrix.rooms = (await api('/matrix/rooms')).rooms
+			clear(roomSel)
+			const known = matrix.rooms.some((r) => r.id === st.room)
+			if (st.room && !known) roomSel.appendChild(h('option', { value: st.room }, st.room))
+			matrix.rooms.forEach((r) => roomSel.appendChild(h('option', { value: r.id, selected: r.id === st.room }, r.name)))
+		} catch (e) { /* the default room only */ }
+	}
+
 	function openAccountSettings() {
 		setView('detail')
 		clear(detailEl)
@@ -4597,6 +4739,8 @@
 		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-template-settings' },
 			h('legend', {}, _('Modèles de réponse')), templateList))
 		loadTemplates(true).then(showTemplates, (e) => toast(e.message, true))
+		// (last: the account cards stay first)
+		wrap.appendChild(matrixSettings())
 
 		// senders whose remote images show at once
 		const trustedList = h('ul', { class: 'wm-trusted-list' })
@@ -4768,6 +4912,7 @@
 		state,
 		TZ,
 		api,
+		sendToMatrix,
 		h,
 		clear,
 		toast,

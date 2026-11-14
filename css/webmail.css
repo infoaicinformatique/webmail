@@ -1012,6 +1012,11 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 /* (on the list pane, already scrolling: a list itself clipping would shrink in its flex column) */
 .wm-list { overflow-x: hidden; }
 
+/* « Envoyer sur Matrix » */
+.wm-matrix-send textarea { width: 100%; font-family: inherit; }
+.wm-matrix-send select { max-width: 100%; }
+.wm-matrix-form input { min-width: 0; }
+
 /* « Hors connexion »: above the panes, under the Nextcloud header */
 .wm-offline {
 	/* at the bottom, where nothing is to click (the list's buttons are at the top) */

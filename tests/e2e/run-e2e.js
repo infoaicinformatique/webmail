@@ -763,7 +763,7 @@ async function main() {
 			buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') })
 		await page.waitForSelector('.wm-account-card .wm-signature-editor img')
 		await shot('61-signature')
-		await page.click('.wm-account-card button:has-text("Enregistrer") >> nth=0')
+		await page.click('.wm-account-card:has(.wm-signature-editor) button:has-text("Enregistrer") >> nth=0')
 		await page.waitForSelector('.wm-toast:has-text("Compte mis à jour")')
 		// kept by the server, formatted, after a reload
 		await page.reload()
@@ -3874,6 +3874,80 @@ async function main() {
 		await page.click(row + ' .wm-check')
 		await page.click('.wm-bulk button:text-is("Lu")')
 		await page.waitForSelector(row + ':not(.unread)')
+	})
+
+	await step('Matrix: the account connected, a message and an event sent to rooms (Element)', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		// what the fake homeserver received (it runs here, with its own certificate)
+		const sent = () => new Promise((resolve, reject) => {
+			require('https').get('https://localhost:8443/_matrix/test/sent', { rejectUnauthorized: false }, (res) => {
+				let data = ''
+				res.on('data', (c) => { data += c })
+				res.on('end', () => resolve(JSON.parse(data)))
+			}).on('error', reject)
+		})
+		// (the fake servers are on the local network: allowed here only)
+		occ('config:system:set allow_local_remote_servers --value=true --type=boolean')
+		try {
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('text=Comptes et signature')
+			await page.fill('input[name=matrixHomeserver]', 'ex3.fake.test:8443')
+			await page.fill('input[name=matrixToken]', 'pas-le-bon')
+			await page.click('.wm-matrix-form button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Le serveur Matrix n\'a pas reconnu ce jeton")')
+			await page.fill('input[name=matrixToken]', 'syt_test_token')
+			await page.fill('input[name=matrixRoom]', '#equipe:fake.test')
+			await page.click('.wm-matrix-form button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Compte Matrix enregistré")')
+			await page.waitForSelector('.wm-matrix-status:has-text("Connecté en tant que @user:fake.test")')
+			assert.strictEqual(await page.inputValue('input[name=matrixHomeserver]'), 'https://ex3.fake.test:8443')
+			// (the token is never shown again)
+			assert.strictEqual(await page.inputValue('input[name=matrixToken]'), '')
+
+			// a message: its summary, to the default room
+			await page.click('.wm-folder >> nth=0')
+			await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+			await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+			await page.click('.wm-matrix-send-btn')
+			await page.waitForSelector('.wm-matrix-send select[name=matrixSendRoom] option:has-text("Équipe chantier")', { state: 'attached' })
+			const text = await page.inputValue('textarea[name=matrixText]')
+			assert.ok(text.startsWith('✉️ Devis pour la maintenance annuelle\nDe : Jean Dupont <jean.dupont@client-exemple.fr>'), text)
+			assert.ok(text.includes('Veuillez trouver ci-joint'), text)
+			await shot('92-matrix-send')
+			await page.click('.wm-matrix-send button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Envoyé sur Matrix")')
+			let last = (await sent()).pop()
+			assert.strictEqual(last.room, '!equipe:fake.test')
+			assert.ok(last.content.body.startsWith('✉️ Devis pour la maintenance annuelle'), last.content.body)
+			assert.ok(last.content.formatted_body.includes('&lt;jean.dupont@client-exemple.fr&gt;'), last.content.formatted_body)
+
+			// an event, to another room
+			await page.click('.wm-tab[data-module="calendar"]')
+			await page.click('.wm-segmented button:has-text("Liste")')
+			await page.click('.wm-agenda-item:has-text("Comité de pilotage")')
+			await page.click('.wm-modal .wm-matrix-send-btn')
+			await page.waitForSelector('.wm-matrix-send select[name=matrixSendRoom] option:has-text("Mes notes")', { state: 'attached' })
+			await page.selectOption('.wm-matrix-send select[name=matrixSendRoom]', { label: 'Mes notes' })
+			assert.ok((await page.inputValue('textarea[name=matrixText]')).startsWith('📅 Comité de pilotage\n🕑 '))
+			await page.click('.wm-matrix-send button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Envoyé sur Matrix dans Mes notes")')
+			last = (await sent()).pop()
+			assert.strictEqual(last.room, '!notes:fake.test')
+			await page.click('.wm-segmented button:has-text("Mois")')
+
+			// disconnected: the button asks to connect
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('text=Comptes et signature')
+			await page.click('.wm-matrix-form button:has-text("Déconnecter")')
+			await page.waitForSelector('.wm-toast:has-text("Compte Matrix déconnecté")')
+			await page.click('.wm-folder >> nth=0')
+			await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+			await page.click('.wm-matrix-send-btn')
+			await page.waitForSelector('.wm-matrix-send button:has-text("Connecter mon compte Matrix")')
+			await page.click('.wm-matrix-send .wm-modal-close')
+		} finally {
+			occ('config:system:delete allow_local_remote_servers')
+		}
 	})
 
 	await step('touch: a message swiped to the right is read / unread, to the left goes to the trash (with « Annuler »)', async () => {

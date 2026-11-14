@@ -1370,6 +1370,13 @@
 		if (canEdit) {
 			actions.appendChild(h('button', { class: 'primary', onclick: () => { close(); openForm(ev) } }, isOccurrence ? '✏️ ' + _('Modifier cette occurrence') : '✏️ ' + _('Modifier')))
 		}
+		if (core.sendToMatrix) {
+			// a summary of the event in a Matrix room (Element): when, where, the visio link if any
+			const visio = ((ev.body || '').match(/https:\/\/[^\s<>"']+\/room\/[^\s<>"']+|https:\/\/[^\s<>"']*(?:element|matrix)[^\s<>"']*/i) || [])[0]
+			const text = '📅 ' + (ev.subject || _('(sans titre)')) + '\n🕑 ' + ucfirst(core.formatRange(ev.start, ev.end, ev.allDay))
+				+ (ev.location ? '\n📍 ' + ev.location : '') + (visio ? '\n🎥 ' + visio : '')
+			actions.appendChild(h('button', { class: 'wm-matrix-send-btn', title: _('Envoyer sur Matrix (Element)'), onclick: () => { close(); core.sendToMatrix(text) } }, '💬 ' + _('Matrix')))
+		}
 		if (readOnly) {
 			actions.appendChild(h('span', { class: 'wm-muted' }, '🔒 ' + _('Agenda partagé en lecture seule')))
 		}
