@@ -2323,7 +2323,8 @@
 	async function senderMessages(m) {
 		const email = m.from && m.from.email
 		if (!email) return
-		const folderId = state.folderId
+		// the folder of the message (a search may show it from another one)
+		const folderId = m.folderId || state.folderId
 		const base = '/accounts/' + state.accountId + '/sender'
 		const who = m.from.name && m.from.name !== email ? m.from.name + ' <' + email + '>' : email
 		const title = _('Messages de {who}', { who })
@@ -2809,7 +2810,7 @@
 			window.WebmailModules.tasks ? h('button', { class: 'wm-task-from-msg', title: _('Créer une tâche à partir de ce message'), 'aria-label': _('Créer une tâche à partir de ce message'), onclick: () => taskFromMessage(m) }, '✅') : null,
 			window.WebmailModules.calendar ? h('button', { class: 'wm-event-from-msg', title: _('Créer un événement à partir de ce message'), 'aria-label': _('Créer un événement à partir de ce message'), onclick: () => eventFromMessage(m) }, '📅') : null,
 			h('button', { class: 'wm-eml-save-btn', title: _('Enregistrer le message dans Fichiers (.eml)'), 'aria-label': _('Enregistrer le message dans Fichiers'), onclick: () => saveMessageToFiles(m) }, '☁️'),
-			m.from && m.from.email && !isSearching() ? h('button', { class: 'wm-sender-btn', title: _('Les messages de cet expéditeur dans ce dossier : les afficher, les marquer comme lus, les déplacer ou les supprimer d\'un coup'), onclick: () => senderMessages(m) }, '👤 ' + _('Tous ses messages…')) : null,
+			m.from && m.from.email && !m.from.email.startsWith('/') ? h('button', { class: 'wm-sender-btn', title: _('Les messages de cet expéditeur dans ce dossier : les afficher, les marquer comme lus, les déplacer ou les supprimer d\'un coup'), onclick: () => senderMessages(m) }, '👤 ' + _('Tous ses messages…')) : null,
 			h('button', { class: 'wm-rule-from-msg', title: _('Créer une règle pour les messages de cet expéditeur'), onclick: () => ruleFromMessage(m) }, '📋 ' + _('Règle…')),
 		)
 		detailEl.appendChild(toolbar)

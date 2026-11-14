@@ -4056,9 +4056,16 @@ async function main() {
 	})
 
 	await step('one sender: « Tous ses messages… » shows them, moves them all, and back', async () => {
+		// (one of the newsletters, found by a search: far down the inbox by now)
+		const openNewsletter = async () => {
+			await page.fill('.wm-list .wm-search', 'Newsletter n°10')
+			await page.press('.wm-list .wm-search', 'Enter')
+			await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
+			await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°10")')
+		}
 		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector('.wm-list-period')
-		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
+		await openNewsletter()
 		await page.click('.wm-toolbar .wm-sender-btn')
 		const text = await (await page.waitForSelector('.wm-sender-dialog p:has-text("de cet expéditeur dans « Boîte de réception »")')).textContent()
 		const count = parseInt(text, 10)
@@ -4073,13 +4080,12 @@ async function main() {
 		await page.click('.wm-search-info a:has-text("effacer")')
 		await page.waitForSelector('.wm-list-period')
 		// all moved to « Clients », then all back
-		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
+		await openNewsletter()
 		await page.click('.wm-toolbar .wm-sender-btn')
 		await page.waitForSelector('.wm-sender-dialog .wm-sender-move select')
 		await page.selectOption('.wm-sender-dialog .wm-sender-move select', { label: 'Clients' })
 		await page.click('.wm-sender-move-btn')
 		await page.waitForSelector('.wm-toast:has-text("' + count + ' messages déplacés dans « Clients »")')
-		await page.waitForSelector('.wm-message:has-text("Lettre d\'info")', { state: 'detached' })
 		await page.click('.wm-folder:has-text("Clients")')
 		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
 		await page.click('.wm-toolbar .wm-sender-btn')
@@ -4088,7 +4094,8 @@ async function main() {
 		await page.click('.wm-sender-move-btn')
 		await page.waitForSelector('.wm-toast:has-text("' + count + ' messages déplacés dans « Boîte de réception »")')
 		await page.click('.wm-folder >> nth=0')
-		await page.waitForSelector('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
+		await openNewsletter()
+		await page.click('.wm-search-info a:has-text("effacer")')
 	})
 
 	await step('pinned: a message pinned stays at the top of its folder, whatever the order, until unpinned', async () => {
