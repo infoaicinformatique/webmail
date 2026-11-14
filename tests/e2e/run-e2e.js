@@ -4058,9 +4058,9 @@ async function main() {
 	await step('pinned: a message pinned stays at the top of its folder, whatever the order, until unpinned', async () => {
 		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector('.wm-list-period')
-		const row = '.wm-message:has-text("Réunion de lundi")'
+		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°44"))'
 		// (found by a search: it may be far down the inbox), then the whole inbox again
-		await page.fill('.wm-list .wm-search', 'Réunion de lundi')
+		await page.fill('.wm-list .wm-search', 'Newsletter n°44')
 		await page.press('.wm-list .wm-search', 'Enter')
 		await page.click(row)
 		await page.click('.wm-toolbar .wm-pin-btn')
@@ -4068,7 +4068,7 @@ async function main() {
 		await page.click('.wm-search-info a:has-text("effacer")')
 		await page.waitForSelector('.wm-list-period')
 		const first = () => page.$eval('.wm-messages .wm-message', (e) => e.textContent)
-		assert.ok((await first()).includes('Réunion de lundi'), await first())
+		assert.ok((await first()).includes('Newsletter n°44'), await first())
 		assert.strictEqual(await page.textContent('.wm-list-period >> nth=0'), '📌 Épinglés')
 		assert.ok(await page.$eval(row, (e) => e.classList.contains('wm-pinned')))
 		assert.strictEqual(await page.locator(row).count(), 1, 'shown once')
@@ -4076,11 +4076,11 @@ async function main() {
 		// another order: still first, the others under « Autres messages »
 		await page.selectOption('.wm-sort', 'subject-asc')
 		await page.waitForSelector('.wm-list-period:text-is("Autres messages")')
-		assert.ok((await first()).includes('Réunion de lundi'))
+		assert.ok((await first()).includes('Newsletter n°44'))
 		await page.selectOption('.wm-sort', 'date-desc')
 		// kept by Nextcloud: after a reload too
 		await page.reload()
-		await page.waitForSelector('.wm-message.wm-pinned:has-text("Réunion de lundi")')
+		await page.waitForSelector('.wm-message.wm-pinned:has-text("Newsletter n°44")')
 		await shot('87-pinned')
 		await page.click(row)
 		await page.click('.wm-toolbar .wm-pin-btn')
