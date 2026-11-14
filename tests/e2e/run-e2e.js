@@ -791,6 +791,13 @@ async function main() {
 		await shot('37-out-of-office')
 		await page.click('.wm-modal button[type=submit]')
 		await page.waitForSelector('.wm-toast:has-text("Réponse automatique programmée du")')
+		// the status of Nextcloud: « En vacances », away
+		const ncStatus = () => page.evaluate(async () => {
+			const r = await fetch('/ocs/v2.php/apps/user_status/api/v1/user_status?format=json', { headers: { 'OCS-APIREQUEST': 'true', requesttoken: OC.requestToken } })
+			const d = (await r.json()).ocs.data
+			return d.status + ' ' + (d.messageId || '')
+		})
+		assert.strictEqual(await ncStatus(), 'away vacationing')
 		// reminder in the folder pane
 		await page.waitForSelector('.wm-oof-banner:has-text("Réponse automatique activée jusqu\'au")')
 		// saved as set
@@ -799,11 +806,14 @@ async function main() {
 		assert.strictEqual(await page.inputValue('.wm-modal textarea[name=oofInternal]'), 'Bonjour,\nje suis absent. Pour toute urgence : Paul Durand.')
 		assert.strictEqual(await page.inputValue('.wm-modal select[name=oofAudience]'), 'Known')
 		assert.strictEqual(await page.inputValue('.wm-modal input[name=oofEnd]'), local(end))
+		assert.ok(await page.isChecked('.wm-modal input[name=oofNextcloudStatus]'))
 		await page.click('.wm-modal-close')
 		// switched off from the reminder
 		await page.click('.wm-oof-banner a:has-text("Désactiver")')
 		await page.waitForSelector('.wm-toast:has-text("Réponse automatique désactivée")')
 		await page.waitForSelector('.wm-oof-banner', { state: 'detached' })
+		// the status from before is back
+		assert.ok(!(await ncStatus()).includes('vacationing'), await ncStatus())
 	})
 
 	await step('inbox rules: create, order, switch off, run on arrival, from a message', async () => {

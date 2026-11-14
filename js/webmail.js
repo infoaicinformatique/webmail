@@ -1329,6 +1329,9 @@
 			external.hidden = !differs.checked
 		}
 		audience.addEventListener('change', sync)
+		// the status of Nextcloud: « En vacances » while the automatic reply is active
+		const ncStatus = h('input', { type: 'checkbox', name: 'oofNextcloudStatus', checked: o.nextcloudStatus !== false })
+		const ncStatusRow = h('label', { class: 'wm-radio wm-oof-nc-status' }, ncStatus, ' ' + _('Afficher « En vacances » dans mon statut Nextcloud pendant l\'absence'))
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
 		const save = h('button', { type: 'submit', class: 'primary' }, _('Enregistrer'))
 		clear(body)
@@ -1349,6 +1352,7 @@
 							end: st === 'Scheduled' ? new Date(end.value).toISOString() : '',
 							internal: internal.value,
 							external: differs.checked ? external.value : '',
+							nextcloudStatus: ncStatus.checked,
 						},
 					})
 					close()
@@ -1367,7 +1371,7 @@
 			radio('Disabled', _('Ne pas envoyer de réponse automatique')),
 			radio('Enabled', _('Envoyer une réponse automatique')),
 			radio('Scheduled', _('Envoyer une réponse automatique pendant une période'))),
-		period, details, err,
+		period, details, ncStatusRow, err,
 		h('div', { class: 'wm-compose-actions' }, save, h('button', { type: 'button', onclick: close }, _('Annuler')))))
 		sync()
 	}
