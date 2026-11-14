@@ -670,6 +670,10 @@ def handle(op, el, user):
             # both test accounts share this fake inbox: for new messages, each only
             # sees what was sent to it, as with two real mailboxes
             conds.append(lambda m: any(e.lower() == user.lower() for _, e in m['to'] + m['cc']))
+        # the subject containing words (« pas de réponse »)
+        contains = el.find('m:Restriction//t:Contains', NS)
+        if contains is not None and contains.find('t:FieldURI', NS).get('FieldURI') == 'item:Subject':
+            conds.append(lambda m, w=contains.find('t:Constant', NS).get('Value').lower(): w in m['subject'].lower())
         unread = el.find('m:Restriction//t:IsEqualTo[t:FieldURI]', NS)
         if unread is not None and unread.find('t:FieldURI', NS).get('FieldURI') == 'message:IsRead':
             conds.append(lambda m: not m['is_read'])

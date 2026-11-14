@@ -48,6 +48,7 @@ return [
 		['name' => 'mail#attachmentsZip', 'url' => '/api/accounts/{id}/attachments/zip', 'verb' => 'GET'],
 		['name' => 'mail#saveAttachment', 'url' => '/api/accounts/{id}/attachment/save', 'verb' => 'POST'],
 		['name' => 'mail#headers', 'url' => '/api/accounts/{id}/message/headers', 'verb' => 'GET'],
+		['name' => 'mail#followUp', 'url' => '/api/accounts/{id}/followups', 'verb' => 'POST'],
 		['name' => 'mail#unsubscribe', 'url' => '/api/accounts/{id}/message/unsubscribe', 'verb' => 'POST'],
 		['name' => 'mail#eml', 'url' => '/api/accounts/{id}/message/eml', 'verb' => 'GET'],
 		['name' => 'mail#saveEml', 'url' => '/api/accounts/{id}/message/eml/save', 'verb' => 'POST'],
