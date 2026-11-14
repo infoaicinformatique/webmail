@@ -49,6 +49,7 @@
 		<job>OCA\Webmail\BackgroundJob\NewMailJob</job>
 		<job>OCA\Webmail\BackgroundJob\ReminderJob</job>
 		<job>OCA\Webmail\BackgroundJob\SnoozeJob</job>
+		<job>OCA\Webmail\BackgroundJob\FollowUpJob</job>
 	</background-jobs>
 	<settings>
 		<admin>OCA\Webmail\Settings\Admin</admin>
