@@ -1314,5 +1314,12 @@
 	"Expéditeur (Z → A)": "Sender (Z → A)",
 	"Objet (A → Z)": "Subject (A → Z)",
 	"Plus volumineux": "Largest first",
-	"Trier par": "Sort by"
+	"Trier par": "Sort by",
+	"Pas de connexion": "No connection",
+	"Nextcloud ne répond pas (erreur {status})": "Nextcloud is not answering (error {status})",
+	"Connexion rétablie": "Connection restored",
+	"Hors connexion : les messages déjà chargés restent lisibles.": "Offline: the messages already loaded can still be read.",
+	"Nouvel essai dans {secs} s.": "Trying again in {secs} s.",
+	"Nouvel essai…": "Trying again…",
+	"Réessayer": "Try again"
 }

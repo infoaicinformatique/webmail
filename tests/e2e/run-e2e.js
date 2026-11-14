@@ -1112,7 +1112,8 @@ async function main() {
 		runJob()
 		let mine = (await reminders()).filter((n) => n.subject === 'Rappel : Appel fournisseur')
 		assert.strictEqual(mine.length, 1, JSON.stringify(await reminders()))
-		assert(/^Aujourd'hui \d\d:\d\d · Bureau 2 · user@societe-a\.fr$/.test(mine[0].message), mine[0].message)
+		// (« Demain » when the test runs just before midnight)
+		assert(/^(Aujourd'hui|Demain) \d\d:\d\d · Bureau 2 · user@societe-a\.fr$/.test(mine[0].message), mine[0].message)
 		// once only
 		runJob()
 		assert.strictEqual((await reminders()).filter((n) => n.subject === 'Rappel : Appel fournisseur').length, 1)
@@ -3982,6 +3983,34 @@ async function main() {
 		assert.strictEqual(await page.locator('.wm-message.wm-swiping').count(), 0)
 	})
 
+	await step('offline: a banner, what is loaded stays readable, back by itself when the network returns', async () => {
+		const row = '.wm-message:has-text("Devis pour la maintenance annuelle")'
+		await page.click('.wm-folder >> nth=0')
+		await page.click(row)
+		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+		await page.context().setOffline(true)
+		try {
+			await page.click('.wm-list-header button[title="Actualiser"]')
+			await page.waitForSelector('.wm-offline:has-text("Hors connexion : les messages déjà chargés restent lisibles.")')
+			await page.waitForSelector('.wm-offline:has-text("Nouvel essai dans")')
+			// the list and the message already loaded are still there
+			await page.waitForSelector(row)
+			await page.click(row)
+			await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+			await page.waitForSelector('.wm-body-frame')
+			// « Réessayer » while still offline: still offline
+			await page.click('.wm-offline button:has-text("Réessayer")')
+			await page.waitForSelector('.wm-offline:has-text("Nouvel essai dans")')
+			await shot('91-offline')
+		} finally {
+			await page.context().setOffline(false)
+		}
+		// the network is back: tried at once, the banner goes
+		await page.waitForSelector('.wm-toast:has-text("Connexion rétablie")')
+		await page.locator('.wm-offline').waitFor({ state: 'detached' })
+		await page.waitForSelector(row)
+	})
+
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('user:setting admin core lang en')
@@ -4235,9 +4264,9 @@ async function main() {
 		await shot('16-mobile-contact')
 	})
 
-	// expected: deliberate 400s (bad domain/password, missing recipient) and the fake tracker pixel
+	// expected: deliberate 400s (bad domain/password, missing recipient) and the fake tracker pixel; the network cut on purpose (offline step)
 	// errors of other Nextcloud apps (Files, Text… where the unified search is tried) are not ours
-	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED/.test(e)
+	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED/.test(e)
 		&& !/\/apps\/(?!webmail\/)[a-z_]+\//.test(e))
 	await browser.close()
 	if (relevant.length) {

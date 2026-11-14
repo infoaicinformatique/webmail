@@ -1017,6 +1017,29 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 .wm-matrix-send select { max-width: 100%; }
 .wm-matrix-form input { min-width: 0; }
 
+/* « Hors connexion »: above the panes, under the Nextcloud header */
+.wm-offline {
+	/* at the bottom, where nothing is to click (the list's buttons are at the top) */
+	position: fixed;
+	bottom: 24px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 2000;
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	max-width: calc(100vw - 32px);
+	padding: 6px 8px 6px 14px;
+	border-radius: var(--border-radius-pill, 20px);
+	background: var(--color-warning, #c28900);
+	color: var(--color-primary-element-text, #fff);
+	box-shadow: 0 2px 8px var(--color-box-shadow, rgba(0, 0, 0, .2));
+	font-size: 14px;
+}
+.wm-offline button { margin: 0; }
+/* the messages shown meanwhile, above the banner */
+body:has(.wm-offline) #wm-toasts { bottom: 76px; }
+
 /* « Anniversaires à venir » above the contacts */
 .wm-birthdays { margin: 8px; padding: 8px 12px; border-radius: var(--border-radius-large, 10px); background: var(--color-background-hover); }
 .wm-birthdays-title { font-weight: bold; margin-bottom: 4px; }
