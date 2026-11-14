@@ -1193,6 +1193,7 @@
 
 	async function loadFolders() {
 		loadSnoozes()
+		if (!signatureSets.has(state.accountId)) loadSignatures(state.accountId)
 		try {
 			const data = await api('/accounts/' + state.accountId + '/folders')
 			state.folders = data.folders
@@ -2854,8 +2855,7 @@
 				// from the shared mailbox the message is in, as the full form does
 				const mailboxes = shared.accountId === state.accountId ? shared.list : []
 				const fromMailbox = mailboxes.find((mb) => (mb.folders || []).some((f) => f.id === m.folderId))
-				const html = '<div>' + escapeHtml(typed).replace(/\n/g, '<br>') + '</div>'
-					+ (account && account.signature ? '<div><br></div><div class="wm-signature">-- <br>' + signatureHtml(account.signature) + '</div>' : '')
+				const html = '<div>' + escapeHtml(typed).replace(/\n/g, '<br>') + '</div>' + signatureBlock(account, defaultSignature(account, 'reply'))
 				const fd = new FormData()
 				Object.entries({
 					mode, to: '', cc: '', bcc: '',
@@ -3868,6 +3868,95 @@
 		}))
 	}
 
+	/** account id -> its other signatures and defaults ({ list, new, reply }) */
+	const signatureSets = new Map()
+	async function loadSignatures(accountId) {
+		try {
+			signatureSets.set(accountId, await api('/accounts/' + accountId + '/signatures'))
+		} catch (e) { /* the main signature only */ }
+		return signatureSets.get(accountId)
+	}
+	/** The choices of an account's signatures: [value, label, html] ('' the main one, '-' none). */
+	function signatureChoices(account) {
+		const set = signatureSets.get(account && account.id) || { list: [] }
+		return [['', _('Principale'), account && account.signature ? signatureHtml(account.signature) : '']]
+			.concat(set.list.map((x) => [x.name, x.name, x.html]))
+			.concat([['-', _('Aucune'), '']])
+	}
+	/** The signature a message starts with: « new » ones, or « reply » (answers, transfers). */
+	function defaultSignature(account, kind) {
+		const set = signatureSets.get(account && account.id)
+		return set ? (kind === 'new' ? set.new : set.reply) : ''
+	}
+	function signatureBlock(account, choice) {
+		const found = signatureChoices(account).find((c) => c[0] === choice) || signatureChoices(account)[0]
+		return found[2] ? '<div><br></div><div class="wm-signature">-- <br>' + found[2] + '</div>' : ''
+	}
+
+	/**
+	 * « Autres signatures » of an account (« Courte », « Anglais »…), and the
+	 * one new messages and answers start with; each can be changed in the message.
+	 */
+	function otherSignaturesEditor(a, mainEditor) {
+		const box = h('details', { class: 'wm-signatures' }, h('summary', {}, '✍ ' + _('Autres signatures et signature par défaut')))
+		const rows = h('div', { class: 'wm-signature-rows' })
+		const editors = []
+		const addRow = (name = '', html = '') => {
+			const input = h('input', { type: 'text', name: 'signatureName', value: name, maxlength: '40', placeholder: _('Nom (Courte, Anglais…)') })
+			const ed = signatureEditor(html)
+			const entry = { input, ed }
+			const row = h('div', { class: 'wm-signature-row' }, input, ed.el,
+				h('button', { type: 'button', class: 'wm-small wm-signature-remove', onclick: () => { editors.splice(editors.indexOf(entry), 1); row.remove(); refreshChoices() } }, _('Retirer')))
+			input.addEventListener('input', refreshChoices)
+			editors.push(entry)
+			rows.appendChild(row)
+		}
+		const pickNew = h('select', { name: 'signatureNew' })
+		const pickReply = h('select', { name: 'signatureReply' })
+		let wanted = { new: '', reply: '' }
+		const refreshChoices = () => {
+			const names = editors.map((x) => x.input.value.trim()).filter(Boolean)
+			;[[pickNew, 'new'], [pickReply, 'reply']].forEach(([sel, k]) => {
+				const v = sel.options.length ? sel.value : wanted[k]
+				clear(sel)
+				;[['', _('Principale')]].concat(names.map((n) => [n, n])).concat([['-', _('Aucune')]])
+					.forEach(([val, label]) => sel.appendChild(h('option', { value: val, selected: val === v }, label)))
+			})
+		}
+		const save = h('button', {
+			type: 'button',
+			class: 'wm-signatures-save',
+			onclick: async () => {
+				save.disabled = true
+				try {
+					const set = await api('/accounts/' + a.id + '/signatures', {
+						method: 'POST',
+						body: { list: editors.map((x) => ({ name: x.input.value, html: x.ed.value() })), new: pickNew.value, reply: pickReply.value },
+					})
+					signatureSets.set(a.id, set)
+					toast(_('Signatures enregistrées'))
+				} catch (e) { toast(e.message, true) } finally { save.disabled = false }
+			},
+		}, _('Enregistrer les signatures'))
+		box.append(h('p', { class: 'wm-muted' }, _('La signature ci-dessus est la principale. Ajoutez-en d\'autres ; dans un message, « ✍ » permet d\'en changer.')),
+			rows,
+			h('button', { type: 'button', class: 'wm-small wm-signature-add', onclick: () => { addRow(); refreshChoices() } }, '＋ ' + _('Ajouter une signature')),
+			h('label', { class: 'wm-field' }, h('span', {}, _('Nouveaux messages')), pickNew),
+			h('label', { class: 'wm-field' }, h('span', {}, _('Réponses et transferts')), pickReply),
+			h('div', { class: 'wm-compose-actions' }, save))
+		loadSignatures(a.id).then((set) => {
+			if (!set) return
+			wanted = { new: set.new, reply: set.reply }
+			set.list.forEach((x) => addRow(x.name, x.html))
+			refreshChoices()
+			pickNew.value = set.new
+			pickReply.value = set.reply
+			if (set.list.length || set.new || set.reply) box.open = true
+		})
+		refreshChoices()
+		return box
+	}
+
 	/** A signature from the editor (HTML), or one written in plain text before. */
 	function signatureHtml(sig) {
 		if (!sig) return ''
@@ -4041,6 +4130,31 @@
 			h('option', { value: 'High' }, _('Importance haute')),
 			h('option', { value: 'Low' }, _('Importance faible')))
 
+		// « Signature : » the one the message starts with, changed in place
+		const sigKind = mode === 'new' ? 'new' : 'reply'
+		const signaturePick = h('select', {
+			name: 'signature',
+			class: 'wm-signature-pick',
+			title: _('Signature'),
+			'aria-label': _('Signature'),
+			onchange: () => {
+				const block = signatureBlock(account, signaturePick.value)
+				const old = body.querySelector('.wm-signature')
+				const tmp = h('div', {})
+				tmp.innerHTML = block
+				if (old) {
+					// (the empty line before it goes with it)
+					const prev = old.previousElementSibling
+					if (prev && prev.tagName === 'DIV' && prev.innerHTML === '<br>') prev.remove()
+					old.replaceWith(...tmp.childNodes)
+				} else if (block) {
+					const quote = body.querySelector('blockquote, .wm-quoted')
+					quote ? quote.before(...tmp.childNodes) : body.append(...tmp.childNodes)
+				}
+			},
+		}, signatureChoices(account).map(([v, label]) => h('option', { value: v, selected: v === defaultSignature(account, sigKind) }, '✍ ' + label)))
+		if (signatureChoices(account).length <= 2 && !(account && account.signature)) signaturePick.hidden = true
+
 		const textHtml = (t) => escapeHtml(t).replace(/\n/g, '<br>')
 		const addresses = (list) => (list || []).map((p) => (p.name && p.name !== p.email ? p.name + ' <' + p.email + '>' : p.email)).join(', ')
 		if (isDraft) {
@@ -4056,7 +4170,7 @@
 				subject.value = /^(re|tr|fw|fwd)\s?:/i.test(original.subject || '') ? original.subject : prefix + (original.subject || '')
 				subject.disabled = true
 			}
-			body.innerHTML = '<div><br></div>' + (account && account.signature ? '<div><br></div><div class="wm-signature">-- <br>' + signatureHtml(account.signature) + '</div>' : '')
+			body.innerHTML = '<div><br></div>' + signatureBlock(account, signaturePick.value)
 			if (prefill) {
 				if (prefill.to) to.value = prefill.to
 				if (prefill.cc) cc.value = prefill.cc
@@ -4606,6 +4720,7 @@
 			h('button', { type: 'button', class: 'wm-link-btn', onclick: pickLinks, title: _('Un lien de téléchargement Nextcloud dans le message, au lieu d\'une pièce jointe') }, '🔗 ' + _('Lien Nextcloud')),
 			linkOptions,
 			importance,
+			isDraft ? null : signaturePick,
 			h('button', { type: 'button', onclick: cancel, title: _('Fermer (le brouillon est gardé)') }, _('Annuler')),
 			deleteDraftBtn),
 		)
@@ -4996,6 +5111,7 @@
 				h('label', { class: 'wm-field' }, h('span', {}, _('Nom')), name),
 				h('label', { class: 'wm-field' }, h('span', {}, _('Mot de passe')), pwd),
 				h('div', { class: 'wm-field wm-field-top' }, h('span', {}, _('Signature')), sig.el),
+				otherSignaturesEditor(a, sig),
 				sharedMailboxesEditor(a),
 				h('label', { class: 'wm-radio wm-bell' }, bell, ' 🔔 ' + _('Signaler chaque nouveau message dans les notifications Nextcloud, même webmail fermé (et sur le téléphone avec l\'application Nextcloud)')),
 				h('label', { class: 'wm-radio wm-bell' }, remind, ' ⏰ ' + _('Rappels des rendez-vous de l\'agenda dans les notifications Nextcloud (au moment choisi pour chaque rendez-vous : 15 minutes avant…)')),

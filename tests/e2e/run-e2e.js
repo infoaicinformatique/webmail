@@ -782,7 +782,7 @@ async function main() {
 			buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') })
 		await page.waitForSelector('.wm-account-card .wm-signature-editor img')
 		await shot('61-signature')
-		await page.click('.wm-account-card:has(.wm-signature-editor) button:has-text("Enregistrer") >> nth=0')
+		await page.click('.wm-account-card:has(.wm-signature-editor) button.primary:text-is("Enregistrer") >> nth=0')
 		await page.waitForSelector('.wm-toast:has-text("Compte mis à jour")')
 		// kept by the server, formatted, after a reload
 		await page.reload()
@@ -793,6 +793,46 @@ async function main() {
 		await shot('62-signature-in-message')
 		assert(await page.$('.wm-editor .wm-signature b:has-text("Société A")'), 'bold kept')
 		assert(await page.$('.wm-editor .wm-signature img[src^="data:image/png"]'), 'logo')
+	})
+
+	await step('signatures: another one (« Courte »), the default of the answers, switched in a message', async () => {
+		await page.click('text=Comptes et signature')
+		const card = '.wm-account-card:has-text("user@societe-a.fr")'
+		await page.click(card + ' .wm-signatures summary')
+		await page.click(card + ' .wm-signature-add')
+		await page.fill(card + ' input[name=signatureName]', 'Courte')
+		await page.click(card + ' .wm-signature-row .wm-signature-editor')
+		await page.keyboard.type('U. — Société A')
+		await page.selectOption(card + ' select[name=signatureReply]', 'Courte')
+		await page.click(card + ' .wm-signatures-save')
+		await page.waitForSelector('.wm-toast:has-text("Signatures enregistrées")')
+		await shot('63-signatures')
+		// a new message: the main one; « ✍ Courte » puts the other in its place
+		await page.reload()
+		await page.waitForSelector('.wm-message')
+		await page.click('.wm-compose-btn')
+		await page.waitForSelector('.wm-editor .wm-signature b:has-text("Société A")')
+		assert.strictEqual(await page.inputValue('select[name=signature]'), '')
+		await page.selectOption('select[name=signature]', 'Courte')
+		await page.waitForSelector('.wm-editor .wm-signature:has-text("U. — Société A")')
+		assert.strictEqual(await page.locator('.wm-editor .wm-signature').count(), 1)
+		await page.selectOption('select[name=signature]', '-')
+		await page.waitForSelector('.wm-editor .wm-signature', { state: 'detached' })
+		await page.click('.wm-compose button:has-text("Annuler")')
+		// an answer starts with « Courte »
+		await page.click('.wm-folder >> nth=0')
+		await page.click('.wm-message >> nth=0')
+		await page.click('.wm-toolbar button:has-text("↩ Répondre")')
+		await page.waitForSelector('.wm-editor .wm-signature:has-text("U. — Société A")')
+		assert.strictEqual(await page.inputValue('select[name=signature]'), 'Courte')
+		await page.click('.wm-compose button:has-text("Annuler")')
+		// back to one signature
+		await page.click('text=Comptes et signature')
+		await page.waitForSelector(card + ' .wm-signature-row')
+		await page.click(card + ' .wm-signature-remove')
+		await page.click(card + ' .wm-signatures-save')
+		await page.waitForSelector('.wm-toast:has-text("Signatures enregistrées")')
+		await page.click('.wm-tab[data-module="mail"]')
 	})
 
 	await step('automatic replies (out of office)', async () => {
