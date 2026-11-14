@@ -4356,7 +4356,9 @@ async function main() {
 			await page.click('.wm-tab[data-module="mail"]')
 			await page.click('.wm-compose-btn')
 			await page.fill('input[name=to]', 'Jean Dupont <jean.dupont@client-exemple.fr>, marc@nc.example, ')
-			await page.click('input[name=to]')
+			// (typed at the end of the field)
+			await page.focus('input[name=to]')
+			await page.keyboard.press('End')
 			await page.keyboard.type('Compta')
 			const item = '.wm-ac-item:has-text("Comptabilité"):has-text("groupe Nextcloud · 4 membres")'
 			await page.waitForSelector(item)
