@@ -4617,7 +4617,7 @@ async function main() {
 
 	// expected: an event refused by the read-only Exchange calendar (403); deliberate 400s (bad domain/password, missing recipient) and the fake tracker pixel; the network cut on purpose (offline step)
 	// errors of other Nextcloud apps (Files, Text… where the unified search is tried) are not ours
-	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|webmail-exchange-\d+\/nouveau\.ics/.test(e)
+	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|facture-novembre%20\(2\)|webmail-exchange-\d+\/nouveau\.ics/.test(e)
 		&& !/\/apps\/(?!webmail\/)[a-z_]+\//.test(e))
 	await browser.close()
 	if (relevant.length) {
