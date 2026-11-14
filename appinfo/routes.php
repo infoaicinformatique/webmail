@@ -78,6 +78,7 @@ return [
 		['name' => 'calendar#event', 'url' => '/api/accounts/{id}/calendar/event', 'verb' => 'GET'],
 		['name' => 'calendar#series', 'url' => '/api/accounts/{id}/calendar/series', 'verb' => 'GET'],
 		['name' => 'calendar#create', 'url' => '/api/accounts/{id}/calendar/events', 'verb' => 'POST'],
+		['name' => 'calendar#importIcs', 'url' => '/api/accounts/{id}/calendar/import-ics', 'verb' => 'POST'],
 		['name' => 'calendar#update', 'url' => '/api/accounts/{id}/calendar/update', 'verb' => 'POST'],
 		['name' => 'calendar#move', 'url' => '/api/accounts/{id}/calendar/move', 'verb' => 'POST'],
 		['name' => 'calendar#delete', 'url' => '/api/accounts/{id}/calendar/delete', 'verb' => 'POST'],

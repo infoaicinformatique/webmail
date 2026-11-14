@@ -2789,6 +2789,9 @@
 					h('span', { class: 'wm-muted' }, ' ' + formatSize(a.size) + ' '),
 					kind ? h('button', { class: 'wm-small wm-preview-btn', onclick: open }, '👁 ' + _('Aperçu')) : null,
 					h('button', { class: 'wm-small', onclick: () => saveAttachment(a) }, _('Enregistrer dans Fichiers')),
+					!a.isItem && window.WebmailModules.calendar && (/\.ics$/i.test(a.name || '') || /text\/calendar/i.test(a.contentType || ''))
+						? h('button', { class: 'wm-small wm-ics-add', title: _('Les événements de ce fichier dans votre agenda Exchange'), onclick: (e) => addIcsToCalendar(a, e.currentTarget) }, '📅 ' + _('Ajouter à mon agenda'))
+						: null,
 					a.isItem ? null : h('button', { class: 'wm-small wm-open-nc', title: _('Une copie dans Fichiers, ouverte avec l\'éditeur ou le visionneur de Nextcloud'), onclick: (e) => openInNextcloud(a, e.currentTarget) }, '↗ ' + _('Ouvrir dans Nextcloud'))))
 			})
 			detailEl.appendChild(list)
@@ -3674,6 +3677,33 @@
 				run: () => window.open(r.url, '_blank', 'noopener'),
 			})
 		} catch (e) { toast(e.message, true) }
+	}
+
+	/** « Ajouter à mon agenda »: the events of an .ics file received (a ticket, a booking…). */
+	async function addIcsToCalendar(a, button) {
+		button.disabled = true
+		try {
+			const r = await api('/accounts/' + state.accountId + '/calendar/import-ics', { method: 'POST', body: { attachmentId: a.id, tz: TZ } })
+			const first = r.events[0]
+			const when = first.allDay
+				? new Date(first.start + 'T00:00:00').toLocaleDateString(locale(), { day: 'numeric', month: 'long', year: 'numeric' })
+				: new Date(first.start).toLocaleString(locale(), { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+			const msg = r.events.length > 1
+				? _('{count} événements ajoutés à votre agenda', { count: r.events.length })
+				: _('« {subject} » ajouté à votre agenda ({when})', { subject: first.subject, when })
+			toast(msg + (r.events.some((e) => e.recurring) ? ' ' + _('(sans ses répétitions)') : ''), false, {
+				label: _('Voir'),
+				run: () => {
+					selectModule('calendar')
+					const cal = window.WebmailModules.calendar
+					if (cal && cal.openLinked) cal.openLinked(core, first.id)
+				},
+			})
+			button.textContent = '✓ ' + _('Ajouté à l\'agenda')
+		} catch (e) {
+			button.disabled = false
+			toast(e.message, true)
+		}
 	}
 
 	function saveAttachment(a) {
