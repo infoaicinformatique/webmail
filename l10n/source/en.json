@@ -1407,5 +1407,7 @@
 	"Nouvel essai…": "Trying again…",
 	"Réessayer": "Try again",
 	"Un nouvel événement avec le même titre, le même lieu, les mêmes participants et la même durée": "A new event with the same title, place, attendees and length",
-	"Dupliquer": "Duplicate"
+	"Dupliquer": "Duplicate",
+	"Toutes les boîtes de réception": "All inboxes",
+	"{email} : {error}": "{email}: {error}"
 }

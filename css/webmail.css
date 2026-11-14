@@ -1053,3 +1053,8 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-link-options { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .wm-link-options[open] { padding: 4px 8px; border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); }
 .wm-link-options summary { cursor: pointer; }
+
+/* « Toutes les boîtes de réception » */
+.wm-unified { margin-bottom: 4px; }
+.wm-unified-title { flex: 1; margin: 0; font-size: 1.05em; font-weight: bold; }
+.wm-message-account { flex-shrink: 0; margin-inline-start: 6px; padding: 0 6px; border-radius: 8px; font-size: 0.75em; background: var(--color-background-darker, #eee); color: var(--color-text-maxcontrast); }
