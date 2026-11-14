@@ -10,6 +10,7 @@ use OCA\Webmail\Ews\EwsContacts;
 use OCA\Webmail\Ews\TimeZones;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
+use OCA\Webmail\Service\IcsImport;
 use OCA\Webmail\Service\MeetingReminderService;
 use OCA\Webmail\Service\SharedFolderService;
 use OCP\AppFramework\Controller;
@@ -288,6 +289,31 @@ class CalendarController extends Controller {
 			$eventId = $this->calendar($id, $tz, $calendar, true)->createEvent($event, $calendar);
 			$this->reminders->changed($id);
 			return ['id' => $eventId];
+		});
+	}
+
+	/**
+	 * « Ajouter à mon agenda »: the events of an .ics file received, created
+	 * in the own calendar (the repetitions are not taken: one event each).
+	 */
+	#[NoAdminRequired]
+	#[\OCP\AppFramework\Http\Attribute\UserRateLimit(limit: 20, period: 300)]
+	public function importIcs(int $id, string $attachmentId, string $tz = 'UTC'): Response {
+		return $this->handle(function () use ($id, $attachmentId, $tz) {
+			$account = $this->accounts->find((string)$this->userId, $id);
+			$att = $this->accounts->getClient($account)->getAttachment($attachmentId);
+			if (strlen($att['content']) > 1048576) {
+				throw new MailException('Fichier d\'agenda trop volumineux');
+			}
+			$zone = new \DateTimeZone(TimeZones::isValidIana($tz) ? $tz : 'UTC');
+			$events = IcsImport::events($att['content'], $zone);
+			$calendar = $this->calendar($id, $zone->getName(), 'calendar', true);
+			$created = [];
+			foreach ($events as $e) {
+				$created[] = ['id' => $calendar->createEvent($e + ['reminder' => 15]), 'subject' => $e['subject'], 'start' => $e['start'], 'allDay' => $e['allDay'], 'recurring' => $e['recurring']];
+			}
+			$this->reminders->changed($id);
+			return ['events' => $created];
 		});
 	}
 

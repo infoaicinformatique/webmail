@@ -4092,6 +4092,36 @@ async function main() {
 		assert.ok(!(await page.$eval('.wm-sort', (e) => e.classList.contains('active'))))
 	})
 
+	await step('.ics received: « Ajouter à mon agenda » puts its event in the Exchange calendar', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-folder >> nth=0')
+		const day = new Date(Date.now() + 9 * 86400000)
+		const ymd = (d) => d.getUTCFullYear() + String(d.getUTCMonth() + 1).padStart(2, '0') + String(d.getUTCDate()).padStart(2, '0')
+		const ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//SNCF//Billet//FR\r\nBEGIN:VEVENT\r\nUID:billet-4242\r\n'
+			+ 'DTSTART:' + ymd(day) + 'T070000Z\r\nDTEND:' + ymd(day) + 'T100000Z\r\nSUMMARY:Train Nice → Paris\r\nLOCATION:Gare de Nice-Ville\, voie B\r\n'
+			+ 'DESCRIPTION:Voiture 12\\, place 45\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n'
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'user@societe-a.fr')
+		await page.fill('input[name=subject]', 'Votre billet de train')
+		await page.fill('.wm-editor', 'Bon voyage !')
+		await page.setInputFiles('.wm-file-input', { name: 'billet.ics', mimeType: 'text/calendar', buffer: Buffer.from(ics) })
+		await submitCompose()
+		// (sent to oneself: in the inbox at the next refresh)
+		await page.click('.wm-list-header button[title="Actualiser"]')
+		await page.click('.wm-message:has-text("Votre billet de train")')
+		await page.click('.wm-attachment:has-text("billet.ics") .wm-ics-add')
+		await page.waitForSelector('.wm-toast:has-text("« Train Nice → Paris » ajouté à votre agenda")')
+		await page.waitForSelector('.wm-attachment:has-text("billet.ics") .wm-ics-add:has-text("Ajouté à l\'agenda")')
+		await shot('90-ics-added')
+		await page.click('.wm-toast:has-text("Train Nice") button:has-text("Voir")')
+		await page.waitForSelector('.wm-modal h2:has-text("Train Nice → Paris")')
+		// (the details come a moment later)
+		await page.waitForSelector('.wm-modal:has-text("Gare de Nice-Ville, voie B")')
+		await page.waitForSelector('.wm-modal:has-text("Voiture 12, place 45")')
+		await page.click('.wm-modal-close')
+		await page.click('.wm-tab[data-module="mail"]')
+	})
+
 	await step('free space: the heaviest folders from the gauge, their largest messages, the junk mail emptied', async () => {
 		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector('.wm-list-period')
