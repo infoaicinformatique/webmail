@@ -142,6 +142,15 @@ final class TimeZones {
 		return self::MAP[$iana] ?? 'UTC';
 	}
 
+	/**
+	 * An IANA zone for a Windows id (« Romance Standard Time » → « Europe/Paris »):
+	 * the first of the map, null when unknown.
+	 */
+	public static function toIana(string $windows): ?string {
+		$found = array_search($windows, self::MAP, true);
+		return $found === false ? null : $found;
+	}
+
 	public static function isValidIana(?string $iana): bool {
 		return $iana !== null && $iana !== '' && in_array($iana, \DateTimeZone::listIdentifiers(\DateTimeZone::ALL_WITH_BC), true);
 	}

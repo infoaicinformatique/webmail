@@ -36,7 +36,7 @@ class EwsClientTest extends EwsTestCase {
 		$this->assertCount(3, $folders);
 		$this->assertSame(1250000, $used, 'all folders count, calendars and contacts too');
 		$this->assertStringContainsString('<t:ExtendedFieldURI PropertyTag="0x0E08" PropertyType="Long"/>', $this->requests[1]);
-		$this->assertSame(['id' => 'INBOX-ID', 'name' => 'Boîte de réception', 'parentId' => null, 'total' => 12, 'unread' => 3, 'role' => 'inbox'], $folders[0]);
+		$this->assertSame(['id' => 'INBOX-ID', 'name' => 'Boîte de réception', 'parentId' => null, 'total' => 12, 'unread' => 3, 'role' => 'inbox', 'size' => 1000000], $folders[0]);
 		$this->assertSame('INBOX-ID', $folders[1]['parentId']);
 		$this->assertNull($folders[1]['role']);
 		$this->assertSame('sentitems', $folders[2]['role']);

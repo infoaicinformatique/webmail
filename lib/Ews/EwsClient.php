@@ -270,6 +270,8 @@ class EwsClient {
 				'total' => (int)$this->text($xp, 't:TotalCount', $node),
 				'unread' => (int)$this->text($xp, 't:UnreadCount', $node),
 				'role' => $roleById[$id] ?? null,
+				// bytes (« Libérer de l'espace »)
+				'size' => max(0, (int)$this->text($xp, 't:ExtendedProperty/t:Value', $node)),
 			];
 		}
 		return $folders;
@@ -835,6 +837,50 @@ class EwsClient {
 			$out[] = $this->summary($xp, $node);
 		}
 		return $out;
+	}
+
+	/** At most this many messages of one sender in one go. */
+	public const SENDER_MAX = 1000;
+
+	/**
+	 * The ids of a folder's messages from one sender (« Tous ses messages »),
+	 * newest first, at most SENDER_MAX.
+	 * @return list<string>
+	 * @throws MailException
+	 */
+	public function idsFromSender(string $folderId, string $email): array {
+		$ids = [];
+		for ($offset = 0; $offset < self::SENDER_MAX; $offset += 200) {
+			$xp = $this->request(
+				'<m:FindItem Traversal="Shallow">'
+				. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape></m:ItemShape>'
+				. '<m:IndexedPageItemView MaxEntriesReturned="200" Offset="' . $offset . '" BasePoint="Beginning"/>'
+				. self::sortOrderXml('date', true)
+				. '<m:ParentFolderIds>' . $this->folderIdXml($folderId) . '</m:ParentFolderIds>'
+				. '<m:QueryString>' . $this->esc(self::fromQuery($email)) . '</m:QueryString>'
+				. '</m:FindItem>'
+			);
+			foreach ($xp->query('//m:RootFolder/t:Items/*/t:ItemId') as $n) {
+				$ids[] = $n->getAttribute('Id');
+			}
+			$root = $xp->query('//m:RootFolder')->item(0);
+			if (!$root instanceof \DOMElement || $root->getAttribute('IncludesLastItemInRange') !== 'false') {
+				break;
+			}
+		}
+		return array_slice(array_values(array_unique($ids)), 0, self::SENDER_MAX);
+	}
+
+	/**
+	 * The search (AQS) for the messages of one address.
+	 * @throws MailException
+	 */
+	public static function fromQuery(string $email): string {
+		$email = trim($email);
+		if (filter_var($email, FILTER_VALIDATE_EMAIL) === false || str_contains($email, '"')) {
+			throw new MailException('Adresse invalide : %s', [$email]);
+		}
+		return 'from:"' . mb_strtolower($email) . '"';
 	}
 
 	/** The orders of the message list: field => what Exchange sorts on. */
@@ -1414,6 +1460,17 @@ class EwsClient {
 		$this->request(
 			'<m:MarkAsJunk IsJunk="' . ($junk ? 'true' : 'false') . '" MoveItem="true">'
 			. '<m:ItemIds>' . $this->itemIdsXml($itemIds) . '</m:ItemIds></m:MarkAsJunk>'
+		);
+	}
+
+	/**
+	 * Empty a folder (« Vider »): its messages to the deleted items, or
+	 * deleted for good when it is the deleted items itself. Sub-folders kept.
+	 */
+	public function emptyFolder(string $folderId, bool $permanent): void {
+		$this->request(
+			'<m:EmptyFolder DeleteType="' . ($permanent ? 'HardDelete' : 'MoveToDeletedItems') . '" DeleteSubFolders="false">'
+			. '<m:FolderIds>' . $this->folderIdXml($folderId) . '</m:FolderIds></m:EmptyFolder>'
 		);
 	}
 
