@@ -1,0 +1,50 @@
+name: Release
+
+# A tag v<version> (the one of appinfo/info.xml) publishes a GitHub release
+# with the archive to extract into nextcloud/custom_apps (make dist).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Archive and release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Version of the tag and of info.xml
+        run: |
+          version=$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' appinfo/info.xml)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME, but appinfo/info.xml says $version"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Archive
+        run: |
+          make dist
+          cd build && sha256sum "webmail-$VERSION.tar.gz" > "webmail-$VERSION.tar.gz.sha256"
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<NOTES
+          Webmail Exchange $VERSION for Nextcloud 28 to 34 (PHP 8.1 to 8.5).
+
+          Installation (path and web user to adapt):
+
+          \`\`\`bash
+          sudo rm -rf /var/www/nextcloud/custom_apps/webmail
+          sudo tar -xzf webmail-$VERSION.tar.gz -C /var/www/nextcloud/custom_apps/
+          sudo chown -R www-data:www-data /var/www/nextcloud/custom_apps/webmail
+          sudo -u www-data php /var/www/nextcloud/occ app:enable webmail
+          sudo -u www-data php /var/www/nextcloud/occ upgrade
+          \`\`\`
+
+          SHA-256: $(cut -d' ' -f1 "build/webmail-$VERSION.tar.gz.sha256")
+          NOTES
+          gh release create "$GITHUB_REF_NAME" "build/webmail-$VERSION.tar.gz" "build/webmail-$VERSION.tar.gz.sha256" \
+            --title "Webmail Exchange $VERSION" --notes-file notes.md --verify-tag
