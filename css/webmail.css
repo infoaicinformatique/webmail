@@ -35,7 +35,7 @@
 .wm-folders.wm-favorites { flex: 0 0 auto; }
 .wm-favorites .wm-folder-icon { color: var(--color-warning, #c28900); }
 .wm-nav-section { padding: 10px 12px 2px; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: .03em; color: var(--color-text-maxcontrast); }
-.wm-folder {
+.wm-folder, .wm-unified-link {
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -45,8 +45,8 @@
 	color: var(--color-main-text);
 	text-decoration: none;
 }
-.wm-folder:hover, .wm-folder:focus-visible { background: var(--color-background-hover); }
-.wm-folder.active { background: var(--color-primary-element-light); color: var(--color-primary-element-light-text, var(--color-main-text)); font-weight: bold; }
+.wm-folder:hover, .wm-folder:focus-visible, .wm-unified-link:hover, .wm-unified-link:focus-visible { background: var(--color-background-hover); }
+.wm-folder.active, .wm-unified-link.active { background: var(--color-primary-element-light); color: var(--color-primary-element-light-text, var(--color-main-text)); font-weight: bold; }
 .wm-folder-icon { width: 20px; text-align: center; flex-shrink: 0; }
 .wm-folder-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wm-folder.has-unread .wm-folder-name { font-weight: bold; }

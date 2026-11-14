@@ -1006,7 +1006,7 @@
 		if (state.accounts.length > 1) {
 			navEl.appendChild(h('ul', { class: 'wm-folders wm-unified' }, h('li', {}, h('a', {
 				href: '#',
-				class: 'wm-folder wm-unified-link' + (state.unified ? ' active' : ''),
+				class: 'wm-unified-link' + (state.unified ? ' active' : ''),
 				onclick: (e) => { e.preventDefault(); openUnified() },
 			}, h('span', { class: 'wm-folder-name' }, '📥 ' + _('Toutes les boîtes de réception'))))))
 		}
