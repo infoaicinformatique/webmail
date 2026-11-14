@@ -849,6 +849,22 @@ def handle(op, el, user):
             out.append(ok(op, '<m:MovedItemId Id="%s" ChangeKey="%s"/>' % (m['id'], m['ck'])))
         return wrap(op, out)
 
+    if op == 'EmptyFolder':
+        hard = el.get('DeleteType') == 'HardDelete'
+        out = []
+        for f in el.find('m:FolderIds', NS):
+            fid = folder_id(f)
+            if fid is None:
+                out.append(err(op, 'ErrorFolderNotFound', 'Folder not found'))
+                continue
+            for m in [m for m in MESSAGES.values() if m['folder'] == fid]:
+                if hard:
+                    del MESSAGES[m['id']]
+                else:
+                    m['folder'] = 'F-DELETED'
+            out.append(ok(op, ''))
+        return wrap(op, out)
+
     if op in ('MoveItem', 'DeleteItem'):
         target = folder_id(el.find('m:ToFolderId', NS)[0]) if op == 'MoveItem' else 'F-DELETED'
         hard = el.get('DeleteType') == 'HardDelete'

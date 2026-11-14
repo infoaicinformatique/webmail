@@ -1407,5 +1407,18 @@
 	"Nouvel essai…": "Trying again…",
 	"Réessayer": "Try again",
 	"Un nouvel événement avec le même titre, le même lieu, les mêmes participants et la même durée": "A new event with the same title, place, attendees and length",
-	"Dupliquer": "Duplicate"
+	"Dupliquer": "Duplicate",
+	"Espace utilisé par la boîte aux lettres — cliquez pour voir les dossiers les plus lourds et libérer de l'espace": "Space used by the mailbox — click to see the heaviest folders and free some space",
+	"Libérer de l'espace": "Free some space",
+	"{used} utilisés sur {limit}.": "{used} used of {limit}.",
+	"{used} utilisés.": "{used} used.",
+	"{count} message": "{count} message",
+	"Plus gros messages": "Largest messages",
+	"Supprimer définitivement les {count} éléments supprimés ? Ils ne pourront pas être récupérés ici.": "Delete the {count} deleted items for good? They cannot be recovered here.",
+	"Mettre les {count} messages indésirables dans les éléments supprimés ?": "Put the {count} junk messages in the deleted items?",
+	"Éléments supprimés vidés": "Deleted items emptied",
+	"Courrier indésirable vidé": "Junk mail emptied",
+	"Vider": "Empty",
+	"Seuls les éléments supprimés et le courrier indésirable se vident d'un coup": "Only the deleted items and the junk mail are emptied at once",
+	"Avant de supprimer un message, enregistrez dans Fichiers les pièces jointes à garder ; pour en envoyer de lourdes, préférez un lien de partage Nextcloud.": "Before deleting a message, save in Files the attachments to keep; to send heavy ones, prefer a Nextcloud share link."
 }

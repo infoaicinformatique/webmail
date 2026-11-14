@@ -4055,6 +4055,34 @@ async function main() {
 		assert.ok(!(await page.$eval('.wm-sort', (e) => e.classList.contains('active'))))
 	})
 
+	await step('free space: the heaviest folders from the gauge, their largest messages, the junk mail emptied', async () => {
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-list-period')
+		// one message in « Courrier indésirable », to empty it
+		await page.fill('.wm-list .wm-search', 'Newsletter n°52')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°52"))')
+		await page.click('.wm-toolbar .wm-junk-btn')
+		await page.waitForSelector('.wm-toast:has-text("Courrier indésirable")')
+		await page.click('.wm-search-info a:has-text("effacer")')
+		await page.click('.wm-quota')
+		await page.waitForSelector('.wm-space-dialog')
+		const names = await page.$$eval('.wm-space-name', (els) => els.map((e) => e.textContent))
+		assert.strictEqual(names[0], 'Boîte de réception', names.join('|'))
+		assert.ok((await page.textContent('.wm-space-dialog p >> nth=0')).includes('utilisés sur 2 Go'))
+		await shot('89-free-space')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-space-row[data-role="junkemail"] .wm-space-empty')
+		await page.waitForSelector('.wm-toast:has-text("Courrier indésirable vidé")')
+		await page.waitForSelector('.wm-space-row[data-role="junkemail"] .wm-space-empty', { state: 'detached' })
+		// the largest messages of the inbox: the list sorted by size
+		await page.click('.wm-space-row:has(.wm-space-name:text-is("Boîte de réception")) .wm-space-largest')
+		await page.waitForSelector('.wm-space-dialog', { state: 'detached' })
+		await page.waitForFunction(() => document.querySelector('.wm-sort') && document.querySelector('.wm-sort').value === 'size-desc')
+		await page.selectOption('.wm-sort', 'date-desc')
+		await page.waitForSelector('.wm-list-period')
+	})
+
 	await step('completion: the people of Nextcloud (an account of this Nextcloud) are offered too', async () => {
 		const occ = (args, env) => execSync((env ? OCC.replace('docker exec ', 'docker exec ' + env + ' ') : OCC) + ' ' + args, { encoding: 'utf8' })
 		try { occ('user:delete sophie') } catch (e) { /* not there */ }

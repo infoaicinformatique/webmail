@@ -1164,15 +1164,87 @@
 	function usageGauge() {
 		const u = state.usage
 		if (!u || typeof u.used !== 'number') return null
+		// a click: where the space goes, and how to free some
+		const title = _('Espace utilisé par la boîte aux lettres — cliquez pour voir les dossiers les plus lourds et libérer de l\'espace')
 		if (!u.limit) {
-			return h('div', { class: 'wm-quota', title: _('Espace utilisé par la boîte aux lettres') }, h('span', { class: 'wm-muted' }, _('{size} utilisés', { size: formatBytes(u.used) })))
+			return h('button', { type: 'button', class: 'wm-quota', title, onclick: openSpace }, h('span', { class: 'wm-muted' }, _('{size} utilisés', { size: formatBytes(u.used) })))
 		}
 		const pct = Math.min(100, Math.round((u.used / u.limit) * 100))
 		const level = pct >= 90 ? 'full' : (pct >= 75 ? 'high' : 'ok')
-		return h('div', { class: 'wm-quota wm-quota-' + level, title: _('Espace utilisé par la boîte aux lettres') },
-			h('div', { class: 'wm-quota-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': _('Espace utilisé') },
-				h('div', { class: 'wm-quota-fill', style: 'width:' + pct + '%' })),
+		return h('button', { type: 'button', class: 'wm-quota wm-quota-' + level, title, onclick: openSpace },
+			h('span', { class: 'wm-quota-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': _('Espace utilisé') },
+				h('span', { class: 'wm-quota-fill', style: 'width:' + pct + '%' })),
 			h('span', { class: 'wm-quota-text' }, _('{used} sur {limit} ({percent} %)', { used: formatBytes(u.used), limit: formatBytes(u.limit), percent: pct })))
+	}
+
+	/**
+	 * « Libérer de l'espace »: the heaviest folders, each with its largest
+	 * messages one click away; the deleted items and the junk mail emptied.
+	 */
+	function openSpace() {
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const title = _('Libérer de l\'espace')
+		const body = h('div', { class: 'wm-space-body' })
+		const render = () => {
+			clear(body)
+			const u = state.usage || {}
+			body.appendChild(h('p', {}, u.limit
+				? _('{used} utilisés sur {limit}.', { used: formatBytes(u.used), limit: formatBytes(u.limit) })
+				: _('{used} utilisés.', { used: formatBytes(u.used || 0) })))
+			const folders = state.folders.filter((f) => f.size > 0).sort((a, b) => b.size - a.size).slice(0, 12)
+			const max = folders.length ? folders[0].size : 1
+			body.appendChild(h('ul', { class: 'wm-space-list' }, folders.map((f) => {
+				const emptyable = (f.role === 'deleteditems' || f.role === 'junkemail') && f.total > 0
+				return h('li', { class: 'wm-space-row', dataset: { role: f.role || '' } },
+					h('div', { class: 'wm-space-head' },
+						h('span', { class: 'wm-space-name' }, folderName(f.id)),
+						h('span', { class: 'wm-muted' }, formatBytes(f.size) + ' · ' + (f.total > 1 ? _('{count} messages', { count: f.total }) : _('{count} message', { count: f.total })))),
+					h('div', { class: 'wm-space-bar' }, h('div', { class: 'wm-space-fill', style: 'width:' + Math.max(2, Math.round((f.size / max) * 100)) + '%' })),
+					h('div', { class: 'wm-space-actions' },
+						f.total > 0 ? h('button', {
+							type: 'button',
+							class: 'wm-small wm-space-largest',
+							onclick: () => {
+								close()
+								state.sort = 'size-desc'
+								try { localStorage.setItem('webmail.sort', state.sort) } catch (ex) { /* not kept */ }
+								state.grouped = false
+								selectFolder(f.id)
+							},
+						}, _('Plus gros messages')) : null,
+						emptyable ? h('button', {
+							type: 'button',
+							class: 'wm-small wm-danger wm-space-empty',
+							onclick: async (e) => {
+								const deleted = f.role === 'deleteditems'
+								if (!window.confirm(deleted
+									? _('Supprimer définitivement les {count} éléments supprimés ? Ils ne pourront pas être récupérés ici.', { count: f.total })
+									: _('Mettre les {count} messages indésirables dans les éléments supprimés ?', { count: f.total }))) return
+								e.currentTarget.disabled = true
+								try {
+									await api('/accounts/' + state.accountId + '/folders/empty', { method: 'POST', body: { role: f.role } })
+									toast(deleted ? _('Éléments supprimés vidés') : _('Courrier indésirable vidé'))
+									listCache.delete(state.accountId + '|' + f.id)
+									if (f.id === state.folderId) loadMessages(true)
+									await loadFolders()
+									render()
+								} catch (err) { toast(err.message, true); render() }
+							},
+						}, '🗑 ' + _('Vider')) : null))
+			})))
+			body.appendChild(h('p', { class: 'wm-muted' }, _('Avant de supprimer un message, enregistrez dans Fichiers les pièces jointes à garder ; pour en envoyer de lourdes, préférez un lien de partage Nextcloud.')))
+		}
+		render()
+		overlay.appendChild(h('div', { class: 'wm-modal wm-space-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, title), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			body))
+		document.body.appendChild(overlay)
+		const first = body.querySelector('button')
+		if (first) first.focus()
 	}
 
 	const warnedFull = new Set()

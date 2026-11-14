@@ -270,6 +270,8 @@ class EwsClient {
 				'total' => (int)$this->text($xp, 't:TotalCount', $node),
 				'unread' => (int)$this->text($xp, 't:UnreadCount', $node),
 				'role' => $roleById[$id] ?? null,
+				// bytes (« Libérer de l'espace »)
+				'size' => max(0, (int)$this->text($xp, 't:ExtendedProperty/t:Value', $node)),
 			];
 		}
 		return $folders;
@@ -1414,6 +1416,17 @@ class EwsClient {
 		$this->request(
 			'<m:MarkAsJunk IsJunk="' . ($junk ? 'true' : 'false') . '" MoveItem="true">'
 			. '<m:ItemIds>' . $this->itemIdsXml($itemIds) . '</m:ItemIds></m:MarkAsJunk>'
+		);
+	}
+
+	/**
+	 * Empty a folder (« Vider »): its messages to the deleted items, or
+	 * deleted for good when it is the deleted items itself. Sub-folders kept.
+	 */
+	public function emptyFolder(string $folderId, bool $permanent): void {
+		$this->request(
+			'<m:EmptyFolder DeleteType="' . ($permanent ? 'HardDelete' : 'MoveToDeletedItems') . '" DeleteSubFolders="false">'
+			. '<m:FolderIds>' . $this->folderIdXml($folderId) . '</m:FolderIds></m:EmptyFolder>'
 		);
 	}
 

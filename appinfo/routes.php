@@ -57,6 +57,7 @@ return [
 		['name' => 'mail#importEml', 'url' => '/api/accounts/{id}/import', 'verb' => 'POST'],
 		['name' => 'mail#flags', 'url' => '/api/accounts/{id}/flags', 'verb' => 'POST'],
 		['name' => 'mail#snoozes', 'url' => '/api/accounts/{id}/snoozes', 'verb' => 'GET'],
+		['name' => 'mail#emptyFolder', 'url' => '/api/accounts/{id}/folders/empty', 'verb' => 'POST'],
 		['name' => 'mail#snooze', 'url' => '/api/accounts/{id}/snooze', 'verb' => 'POST'],
 		['name' => 'mail#unsnooze', 'url' => '/api/accounts/{id}/snooze/back', 'verb' => 'POST'],
 		['name' => 'mail#move', 'url' => '/api/accounts/{id}/move', 'verb' => 'POST'],
