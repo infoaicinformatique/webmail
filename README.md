@@ -264,7 +264,7 @@ Les deux sont actualisés toutes les quelques minutes ; Exchange n'est interrog�
 
 ## Prérequis
 
-- Nextcloud 28 à 34, PHP 8.1 à 8.5, avec les extensions `curl` et `dom`
+- Nextcloud 28 à 35, PHP 8.1 à 8.5, avec les extensions `curl` et `dom`
 - Le serveur Nextcloud doit pouvoir joindre `https://exN.mail.ovh.net` (port 443 sortant)
 - Aucune dépendance Composer ni étape de compilation n'est nécessaire à l'exécution
 
@@ -279,7 +279,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.127.1.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.127.2.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -288,6 +288,27 @@ sudo chown -R www-data:www-data /var/www/nextcloud/custom_apps/webmail
 
 ```bash
 sudo -u www-data php /var/www/nextcloud/occ app:enable webmail
+```
+
+### Nextcloud AIO (All-in-One)
+
+Nextcloud tourne dans le conteneur `nextcloud-aio-nextcloud`, et les apps vont dans `/var/www/html/custom_apps`.
+Ce dossier est sur un volume, donc l'app reste en place après les mises à jour d'AIO. Commandes à lancer en root sur l'hôte :
+
+```bash
+docker cp webmail-<version>.tar.gz nextcloud-aio-nextcloud:/tmp/
+```
+
+```bash
+docker exec nextcloud-aio-nextcloud sh -c 'rm -rf /var/www/html/custom_apps/webmail && tar -xzf /tmp/webmail-<version>.tar.gz -C /var/www/html/custom_apps/ && chown -R www-data:www-data /var/www/html/custom_apps/webmail && rm /tmp/webmail-<version>.tar.gz'
+```
+
+```bash
+docker exec --user www-data nextcloud-aio-nextcloud php occ app:enable webmail
+```
+
+```bash
+docker exec --user www-data nextcloud-aio-nextcloud php occ upgrade
 ```
 
 Vous pouvez aussi copier les dossiers `appinfo lib templates js css img` et les
@@ -323,7 +344,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.127.1 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.127.2 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -433,7 +454,7 @@ make test
 - Intégration continue (`.github/workflows/tests.yml`, à chaque pull request et sur `main`) : tests unitaires
   sur PHP 8.1 à 8.5, syntaxe des scripts, traductions générées à jour, `info.xml` validé avec le schéma de la
   boutique d'apps. Le scénario e2e, qui demande un Nextcloud et le serveur EWS factice, se lance à la main.
-- Versions testées : le scénario complet passe sur **Nextcloud 31** (PHP 8.3) et **Nextcloud 34** (PHP 8.5),
+- Versions testées : le scénario complet passe sur **Nextcloud 31** (PHP 8.3), **Nextcloud 34** et **Nextcloud 35** (PHP 8.5),
   et les tests unitaires sur PHP 8.3 et 8.5. Pour viser une autre instance : `NC_URL=http://localhost:8081
   OCC='docker exec -u www-data nc34 php occ' node tests/e2e/run-e2e.js`.
 

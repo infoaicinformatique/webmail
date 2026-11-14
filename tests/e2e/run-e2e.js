@@ -1071,9 +1071,12 @@ async function main() {
 		assert(!occ('user:setting admin webmail ' + subKey).includes('SUB-gone'), 'subscribed again')
 		runJob()
 		assert.strictEqual((await bell()).filter((n) => n.message.startsWith('« Devis après une coupure »')).length, 1, 'once')
-		// in Nextcloud's bell
-		await page.reload()
-		await page.click('.notifications-button')
+		// in Nextcloud's bell (its panel asks for them on its own: once more if it asked too early)
+		for (let i = 0; i < 3; i++) {
+			await page.reload()
+			await page.click('.notifications-button')
+			if (await page.waitForSelector('.notification:has-text("Budget du chantier")', { timeout: 15000 }).then(() => true, () => false)) break
+		}
 		await page.waitForSelector('.notification:has-text("Budget du chantier")')
 		await shot('46-bell-notification')
 		// its link opens the message, which leaves the bell
@@ -3366,8 +3369,12 @@ async function main() {
 		await page.click('.wm-tab[data-module="calendar"]')
 		// the button of the calendar, not the one of the mail still drawn a moment
 		await page.waitForSelector('.wm-compose-btn:has-text("Nouvel événement")')
-		await page.focus('.wm-compose-btn')
-		await page.keyboard.press('Enter')
+		// the calendar draws its side again once its data is there: the focus on the new button
+		for (let i = 0; i < 5 && !(await page.$('.wm-modal input[name=subject]')); i++) {
+			await page.focus('.wm-compose-btn')
+			await page.keyboard.press('Enter')
+			await page.waitForSelector('.wm-modal input[name=subject]', { timeout: 3000 }).catch(() => {})
+		}
 		await page.waitForSelector('.wm-modal input[name=subject]')
 		const inDialog = () => page.evaluate(() => !!document.activeElement.closest('.wm-modal'))
 		for (let i = 0; i < 30; i++) {
@@ -4861,20 +4868,26 @@ async function main() {
 		// read only: Nextcloud refuses a new event there
 		const put = await caldav('PUT', 'nouveau.ics', 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:nouveau\r\nDTSTAMP:20260101T000000Z\r\nDTSTART:20260101T100000Z\r\nSUMMARY:x\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')
 		assert(put.status === 403 || put.status === 405 || put.status === 501, 'PUT ' + put.status)
-		await page.uncheck('.wm-cal-nc input')
-		await page.waitForSelector('.wm-toast:has-text("Agenda Exchange retiré de l\'Agenda de Nextcloud")')
+		// the answer of the server (its toast may already have made way for another one)
+		const [off] = await Promise.all([
+			page.waitForResponse((res) => res.url().endsWith('/calendar/nextcloud') && res.request().method() === 'POST'),
+			page.uncheck('.wm-cal-nc input'),
+		])
+		assert.strictEqual((await off.json()).enabled, false)
 		assert.strictEqual((await caldav('PROPFIND')).found, false)
 	})
 
 	await step('Nextcloud unified search: messages and events, the link opens them', async () => {
 		const search = async (term, section) => {
 			await page.goto(NC + '/apps/files/')
-			// up to Nextcloud 33: a button that opens the search; Nextcloud 34: a field in the header
-			await page.click('header button[aria-label="Recherche unifiée"], .unified-search-input__button')
+			// up to Nextcloud 33: a button that opens the search; Nextcloud 34: a field in the header;
+			// Nextcloud 35: the field itself
+			await page.click('header button[aria-label="Recherche unifiée"], .unified-search-input__button, .unified-search-input__input')
 			await page.keyboard.type(term)
 			await page.waitForSelector('text=' + section)
 		}
-		await search('facture', 'Courrier Exchange')
+		// precise: Nextcloud 35 shows the first 3 results of each source only (« Facture novembre » sent meanwhile)
+		await search('facture OVH', 'Courrier Exchange')
 		// the message (Files may list a saved « Votre facture OVH.eml » first)
 		const result = page.locator('a:has-text("Votre facture OVH"):has-text("OVHcloud")').first()
 		assert((await result.textContent()).includes('OVHcloud'))

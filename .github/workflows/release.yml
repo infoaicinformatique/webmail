@@ -45,7 +45,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > notes.md <<NOTES
-          Webmail Exchange $VERSION for Nextcloud 28 to 34 (PHP 8.1 to 8.5).
+          Webmail Exchange $VERSION for Nextcloud 28 to 35 (PHP 8.1 to 8.5).
 
           Installation (path and web user to adapt):
 
@@ -55,6 +55,15 @@ jobs:
           sudo chown -R www-data:www-data /var/www/nextcloud/custom_apps/webmail
           sudo -u www-data php /var/www/nextcloud/occ app:enable webmail
           sudo -u www-data php /var/www/nextcloud/occ upgrade
+          \`\`\`
+
+          Nextcloud AIO (as root on the host):
+
+          \`\`\`bash
+          docker cp webmail-$VERSION.tar.gz nextcloud-aio-nextcloud:/tmp/
+          docker exec nextcloud-aio-nextcloud sh -c 'rm -rf /var/www/html/custom_apps/webmail && tar -xzf /tmp/webmail-$VERSION.tar.gz -C /var/www/html/custom_apps/ && chown -R www-data:www-data /var/www/html/custom_apps/webmail && rm /tmp/webmail-$VERSION.tar.gz'
+          docker exec --user www-data nextcloud-aio-nextcloud php occ app:enable webmail
+          docker exec --user www-data nextcloud-aio-nextcloud php occ upgrade
           \`\`\`
 
           SHA-256: $(cut -d' ' -f1 "build/webmail-$VERSION.tar.gz.sha256")

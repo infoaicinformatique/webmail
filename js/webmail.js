@@ -911,10 +911,15 @@
 		input.focus()
 	}
 
-	/** Ctrl+K (⌘K on a Mac): the palette, from any module, even while typing. */
+	/**
+	 * Ctrl+K (⌘K on a Mac): the palette, from any module, even while typing. Taken
+	 * before the page sees it: Nextcloud 35 opens its own search with the same keys,
+	 * which would take the focus from the palette (its search stays one click away).
+	 */
 	function onPaletteKey(e) {
 		if (!root || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || (e.key !== 'k' && e.key !== 'K')) return
 		e.preventDefault()
+		e.stopImmediatePropagation()
 		if (document.querySelector('.wm-palette-overlay')) return
 		openPalette()
 	}
@@ -5682,7 +5687,7 @@
 		lastCheck = Date.now()
 		checkNewMessages()
 		document.addEventListener('keydown', onShortcut)
-		document.addEventListener('keydown', onPaletteKey)
+		window.addEventListener('keydown', onPaletteKey, true)
 	}
 
 	if (document.readyState === 'loading') {
