@@ -40,7 +40,14 @@ class EwsClient {
 	 * Authentication: Basic is sent with the first request (no extra round
 	 * trip to discover the method); NTLM is used if the server refuses it.
 	 */
-	private int $auth = CURLAUTH_BASIC;
+	/** the server refuses Basic: NTLM, done by Ntlm (some libcurl are built without it) */
+	private bool $ntlm = false;
+	/** the open connection is authenticated by NTLM (it stays so until closed) */
+	private bool $ntlmReady = false;
+	/** @var ?callable(): void told once this server wants NTLM (remembered for the next clients) */
+	private $onNtlm = null;
+	/** @var string[] headers of the last answer */
+	private array $lastHeaders = [];
 
 	/** Windows time zone id sent in the TimeZoneContext header (e.g. "Romance Standard Time"). */
 	private ?string $timeZoneId = null;
@@ -69,6 +76,19 @@ class EwsClient {
 	 *
 	 * @param string[] $noProxy hosts that are reached without the proxy
 	 */
+	/**
+	 * NTLM at once, for a server known to refuse Basic (OVH Hosted Exchange): no refused
+	 * request first. $onNtlm is called when this client finds out a server wants NTLM.
+	 */
+	public function setAuth(bool $ntlm, ?callable $onNtlm = null): void {
+		$this->ntlm = $this->ntlm || $ntlm;
+		$this->onNtlm = $onNtlm;
+	}
+
+	public function usesNtlm(): bool {
+		return $this->ntlm;
+	}
+
 	public function setNetwork(?string $proxy, ?string $proxyAuth = null, array $noProxy = [], ?string $caBundle = null, ?string $userAgent = null): void {
 		$this->network = self::networkOptions($proxy, $proxyAuth, $noProxy, $caBundle);
 		if ($userAgent !== null && $userAgent !== '') {
@@ -2030,17 +2050,90 @@ class EwsClient {
 	 * @return array{0: int, 1: string}
 	 */
 	private function httpPost(string $body, array $headers = [], ?string $url = null): array {
+		if ($this->ntlm) {
+			return $this->ntlmPost($body, $headers, $url);
+		}
+		[$status, $response] = $this->postOnce($body, $headers, $url, $this->username . ':' . $this->password);
+		if ($status === 401 && $this->offersNtlm()) {
+			// Basic refused: this server wants NTLM (OVH Hosted Exchange), kept for the next requests
+			$this->ntlm = true;
+			$this->curl = null;
+			[$status, $response] = $this->ntlmPost($body, $headers, $url);
+			if ($status !== 401 && $this->onNtlm !== null) {
+				($this->onNtlm)();
+			}
+		}
+		return [$status, $response];
+	}
+
+	/**
+	 * A request in NTLM: on a connection already authenticated, as it is;
+	 * otherwise (or when the server closed it) NEGOTIATE, CHALLENGE, then the
+	 * request with AUTHENTICATE, all on one HTTP/1.1 connection.
+	 * @return array{0: int, 1: string}
+	 */
+	private function ntlmPost(string $body, array $headers, ?string $url): array {
+		if ($this->ntlmReady) {
+			[$status, $response] = $this->postOnce($body, $headers, $url);
+			if ($status !== 401) {
+				return [$status, $response];
+			}
+			$this->ntlmReady = false;
+		}
+		[$status, $response] = $this->postOnce('', array_merge($headers, ['Authorization: NTLM ' . Ntlm::negotiate()]), $url);
+		$challenge = $status === 401 ? $this->ntlmChallenge() : null;
+		if ($challenge === null) {
+			return [$status, $response];
+		}
+		$type3 = Ntlm::authenticate($this->username, $this->password, Ntlm::parseChallenge($challenge));
+		[$status, $response] = $this->postOnce($body, array_merge($headers, ['Authorization: NTLM ' . $type3]), $url);
+		$this->ntlmReady = $status !== 401;
+		return [$status, $response];
+	}
+
+	/** The last answer asks for NTLM (WWW-Authenticate: NTLM). */
+	private function offersNtlm(): bool {
+		foreach ($this->lastHeaders as $h) {
+			if (preg_match('/^WWW-Authenticate:\s*NTLM\b/i', $h)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** The CHALLENGE of the last answer (WWW-Authenticate: NTLM <base64>), null without. */
+	private function ntlmChallenge(): ?string {
+		foreach ($this->lastHeaders as $h) {
+			if (preg_match('/^WWW-Authenticate:\s*NTLM\s+([A-Za-z0-9+\/=]+)\s*$/i', $h, $m)) {
+				return $m[1];
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * One POST on the kept connection: Basic with $userPwd, otherwise with the
+	 * headers given (NTLM). NTLM authenticates a connection, which HTTP/2 does
+	 * not keep: HTTP/1.1 then.
+	 * @return array{0: int, 1: string}
+	 */
+	private function postOnce(string $body, array $headers, ?string $url, ?string $userPwd = null): array {
 		$this->curl ??= curl_init();
 		$ch = $this->curl;
+		$this->lastHeaders = [];
 		curl_setopt_array($ch, $this->network + [
 			CURLOPT_URL => $url ?? $this->url,
 			CURLOPT_POST => true,
 			CURLOPT_POSTFIELDS => $body,
 			CURLOPT_RETURNTRANSFER => true,
 			CURLOPT_HTTPHEADER => array_merge(['Content-Type: text/xml; charset=utf-8', 'Accept: text/xml'], $headers),
-			// OVH Hosted Exchange accepts Basic and NTLM
-			CURLOPT_HTTPAUTH => $this->auth,
-			CURLOPT_USERPWD => $this->username . ':' . $this->password,
+			CURLOPT_HTTPAUTH => CURLAUTH_BASIC,
+			CURLOPT_USERPWD => $userPwd,
+			CURLOPT_HTTP_VERSION => $this->ntlm ? CURL_HTTP_VERSION_1_1 : CURL_HTTP_VERSION_NONE,
+			CURLOPT_HEADERFUNCTION => function ($ch, string $line): int {
+				$this->lastHeaders[] = rtrim($line, "\r\n");
+				return strlen($line);
+			},
 			// EWS answers are verbose XML: let the server compress them
 			CURLOPT_ENCODING => '',
 			CURLOPT_TIMEOUT => $this->timeout,
@@ -2054,15 +2147,10 @@ class EwsClient {
 		$response = curl_exec($ch);
 		$status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 		$error = curl_error($ch);
-		if ($status === 401 && $this->auth === CURLAUTH_BASIC && $response !== false) {
-			// Basic refused: this server wants NTLM (kept for the next requests)
-			$this->auth = CURLAUTH_NTLM;
-			return $this->httpPost($body, $headers, $url);
-		}
 		if ($response === false) {
 			// do not reuse a connection in an unknown state
-			curl_close($ch);
 			$this->curl = null;
+			$this->ntlmReady = false;
 			throw new MailException('Impossible de joindre le serveur Exchange : %s', [$error]);
 		}
 		return [$status, (string)$response];

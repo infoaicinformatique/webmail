@@ -1027,6 +1027,7 @@ OC.L10N.register(
     "Répondre à tous": "Reply all",
     "Répondre à toutes les personnes extérieures": "Reply to everyone outside the organisation",
     "Répondre à {name}…": "Reply to {name}…",
+    "Réponse NTLM invalide du serveur Exchange": "Invalid NTLM response from the Exchange server",
     "Réponse automatique": "Automatic reply",
     "Réponse automatique activée": "Automatic reply on",
     "Réponse automatique activée jusqu'au {date}": "Automatic reply on until {date}",

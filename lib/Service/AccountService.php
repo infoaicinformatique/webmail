@@ -220,6 +220,10 @@ class AccountService {
 		$client->setNetwork(...$this->network());
 		$ids = $this->cacheFactory->createDistributed('webmail-ids');
 		$client->setIdCache(fn (string $key) => $ids->get($key), fn (string $key, array $value, int $ttl) => $ids->set($key, $value, $ttl));
+		// a server that refuses Basic (OVH Hosted Exchange) is asked in NTLM at once
+		$auth = $this->cacheFactory->createDistributed('webmail-auth');
+		$key = 'ntlm_' . md5(strtolower($url));
+		$client->setAuth($auth->get($key) === true, fn () => $auth->set($key, true, 7 * 86400));
 		return $client;
 	}
 

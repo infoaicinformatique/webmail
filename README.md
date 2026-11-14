@@ -279,7 +279,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.127.2.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.127.3.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -344,7 +344,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.127.2 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.127.3 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -429,7 +429,7 @@ Les requêtes vers Exchange suivent les réglages réseau de Nextcloud, comme se
 | Message | Cause probable |
 |---|---|
 | « Aucun serveur Exchange n'est configuré pour le domaine … » | Le domaine n'est pas déclaré dans l'administration |
-| « Identifiant ou mot de passe Exchange incorrect » | Mauvais mot de passe, ou compte bloqué chez OVH |
+| « Identifiant ou mot de passe Exchange incorrect » | Mauvais mot de passe, compte bloqué chez OVH, ou serveur Exchange erroné dans l'administration (celui du webmail OVH, `exN.mail.ovh.net`). OVH refuse l'authentification Basic : l'app passe alors en NTLM, qu'elle gère elle-même (depuis la 1.127.3), même quand le PHP de Nextcloud (Nextcloud AIO) n'a pas NTLM dans libcurl |
 | « Accès EWS refusé … » | EWS désactivé pour ce compte (à vérifier dans l'espace client OVH) |
 | « Impossible de joindre le serveur Exchange » | Pare-feu ou DNS : testez `curl -I https://exN.mail.ovh.net/EWS/Exchange.asmx` depuis le serveur Nextcloud (une réponse 401 est normale) |
 

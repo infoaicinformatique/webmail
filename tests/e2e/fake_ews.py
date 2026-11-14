@@ -1034,7 +1034,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'text/xml; charset=utf-8')
         self.send_header('Content-Length', str(len(data)))
         for k, v in (extra or {}).items():
-            self.send_header(k, v)
+            for one in (v if isinstance(v, list) else [v]):
+                self.send_header(k, one)
         self.end_headers()
         self.wfile.write(data)
 
@@ -1110,7 +1111,22 @@ class Handler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length)
         auth = self.headers.get('Authorization', '')
         user = None
-        if auth.startswith('Basic '):
+        if NTLM_MODE:
+            # one authentication per connection (this handler serves one connection)
+            if auth.startswith('NTLM '):
+                kind = base64.b64decode(auth[5:])[8:12]
+                if kind == struct.pack('<I', 1):
+                    self.ntlm_challenge = os.urandom(8)
+                    self.send(401, '', {'WWW-Authenticate': 'NTLM ' + ntlm_challenge_message(self.ntlm_challenge)})
+                    return
+                self.ntlm_user = ntlm_user(auth[5:], getattr(self, 'ntlm_challenge', b''))
+            user = getattr(self, 'ntlm_user', None)
+            if user is None:
+                # as OVH: Basic refused
+                self.send(401, '', {'WWW-Authenticate': ['Negotiate', 'NTLM']})
+                self.ntlm_user = None
+                return
+        elif auth.startswith('Basic '):
             u, _, p = base64.b64decode(auth[6:]).decode('utf-8', 'replace').partition(':')
             if p == 'secret' and '@' in u:
                 user = u
@@ -1152,6 +1168,62 @@ class Handler(BaseHTTPRequestHandler):
 
 LATENCY = 0.0
 TIMING = None
+# --ntlm: Basic refused, NTLMv2 asked (as OVH Hosted Exchange), checked for real
+NTLM_MODE = False
+
+
+def md4(data):
+    """MD4 (RFC 1320): hashlib may not have it (OpenSSL 3)."""
+    def rol(x, n):
+        x &= 0xffffffff
+        return ((x << n) | (x >> (32 - n))) & 0xffffffff
+    msg = bytearray(data) + b'\x80'
+    while len(msg) % 64 != 56:
+        msg.append(0)
+    msg += struct.pack('<Q', len(data) * 8)
+    h = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476]
+    for i in range(0, len(msg), 64):
+        x = struct.unpack('<16I', msg[i:i + 64])
+        a, b, c, d = h
+        for k in range(16):
+            s = (3, 7, 11, 19)[k % 4]
+            a, b, c, d = d, rol(a + ((b & c) | (~b & d)) + x[k], s), b, c
+        for k in range(16):
+            s = (3, 5, 9, 13)[k % 4]
+            a, b, c, d = d, rol(a + ((b & c) | (b & d) | (c & d)) + x[(k % 4) * 4 + k // 4] + 0x5a827999, s), b, c
+        for k in range(16):
+            s = (3, 9, 11, 15)[k % 4]
+            a, b, c, d = d, rol(a + (b ^ c ^ d) + x[(0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15)[k]] + 0x6ed9eba1, s), b, c
+        h = [(v + n) & 0xffffffff for v, n in zip(h, (a, b, c, d))]
+    return struct.pack('<4I', *h)
+
+
+def ntlm_challenge_message(challenge):
+    """CHALLENGE: the server's 8 bytes, its names and its time (MsvAvTimestamp)."""
+    def av(i, v):
+        return struct.pack('<HH', i, len(v)) + v
+    now = int((time.time() + 11644473600) * 10000000)
+    info = av(2, 'FAKE'.encode('utf-16-le')) + av(1, 'EXFAKE'.encode('utf-16-le')) + av(7, struct.pack('<Q', now)) + av(0, b'')
+    flags = 0x00000001 | 0x00000200 | 0x00008000 | 0x00080000 | 0x00800000 | 0x20000000
+    head = b'NTLMSSP\0' + struct.pack('<I', 2) + struct.pack('<HHI', 0, 0, 56) + struct.pack('<I', flags) + challenge + b'\0' * 8 + struct.pack('<HHI', len(info), len(info), 56) + b'\0' * 8
+    return base64.b64encode(head + info).decode()
+
+
+def ntlm_user(message, challenge, password='secret'):
+    """The user of an AUTHENTICATE whose NTLMv2 response is right for this password, else None."""
+    import hmac
+    m = base64.b64decode(message)
+    if m[:8] != b'NTLMSSP\0' or struct.unpack('<I', m[8:12])[0] != 3:
+        return None
+    def field(i):
+        ln, _, off = struct.unpack('<HHI', m[12 + 8 * i:20 + 8 * i])
+        return m[off:off + ln]
+    nt, domain, user = field(1), field(2).decode('utf-16-le'), field(3).decode('utf-16-le')
+    if len(nt) < 32:
+        return None
+    key = hmac.new(md4(password.encode('utf-16-le')), (user.upper() + domain).encode('utf-16-le'), 'md5').digest()
+    proof = hmac.new(key, challenge + nt[16:], 'md5').digest()
+    return user if hmac.compare_digest(proof, nt[:16]) and '@' in user else None
 
 
 def bulk(count, folders):
@@ -1180,7 +1252,7 @@ def bulk(count, folders):
 
 
 def main():
-    global LOG_DIR, LATENCY, TIMING
+    global LOG_DIR, LATENCY, TIMING, NTLM_MODE
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8443)
     ap.add_argument('--cert', required=True)
@@ -1188,12 +1260,14 @@ def main():
     ap.add_argument('--log')
     ap.add_argument('--latency', type=float, default=0, help='milliseconds added to each request (network)')
     ap.add_argument('--timing', help='file where the time taken by each request is written')
+    ap.add_argument('--ntlm', action='store_true', help='Basic refused, NTLMv2 asked (as OVH Hosted Exchange)')
     ap.add_argument('--bulk', type=int, default=0, help='old messages added (a very large mailbox)')
     ap.add_argument('--bulk-folders', type=int, default=0, help='archive folders for them')
     args = ap.parse_args()
     LOG_DIR = args.log
     LATENCY = args.latency / 1000
     TIMING = args.timing
+    NTLM_MODE = args.ntlm
     if args.bulk:
         bulk(args.bulk, args.bulk_folders)
     if LOG_DIR:

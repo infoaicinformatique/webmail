@@ -1517,5 +1517,6 @@
 	"Attention : sans vérification du certificat, une personne placée sur le réseau peut se faire passer pour le serveur et lire les mots de passe et les messages. À n'utiliser que pour un serveur interne avec un certificat auto-signé, jamais pour OVH Hosted Exchange dont les certificats sont valides.": "Warning: without certificate checks, someone on the network can impersonate the server and read passwords and messages. Use only for an internal server with a self-signed certificate, never for OVH Hosted Exchange, whose certificates are valid.",
 	"Taille maximale des pièces jointes : entre %1$s et %2$s Mo": "Maximum size of attachments: between %1$s and %2$s MB",
 	"Les pièces jointes dépassent %s Mo": "The attachments exceed %s MB",
-	"Pièces jointes trop lourdes ({size}, {max} au plus) : envoyez les plus grosses avec « 🔗 Envoyer en lien ».": "Attachments too large ({size}, {max} at most): send the largest ones with “🔗 Send as link”."
+	"Pièces jointes trop lourdes ({size}, {max} au plus) : envoyez les plus grosses avec « 🔗 Envoyer en lien ».": "Attachments too large ({size}, {max} at most): send the largest ones with “🔗 Send as link”.",
+	"Réponse NTLM invalide du serveur Exchange": "Invalid NTLM response from the Exchange server"
 }
