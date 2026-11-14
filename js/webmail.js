@@ -1876,10 +1876,13 @@
 		const period = dayPeriods()
 		let last = null
 		const ul = h('ul', { class: 'wm-messages wm-unified-list', role: 'list' })
+		const closed = collapsedPeriods()
+		const counts = countBy(state.unifiedItems, (m) => period(m.date))
 		state.unifiedItems.forEach((m) => {
 			const p = period(m.date)
-			if (p !== last) { last = p; ul.appendChild(h('li', { class: 'wm-list-period', role: 'presentation' }, p)) }
+			if (p !== last) { last = p; ul.appendChild(periodRow(p, counts.get(p))) }
 			ul.appendChild(h('li', {
+				hidden: closed.has(p),
 				class: 'wm-message' + (m.isRead ? '' : ' unread'),
 				tabindex: '0',
 				dataset: { id: m.id, account: String(m.accountId) },
@@ -1897,6 +1900,50 @@
 			m.preview ? h('div', { class: 'wm-message-preview' }, m.preview) : null))
 		})
 		listEl.appendChild(ul)
+	}
+
+	// ------------------------------------------------------------------
+	// headings of the list (« Aujourd'hui », « Hier »…) folded by a click
+	// ------------------------------------------------------------------
+	const COLLAPSED_KEY = 'webmail.collapsedPeriods'
+
+	/** The headings folded in this browser (by their text, the same in every folder). */
+	function collapsedPeriods() {
+		try {
+			const v = JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]')
+			return new Set(Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [])
+		} catch (e) { return new Set() }
+	}
+
+	function toggleCollapsed(label) {
+		const set = collapsedPeriods()
+		if (set.has(label)) set.delete(label)
+		else set.add(label)
+		try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...set])) } catch (e) { /* not kept */ }
+		renderList(false, listEl.scrollTop)
+		const again = [...listEl.querySelectorAll('.wm-period-toggle')].find((b) => b.dataset.label === label)
+		if (again) again.focus()
+	}
+
+	/** @return {Map<string, number>} how many of the list for each key */
+	function countBy(list, key) {
+		const out = new Map()
+		list.forEach((x) => { const k = key(x); out.set(k, (out.get(k) || 0) + 1) })
+		return out
+	}
+
+	/** A heading of the list: a click folds or unfolds its messages (their number shown when folded). */
+	function periodRow(label, count) {
+		const closed = collapsedPeriods().has(label)
+		return h('li', { class: 'wm-list-period' + (closed ? ' wm-collapsed' : ''), role: 'presentation' },
+			h('button', {
+				type: 'button',
+				class: 'wm-period-toggle',
+				'aria-expanded': closed ? 'false' : 'true',
+				title: closed ? _('Afficher ces messages') : _('Masquer ces messages'),
+				dataset: { label },
+				onclick: (e) => { e.stopPropagation(); toggleCollapsed(label) },
+			}, label, closed && count ? h('span', { class: 'wm-period-count' }, ' · ' + (count > 1 ? _('{count} messages', { count }) : _('{count} message', { count }))) : null))
 	}
 
 	function renderList(loading, scrollTop) {
@@ -2019,15 +2066,24 @@
 			.map((p) => state.messages.find((x) => x.id === p.id) || p)
 		const pinnedIds = new Set(pinnedHere.map((p) => p.id))
 		const rows = pinnedHere.concat(state.messages.filter((m) => !pinnedIds.has(m.id)))
+		// the heading of each row (null: none), then how many under each: shown on a folded heading
+		const headings = []
 		rows.forEach((m) => {
+			const prev = headings.length ? headings[headings.length - 1] : null
+			headings.push(pinnedIds.has(m.id) ? '📌 ' + _('Épinglés') : (byDate ? period(m.date) : (pinnedHere.length && (prev === '📌 ' + _('Épinglés') || prev === _('Autres messages')) ? _('Autres messages') : null)))
+		})
+		const counts = countBy(headings.filter(Boolean), (x) => x)
+		const closed = collapsedPeriods()
+		rows.forEach((m, i) => {
 			const pin = pinnedIds.has(m.id)
-			const p = pin ? '📌 ' + _('Épinglés') : (byDate ? period(m.date) : (pinnedHere.length && lastPeriod === '📌 ' + _('Épinglés') ? _('Autres messages') : null))
+			const p = headings[i]
 			if (p && p !== lastPeriod) {
 				lastPeriod = p
-				ul.appendChild(h('li', { class: 'wm-list-period', role: 'presentation' }, p))
+				ul.appendChild(periodRow(p, counts.get(p)))
 			}
 			const who = showRecipients ? _('À : {names}', { names: m.displayTo || '' }) : (personShort(m.from) || _('(expéditeur inconnu)'))
 			const li = h('li', {
+				hidden: !!(p && closed.has(p)),
 				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : '') + (state.checked.has(m.id) ? ' checked' : '') + (pin ? ' wm-pinned' : ''),
 				tabindex: '0',
 				draggable: conv ? 'false' : 'true',
@@ -2997,7 +3053,10 @@
 	function openRelative(step) {
 		if (!state.messages.length) return
 		const i = state.messages.findIndex((m) => m.id === state.selectedId)
-		const j = i < 0 ? 0 : i + step
+		let j = i < 0 ? 0 : i + step
+		// the messages under a folded heading are passed over
+		const folded = (k) => { const li = state.messages[k] && listItemEl(state.messages[k].id); return !!(li && li.hidden) }
+		while (j >= 0 && j < state.messages.length && folded(j)) j += step < 0 ? -1 : 1
 		if (j >= state.messages.length) {
 			if (state.hasMore) loadMessages(false)
 			return

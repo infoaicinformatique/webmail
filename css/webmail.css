@@ -1137,3 +1137,26 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-splitter:focus-visible { outline: none; }
 #webmail-app.wm-resizing { cursor: col-resize; user-select: none; }
 #webmail-app.wm-resizing iframe { pointer-events: none; }
+
+/* ---------- headings of the list folded by a click (« Aujourd'hui », « Hier »…) ---------- */
+.wm-list-period { padding: 0; }
+.wm-period-toggle {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	min-height: 0 !important;
+	margin: 0 !important;
+	padding: 4px 12px !important;
+	border: none !important;
+	border-radius: 0 !important;
+	background: transparent !important;
+	font: inherit;
+	font-weight: bold;
+	color: inherit;
+	text-align: start;
+}
+.wm-period-toggle::before { content: '▾'; display: inline-block; width: 1em; transition: transform .15s; }
+.wm-collapsed .wm-period-toggle::before { transform: rotate(-90deg); }
+.wm-period-toggle:hover { background: var(--color-background-hover) !important; }
+.wm-period-count { font-weight: normal; }

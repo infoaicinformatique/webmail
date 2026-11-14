@@ -1523,5 +1523,7 @@
 	"Vider le courrier indésirable": "Empty junk email",
 	"Largeur des dossiers": "Width of the folders",
 	"Largeur de la liste des messages": "Width of the message list",
-	"Glisser pour élargir ou rétrécir (double-clic : largeur d'origine)": "Drag to widen or narrow (double-click: original width)"
+	"Glisser pour élargir ou rétrécir (double-clic : largeur d'origine)": "Drag to widen or narrow (double-click: original width)",
+	"Afficher ces messages": "Show these messages",
+	"Masquer ces messages": "Hide these messages"
 }

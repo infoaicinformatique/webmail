@@ -4385,6 +4385,37 @@ async function main() {
 		assert.strictEqual(await page.evaluate(() => localStorage.getItem('webmail.panes')), '{}')
 	})
 
+	await step('headings of the list: « Aujourd\'hui » folded by a click, its count shown, kept after a reload', async () => {
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-list-period')
+		const first = page.locator('.wm-messages > .wm-list-period >> nth=0')
+		const label = (await first.textContent()).trim()
+		// the rows under the first heading: those before the second one
+		const under = () => page.evaluate(() => {
+			const out = []
+			let el = document.querySelector('.wm-messages > .wm-list-period').nextElementSibling
+			while (el && !el.classList.contains('wm-list-period')) { out.push(el.hidden); el = el.nextElementSibling }
+			return out
+		})
+		const before = await under()
+		assert.ok(before.length > 0 && before.every((h) => !h))
+		await first.locator('.wm-period-toggle').click()
+		await page.waitForSelector('.wm-list-period.wm-collapsed .wm-period-toggle[aria-expanded="false"]')
+		assert.ok((await under()).every((h) => h), 'folded')
+		assert.ok((await page.textContent('.wm-list-period.wm-collapsed')).includes(before.length > 1 ? before.length + ' messages' : '1 message'))
+		await shot('92-folded-heading')
+		// kept in this browser
+		await page.reload()
+		await page.waitForSelector('.wm-list-period.wm-collapsed')
+		assert.ok((await under()).every((h) => h))
+		// unfolded again: as before
+		await page.click('.wm-list-period.wm-collapsed .wm-period-toggle')
+		await page.waitForSelector('.wm-list-period.wm-collapsed', { state: 'detached' })
+		assert.ok((await under()).every((h) => !h))
+		assert.strictEqual((await first.textContent()).trim(), label)
+		assert.strictEqual(await page.evaluate(() => localStorage.getItem('webmail.collapsedPeriods')), '[]')
+	})
+
 	await step('one sender: « Tous ses messages… » shows them, moves them all, and back', async () => {
 		// (one of the newsletters, found by a search: far down the inbox by now)
 		const openNewsletter = async () => {
@@ -4449,7 +4480,7 @@ async function main() {
 		assert.strictEqual(await page.getAttribute('.wm-toolbar .wm-pin-btn', 'aria-pressed'), 'true')
 		// another order: still first, the others under « Autres messages »
 		await page.selectOption('.wm-sort', 'subject-asc')
-		await page.waitForSelector('.wm-list-period:text-is("Autres messages")')
+		await page.waitForSelector('.wm-list-period .wm-period-toggle:text-is("Autres messages")')
 		assert.ok((await first()).includes('Newsletter n°44'))
 		await page.selectOption('.wm-sort', 'date-desc')
 		// kept by Nextcloud: after a reload too
