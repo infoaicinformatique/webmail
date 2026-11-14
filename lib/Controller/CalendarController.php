@@ -406,8 +406,8 @@ class CalendarController extends Controller {
 	 * @param string $calendar calendar key of the item; "shared:<email>" answers on behalf of that person
 	 */
 	#[NoAdminRequired]
-	public function respond(int $id, string $eventId, string $response, string $message = '', string $calendar = ''): Response {
-		return $this->handle(function () use ($id, $eventId, $response, $message, $calendar) {
+	public function respond(int $id, string $eventId, string $response, string $message = '', string $calendar = '', string $proposedStart = '', string $proposedEnd = '', string $tz = 'UTC'): Response {
+		return $this->handle(function () use ($id, $eventId, $response, $message, $calendar, $proposedStart, $proposedEnd, $tz) {
 			// answering in a colleague's calendar = answering on their behalf:
 			// only with edit rights on it (delegate / editor in Outlook)
 			if (str_starts_with($calendar, 'shared:')) {
@@ -416,7 +416,10 @@ class CalendarController extends Controller {
 					throw new MailException('Vous ne pouvez pas répondre au nom de cette personne : son agenda vous est partagé en lecture seule');
 				}
 			}
-			$this->calendar($id, 'UTC', $calendar)->respond($eventId, $response, $message);
+			$proposed = $proposedStart !== ''
+				? EwsCalendar::proposedTime($proposedStart, $proposedEnd, new \DateTimeZone(TimeZones::isValidIana($tz) ? $tz : 'UTC'))
+				: null;
+			$this->calendar($id, 'UTC', $calendar)->respond($eventId, $response, $message, $proposed);
 			$this->reminders->changed($id);
 			return ['status' => 'ok'];
 		});
