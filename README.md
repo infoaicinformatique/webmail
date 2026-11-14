@@ -62,6 +62,7 @@ et sur les téléphones, et inversement.
 | Copie dans Nextcloud Contacts | « ☁ » dans le carnet Contacts : les contacts Exchange copiés dans un carnet « Exchange — adresse » de Nextcloud Contacts, visible par l'application Contacts, les téléphones synchronisés avec Nextcloud (CardDAV) et les autres applications. Exchange reste la référence : la copie est remise à jour toutes les 6 heures (ou à la demande), sans toucher aux cartes ajoutées à la main ; « Arrêter » retire le carnet |
 | Classement dans Fichiers | « 📂 Pièces jointes → Fichiers » (carte du compte) ou « Ranger celles de cet expéditeur… » sous les pièces jointes d'un message : les pièces jointes des messages qui **arrivent** d'un expéditeur (adresse, ou « @domaine » pour toute une société) sont rangées par Nextcloud dans le dossier choisi — factures dans « Documents/Factures »… —, toutes les 10 minutes, webmail fermé ou non. Les messages déjà reçus ne sont pas concernés ; une pièce jointe n'est rangée qu'une fois |
 | Ouvrir dans Nextcloud | « ↗ Ouvrir dans Nextcloud » sur une pièce jointe : une copie dans Fichiers (« Pièces jointes »), ouverte avec ce que votre Nextcloud a pour ce type — **Nextcloud Office** (Collabora, OnlyOffice) pour les documents, Text, le lecteur PDF, les images —, pour la lire, l'annoter ou la modifier |
+| Deuxième fuseau horaire | « Deuxième fuseau horaire » dans la barre latérale de l'agenda (Tokyo, New York, La Réunion… ou n'importe quel fuseau) : dans les vues Semaine et Jour, une colonne de plus donne l'heure correspondante là-bas, avec son décalage (« Tokyo UTC+9 ») ; les événements restent à votre heure. Gardé par ce navigateur |
 | Fichier .ics reçu | « 📅 Ajouter à mon agenda » à côté d'une pièce jointe .ics (billet de train, réservation, webinaire…) : ses événements sont créés dans l'agenda Exchange, à la bonne heure quel que soit le fuseau du fichier (UTC, « America/New_York », noms Outlook), journées entières comprises ; « Voir » ouvre l'événement. Les répétitions éventuelles ne sont pas reprises (signalé) |
 | Doublons de contacts | « 👥 » dans un de vos carnets : les fiches qui semblent être la même personne (une adresse en commun, ou le même nom, « DUPONT Jean » = « Jean Dupont », accents et majuscules ignorés), groupe par groupe ; « Fusionner » complète la fiche choisie avec les autres (adresses, numéros, société…) puis les supprime — ce qui ne trouve pas de place (4e adresse, numéro différent) va dans ses notes |
 | Libérer de l'espace | Un clic sur la jauge d'espace (sous les dossiers) : les dossiers les plus lourds, avec leur taille et une barre, « Plus gros messages » pour ouvrir un dossier trié par taille, et « Vider » le courrier indésirable (vers les éléments supprimés) ou les éléments supprimés (définitivement), après confirmation |
@@ -271,7 +272,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.121.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.122.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -314,7 +315,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.121 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.122 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
