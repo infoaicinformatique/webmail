@@ -271,6 +271,8 @@ def deliver_to_self(m, user):
     """A message sent to oneself also arrives in the inbox (unread)."""
     if any(email.lower() == user.lower() for _, email in m['to'] + m['cc']):
         mid = add_message('F-INBOX', m['subject'], ('Utilisateur', user), m['body'], 0, to=m['to'], cc=m['cc'])
+        # with its attachments, as Exchange delivers it
+        MESSAGES[mid]['attachments'] = list(m.get('attachments') or [])
         if conversation_id(MESSAGES[mid]) in IGNORED:
             # an ignored conversation: straight to the deleted items
             MESSAGES[mid]['folder'] = 'F-DELETED'
@@ -670,6 +672,14 @@ def handle(op, el, user):
             # both test accounts share this fake inbox: for new messages, each only
             # sees what was sent to it, as with two real mailboxes
             conds.append(lambda m: any(e.lower() == user.lower() for _, e in m['to'] + m['cc']))
+        # received after a date (strictly), with attachments (« classer les pièces jointes »)
+        later = el.find('m:Restriction//t:IsGreaterThan/t:FieldURIOrConstant/t:Constant', NS)
+        if later is not None:
+            conds.append(lambda m, d=later.get('Value'): m['date'] > d)
+            conds.append(lambda m: any(e.lower() == user.lower() for _, e in m['to'] + m['cc']))
+        for eq in el.findall('m:Restriction//t:IsEqualTo', NS):
+            if eq.find('t:FieldURI', NS) is not None and eq.find('t:FieldURI', NS).get('FieldURI') == 'item:HasAttachments':
+                conds.append(lambda m: any(not ATTACHMENTS[a].get('inline') for a in m['attachments']))
         # the subject containing words (« pas de réponse »)
         contains = el.find('m:Restriction//t:Contains', NS)
         if contains is not None and contains.find('t:FieldURI', NS).get('FieldURI') == 'item:Subject':

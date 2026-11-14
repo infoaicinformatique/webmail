@@ -1376,6 +1376,57 @@
 		sync()
 	}
 
+	/**
+	 * « Classer les pièces jointes dans Fichiers »: sender (address or @domain) → folder; the
+	 * messages arriving from now on have their attachments put there by Nextcloud.
+	 */
+	async function openAutoFile(account, prefillFrom) {
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const base = '/accounts/' + account.id + '/autofile'
+		const list = h('ul', { class: 'wm-autofile-list' })
+		const show = (rules) => {
+			clear(list)
+			if (!rules.length) list.appendChild(h('li', { class: 'wm-muted' }, _('Aucune règle : les pièces jointes restent dans les messages.')))
+			rules.forEach((r) => list.appendChild(h('li', { dataset: { from: r.from } },
+				h('span', {}, r.from), ' → ', h('strong', {}, r.folder), ' ',
+				h('button', { type: 'button', class: 'wm-small', 'aria-label': _('Retirer la règle de {from}', { from: r.from }), onclick: async () => {
+					try { show((await api(base + '/remove', { method: 'POST', body: { from: r.from } })).rules) } catch (e) { toast(e.message, true) }
+				} }, '✕'))))
+		}
+		const from = h('input', { type: 'text', name: 'autofileFrom', placeholder: _('facturation@fournisseur.fr ou @fournisseur.fr'), value: prefillFrom || '' })
+		const folder = h('input', { type: 'text', name: 'autofileFolder', placeholder: '/Documents/Factures' })
+		const pick = h('button', { type: 'button', onclick: () => {
+			if (!(OC.dialogs && OC.dialogs.filepicker)) return
+			OC.dialogs.filepicker(_('Dossier de destination'), (dir) => { if (dir) folder.value = dir }, false, 'httpd/unix-directory', true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
+		} }, '📁 ' + _('Choisir'))
+		const form = h('form', {
+			class: 'wm-event-form',
+			onsubmit: async (e) => {
+				e.preventDefault()
+				try {
+					show((await api(base, { method: 'POST', body: { from: from.value, folder: folder.value } })).rules)
+					toast(_('Les pièces jointes de {from} iront dans {folder}', { from: from.value.trim().toLowerCase(), folder: folder.value.trim() }))
+					from.value = ''
+				} catch (ex) { toast(ex.message, true) }
+			},
+		},
+		h('label', { class: 'wm-field' }, h('span', {}, _('Expéditeur')), from),
+		h('label', { class: 'wm-field' }, h('span', {}, _('Dossier')), folder, pick),
+		h('div', { class: 'wm-compose-actions' }, h('button', { type: 'submit', class: 'primary' }, _('Ajouter'))))
+		overlay.appendChild(h('div', { class: 'wm-modal wm-autofile', role: 'dialog', 'aria-modal': 'true', 'aria-label': _('Pièces jointes → Fichiers') },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, '📂 ' + _('Pièces jointes → Fichiers')), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			h('div', { class: 'wm-modal-body' },
+				h('p', { class: 'wm-muted' }, _('Les pièces jointes des messages qui arrivent de ces expéditeurs sont rangées par Nextcloud dans le dossier choisi (toutes les 10 minutes, même webmail fermé). Les messages déjà reçus ne sont pas concernés.')),
+				list, form)))
+		document.body.appendChild(overlay)
+		try { show((await api(base)).rules) } catch (e) { toast(e.message, true) }
+		;(prefillFrom ? folder : from).focus()
+	}
+
 	function openRules(account, prefill) {
 		if (!window.WebmailRules) { toast(_('Module indisponible'), true); return }
 		window.WebmailRules.open(core, account, prefill)
@@ -2741,6 +2792,13 @@
 					a.isItem ? null : h('button', { class: 'wm-small wm-open-nc', title: _('Une copie dans Fichiers, ouverte avec l\'éditeur ou le visionneur de Nextcloud'), onclick: (e) => openInNextcloud(a, e.currentTarget) }, '↗ ' + _('Ouvrir dans Nextcloud'))))
 			})
 			detailEl.appendChild(list)
+			// from now on, those of this sender put into a folder of Files by themselves
+			const sender = m.from && m.from.email && !m.from.email.startsWith('/') ? m.from.email : ''
+			if (sender && m.attachments.some((a) => !a.isItem && !a.isInline)) {
+				const account = state.accounts.find((a) => a.id === state.accountId)
+				detailEl.appendChild(h('button', { class: 'wm-small wm-autofile-from', title: _('Les prochaines pièces jointes de {from} rangées dans un dossier de Fichiers', { from: sender }), onclick: () => openAutoFile(account, sender) },
+					'📂 ' + _('Ranger celles de cet expéditeur…')))
+			}
 			if (m.attachments.length > 1) {
 				// every attachment (an attached e-mail as an .eml) in one .zip, named after the subject
 				const zipQuery = new URLSearchParams({ name: m.subject || _('Pièces jointes') })
@@ -4943,6 +5001,7 @@
 				h('label', { class: 'wm-radio wm-bell' }, remind, ' ⏰ ' + _('Rappels des rendez-vous de l\'agenda dans les notifications Nextcloud (au moment choisi pour chaque rendez-vous : 15 minutes avant…)')),
 				h('div', { class: 'wm-compose-actions' }, save,
 					h('button', { type: 'button', class: 'wm-oof-btn', onclick: () => openOof(a) }, '🌴 ' + _('Réponse automatique')),
+					h('button', { type: 'button', class: 'wm-autofile-btn', title: _('Les pièces jointes de certains expéditeurs rangées d\'elles-mêmes dans un dossier de Fichiers'), onclick: () => openAutoFile(a) }, '📂 ' + _('Pièces jointes → Fichiers')),
 					h('button', { type: 'button', class: 'wm-rules-btn', onclick: () => openRules(a) }, '📋 ' + _('Règles')),
 					h('button', {
 						type: 'button',

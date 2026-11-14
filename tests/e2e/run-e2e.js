@@ -3577,6 +3577,47 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 	})
 
+	await step('attachments to Files: those of a sender put into a folder of Files by themselves', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const dav = (path, method) => page.evaluate(async ([p, m]) => {
+			const r = await fetch('/remote.php/dav/files/admin' + p.split('/').map(encodeURIComponent).join('/'), { method: m, headers: { requesttoken: OC.requestToken } })
+			return { status: r.status, text: m === 'GET' ? await r.text() : '' }
+		}, [path, method])
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('text=Comptes et signature')
+		await page.click('.wm-account-card:has-text("user@societe-a.fr") .wm-autofile-btn')
+		await page.waitForSelector('.wm-autofile li:has-text("Aucune règle")')
+		await page.fill('input[name=autofileFrom]', '@Societe-A.fr')
+		await page.fill('input[name=autofileFolder]', '/Documents/Classement test')
+		await page.click('.wm-autofile button[type=submit]')
+		await page.waitForSelector('.wm-autofile li[data-from="@societe-a.fr"]:has-text("/Documents/Classement test")')
+		await shot('94-attachments-to-files')
+		await page.click('.wm-autofile .wm-modal-close')
+		// a message arrives (to oneself) with a file
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'user@societe-a.fr')
+		await page.fill('input[name=subject]', 'Facture novembre')
+		await page.fill('.wm-editor', 'Ci-joint la facture.')
+		await page.setInputFiles('.wm-file-input', { name: 'facture-novembre.txt', mimeType: 'text/plain', buffer: Buffer.from('Facture n°2026-11\nTotal : 1 200 €\n') })
+		await submitCompose()
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\AutoFileJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		assert(jobId, 'background job registered')
+		occ('background-job:execute ' + jobId + ' --force-execute')
+		const got = await dav('/Documents/Classement test/facture-novembre.txt', 'GET')
+		assert.strictEqual(got.status, 200)
+		assert.strictEqual(got.text, 'Facture n°2026-11\nTotal : 1 200 €\n')
+		// once only: run again, no second copy
+		occ('background-job:execute ' + jobId + ' --force-execute')
+		assert.strictEqual((await dav('/Documents/Classement test/facture-novembre (2).txt', 'GET')).status, 404)
+		// the rule removed, the test folder too
+		await page.click('text=Comptes et signature')
+		await page.click('.wm-account-card:has-text("user@societe-a.fr") .wm-autofile-btn')
+		await page.click('.wm-autofile li[data-from="@societe-a.fr"] button')
+		await page.waitForSelector('.wm-autofile li:has-text("Aucune règle")')
+		await page.click('.wm-autofile .wm-modal-close')
+		await dav('/Documents/Classement test', 'DELETE')
+	})
+
 	await step('open in Nextcloud: an attachment copied in Files and opened with the viewer of Nextcloud', async () => {
 		await page.click('.wm-folder >> nth=0')
 		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
@@ -4475,9 +4516,9 @@ async function main() {
 		await shot('16-mobile-contact')
 	})
 
-	// expected: deliberate 400s (bad domain/password, missing recipient) and the fake tracker pixel; the network cut on purpose (offline step)
+	// expected: the copy a second run would make, looked for (404); deliberate 400s (bad domain/password, missing recipient) and the fake tracker pixel
 	// errors of other Nextcloud apps (Files, Text… where the unified search is tried) are not ours
-	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED/.test(e)
+	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|facture-novembre%20\(2\)/.test(e)
 		&& !/\/apps\/(?!webmail\/)[a-z_]+\//.test(e))
 	await browser.close()
 	if (relevant.length) {
