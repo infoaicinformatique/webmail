@@ -4086,10 +4086,10 @@ async function main() {
 	await step('one sender: « Tous ses messages… » shows them, moves them all, and back', async () => {
 		// (one of the newsletters, found by a search: far down the inbox by now)
 		const openNewsletter = async () => {
-			await page.fill('.wm-list .wm-search', 'Newsletter n°10')
+			await page.fill('.wm-list .wm-search', 'Newsletter n°36')
 			await page.press('.wm-list .wm-search', 'Enter')
-			await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
-			await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°10")')
+			await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°36"))')
+			await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°36")')
 		}
 		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector('.wm-list-period')
@@ -4115,7 +4115,7 @@ async function main() {
 		await page.click('.wm-sender-move-btn')
 		await page.waitForSelector('.wm-toast:has-text("' + count + ' messages déplacés dans « Clients »")')
 		await page.click('.wm-folder:has-text("Clients")')
-		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°36"))')
 		await page.click('.wm-toolbar .wm-sender-btn')
 		await page.waitForSelector('.wm-sender-dialog p:has-text("' + count + ' messages de cet expéditeur dans « Clients »")')
 		await page.selectOption('.wm-sender-dialog .wm-sender-move select', { label: 'Boîte de réception' })
