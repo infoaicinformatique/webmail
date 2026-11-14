@@ -554,12 +554,78 @@ class EwsClient {
 	}
 
 	/**
-	 * Search several folders at once (the whole mailbox): one FindItem over
-	 * all of them, results merged newest first. Paging goes up to 200 results.
+	 * Most items one FindItem may return over all its folders: Exchange refuses
+	 * or cuts a larger answer (EWSFindCountLimit, 1000 by default).
+	 */
+	public const FIND_COUNT_LIMIT = 1000;
+
+	/**
+	 * Search several folders at once (the whole mailbox), results merged in the
+	 * order asked (newest first by default). Paging goes up to 200 results.
+	 *
+	 * Exchange gives the first N matches of each folder: asking 200 of each of
+	 * hundreds of folders makes an answer of tens of thousands of messages
+	 * (seconds, and over the limit of Exchange). So each folder gives first a
+	 * few, as many as fit in one answer; only the folders whose few may hide
+	 * results of the page (their last one comes before the last of the page)
+	 * are asked again, for the whole window.
 	 * @param string[] $folderIds
 	 */
 	public function searchFolders(array $folderIds, int $offset, int $limit, string $query, string $sort = 'date', bool $desc = true): array {
 		$window = min(200, max(1, $offset + $limit));
+		$folderIds = array_values(array_unique($folderIds));
+		$per = min($window, max(5, intdiv(self::FIND_COUNT_LIMIT, max(1, count($folderIds)))));
+		$found = $this->searchChunks($folderIds, $per, $query, $sort, $desc);
+		$cmp = self::searchOrder($sort, $desc);
+		if ($per < $window) {
+			// asked for the whole window, these folders give an exact answer
+			$found = array_replace($found, $this->searchChunks(self::foldersToWiden($found, $window, $cmp), $window, $query, $sort, $desc));
+		}
+
+		$items = [];
+		$total = 0;
+		$more = false;
+		$error = null;
+		foreach ($found as $r) {
+			if (isset($r['error'])) {
+				$error ??= $r['error'];
+				continue;
+			}
+			$total += $r['total'];
+			$more = $more || $r['more'];
+			array_push($items, ...$r['items']);
+		}
+		if ($items === [] && $total === 0 && $error !== null) {
+			// every folder refused: report the first error
+			throw $error;
+		}
+		usort($items, $cmp);
+		$page = array_slice($items, $offset, $limit);
+		return [
+			'items' => $page,
+			'total' => $total,
+			'hasMore' => $offset + $limit < 200 && ($more || count($items) > $offset + $limit),
+		];
+	}
+
+	/**
+	 * searchWindows for any number of folders: as many per request as fit in one answer.
+	 * @param string[] $folderIds
+	 */
+	private function searchChunks(array $folderIds, int $count, string $query, string $sort, bool $desc): array {
+		$found = [];
+		foreach (array_chunk($folderIds, max(1, intdiv(self::FIND_COUNT_LIMIT, $count))) as $chunk) {
+			$found += $this->searchWindows($chunk, $count, $query, $sort, $desc);
+		}
+		return $found;
+	}
+
+	/**
+	 * The first `$count` matches of each folder (one FindItem for all of them).
+	 * @param string[] $folderIds
+	 * @return array<string, array{items: array, total: int, more: bool}|array{error: MailException}>
+	 */
+	private function searchWindows(array $folderIds, int $count, string $query, string $sort, bool $desc): array {
 		$ids = '';
 		foreach ($folderIds as $id) {
 			$ids .= $this->folderIdXml($id);
@@ -567,40 +633,81 @@ class EwsClient {
 		$xp = $this->request(
 			'<m:FindItem Traversal="Shallow">'
 			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $this->summaryFields(true) . '</t:AdditionalProperties></m:ItemShape>'
-			. '<m:IndexedPageItemView MaxEntriesReturned="' . $window . '" Offset="0" BasePoint="Beginning"/>'
+			. '<m:IndexedPageItemView MaxEntriesReturned="' . $count . '" Offset="0" BasePoint="Beginning"/>'
 			. self::sortOrderXml($sort, $desc)
 			. '<m:ParentFolderIds>' . $ids . '</m:ParentFolderIds>'
 			. '<m:QueryString>' . $this->esc($query) . '</m:QueryString>'
 			. '</m:FindItem>',
 			false
 		);
-		$items = [];
-		$total = 0;
-		$more = false;
-		foreach ($xp->query('//m:RootFolder') as $root) {
-			if (!$root instanceof \DOMElement) {
+		$out = [];
+		// one answer per folder, in the order asked
+		foreach ($xp->query('//m:ResponseMessages/*') as $i => $msg) {
+			if (!$msg instanceof \DOMElement || !isset($folderIds[$i])) {
 				continue;
 			}
-			$total += (int)$root->getAttribute('TotalItemsInView');
-			$more = $more || $root->getAttribute('IncludesLastItemInRange') === 'false';
+			$root = $xp->query('m:RootFolder', $msg)->item(0);
+			if ($msg->getAttribute('ResponseClass') === 'Error' || !$root instanceof \DOMElement) {
+				$out[$folderIds[$i]] = ['error' => self::exchangeError($this->text($xp, 'm:ResponseCode', $msg), $this->text($xp, 'm:MessageText', $msg))];
+				continue;
+			}
+			$items = [];
 			foreach ($xp->query('t:Items/*', $root) as $node) {
 				$items[] = $this->summary($xp, $node);
 			}
+			$out[$folderIds[$i]] = [
+				'items' => $items,
+				'total' => (int)$root->getAttribute('TotalItemsInView'),
+				'more' => $root->getAttribute('IncludesLastItemInRange') === 'false',
+			];
 		}
-		if ($items === [] && $total === 0) {
-			// every folder refused: report the first error
-			$err = $xp->query('//m:ResponseMessages/*[@ResponseClass="Error"]')->item(0);
-			if ($err !== null) {
-				throw self::exchangeError($this->text($xp, 'm:ResponseCode', $err), $this->text($xp, 'm:MessageText', $err));
+		return $out;
+	}
+
+	/**
+	 * The folders that gave only part of their matches and whose last one comes
+	 * before the last result of the window: the rest of them may be in the page.
+	 * @param array<string, array> $found as searchWindows gives
+	 * @return string[]
+	 */
+	public static function foldersToWiden(array $found, int $window, callable $cmp): array {
+		$all = [];
+		foreach ($found as $r) {
+			if (!isset($r['error'])) {
+				array_push($all, ...$r['items']);
 			}
 		}
-		usort($items, fn ($a, $b) => strcmp((string)$b['date'], (string)$a['date']));
-		$page = array_slice($items, $offset, $limit);
-		return [
-			'items' => $page,
-			'total' => $total,
-			'hasMore' => $offset + $limit < 200 && ($more || count($items) > $offset + $limit),
-		];
+		usort($all, $cmp);
+		$edge = $all[$window - 1] ?? null;
+		$again = [];
+		foreach ($found as $id => $r) {
+			if (isset($r['error']) || $r['items'] === [] || count($r['items']) >= $r['total']) {
+				continue; // nothing more in this folder
+			}
+			$last = $r['items'][count($r['items']) - 1];
+			if ($edge === null || $cmp($last, $edge) < 0) {
+				$again[] = (string)$id;
+			}
+		}
+		return $again;
+	}
+
+	/** How results of several folders are merged, as Exchange sorts each one. */
+	public static function searchOrder(string $sort, bool $desc): callable {
+		$key = match ($sort) {
+			'from' => fn (array $m) => mb_strtolower((string)(($m['from']['name'] ?? '') !== '' ? $m['from']['name'] : ($m['from']['email'] ?? ''))),
+			'subject' => fn (array $m) => mb_strtolower((string)$m['subject']),
+			'size' => fn (array $m) => (int)($m['size'] ?? 0),
+			default => fn (array $m) => (string)$m['date'],
+		};
+		return function (array $a, array $b) use ($key, $desc, $sort): int {
+			$c = $key($a) <=> $key($b);
+			if ($c !== 0) {
+				return $desc ? -$c : $c;
+			}
+			// then the newest first, as Exchange is asked
+			return $sort === 'date' ? 0 : strcmp((string)$b['date'], (string)$a['date']);
+		};
 	}
 
 	private function summaryFields(bool $withFolder = false): string {

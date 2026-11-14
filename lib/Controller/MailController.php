@@ -27,6 +27,7 @@ use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
+use OCP\ICacheFactory;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use Psr\Log\LoggerInterface;
@@ -50,6 +51,7 @@ class MailController extends Controller {
 		private IRootFolder $rootFolder,
 		private IURLGenerator $urlGenerator,
 		private LoggerInterface $logger,
+		private ICacheFactory $cacheFactory,
 		private ?string $userId,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -95,12 +97,14 @@ class MailController extends Controller {
 	/** @param string $parentId "" = top of the mailbox */
 	#[NoAdminRequired]
 	public function createFolder(int $id, string $name, string $parentId = ''): Response {
+		$this->forgetFolderIds($id);
 		return $this->handle(fn () => ['id' => $this->client($id)->createFolder($name, $parentId !== '' ? $parentId : null)]);
 	}
 
 	#[NoAdminRequired]
 	public function renameFolder(int $id, string $folderId, string $name): Response {
 		return $this->handle(function () use ($id, $folderId, $name) {
+			$this->forgetFolderIds($id);
 			$this->client($id)->renameFolder($folderId, $name);
 			return ['status' => 'ok'];
 		});
@@ -110,6 +114,7 @@ class MailController extends Controller {
 	#[NoAdminRequired]
 	public function moveFolder(int $id, string $folderId, string $parentId = ''): Response {
 		return $this->handle(function () use ($id, $folderId, $parentId) {
+			$this->forgetFolderIds($id);
 			$this->client($id)->moveFolder($folderId, $parentId !== '' ? $parentId : null);
 			return ['status' => 'ok'];
 		});
@@ -118,6 +123,7 @@ class MailController extends Controller {
 	#[NoAdminRequired]
 	public function deleteFolder(int $id, string $folderId): Response {
 		return $this->handle(function () use ($id, $folderId) {
+			$this->forgetFolderIds($id);
 			$this->client($id)->deleteFolder($folderId);
 			return ['status' => 'ok'];
 		});
@@ -134,6 +140,7 @@ class MailController extends Controller {
 			}
 			$used = null;
 			$folders = $client->listFolders($used);
+			$this->rememberFolderIds($id, array_column($folders, 'id'));
 			return ['folders' => $folders, 'usage' => ['used' => $used, 'limit' => $this->accounts->mailboxQuota($account, $client)]];
 		});
 	}
@@ -153,11 +160,44 @@ class MailController extends Controller {
 			$client = $this->client($id);
 			$query = EwsClient::searchQuery($q, ['unread' => $unread, 'attachments' => $attachments, 'flagged' => $flagged, 'since' => $since]);
 			if ($scope === 'all' && $query !== null) {
-				$ids = array_column($client->listFolders(), 'id');
+				$ids = $this->folderIds($id, $client);
 				return $client->searchFolders($ids, max(0, $offset), $limit, $query, $sort, $desc);
 			}
 			return $client->findItems($folder, max(0, $offset), $limit, $query, $sort, $desc);
 		});
+	}
+
+	/** How long the folders of a mailbox are kept for searches in all of them (seconds). */
+	private const FOLDER_IDS_TTL = 300;
+
+	/**
+	 * The folders searched by « tous les dossiers »: kept a few minutes, not
+	 * asked to Exchange again at each search (a request of all the folders of a
+	 * large mailbox, before the search itself).
+	 * @return string[]
+	 */
+	private function folderIds(int $id, EwsClient $client): array {
+		$cache = $this->cacheFactory->createDistributed('webmail-folders');
+		$ids = $cache->get($this->folderIdsKey($id));
+		if (is_array($ids) && $ids !== []) {
+			return $ids;
+		}
+		$ids = array_column($client->listFolders(), 'id');
+		$this->rememberFolderIds($id, $ids);
+		return $ids;
+	}
+
+	/** @param string[] $ids */
+	private function rememberFolderIds(int $id, array $ids): void {
+		$this->cacheFactory->createDistributed('webmail-folders')->set($this->folderIdsKey($id), array_values($ids), self::FOLDER_IDS_TTL);
+	}
+
+	private function forgetFolderIds(int $id): void {
+		$this->cacheFactory->createDistributed('webmail-folders')->remove($this->folderIdsKey($id));
+	}
+
+	private function folderIdsKey(int $id): string {
+		return md5((string)$this->userId) . '_' . $id;
 	}
 
 	/**

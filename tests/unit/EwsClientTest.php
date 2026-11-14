@@ -92,6 +92,59 @@ class EwsClientTest extends EwsTestCase {
 		$this->assertStringContainsString('MaxEntriesReturned="2"', $req);
 	}
 
+	public function testSearchOfManyFoldersAsksFewOfEachThenWidensOnlyWhereNeeded(): void {
+		$msg = fn (string $id, string $folder, string $date) => '<t:Message><t:ItemId Id="' . $id . '" ChangeKey="c"/><t:ParentFolderId Id="' . $folder . '"/>'
+			. '<t:Subject>S ' . $id . '</t:Subject><t:DateTimeReceived>' . $date . '</t:DateTimeReceived><t:IsRead>true</t:IsRead></t:Message>';
+		$found = fn (int $total, string $items) => '<m:FindItemResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode>'
+			. '<m:RootFolder IndexedPagingOffset="0" TotalItemsInView="' . $total . '" IncludesLastItemInRange="' . (substr_count($items, '<t:Message>') >= $total ? 'true' : 'false') . '"><t:Items>' . $items . '</t:Items></m:RootFolder></m:FindItemResponseMessage>';
+		$wrap = fn (string $r) => '<m:FindItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>' . $r . '</m:ResponseMessages></m:FindItemResponse>';
+		$inbox = fn (int $n) => implode('', array_map(fn ($i) => $msg('I' . $i, 'INBOX', sprintf('2026-11-%02dT08:00:00Z', 30 - intdiv($i, 2))), range(0, $n - 1)));
+		// 150 folders: 6 matches of each at first (not 50 of each: 7 500 messages)
+		$ids = array_merge(['INBOX', 'OLD'], array_map(fn ($i) => 'F' . $i, range(1, 148)));
+		$this->queue($wrap($found(40, $inbox(6))
+			. $found(30, implode('', array_map(fn ($i) => $msg('O' . $i, 'OLD', '2016-01-01T08:00:00Z'), range(0, 5))))
+			. str_repeat($found(0, ''), 148)));
+		// only the two folders with more matches are asked again, for the whole page
+		$this->queue($wrap($found(40, $inbox(40)) . $found(30, implode('', array_map(fn ($i) => $msg('O' . $i, 'OLD', '2016-01-01T08:00:00Z'), range(0, 29))))));
+		$r = $this->client()->searchFolders($ids, 0, 50, 'devis');
+		$this->assertStringContainsString('MaxEntriesReturned="6"', $this->requests[0]);
+		$this->assertStringContainsString('MaxEntriesReturned="50"', $this->requests[1]);
+		$this->assertStringContainsString('<m:ParentFolderIds><t:FolderId Id="INBOX"/><t:FolderId Id="OLD"/></m:ParentFolderIds>', $this->requests[1]);
+		$this->assertCount(2, $this->requests);
+		$this->assertCount(50, $r['items']);
+		$this->assertSame('I0', $r['items'][0]['id']);
+		$this->assertSame('I39', $r['items'][39]['id']);
+		$this->assertSame('O0', $r['items'][40]['id']);
+		$this->assertSame(70, $r['total']);
+		$this->assertTrue($r['hasMore']);
+	}
+
+	public function testFoldersToWiden(): void {
+		$m = fn (string $date) => ['date' => $date, 'subject' => '', 'from' => null, 'size' => 0];
+		$cmp = EwsClient::searchOrder('date', true);
+		$found = [
+			// all its matches: nothing more to ask
+			'A' => ['items' => [$m('2026-11-10'), $m('2026-11-09')], 'total' => 2, 'more' => false],
+			// cut, and its last one is among the window: more may be newer than the edge
+			'B' => ['items' => [$m('2026-11-08'), $m('2026-11-07')], 'total' => 9, 'more' => true],
+			// cut, but all the rest is older than the last of the window
+			'C' => ['items' => [$m('2026-11-01'), $m('2020-01-01')], 'total' => 9, 'more' => true],
+			'D' => ['error' => new MailException('x')],
+		];
+		$this->assertSame(['B'], EwsClient::foldersToWiden($found, 5, $cmp));
+		// fewer matches than the window so far: every cut folder may fill it
+		$this->assertSame(['B', 'C'], EwsClient::foldersToWiden($found, 50, $cmp));
+	}
+
+	public function testSearchOrderOfOtherSorts(): void {
+		$a = ['date' => '2026-01-01', 'subject' => 'Beta', 'from' => ['name' => 'Zoé', 'email' => 'z@x.fr'], 'size' => 10];
+		$b = ['date' => '2026-02-01', 'subject' => 'alpha', 'from' => ['name' => '', 'email' => 'a@x.fr'], 'size' => 99];
+		$this->assertGreaterThan(0, EwsClient::searchOrder('subject', false)($a, $b));
+		$this->assertGreaterThan(0, EwsClient::searchOrder('from', false)($a, $b));
+		$this->assertGreaterThan(0, EwsClient::searchOrder('size', true)($a, $b));
+		$this->assertGreaterThan(0, EwsClient::searchOrder('date', true)($a, $b));
+	}
+
 	public function testSearchAllFoldersReportsAnError(): void {
 		$this->queue('<m:FindItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"><m:ResponseMessages>'
 			. '<m:FindItemResponseMessage ResponseClass="Error"><m:MessageText>x</m:MessageText><m:ResponseCode>ErrorAccessDenied</m:ResponseCode></m:FindItemResponseMessage>'
