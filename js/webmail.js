@@ -281,7 +281,21 @@
 			Object.entries(opts.query).forEach(([k, v]) => { if (v !== undefined && v !== null) qs.append(k, v) })
 			full += (full.includes('?') ? '&' : '?') + qs.toString()
 		}
-		const res = await fetch(full, init)
+		let res
+		try {
+			res = await fetch(full, init)
+		} catch (e) {
+			// no network (or Nextcloud unreachable): said once, in the banner, not in every toast
+			if (e && e.name === 'AbortError') throw e
+			setOffline(true)
+			throw new Error(_('Pas de connexion'))
+		}
+		// a proxy in front of Nextcloud answering for it: Nextcloud is unreachable
+		if (res.status === 502 || res.status === 503 || res.status === 504) {
+			setOffline(true)
+			throw new Error(_('Nextcloud ne répond pas (erreur {status})', { status: res.status }))
+		}
+		setOffline(false)
 		let data = null
 		try { data = await res.json() } catch (e) { /* empty */ }
 		if (!res.ok) {
@@ -289,6 +303,77 @@
 		}
 		return data
 	}
+
+	// ------------------------------------------------------------------
+	// offline: a banner, what is already loaded stays readable, and a new try
+	// every few seconds (at once when the browser says the network is back)
+	// ------------------------------------------------------------------
+
+	const RETRY_DELAYS = [5, 10, 20, 30, 60]
+	const offline = { on: false, tries: 0, timer: null, tick: null, at: 0, banner: null }
+
+	function setOffline(on) {
+		if (on === offline.on) {
+			if (on && !offline.timer) scheduleRetry()
+			return
+		}
+		offline.on = on
+		if (on) {
+			offline.tries = 0
+			scheduleRetry()
+		} else {
+			clearTimeout(offline.timer)
+			clearInterval(offline.tick)
+			offline.timer = null
+			toast(_('Connexion rétablie'))
+			// what changed meanwhile
+			if (state.accountId && state.module === 'mail') { loadFolders(); loadMessages(true) }
+		}
+		renderOffline()
+	}
+
+	function scheduleRetry() {
+		clearTimeout(offline.timer)
+		clearInterval(offline.tick)
+		const delay = RETRY_DELAYS[Math.min(offline.tries, RETRY_DELAYS.length - 1)]
+		offline.at = Date.now() + delay * 1000
+		offline.timer = setTimeout(retryNow, delay * 1000)
+		offline.tick = setInterval(renderOffline, 1000)
+		renderOffline()
+	}
+
+	/** A light request: its answer says the connection is back (api() then leaves offline mode). */
+	async function retryNow() {
+		clearTimeout(offline.timer)
+		offline.timer = null
+		offline.tries++
+		try {
+			await api('/accounts')
+		} catch (e) {
+			if (offline.on) scheduleRetry()
+		}
+	}
+
+	function renderOffline() {
+		if (!root) return
+		if (!offline.on) {
+			if (offline.banner) { offline.banner.remove(); offline.banner = null }
+			root.classList.remove('wm-is-offline')
+			return
+		}
+		root.classList.add('wm-is-offline')
+		const secs = Math.max(0, Math.ceil((offline.at - Date.now()) / 1000))
+		const text = _('Hors connexion : les messages déjà chargés restent lisibles.') + ' ' + (offline.timer ? _('Nouvel essai dans {secs} s.', { secs }) : _('Nouvel essai…'))
+		if (!offline.banner) {
+			offline.banner = h('div', { class: 'wm-offline', role: 'status', 'aria-live': 'polite' },
+				h('span', { class: 'wm-offline-text' }),
+				h('button', { type: 'button', class: 'wm-small', onclick: () => { clearInterval(offline.tick); retryNow(); renderOffline() } }, _('Réessayer')))
+			root.prepend(offline.banner)
+		}
+		offline.banner.querySelector('.wm-offline-text').textContent = '⚠ ' + text
+	}
+	window.addEventListener('offline', () => setOffline(true))
+	window.addEventListener('online', () => { if (offline.on) retryNow() })
 
 	/** Tiny DOM builder: h('div', {class: 'x', onclick: fn}, child, 'text') */
 	function h(tag, attrs, ...children) {
@@ -2555,6 +2640,7 @@
 				: null,
 			h('button', { class: 'wm-cat-btn', title: _('Catégoriser'), 'aria-label': _('Catégoriser'), onclick: (e) => categoryMenu(e.currentTarget, () => [m]) }, '🏷'),
 			h('button', { class: 'wm-print-btn', title: _('Imprimer'), 'aria-label': _('Imprimer'), onclick: () => printMessage(m) }, '🖨'),
+			h('button', { class: 'wm-matrix-send-btn', title: _('Envoyer sur Matrix (Element) : un résumé du message dans un salon'), 'aria-label': _('Envoyer sur Matrix'), onclick: () => sendToMatrix(mailSummaryForMatrix(m)) }, '💬'),
 			h('button', { class: 'wm-headers-btn', title: _('En-têtes Internet : expéditeur réel, serveurs traversés, contrôles SPF, DKIM et DMARC'), 'aria-label': _('Afficher les en-têtes Internet'), onclick: () => showHeaders(m) }, '🧾'),
 			h('a', {
 				class: 'button wm-eml-btn',
@@ -4467,6 +4553,168 @@
 		return box
 	}
 
+	// ------------------------------------------------------------------
+	// Matrix (Element): « Envoyer sur Matrix » with the user's own Matrix account
+	// ------------------------------------------------------------------
+
+	const matrix = { settings: null, rooms: null }
+
+	async function matrixSettingsLoad(force) {
+		if (!matrix.settings || force) matrix.settings = await api('/matrix')
+		return matrix.settings
+	}
+
+	/** The card of « Comptes et signature »: homeserver, access token (kept encrypted), default room. */
+	function matrixSettings() {
+		const card = h('fieldset', { class: 'wm-account-card wm-matrix-settings' }, h('legend', {}, '💬 ' + _('Matrix (Element)')))
+		// (text: « matrix.example.org » alone is accepted, https is added by the server)
+		const homeserver = h('input', { type: 'text', inputmode: 'url', autocapitalize: 'off', spellcheck: 'false', name: 'matrixHomeserver', placeholder: 'https://matrix.example.org' })
+		const token = h('input', { type: 'password', name: 'matrixToken', autocomplete: 'off' })
+		const room = h('input', { type: 'text', name: 'matrixRoom', placeholder: '#equipe:example.org', list: 'wm-matrix-rooms' })
+		const roomList = h('datalist', { id: 'wm-matrix-rooms' })
+		const status = h('p', { class: 'wm-muted wm-matrix-status' })
+		const forget = h('button', { type: 'button', class: 'wm-small wm-danger', hidden: true }, _('Déconnecter'))
+		// (the saved values arriving after the person started typing do not replace what they typed)
+		const typed = new Set()
+		// alerts of new messages in the default room (sent by Nextcloud, even with no webmail open)
+		const alerts = h('select', {
+			name: 'matrixAlerts',
+			onchange: async () => {
+				typed.add(alerts)
+				try {
+					matrix.settings = await api('/matrix/alerts', { method: 'POST', body: { alerts: alerts.value } })
+					toast(alerts.value === 'off' ? _('Plus d\'alertes sur Matrix') : _('Les nouveaux messages seront signalés dans votre salon Matrix'))
+				} catch (ex) {
+					toast(ex.message, true)
+					alerts.value = (matrix.settings && matrix.settings.alerts) || 'off'
+				}
+			},
+		},
+		h('option', { value: 'off' }, _('Aucune')),
+		h('option', { value: 'important' }, _('Messages importants seulement')),
+		h('option', { value: 'all' }, _('Tous les nouveaux messages')))
+		const alertsRow = h('label', { class: 'wm-field', hidden: true }, h('span', {}, _('Alertes des nouveaux messages')), alerts)
+		;[homeserver, token, room].forEach((i) => i.addEventListener('input', () => typed.add(i)))
+		const show = (st, initial) => {
+			if (!initial || !typed.has(alerts)) alerts.value = st.alerts || 'off'
+			alertsRow.hidden = !st.hasToken
+			const set = (i, v) => { if (!initial || !typed.has(i)) i.value = v }
+			set(homeserver, st.homeserver || '')
+			set(room, st.room || '')
+			set(token, '')
+			if (!initial) typed.clear()
+			token.placeholder = st.hasToken ? _('Enregistré (laisser vide pour le garder)') : _('Jeton d\'accès')
+			forget.hidden = !st.hasToken
+			status.textContent = st.user ? _('Connecté en tant que {user}', { user: st.user }) : (st.hasToken ? _('Compte Matrix enregistré') : '')
+		}
+		const fillRooms = async () => {
+			try {
+				matrix.rooms = (await api('/matrix/rooms')).rooms
+				clear(roomList)
+				matrix.rooms.forEach((r) => roomList.appendChild(h('option', { value: r.id }, r.name)))
+			} catch (e) { /* the list is a help only */ }
+		}
+		const save = h('button', { type: 'submit', class: 'primary' }, _('Connecter'))
+		const form = h('form', {
+			class: 'wm-matrix-form',
+			onsubmit: async (e) => {
+				e.preventDefault()
+				save.disabled = true
+				try {
+					const st = await api('/matrix', { method: 'POST', body: { homeserver: homeserver.value, token: token.value, room: room.value } })
+					matrix.settings = st
+					show(st)
+					toast(_('Compte Matrix enregistré'))
+					fillRooms()
+				} catch (ex) { toast(ex.message, true) } finally { save.disabled = false }
+			},
+		},
+		h('label', { class: 'wm-field' }, h('span', {}, _('Serveur')), homeserver),
+		h('label', { class: 'wm-field' }, h('span', {}, _('Jeton d\'accès')), token),
+		h('label', { class: 'wm-field' }, h('span', {}, _('Salon par défaut')), room, roomList),
+		alertsRow,
+		h('p', { class: 'wm-muted' }, _('Le jeton se trouve dans Element : Paramètres › Aide et à propos › Avancé › Jeton d\'accès. Il est gardé chiffré et ne sert qu\'à poster ce que vous envoyez sur Matrix.')),
+		status,
+		h('div', { class: 'wm-compose-actions' }, save, forget))
+		forget.onclick = async () => {
+			try {
+				show(matrix.settings = await api('/matrix/forget', { method: 'POST' }))
+				matrix.rooms = null
+				toast(_('Compte Matrix déconnecté'))
+			} catch (ex) { toast(ex.message, true) }
+		}
+		card.appendChild(form)
+		matrixSettingsLoad(true).then((st) => { show(st, true); if (st.hasToken) fillRooms() }, () => {})
+		return card
+	}
+
+	/** The text of a message, for Matrix: subject, sender, date, the beginning of the text (its paragraphs kept). */
+	function mailSummaryForMatrix(m) {
+		const doc = new DOMParser().parseFromString(m.body || '', 'text/html')
+		doc.querySelectorAll('script, style, title').forEach((e) => e.remove())
+		doc.querySelectorAll('br').forEach((e) => e.replaceWith('\n'))
+		doc.querySelectorAll('p, div, li, tr, h1, h2, h3, h4, h5, h6, blockquote, pre, table').forEach((e) => e.append('\n'))
+		const text = (doc.body.textContent || '').replace(/[ \t\u00a0]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+		const from = m.from ? (m.from.name && m.from.name !== m.from.email ? m.from.name + ' <' + m.from.email + '>' : m.from.email) : ''
+		const date = m.date ? new Date(m.date).toLocaleString(locale(), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
+		// (the address put in after the translation: it would take « <address> » for an HTML tag and drop it)
+		return '✉️ ' + (m.subject || _('(sans objet)')) + '\n'
+			+ _('De : {from}').replace('{from}', from) + (date ? ' · ' + date : '') + '\n\n'
+			+ (text.length > 600 ? text.slice(0, 600).trim() + '…' : text)
+	}
+
+	/**
+	 * « Envoyer sur Matrix »: the text (to change if need be) and the room, then posted.
+	 * Also used by the calendar (an event).
+	 */
+	async function sendToMatrix(text) {
+		let st
+		try { st = await matrixSettingsLoad() } catch (e) { toast(e.message, true); return }
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const body = h('div', { class: 'wm-modal-body' })
+		overlay.appendChild(h('div', { class: 'wm-modal wm-matrix-send', role: 'dialog', 'aria-modal': 'true', 'aria-label': _('Envoyer sur Matrix') },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, '💬 ' + _('Envoyer sur Matrix')), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			body))
+		document.body.appendChild(overlay)
+		if (!st.hasToken) {
+			body.appendChild(h('p', {}, _('Connectez d\'abord votre compte Matrix : serveur et jeton d\'accès d\'Element.')))
+			body.appendChild(h('button', { class: 'primary', onclick: () => { close(); openAccountSettings() } }, _('Connecter mon compte Matrix')))
+			return
+		}
+		const roomSel = h('select', { name: 'matrixSendRoom', 'aria-label': _('Salon') }, h('option', { value: st.room || '' }, st.room || _('Choisissez un salon')))
+		const textarea = h('textarea', { name: 'matrixText', rows: '9' })
+		textarea.value = text
+		const send = h('button', { type: 'submit', class: 'primary' }, _('Envoyer'))
+		body.appendChild(h('form', {
+			onsubmit: async (e) => {
+				e.preventDefault()
+				send.disabled = true
+				try {
+					await api('/matrix/send', { method: 'POST', body: { room: roomSel.value, text: textarea.value } })
+					close()
+					const r = (matrix.rooms || []).find((x) => x.id === roomSel.value)
+					toast(_('Envoyé sur Matrix dans {room}', { room: r ? r.name : roomSel.value }))
+				} catch (ex) { toast(ex.message, true); send.disabled = false }
+			},
+		},
+		h('label', { class: 'wm-field' }, h('span', {}, _('Salon')), roomSel),
+		h('label', { class: 'wm-field wm-field-top' }, h('span', {}, _('Message')), textarea),
+		h('div', { class: 'wm-compose-actions' }, send, h('button', { type: 'button', onclick: close }, _('Annuler')))))
+		textarea.focus()
+		// the joined rooms, the default one chosen
+		try {
+			if (!matrix.rooms) matrix.rooms = (await api('/matrix/rooms')).rooms
+			clear(roomSel)
+			const known = matrix.rooms.some((r) => r.id === st.room)
+			if (st.room && !known) roomSel.appendChild(h('option', { value: st.room }, st.room))
+			matrix.rooms.forEach((r) => roomSel.appendChild(h('option', { value: r.id, selected: r.id === st.room }, r.name)))
+		} catch (e) { /* the default room only */ }
+	}
+
 	function openAccountSettings() {
 		setView('detail')
 		clear(detailEl)
@@ -4535,6 +4783,8 @@
 		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-template-settings' },
 			h('legend', {}, _('Modèles de réponse')), templateList))
 		loadTemplates(true).then(showTemplates, (e) => toast(e.message, true))
+		// (last: the account cards stay first)
+		wrap.appendChild(matrixSettings())
 
 		// senders whose remote images show at once
 		const trustedList = h('ul', { class: 'wm-trusted-list' })
@@ -4706,6 +4956,7 @@
 		state,
 		TZ,
 		api,
+		sendToMatrix,
 		h,
 		clear,
 		toast,
