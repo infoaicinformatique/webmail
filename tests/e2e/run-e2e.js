@@ -484,6 +484,22 @@ async function main() {
 		const res = await visitor.request.get(big + '/download')
 		assert.strictEqual(res.status(), 200)
 		assert.strictEqual((await res.body()).length, 16 * 1024 * 1024)
+		// protected: an expiry, a password given apart (not in the message), another link
+		await page.click('.wm-link-options summary')
+		await page.selectOption('select[name=linkExpiry]', '7')
+		await page.check('input[name=linkPassword]')
+		await page.click('.wm-link-btn')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-editor a').length === 4)
+		const toastText = await (await page.waitForSelector('.wm-toast:has-text("Mot de passe du lien « devis-2027.pdf »")')).textContent()
+		const password = toastText.match(/: ([A-Za-z0-9]{12}) —/)[1]
+		const editorText = await page.textContent('.wm-editor')
+		assert.ok(editorText.includes('protégé par un mot de passe') && editorText.includes('lien valable jusqu'), editorText)
+		assert.ok(!editorText.includes(password), 'the password is not in the message')
+		const protectedHref = (await page.$$eval('.wm-editor a', (els) => els.map((e) => e.getAttribute('href')))).pop()
+		assert.notStrictEqual(protectedHref, hrefs[0])
+		// without the password: no file
+		const locked = await visitor.request.get(protectedHref + '/download', { maxRedirects: 5 })
+		assert.notStrictEqual((await locked.body()).toString('latin1', 0, 5), '%PDF-', 'protected')
 		await visitor.close()
 		await page.click('.wm-compose button[type=submit]')
 		await page.waitForSelector('.wm-toast:has-text("Message envoyé")')
@@ -763,7 +779,7 @@ async function main() {
 			buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') })
 		await page.waitForSelector('.wm-account-card .wm-signature-editor img')
 		await shot('61-signature')
-		await page.click('.wm-account-card button:has-text("Enregistrer") >> nth=0')
+		await page.click('.wm-account-card:has(.wm-signature-editor) button:has-text("Enregistrer") >> nth=0')
 		await page.waitForSelector('.wm-toast:has-text("Compte mis à jour")')
 		// kept by the server, formatted, after a reload
 		await page.reload()
@@ -791,6 +807,13 @@ async function main() {
 		await shot('37-out-of-office')
 		await page.click('.wm-modal button[type=submit]')
 		await page.waitForSelector('.wm-toast:has-text("Réponse automatique programmée du")')
+		// the status of Nextcloud: « En vacances », away
+		const ncStatus = () => page.evaluate(async () => {
+			const r = await fetch('/ocs/v2.php/apps/user_status/api/v1/user_status?format=json', { headers: { 'OCS-APIREQUEST': 'true', requesttoken: OC.requestToken } })
+			const d = (await r.json()).ocs.data
+			return d.status + ' ' + (d.messageId || '')
+		})
+		assert.strictEqual(await ncStatus(), 'away vacationing')
 		// reminder in the folder pane
 		await page.waitForSelector('.wm-oof-banner:has-text("Réponse automatique activée jusqu\'au")')
 		// saved as set
@@ -799,11 +822,14 @@ async function main() {
 		assert.strictEqual(await page.inputValue('.wm-modal textarea[name=oofInternal]'), 'Bonjour,\nje suis absent. Pour toute urgence : Paul Durand.')
 		assert.strictEqual(await page.inputValue('.wm-modal select[name=oofAudience]'), 'Known')
 		assert.strictEqual(await page.inputValue('.wm-modal input[name=oofEnd]'), local(end))
+		assert.ok(await page.isChecked('.wm-modal input[name=oofNextcloudStatus]'))
 		await page.click('.wm-modal-close')
 		// switched off from the reminder
 		await page.click('.wm-oof-banner a:has-text("Désactiver")')
 		await page.waitForSelector('.wm-toast:has-text("Réponse automatique désactivée")')
 		await page.waitForSelector('.wm-oof-banner', { state: 'detached' })
+		// the status from before is back
+		assert.ok(!(await ncStatus()).includes('vacationing'), await ncStatus())
 	})
 
 	await step('inbox rules: create, order, switch off, run on arrival, from a message', async () => {
@@ -1112,7 +1138,8 @@ async function main() {
 		runJob()
 		let mine = (await reminders()).filter((n) => n.subject === 'Rappel : Appel fournisseur')
 		assert.strictEqual(mine.length, 1, JSON.stringify(await reminders()))
-		assert(/^Aujourd'hui \d\d:\d\d · Bureau 2 · user@societe-a\.fr$/.test(mine[0].message), mine[0].message)
+		// (« Demain » when the test runs just before midnight)
+		assert(/^(Aujourd'hui|Demain) \d\d:\d\d · Bureau 2 · user@societe-a\.fr$/.test(mine[0].message), mine[0].message)
 		// once only
 		runJob()
 		assert.strictEqual((await reminders()).filter((n) => n.subject === 'Rappel : Appel fournisseur').length, 1)
@@ -1413,6 +1440,28 @@ async function main() {
 		await page.click('.wm-segmented button:has-text("Mois")')
 		await page.waitForSelector('.wm-month-cell.today .wm-event')
 		await shot('10-calendar-month')
+	})
+
+	await step('calendar: duplicate an event (same title, place, people, length) on another day', async () => {
+		await page.click('.wm-month-cell.today .wm-event:has-text("Point hebdo équipe")')
+		await page.waitForSelector('.wm-modal .wm-attendees')
+		await page.click('.wm-modal .wm-duplicate-btn')
+		await page.waitForSelector('.wm-modal h2:has-text("Nouvel événement")')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=subject]'), 'Point hebdo équipe')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=location]'), 'Salle Méditerranée')
+		assert.ok((await page.inputValue('.wm-modal input[name=attendees]')).includes('marie.martin@societe-a.fr'))
+		// one hour, as the original
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=startTime]'), '09:00')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=endTime]'), '10:00')
+		// to the next day
+		const d = new Date()
+		d.setDate(d.getDate() + 1)
+		const day = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+		await page.fill('.wm-modal input[name=startDate]', day)
+		await page.fill('.wm-modal input[name=endDate]', day)
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
+		await shot('93-duplicate-event')
 	})
 
 	await step('calendar: event details and edit', async () => {
@@ -2929,6 +2978,43 @@ async function main() {
 		await page.click('.wm-tab[data-module="mail"]')
 	})
 
+	await step('no answer: « Me rappeler si pas de réponse », the bell rings for an unanswered message only', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const send = async (to, subject) => {
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', to)
+			await page.fill('input[name=subject]', subject)
+			await page.fill('.wm-editor', 'Merci de me dire ce que vous en pensez.')
+			await page.check('input[name=followUp]')
+			await page.selectOption('select[name=followUpDays]', '3')
+			await submitCompose()
+			await page.waitForSelector('.wm-toast:has-text("Nextcloud vous le rappellera")')
+		}
+		await page.click('.wm-tab[data-module="mail"]')
+		await send('paul@societe-a.fr', 'Devis toiture Cannes')
+		// to oneself: its copy arrives, from one of the people written to: answered
+		await send('user@societe-a.fr', 'Point budget Cannes')
+		const accountId = await page.evaluate(async () => (await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()).find((a) => a.email === 'user@societe-a.fr').id)
+		const key = 'followup_' + accountId
+		const list = JSON.parse(occ('user:setting admin webmail ' + key).trim())
+		assert.deepStrictEqual(list.map((e) => e.subject), ['Devis toiture Cannes', 'Point budget Cannes'])
+		assert.deepStrictEqual(list[0].to, ['paul@societe-a.fr'])
+		// three days later
+		list.forEach((e) => { e.until = new Date(Date.now() - 60000).toISOString().slice(0, 19) + 'Z' })
+		occ('user:setting admin webmail ' + key + " '" + JSON.stringify(list) + "'")
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\FollowUpJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		assert(jobId, 'background job registered')
+		occ('background-job:execute ' + jobId + ' --force-execute')
+		const mine = await page.evaluate(async () => {
+			const r = await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })
+			return (await r.json()).ocs.data.filter((n) => n.app === 'webmail' && n.subject.startsWith('Pas de réponse')).map((n) => n.subject + ' | ' + n.message)
+		})
+		assert.strictEqual(mine.length, 1, mine.join(' / '))
+		assert.ok(mine[0].startsWith('Pas de réponse : Devis toiture Cannes | Envoyé le ') && mine[0].includes('paul@societe-a.fr'), mine[0])
+		// done with: no longer waited for
+		assert.throws(() => occ('user:setting admin webmail ' + key + ' 2>/dev/null'))
+	})
+
 	await step('tab memory: after a reload, the mailbox shows before Exchange answers', async () => {
 		await page.click('.wm-tab[data-module="mail"]')
 		await page.waitForSelector('.wm-message')
@@ -2991,6 +3077,24 @@ async function main() {
 		} finally {
 			page.off('request', onRequest)
 		}
+	})
+
+	await step('recent searches: a search made (Enter, or a result opened) is offered again under the field', async () => {
+		const offered = () => page.$$eval('#wm-recent-searches option', (els) => els.map((e) => e.value))
+		await page.click('.wm-folder >> nth=0')
+		await page.fill('.wm-list .wm-search', 'maintenance')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForSelector('.wm-search-info:has-text("maintenance")')
+		// a word typed then left without looking at a result: not kept
+		await page.fill('.wm-list .wm-search', 'zzz')
+		await page.waitForSelector('.wm-search-info:has-text("zzz")')
+		await page.fill('.wm-list .wm-search', 'Devis')
+		await page.waitForSelector('.wm-search-info:has-text("Devis")')
+		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+		await page.click('.wm-search-info a:has-text("effacer")')
+		await page.waitForSelector('.wm-list-period')
+		assert.deepStrictEqual(await offered(), ['Devis', 'maintenance'])
+		assert.strictEqual(await page.getAttribute('.wm-list .wm-search', 'list'), 'wm-recent-searches')
 	})
 
 	await step('quick start: the accounts come with the page, the folders and the messages are asked for at once', async () => {
@@ -3509,6 +3613,64 @@ async function main() {
 		await dav('/Documents/Classement test', 'DELETE')
 	})
 
+	await step('open in Nextcloud: an attachment copied in Files and opened with the viewer of Nextcloud', async () => {
+		await page.click('.wm-folder >> nth=0')
+		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+		const btn = '.wm-attachment:has-text("devis-2027.pdf") .wm-open-nc'
+		await page.waitForSelector(btn)
+		const [tab] = await Promise.all([page.waitForEvent('popup'), page.click(btn)])
+		const copied = await (await page.waitForSelector('.wm-toast:has-text("Copié dans /Pièces jointes/devis-2027")')).textContent()
+		const path = copied.match(/\/Pièces jointes\/[^]*?\.pdf/)[0]
+		// the copy opened in Files, which shows it with its viewer
+		await tab.waitForURL(/\/apps\/files\/.*openfile=true|\/f\/\d+\?openfile=true/, { timeout: 30000 })
+		await tab.close()
+		const status = await page.evaluate(async (p) => (await fetch('/remote.php/dav/files/admin' + p.split('/').map(encodeURIComponent).join('/'), { method: 'DELETE', headers: { requesttoken: OC.requestToken } })).status, path)
+		assert.strictEqual(status, 204, 'the copy was there')
+	})
+
+	await step('note: a message kept as a note (Markdown in the Notes folder), opened in Files without the Notes app', async () => {
+		await page.click('.wm-folder >> nth=0')
+		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+		await page.click('.wm-note-btn')
+		await page.waitForSelector('.wm-toast:has-text("Note créée : /Notes/Devis pour la maintenance annuelle")')
+		await page.waitForSelector('.wm-toast .wm-toast-action:text-is("Ouvrir dans Fichiers")')
+		const path = (await page.textContent('.wm-toast:has-text("Note créée")')).match(/\/Notes\/[^]*?\.md/)[0]
+		// what is in the file
+		const md = await page.evaluate(async (p) => {
+			const r = await fetch('/remote.php/dav/files/admin' + p.split('/').map(encodeURIComponent).join('/'), { headers: { requesttoken: OC.requestToken } })
+			return r.ok ? r.text() : 'HTTP ' + r.status
+		}, path)
+		assert.ok(md.startsWith('# Devis pour la maintenance annuelle\n\n**De :** Jean Dupont <jean.dupont@client-exemple.fr>'), md)
+		assert.ok(md.includes('Veuillez trouver ci-joint notre devis pour la maintenance 2027.'), md)
+		assert.ok(!md.includes('alert('), 'no script')
+		assert.ok(/\[Ouvrir dans le webmail\]\(http[^)]+\/apps\/webmail\/\?account=\d+&message=/.test(md), md)
+		// removed: the test leaves nothing behind
+		await page.evaluate(async (p) => {
+			await fetch('/remote.php/dav/files/admin' + p.split('/').map(encodeURIComponent).join('/'), { method: 'DELETE', headers: { requesttoken: OC.requestToken } })
+		}, path)
+	})
+
+	await step('rich links: a webmail link previewed by Nextcloud (Talk, Text, Deck…), and offered by the Smart Picker', async () => {
+		await page.click('.wm-folder >> nth=0')
+		const id = await page.getAttribute('.wm-message:has-text("Devis pour la maintenance annuelle")', 'data-id')
+		const r = await page.evaluate(async (messageId) => {
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()
+			const account = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const link = window.location.origin + OC.generateUrl('/apps/webmail/') + '?' + new URLSearchParams({ account, message: messageId })
+			const ocs = (path) => fetch('/ocs/v2.php' + path, { headers: { 'OCS-APIREQUEST': 'true', Accept: 'application/json', requesttoken: OC.requestToken } }).then((x) => x.json())
+			const resolved = await ocs('/references/resolve?' + new URLSearchParams({ reference: link }))
+			const providers = await ocs('/references/providers')
+			const ref = resolved.ocs.data.references[link]
+			return { link, ref: ref && ref.openGraphObject, providers: providers.ocs.data.map((p) => p.id + ' ' + p.title + ' ' + (p.search_providers_ids || []).join(',')) }
+		}, id)
+		assert.ok(r.ref, JSON.stringify(r))
+		assert.strictEqual(r.ref.name, 'Devis pour la maintenance annuelle')
+		assert.ok(r.ref.description.includes('Jean Dupont'), r.ref.description)
+		assert.strictEqual(r.ref.link, r.link)
+		assert.ok(r.providers.some((p) => p.startsWith('webmail-exchange Courrier et agenda Exchange webmail-mail,webmail-events')), r.providers.join(' | '))
+	})
+
 	await step('Internet headers: the SPF, DKIM and DMARC checks, the way of the message, every header', async () => {
 		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
@@ -3848,6 +4010,28 @@ async function main() {
 		assert.ok(!(await page.$eval('.wm-sort', (e) => e.classList.contains('active'))))
 	})
 
+	await step('completion: the people of Nextcloud (an account of this Nextcloud) are offered too', async () => {
+		const occ = (args, env) => execSync((env ? OCC.replace('docker exec ', 'docker exec ' + env + ' ') : OCC) + ' ' + args, { encoding: 'utf8' })
+		try { occ('user:delete sophie') } catch (e) { /* not there */ }
+		occ('user:add --password-from-env --display-name "Sophie Nextcloud" sophie', '-e OC_PASS=Sophie-Pass-2026')
+		try {
+			occ('user:setting sophie settings email sophie@nc.example')
+			occ('dav:sync-system-addressbook')
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('.wm-compose-btn')
+			await page.click('input[name=to]')
+			await page.keyboard.type('Sophie')
+			await page.waitForSelector('.wm-ac-item:has-text("Sophie Nextcloud"):has-text("sophie@nc.example · compte Nextcloud")')
+			await page.keyboard.press('ArrowDown')
+			await page.click('.wm-ac-item:has-text("Sophie Nextcloud")')
+			assert.strictEqual(await page.inputValue('input[name=to]'), 'Sophie Nextcloud <sophie@nc.example>, ')
+			await page.click('.wm-compose button:has-text("Annuler")')
+			await page.waitForSelector('.wm-compose', { state: 'detached' })
+		} finally {
+			occ('user:delete sophie')
+		}
+	})
+
 	await step('recent recipients: the people written to come first in the completion, from the first letter', async () => {
 		await page.click('.wm-folder >> nth=0')
 		await page.click('.wm-compose-btn')
@@ -3916,6 +4100,101 @@ async function main() {
 		await page.waitForSelector(row + ':not(.unread)')
 	})
 
+	await step('Matrix: the account connected, a message and an event sent to rooms (Element)', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		// what the fake homeserver received (it runs here, with its own certificate)
+		const sent = () => new Promise((resolve, reject) => {
+			require('https').get('https://localhost:8443/_matrix/test/sent', { rejectUnauthorized: false }, (res) => {
+				let data = ''
+				res.on('data', (c) => { data += c })
+				res.on('end', () => resolve(JSON.parse(data)))
+			}).on('error', reject)
+		})
+		// (the fake servers are on the local network: allowed here only)
+		occ('config:system:set allow_local_remote_servers --value=true --type=boolean')
+		try {
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('text=Comptes et signature')
+			await page.fill('input[name=matrixHomeserver]', 'ex3.fake.test:8443')
+			await page.fill('input[name=matrixToken]', 'pas-le-bon')
+			await page.click('.wm-matrix-form button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Le serveur Matrix n\'a pas reconnu ce jeton")')
+			await page.fill('input[name=matrixToken]', 'syt_test_token')
+			await page.fill('input[name=matrixRoom]', '#equipe:fake.test')
+			await page.click('.wm-matrix-form button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Compte Matrix enregistré")')
+			await page.waitForSelector('.wm-matrix-status:has-text("Connecté en tant que @user:fake.test")')
+			assert.strictEqual(await page.inputValue('input[name=matrixHomeserver]'), 'https://ex3.fake.test:8443')
+			// (the token is never shown again)
+			assert.strictEqual(await page.inputValue('input[name=matrixToken]'), '')
+
+			// a message: its summary, to the default room
+			await page.click('.wm-folder >> nth=0')
+			await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+			await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+			await page.click('.wm-matrix-send-btn')
+			await page.waitForSelector('.wm-matrix-send select[name=matrixSendRoom] option:has-text("Équipe chantier")', { state: 'attached' })
+			const text = await page.inputValue('textarea[name=matrixText]')
+			assert.ok(text.startsWith('✉️ Devis pour la maintenance annuelle\nDe : Jean Dupont <jean.dupont@client-exemple.fr>'), text)
+			assert.ok(text.includes('Veuillez trouver ci-joint'), text)
+			await shot('92-matrix-send')
+			await page.click('.wm-matrix-send button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Envoyé sur Matrix")')
+			let last = (await sent()).pop()
+			assert.strictEqual(last.room, '!equipe:fake.test')
+			assert.ok(last.content.body.startsWith('✉️ Devis pour la maintenance annuelle'), last.content.body)
+			assert.ok(last.content.formatted_body.includes('&lt;jean.dupont@client-exemple.fr&gt;'), last.content.formatted_body)
+
+			// an event, to another room
+			await page.click('.wm-tab[data-module="calendar"]')
+			await page.click('.wm-segmented button:has-text("Liste")')
+			await page.click('.wm-agenda-item:has-text("Comité de pilotage")')
+			await page.click('.wm-modal .wm-matrix-send-btn')
+			await page.waitForSelector('.wm-matrix-send select[name=matrixSendRoom] option:has-text("Mes notes")', { state: 'attached' })
+			await page.selectOption('.wm-matrix-send select[name=matrixSendRoom]', { label: 'Mes notes' })
+			assert.ok((await page.inputValue('textarea[name=matrixText]')).startsWith('📅 Comité de pilotage\n🕑 '))
+			await page.click('.wm-matrix-send button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Envoyé sur Matrix dans Mes notes")')
+			last = (await sent()).pop()
+			assert.strictEqual(last.room, '!notes:fake.test')
+			await page.click('.wm-segmented button:has-text("Mois")')
+
+			// alerts of new messages in the default room, sent by the background job
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('text=Comptes et signature')
+			// (the account loaded: the alerts are offered once it is connected)
+			await page.waitForSelector('.wm-matrix-status:has-text("Compte Matrix enregistré")')
+			await page.selectOption('select[name=matrixAlerts]', 'all')
+			await page.waitForSelector('.wm-toast:has-text("Les nouveaux messages seront signalés dans votre salon Matrix")')
+			// (a first check of the account only notes where it stands: messages from now on are new)
+			const newMailJob = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\NewMailJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+			occ('background-job:execute ' + newMailJob + ' --force-execute')
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'user@societe-a.fr')
+			await page.fill('input[name=subject]', 'Livraison des fenêtres')
+			await page.fill('.wm-editor', 'Les fenêtres arrivent jeudi matin.')
+			await submitCompose()
+			occ('background-job:execute ' + newMailJob + ' --force-execute')
+			last = (await sent()).pop()
+			assert.strictEqual(last.room, '!equipe:fake.test')
+			assert.ok(last.content.body.startsWith('📬 ') && last.content.body.includes('« Livraison des fenêtres »'), last.content.body)
+			await page.click('text=Comptes et signature')
+			await page.selectOption('select[name=matrixAlerts]', 'off')
+			await page.waitForSelector('.wm-toast:has-text("Plus d\'alertes sur Matrix")')
+
+			// disconnected: the button asks to connect
+			await page.click('.wm-matrix-form button:has-text("Déconnecter")')
+			await page.waitForSelector('.wm-toast:has-text("Compte Matrix déconnecté")')
+			await page.click('.wm-folder >> nth=0')
+			await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+			await page.click('.wm-matrix-send-btn')
+			await page.waitForSelector('.wm-matrix-send button:has-text("Connecter mon compte Matrix")')
+			await page.click('.wm-matrix-send .wm-modal-close')
+		} finally {
+			occ('config:system:delete allow_local_remote_servers')
+		}
+	})
+
 	await step('touch: a message swiped to the right is read / unread, to the left goes to the trash (with « Annuler »)', async () => {
 		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°2"))'
 		// a finger on the row, moved by a fraction of its width (touch events, as a phone sends them)
@@ -3947,6 +4226,34 @@ async function main() {
 		await page.click('.wm-toast:has-text("Message placé dans les éléments supprimés") .wm-toast-action')
 		await page.waitForSelector(row)
 		assert.strictEqual(await page.locator('.wm-message.wm-swiping').count(), 0)
+	})
+
+	await step('offline: a banner, what is loaded stays readable, back by itself when the network returns', async () => {
+		const row = '.wm-message:has-text("Devis pour la maintenance annuelle")'
+		await page.click('.wm-folder >> nth=0')
+		await page.click(row)
+		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+		await page.context().setOffline(true)
+		try {
+			await page.click('.wm-list-header button[title="Actualiser"]')
+			await page.waitForSelector('.wm-offline:has-text("Hors connexion : les messages déjà chargés restent lisibles.")')
+			await page.waitForSelector('.wm-offline:has-text("Nouvel essai dans")')
+			// the list and the message already loaded are still there
+			await page.waitForSelector(row)
+			await page.click(row)
+			await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+			await page.waitForSelector('.wm-body-frame')
+			// « Réessayer » while still offline: still offline
+			await page.click('.wm-offline button:has-text("Réessayer")')
+			await page.waitForSelector('.wm-offline:has-text("Nouvel essai dans")')
+			await shot('91-offline')
+		} finally {
+			await page.context().setOffline(false)
+		}
+		// the network is back: tried at once, the banner goes
+		await page.waitForSelector('.wm-toast:has-text("Connexion rétablie")')
+		await page.locator('.wm-offline').waitFor({ state: 'detached' })
+		await page.waitForSelector(row)
 	})
 
 	await step('English: the translated parts follow the language of the Nextcloud account', async () => {
@@ -4191,6 +4498,8 @@ async function main() {
 		assert(await page.isVisible('.wm-list'))
 		await page.click('.wm-list-header .wm-back')
 		await page.click('.wm-tab[data-module="calendar"]')
+		// the view chosen last is kept: the list, the one for phones
+		await page.click('.wm-segmented button:has-text("Liste")')
 		await page.waitForSelector('.wm-agenda-item')
 		assert(await page.isVisible('.wm-detail'))
 		await shot('15-mobile-calendar')

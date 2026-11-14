@@ -26,11 +26,45 @@ class ShareLinkService {
 	}
 
 	/**
-	 * The link of a file or folder (an existing read-only link without
-	 * password is reused, else a new one is made).
-	 * @return array{url: string, name: string, size: int, isFolder: bool, expires: ?string}
+	 * The protection asked for a new link: an expiry « 2026-12-31 » (tomorrow to a year from now) or
+	 * none, a password or not. Pure: tested without Nextcloud.
+	 *
+	 * @return array{expires: ?string, password: bool}
+	 * @throws MailException
 	 */
-	public function link(string $userId, string $path): array {
+	public static function protection(string $expires, bool $password, \DateTimeImmutable $today): array {
+		$expires = trim($expires);
+		if ($expires !== '') {
+			$d = \DateTimeImmutable::createFromFormat('!Y-m-d', $expires, new \DateTimeZone('UTC'));
+			$min = $today->setTime(0, 0)->modify('+1 day');
+			if ($d === false || $d->format('Y-m-d') !== $expires || $d < $min || $d > $today->modify('+1 year')) {
+				throw new MailException('Date d\'expiration invalide (de demain à un an)');
+			}
+		}
+		return ['expires' => $expires !== '' ? $expires : null, 'password' => $password];
+	}
+
+	/** A password for a link: 12 characters, nothing that is easily misread (l, 1, O, 0). */
+	public static function newPassword(): string {
+		$chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+		$out = '';
+		for ($i = 0; $i < 12; $i++) {
+			$out .= $chars[random_int(0, strlen($chars) - 1)];
+		}
+		return $out;
+	}
+
+	/**
+	 * The link of a file or folder (an existing read-only link without password nor
+	 * expiry is reused when none is asked, else a new one is made).
+	 * @return array{url: string, name: string, size: int, isFolder: bool, expires: ?string, password?: string}
+	 */
+	public function link(string $userId, string $path, string $expires = '', bool $password = false): array {
+		$protect = self::protection($expires, $password, new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
+		// a password imposed by the administrator: one is made
+		if ($this->shares->shareApiLinkEnforcePassword()) {
+			$protect['password'] = true;
+		}
 		if (!$this->shares->shareApiAllowLinks()) {
 			throw new MailException('Les liens de partage sont désactivés sur ce Nextcloud');
 		}
@@ -43,27 +77,35 @@ class ShareLinkService {
 			throw new MailException('Ce fichier ne peut pas être partagé');
 		}
 		$now = new \DateTimeImmutable();
-		foreach ($this->shares->getSharesBy($userId, IShare::TYPE_LINK, $node, false, 50) as $s) {
-			if ($s->getPassword() === null && $s->getPermissions() === Constants::PERMISSION_READ
-				&& ($s->getExpirationDate() === null || $s->getExpirationDate() > $now)) {
-				return $this->describe($s, $node);
+		if ($protect['expires'] === null && !$protect['password']) {
+			foreach ($this->shares->getSharesBy($userId, IShare::TYPE_LINK, $node, false, 50) as $s) {
+				if ($s->getPassword() === null && $s->getPermissions() === Constants::PERMISSION_READ
+					&& ($s->getExpirationDate() === null || $s->getExpirationDate() > $now)) {
+					return $this->describe($s, $node);
+				}
 			}
-		}
-		if ($this->shares->shareApiLinkEnforcePassword()) {
-			throw new MailException('Ce Nextcloud impose un mot de passe sur les liens : créez le lien dans Fichiers et collez-le dans le message');
 		}
 		$share = $this->shares->newShare();
 		$share->setNode($node)
 			->setShareType(IShare::TYPE_LINK)
 			->setPermissions(Constants::PERMISSION_READ)
 			->setSharedBy($userId);
+		if ($protect['expires'] !== null) {
+			$share->setExpirationDate(new \DateTime($protect['expires'] . ' 00:00:00'));
+		}
+		$secret = null;
+		if ($protect['password']) {
+			$secret = self::newPassword();
+			$share->setPassword($secret);
+		}
 		try {
 			$share = $this->shares->createShare($share);
 		} catch (\Exception $e) {
 			$hint = method_exists($e, 'getHint') ? (string)$e->getHint() : '';
 			throw new MailException('Lien de partage impossible : %s', [$hint !== '' ? $hint : $e->getMessage()]);
 		}
-		return $this->describe($share, $node);
+		// (the password is given once, to be passed on another way: it is not put in the message)
+		return $this->describe($share, $node) + ($secret !== null ? ['password' => $secret] : []);
 	}
 
 	private function describe(IShare $share, \OCP\Files\Node $node): array {
