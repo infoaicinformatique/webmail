@@ -298,7 +298,44 @@
 			h('button', { type: 'button', class: 'wm-cal-add', onclick: openAddShared }, '＋ ' + _('Ajouter un agenda partagé')),
 			h('div', { class: 'wm-cal-section' }, _('Dossiers publics')),
 			publicCals.length ? h('ul', {}, publicCals.map(row)) : null,
-			h('button', { type: 'button', class: 'wm-cal-add wm-public-cal-add', onclick: openAddPublic }, '＋ ' + _('Ajouter un agenda des dossiers publics')))
+			h('button', { type: 'button', class: 'wm-cal-add wm-public-cal-add', onclick: openAddPublic }, '＋ ' + _('Ajouter un agenda des dossiers publics')),
+			h('div', { class: 'wm-cal-section' }, _('Nextcloud')),
+			ncCalendarToggle())
+	}
+
+	/** account id → shown in the Calendar app of Nextcloud */
+	const ncShown = new Map()
+	/**
+	 * « Visible dans l'Agenda de Nextcloud »: the Exchange calendar (read
+	 * only) in the Calendar app, the phones synced with Nextcloud, etc.
+	 */
+	function ncCalendarToggle() {
+		const h = core.h
+		const id = core.accountId
+		const base = '/accounts/' + id + '/calendar/nextcloud'
+		const box = h('input', {
+			type: 'checkbox',
+			name: 'ncCalendar',
+			checked: ncShown.get(id) === true,
+			disabled: !ncShown.has(id),
+			onchange: async () => {
+				box.disabled = true
+				try {
+					const r = await api(base, { method: 'POST', body: { enabled: box.checked } })
+					ncShown.set(id, r.enabled)
+					core.toast(r.enabled ? _('Agenda Exchange visible dans l\'Agenda de Nextcloud (lecture seule)') : _('Agenda Exchange retiré de l\'Agenda de Nextcloud'))
+				} catch (e) {
+					box.checked = !box.checked
+					core.toast(e.message, true)
+				}
+				box.disabled = false
+			},
+		})
+		if (!ncShown.has(id)) {
+			api(base).then((r) => { ncShown.set(id, r.enabled); box.checked = r.enabled; box.disabled = false }).catch(() => { /* left off */ })
+		}
+		return h('label', { class: 'wm-cal-nc', title: _('Les événements de l\'agenda Exchange (le mois passé et l\'année à venir) dans l\'application Agenda de Nextcloud et les téléphones synchronisés avec Nextcloud ; ils se modifient ici.') },
+			box, ' ', _('Visible dans l\'Agenda de Nextcloud'))
 	}
 
 	function isPublicCal(ev) { return String((ev && ev.calendar) || '').startsWith('public:') }

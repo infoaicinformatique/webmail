@@ -4465,6 +4465,41 @@ async function main() {
 		await page.waitForSelector('.wm-notify-toggle:has-text("Activer les notifications")')
 	})
 
+	await step('Nextcloud Calendar: the Exchange calendar seen by CalDAV (read only), then taken away', async () => {
+		await page.click('.wm-tab[data-module="calendar"]')
+		await page.waitForSelector('.wm-cal-nc input:not([disabled])')
+		assert(!(await page.isChecked('.wm-cal-nc input')))
+		await page.check('.wm-cal-nc input')
+		await page.waitForSelector('.wm-toast:has-text("Agenda Exchange visible dans l\'Agenda de Nextcloud")')
+		const caldav = (method, sub = '', body = null) => page.evaluate(async ({ method, sub, body }) => {
+			const base = '/remote.php/dav/calendars/' + OC.getCurrentUser().uid + '/'
+			const list = await (await fetch(base, {
+				method: 'PROPFIND',
+				headers: { Depth: '1', requesttoken: OC.requestToken, 'Content-Type': 'application/xml' },
+				body: '<d:propfind xmlns:d="DAV:"><d:prop><d:displayname/></d:prop></d:propfind>',
+			})).text()
+			const m = /calendars\/[^/]+\/(app-generated--[a-z-]+--webmail-exchange-\d+)\//.exec(list)
+			if (!m) return { found: false }
+			const r = await fetch(base + m[1] + '/' + sub, { method, headers: { Depth: '1', requesttoken: OC.requestToken, 'Content-Type': method === 'PUT' ? 'text/calendar' : 'application/xml' }, body })
+			return { found: true, status: r.status, text: await r.text(), name: list.includes('Exchange — ') }
+		}, { method, sub, body })
+		const query = '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:getetag/><c:calendar-data/></d:prop>'
+			+ '<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"/></c:comp-filter></c:filter></c:calendar-query>'
+		const r = await caldav('REPORT', '', query)
+		assert(r.found && r.name, 'calendar not found')
+		assert.strictEqual(r.status, 207, r.text.slice(0, 300))
+		assert(r.text.includes('SUMMARY:Comité de pilotage'), r.text.slice(0, 600))
+		assert(/UID:webmail-[0-9a-f]{32}/.test(r.text))
+		// (long lines folded by iCalendar: unfolded first)
+		assert(r.text.replace(/\r?\n[ \t]/g, '').includes('apps/webmail/?account='), 'a link back to the webmail')
+		// read only: Nextcloud refuses a new event there
+		const put = await caldav('PUT', 'nouveau.ics', 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:nouveau\r\nDTSTAMP:20260101T000000Z\r\nDTSTART:20260101T100000Z\r\nSUMMARY:x\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')
+		assert(put.status === 403 || put.status === 405 || put.status === 501, 'PUT ' + put.status)
+		await page.uncheck('.wm-cal-nc input')
+		await page.waitForSelector('.wm-toast:has-text("Agenda Exchange retiré de l\'Agenda de Nextcloud")')
+		assert.strictEqual((await caldav('PROPFIND')).found, false)
+	})
+
 	await step('Nextcloud unified search: messages and events, the link opens them', async () => {
 		const search = async (term, section) => {
 			await page.goto(NC + '/apps/files/')
@@ -4580,9 +4615,9 @@ async function main() {
 		await shot('16-mobile-contact')
 	})
 
-	// expected: the copy a second run would make, looked for (404); deliberate 400s (bad domain/password, missing recipient) and the fake tracker pixel
+	// expected: an event refused by the read-only Exchange calendar (403); deliberate 400s (bad domain/password, missing recipient) and the fake tracker pixel; the network cut on purpose (offline step)
 	// errors of other Nextcloud apps (Files, Text… where the unified search is tried) are not ours
-	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|facture-novembre%20\(2\)/.test(e)
+	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|facture-novembre%20\(2\)|webmail-exchange-\d+\/nouveau\.ics/.test(e)
 		&& !/\/apps\/(?!webmail\/)[a-z_]+\//.test(e))
 	await browser.close()
 	if (relevant.length) {

@@ -590,6 +590,8 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-cal-remove { margin: 0 !important; min-height: 24px !important; min-width: 24px; padding: 0 !important; border: none !important; background: none !important; color: var(--color-text-maxcontrast); opacity: .6; }
 .wm-cal-remove:hover { opacity: 1; color: var(--color-error); }
 .wm-cal-add { width: 100%; margin: 4px 0 0 !important; font-size: 13px; }
+.wm-cal-nc { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 13px; cursor: pointer; }
+.wm-cal-nc input { margin: 0; }
 
 /* events of another calendar take its colour */
 .wm-event[style*="--ev-color"] {

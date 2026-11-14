@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Webmail\AppInfo;
 
+use OCA\Webmail\Calendar\ExchangeCalendarProvider;
 use OCA\Webmail\Dashboard\AgendaWidget;
 use OCA\Webmail\Dashboard\UnreadWidget;
 use OCA\Webmail\Listener\FilesScriptsListener;
@@ -34,6 +35,8 @@ class Application extends App implements IBootstrap {
 		$context->registerNotifierService(Notifier::class);
 		$context->registerSearchProvider(MailSearchProvider::class);
 		$context->registerSearchProvider(EventSearchProvider::class);
+		// the Exchange calendars chosen, in the Calendar app of Nextcloud (read only)
+		$context->registerCalendarProvider(ExchangeCalendarProvider::class);
 		// links of the webmail previewed in Talk, Text, Deck…, and the Smart Picker (« / »)
 		$context->registerReferenceProvider(WebmailReferenceProvider::class);
 	}
