@@ -4495,6 +4495,30 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('Files app: « Envoyer par e-mail » opens a new message with the file attached', async () => {
+		await page.goto(NC + '/apps/files/?dir=/Documents')
+		const row = '[data-cy-files-list-row-name="devis-2027.pdf"]'
+		await page.waitForSelector(row)
+		// the « … » menu of the row (the first buttons are inline ones: sharing…)
+		await page.click(row + ' [data-cy-files-list-row-actions] .action-item__menutoggle')
+		const item = page.locator('[data-cy-files-list-row-action="webmail-send-by-mail"]')
+		await item.waitFor()
+		assert((await item.textContent()).includes('Envoyer par e-mail'))
+		const [tab] = await Promise.all([page.context().waitForEvent('page'), item.click()])
+		await tab.waitForSelector('.wm-compose-attachments li:has-text("/Documents/devis-2027.pdf")')
+		assert.strictEqual(await tab.inputValue('input[name=subject]'), 'devis-2027.pdf')
+		// the address: the file is not part of it any more (a reload does not attach it again)
+		assert(!tab.url().includes('file='), tab.url())
+		await tab.fill('input[name=to]', 'client@exemple.fr')
+		await tab.click('.wm-compose button[type=submit]')
+		await tab.waitForSelector('.wm-toast:has-text("Message envoyé")')
+		await tab.close()
+		// a path out of the user's files: no message
+		await page.goto(NC + '/apps/webmail/?file=' + encodeURIComponent('/../etc/passwd'))
+		await page.waitForSelector('.wm-message')
+		assert(!(await page.$('.wm-compose')), 'no message opened')
+	})
+
 	await step('Nextcloud dashboard: unread messages and next events', async () => {
 		const ocs = (path, opts = {}) => page.evaluate(async ({ path, opts }) => {
 			const r = await fetch(OC.linkToOCS('apps/dashboard/api', 2).replace(/\/$/, '') + path, {

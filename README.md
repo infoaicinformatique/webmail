@@ -57,6 +57,7 @@ et sur les téléphones, et inversement.
 | Signature | Dans « Comptes et signature », une signature **mise en forme** pour chaque compte : gras, italique, souligné, liens, et un **logo** (image ajoutée avec « 🖼 » ou collée, réduite à 400 pixels). Elle s'ajoute sous chaque nouveau message et chaque réponse, le logo étant envoyé en image intégrée. Une signature écrite avant en texte simple est reprise telle quelle |
 | Brouillons | Le message en cours est **enregistré automatiquement** dans « Brouillons » quelques secondes après chaque modification (« Brouillon enregistré à 15:42 ») et en fermant avec « Annuler ». Dans « Brouillons », un clic **rouvre le brouillon** pour le terminer et l'envoyer (y compris une réponse ou un transfert, avec sa citation et ses pièces jointes). « Supprimer le brouillon » le jette. Les **pièces jointes d'un nouveau message** (ordinateur ou Fichiers) sont enregistrées avec le brouillon dès qu'on les ajoute : rien n'est perdu en fermant la fenêtre, et « retirer » les enlève du brouillon. Celles d'une réponse ou d'un transfert, et les fichiers lourds (15 Mo et plus, qu'on peut encore envoyer en lien), partent au moment de l'envoi |
 | Pièces jointes | Téléchargement (une par une ou **toutes dans un .zip** nommé d'après l'objet, un message joint en .eml), **enregistrement dans Fichiers** (une par une ou **toutes d'un coup**), ajout depuis l'ordinateur ou **depuis Fichiers** (25 Mo au total) |
+| Envoyer depuis Fichiers | Dans l'application Fichiers, l'action « Envoyer par e-mail » d'un fichier (ou de plusieurs, sélectionnés) ouvre un nouveau message du webmail avec les fichiers en pièces jointes et le nom du fichier en objet |
 | Copie dans Nextcloud Contacts | « ☁ » dans le carnet Contacts : les contacts Exchange copiés dans un carnet « Exchange — adresse » de Nextcloud Contacts, visible par l'application Contacts, les téléphones synchronisés avec Nextcloud (CardDAV) et les autres applications. Exchange reste la référence : la copie est remise à jour toutes les 6 heures (ou à la demande), sans toucher aux cartes ajoutées à la main ; « Arrêter » retire le carnet |
 | Classement dans Fichiers | « 📂 Pièces jointes → Fichiers » (carte du compte) ou « Ranger celles de cet expéditeur… » sous les pièces jointes d'un message : les pièces jointes des messages qui **arrivent** d'un expéditeur (adresse, ou « @domaine » pour toute une société) sont rangées par Nextcloud dans le dossier choisi — factures dans « Documents/Factures »… —, toutes les 10 minutes, webmail fermé ou non. Les messages déjà reçus ne sont pas concernés ; une pièce jointe n'est rangée qu'une fois |
 | Ouvrir dans Nextcloud | « ↗ Ouvrir dans Nextcloud » sur une pièce jointe : une copie dans Fichiers (« Pièces jointes »), ouverte avec ce que votre Nextcloud a pour ce type — **Nextcloud Office** (Collabora, OnlyOffice) pour les documents, Text, le lecteur PDF, les images —, pour la lire, l'annoter ou la modifier |
@@ -263,7 +264,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.113.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.114.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -306,7 +307,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.113 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.114 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

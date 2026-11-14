@@ -6,6 +6,7 @@ namespace OCA\Webmail\AppInfo;
 
 use OCA\Webmail\Dashboard\AgendaWidget;
 use OCA\Webmail\Dashboard\UnreadWidget;
+use OCA\Webmail\Listener\FilesScriptsListener;
 use OCA\Webmail\Listener\UserDeletedListener;
 use OCA\Webmail\Notification\Notifier;
 use OCA\Webmail\Reference\WebmailReferenceProvider;
@@ -26,6 +27,8 @@ class Application extends App implements IBootstrap {
 
 	public function register(IRegistrationContext $context): void {
 		$context->registerEventListener(UserDeletedEvent::class, UserDeletedListener::class);
+		// the class name only: the Files app may be disabled
+		$context->registerEventListener('OCA\\Files\\Event\\LoadAdditionalScriptsEvent', FilesScriptsListener::class);
 		$context->registerDashboardWidget(UnreadWidget::class);
 		$context->registerDashboardWidget(AgendaWidget::class);
 		$context->registerNotifierService(Notifier::class);

@@ -1284,6 +1284,8 @@
 	"Objet (A → Z)": "Subject (A → Z)",
 	"Plus volumineux": "Largest first",
 	"Trier par": "Sort by",
+	"Envoyer par e-mail": "Send by e-mail",
+	"Un nouveau message du webmail, avec ce fichier en pièce jointe": "A new message of the webmail, with this file attached",
 	"Copie dans Nextcloud Contacts": "Copy in Nextcloud Contacts",
 	"Vos contacts Exchange sont copiés dans un carnet « Exchange — {email} » de Nextcloud Contacts : ils y sont visibles par l'application Contacts, les téléphones synchronisés avec Nextcloud et les autres applications. Exchange reste la référence : la copie est remise à jour toutes les 6 heures, et les changements faits dans la copie sont remplacés.": "Your Exchange contacts are copied into an address book « Exchange — {email} » of Nextcloud Contacts: the Contacts app, the phones synced with Nextcloud and the other apps see them there. Exchange stays the reference: the copy is brought up to date every 6 hours, and changes made in the copy are replaced.",
 	"{count} contacts copiés": "{count} contacts copied",

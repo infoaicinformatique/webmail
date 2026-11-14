@@ -4004,7 +4004,7 @@
 		setView('detail')
 		clear(detailEl)
 		const account = state.accounts.find((a) => a.id === state.accountId)
-		const ncFiles = [] // paths from Nextcloud Files
+		const ncFiles = (prefill && prefill.ncFiles ? prefill.ncFiles.slice() : []) // paths from Nextcloud Files
 
 		const titles = { new: _('Nouveau message'), reply: _('Répondre'), replyAll: _('Répondre à tous'), forward: _('Transférer'), draft: _('Brouillon') }
 		// sender: the account, or one of its shared mailboxes (by default the one the original message is in)
@@ -5202,11 +5202,13 @@
 		if (state.accounts.some((a) => a.id === linkAccount)) saved = linkAccount
 		const linkModule = link.get('module')
 		if (['calendar', 'contacts', 'tasks', 'mail'].includes(linkModule)) state.module = linkModule
-		else if (link.get('message') || link.get('mailto')) state.module = 'mail'
+		else if (link.get('message') || link.get('mailto') || link.get('file')) state.module = 'mail'
 		const linkMessage = link.get('message')
 		const linkMailto = link.get('mailto')
 		const linkEvent = link.get('event')
 		const linkTask = link.get('task')
+		// ?file=/Documents/devis.pdf: « Envoyer par e-mail » in the Files app
+		const linkFiles = link.getAll('file').filter((p) => p.startsWith('/') && !p.split('/').includes('..')).slice(0, 20)
 		if (link.toString()) {
 			try { history.replaceState(history.state, '', window.location.pathname) } catch (e) { /* ignore */ }
 		}
@@ -5221,6 +5223,10 @@
 		if (linkMessage && state.module === 'mail') openMessage(linkMessage)
 		// ?mailto=…: a mailto: link of another site, the webmail being the browser's mail program
 		if (linkMailto && state.module === 'mail') openCompose('new', null, parseMailto(linkMailto))
+		if (linkFiles.length && state.module === 'mail') {
+			const names = linkFiles.map((p) => p.split('/').pop())
+			openCompose('new', null, { ncFiles: linkFiles, subject: names.length === 1 ? names[0] : '' })
+		}
 		if (linkEvent && state.module === 'calendar' && window.WebmailModules.calendar.openLinked) window.WebmailModules.calendar.openLinked(core, linkEvent)
 		if (linkTask && state.module === 'tasks' && window.WebmailModules.tasks.openLinked) window.WebmailModules.tasks.openLinked(core, linkTask)
 		startBackground()
