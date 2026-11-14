@@ -50,6 +50,9 @@
 		<job>OCA\Webmail\BackgroundJob\ReminderJob</job>
 		<job>OCA\Webmail\BackgroundJob\SnoozeJob</job>
 		<job>OCA\Webmail\BackgroundJob\ContactCopyJob</job>
+		<job>OCA\Webmail\BackgroundJob\FollowUpJob</job>
+		<job>OCA\Webmail\BackgroundJob\OofStatusJob</job>
+		<job>OCA\Webmail\BackgroundJob\AutoFileJob</job>
 	</background-jobs>
 	<settings>
 		<admin>OCA\Webmail\Settings\Admin</admin>
