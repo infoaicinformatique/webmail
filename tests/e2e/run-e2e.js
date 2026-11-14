@@ -2996,6 +2996,8 @@ async function main() {
 
 	await step('recent searches: a search made (Enter, or a result opened) is offered again under the field', async () => {
 		const offered = () => page.$$eval('#wm-recent-searches option', (els) => els.map((e) => e.value))
+		// (the searches of the steps before forgotten)
+		await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('webmail.searches')).forEach((k) => localStorage.removeItem(k)))
 		await page.click('.wm-folder >> nth=0')
 		await page.fill('.wm-list .wm-search', 'maintenance')
 		await page.press('.wm-list .wm-search', 'Enter')
