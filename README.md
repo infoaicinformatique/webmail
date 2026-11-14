@@ -62,6 +62,7 @@ et sur les téléphones, et inversement.
 | Copie dans Nextcloud Contacts | « ☁ » dans le carnet Contacts : les contacts Exchange copiés dans un carnet « Exchange — adresse » de Nextcloud Contacts, visible par l'application Contacts, les téléphones synchronisés avec Nextcloud (CardDAV) et les autres applications. Exchange reste la référence : la copie est remise à jour toutes les 6 heures (ou à la demande), sans toucher aux cartes ajoutées à la main ; « Arrêter » retire le carnet |
 | Classement dans Fichiers | « 📂 Pièces jointes → Fichiers » (carte du compte) ou « Ranger celles de cet expéditeur… » sous les pièces jointes d'un message : les pièces jointes des messages qui **arrivent** d'un expéditeur (adresse, ou « @domaine » pour toute une société) sont rangées par Nextcloud dans le dossier choisi — factures dans « Documents/Factures »… —, toutes les 10 minutes, webmail fermé ou non. Les messages déjà reçus ne sont pas concernés ; une pièce jointe n'est rangée qu'une fois |
 | Ouvrir dans Nextcloud | « ↗ Ouvrir dans Nextcloud » sur une pièce jointe : une copie dans Fichiers (« Pièces jointes »), ouverte avec ce que votre Nextcloud a pour ce type — **Nextcloud Office** (Collabora, OnlyOffice) pour les documents, Text, le lecteur PDF, les images —, pour la lire, l'annoter ou la modifier |
+| Toutes les boîtes de réception | Avec plusieurs comptes, « 📥 Toutes les boîtes de réception » sous le choix du compte : les derniers messages de chaque boîte de réception dans une seule liste, par date, avec le domaine du compte ; un clic ouvre le message dans son compte |
 | Proposer un nouvel horaire | Sur une invitation reçue, « 🕑 Proposer un nouvel horaire » : une date, une heure de début et de fin, « Provisoire » ou « Refuser », et un mot facultatif ; l'organisateur reçoit la proposition comme dans Outlook (il l'accepte en un clic) |
 | Plusieurs signatures | Dans « Comptes et signature », « Autres signatures » : des signatures nommées en plus de la principale (« Courte », « Anglais »…, 10 au plus), et celle par laquelle commencent les nouveaux messages et les réponses (ou aucune) ; dans un message, « ✍ » remplace la signature par une autre |
 | Deuxième fuseau horaire | « Deuxième fuseau horaire » dans la barre latérale de l'agenda (Tokyo, New York, La Réunion… ou n'importe quel fuseau) : dans les vues Semaine et Jour, une colonne de plus donne l'heure correspondante là-bas, avec son décalage (« Tokyo UTC+9 ») ; les événements restent à votre heure. Gardé par ce navigateur |
@@ -274,7 +275,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.124.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.125.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -317,7 +318,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.124 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.125 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

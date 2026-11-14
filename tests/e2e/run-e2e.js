@@ -4154,6 +4154,26 @@ async function main() {
 		assert.ok(!(await page.$eval('.wm-sort', (e) => e.classList.contains('active'))))
 	})
 
+	await step('unified inbox: the inboxes of both accounts in one list, a message opened in its account', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-unified-link')
+		const other = '.wm-unified-list .wm-message:has(.wm-message-account:text-is("societe-b.fr"))'
+		await page.waitForSelector(other)
+		const accounts = await page.$$eval('.wm-unified-list .wm-message', (els) => [...new Set(els.map((e) => e.dataset.account))])
+		assert.strictEqual(accounts.length, 2, accounts.join(','))
+		// one list, newest first, whatever the account
+		const times = await page.$$eval('.wm-unified-list .wm-message', (els) => els.length)
+		assert.ok(times > 5)
+		await shot('91-unified-inbox')
+		const subject = await page.textContent(other + ' >> nth=0 >> .wm-message-subject')
+		await page.click(other + ' >> nth=0')
+		await page.waitForSelector('.wm-message-header h2:has-text("' + subject.replace(/"/g, '\\"') + '")')
+		assert.strictEqual(await page.inputValue('.wm-account-select'), await page.$eval('.wm-account-select option:text-is("compta@societe-b.fr")', (o) => o.value))
+		assert.ok(!(await page.$('.wm-unified-link.active')))
+		await page.selectOption('.wm-account-select', { label: 'user@societe-a.fr' })
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('invitation: « Proposer un nouvel horaire » (provisional), then accepted again', async () => {
 		await page.click('.wm-tab[data-module="calendar"]')
 		await page.click('.wm-segmented button:has-text("Liste")')

@@ -1408,6 +1408,8 @@
 	"Réessayer": "Try again",
 	"Un nouvel événement avec le même titre, le même lieu, les mêmes participants et la même durée": "A new event with the same title, place, attendees and length",
 	"Dupliquer": "Duplicate",
+	"Toutes les boîtes de réception": "All inboxes",
+	"{email} : {error}": "{email}: {error}",
 	"Répondre « Provisoire » ou « Refuser » en proposant un autre horaire à l'organisateur": "Answer « Tentative » or « Decline » proposing another time to the organizer",
 	"Proposer un nouvel horaire": "Propose a new time",
 	"Provisoire, avec cette proposition": "Tentative, with this proposal",

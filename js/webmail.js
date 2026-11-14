@@ -29,6 +29,8 @@
 		filters: { unread: false, attachments: false, flagged: false, since: '', all: false },
 		// messages put aside (« Reporter »): id in « Reportés » → when it comes back (UTC)
 		snoozes: new Map(),
+		unified: false, // « Toutes les boîtes de réception »: the inboxes of every account in one list
+		unifiedItems: [],
 		pinned: new Map(), // id -> summary (with its folder): kept at the top of their folder
 		showFilters: false,
 		// the list grouped by conversation (one row each), remembered
@@ -1001,6 +1003,13 @@
 		if (away) navEl.appendChild(away)
 		const sel = accountSelector()
 		if (sel) navEl.appendChild(sel)
+		if (state.accounts.length > 1) {
+			navEl.appendChild(h('ul', { class: 'wm-folders wm-unified' }, h('li', {}, h('a', {
+				href: '#',
+				class: 'wm-unified-link' + (state.unified ? ' active' : ''),
+				onclick: (e) => { e.preventDefault(); openUnified() },
+			}, h('span', { class: 'wm-folder-name' }, '📥 ' + _('Toutes les boîtes de réception'))))))
+		}
 
 		// the favorite folders first (those still there), one click away whatever the depth
 		const favs = favorites().map((id) => state.folders.find((f) => f.id === id)).filter(Boolean)
@@ -1311,6 +1320,7 @@
 	}
 
 	async function selectAccount(id) {
+		state.unified = false
 		state.accountId = id
 		state.folderId = 'inbox'
 		state.folders = []
@@ -1543,6 +1553,7 @@
 	}
 
 	function selectFolder(id) {
+		state.unified = false
 		saveListCache()
 		state.folderId = id
 		resetSearch()
@@ -1676,6 +1687,7 @@
 
 	async function refresh() {
 		if (!state.accountId || document.hidden || state.module !== 'mail') return
+		if (state.unified) { loadUnified(); return }
 		loadFolders()
 		if (state.messages.length <= 100 && !state.loadingList) {
 			const seq = listSeq
@@ -1698,7 +1710,80 @@
 	 * @param {boolean} loading show a spinner instead of the messages
 	 * @param {number} [scrollTop] scroll position to restore (default: keep the current one)
 	 */
+	/** « Toutes les boîtes de réception »: the latest messages of every account's inbox, by date. */
+	function openUnified() {
+		saveListCache()
+		state.unified = true
+		state.selectedId = null
+		state.checked.clear()
+		resetSearch()
+		renderNav()
+		renderEmptyDetail()
+		setView('list')
+		renderList(!state.unifiedItems.length)
+		loadUnified()
+	}
+
+	const UNIFIED_PER_ACCOUNT = 30
+	let unifiedSeq = 0
+	async function loadUnified() {
+		const mine = ++unifiedSeq
+		const lists = await Promise.all(state.accounts.map((a) => api('/accounts/' + a.id + '/messages', { query: { folder: 'inbox', offset: 0, limit: UNIFIED_PER_ACCOUNT, q: '' } })
+			.then((d) => d.items.map((m) => Object.assign({}, m, { accountId: a.id, accountEmail: a.email })))
+			.catch((e) => { toast(_('{email} : {error}', { email: a.email, error: e.message }), true); return [] })))
+		if (mine !== unifiedSeq || !state.unified) return
+		state.unifiedItems = lists.flat().sort((x, y) => String(y.date).localeCompare(String(x.date)))
+		renderList(false)
+	}
+
+	/** A message of the unified list: its account and inbox, the message open. */
+	async function openFromUnified(m) {
+		await selectAccount(m.accountId)
+		openMessage(m.id)
+	}
+
+	function renderUnifiedList(loading) {
+		clear(listEl)
+		listEl.appendChild(h('div', { class: 'wm-list-header wm-unified-header' },
+			h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Menu'), onclick: () => setView('nav') }, '☰'),
+			h('h2', { class: 'wm-unified-title' }, _('Toutes les boîtes de réception')),
+			h('button', { type: 'button', class: 'wm-icon-btn', title: _('Actualiser'), 'aria-label': _('Actualiser'), onclick: () => loadUnified() }, '⟳')))
+		if (loading) {
+			listEl.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
+			return
+		}
+		if (!state.unifiedItems.length) {
+			listEl.appendChild(h('div', { class: 'wm-empty' }, _('Aucun message')))
+			return
+		}
+		const period = dayPeriods()
+		let last = null
+		const ul = h('ul', { class: 'wm-messages wm-unified-list', role: 'list' })
+		state.unifiedItems.forEach((m) => {
+			const p = period(m.date)
+			if (p !== last) { last = p; ul.appendChild(h('li', { class: 'wm-list-period', role: 'presentation' }, p)) }
+			ul.appendChild(h('li', {
+				class: 'wm-message' + (m.isRead ? '' : ' unread'),
+				tabindex: '0',
+				dataset: { id: m.id, account: String(m.accountId) },
+				onclick: () => openFromUnified(m),
+				onkeydown: (e) => { if (e.key === 'Enter') openFromUnified(m) },
+			},
+			h('div', { class: 'wm-message-line1' },
+				h('span', { class: 'wm-message-from' }, personShort(m.from) || _('(expéditeur inconnu)')),
+				h('span', { class: 'wm-message-account', title: m.accountEmail }, m.accountEmail.split('@')[1] || m.accountEmail),
+				h('span', { class: 'wm-message-date' }, formatDate(m.date))),
+			h('div', { class: 'wm-message-line2' },
+				m.importance === 'High' ? h('span', { class: 'wm-important', title: _('Importance haute') }, '❗') : null,
+				h('span', { class: 'wm-message-subject' }, m.subject || _('(sans objet)')),
+				m.hasAttachments ? h('span', { class: 'wm-attach-icon', title: _('Pièce jointe') }, '📎') : null),
+			m.preview ? h('div', { class: 'wm-message-preview' }, m.preview) : null))
+		})
+		listEl.appendChild(ul)
+	}
+
 	function renderList(loading, scrollTop) {
+		if (state.unified) { renderUnifiedList(loading); return }
 		const keepScroll = scrollTop !== undefined ? scrollTop : listEl.scrollTop
 		// a refresh must not disturb someone typing a search
 		const typing = document.activeElement && document.activeElement.classList.contains('wm-search') && listEl.contains(document.activeElement)
