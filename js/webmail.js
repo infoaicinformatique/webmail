@@ -3680,7 +3680,11 @@
 			active = items.length ? 0 : -1
 			render()
 			if (token.length < 2) return
+			// an address already complete (« Nom <adresse> »): nothing to look for
+			if (/<[^<>@\s]+@[^<>\s]+>\s*$/.test(token)) return
 			timer = setTimeout(async () => {
+				// the field closed or left meanwhile (message sent, another field): no request
+				if (!input.isConnected || document.activeElement !== input) return
 				const mine = ++seq
 				try {
 					const data = await api('/accounts/' + state.accountId + '/contacts/resolve', { query: { q: token } })

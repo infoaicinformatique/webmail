@@ -61,4 +61,10 @@ class VCardTest extends TestCase {
 		// another messenger: not a Matrix address
 		$this->assertSame('', $card('IMPP:xmpp:alice@example.org'));
 	}
+
+	public function testFileName(): void {
+		$this->assertSame('Carnet Clients A', VCard::fileName('Carnet / Clients: <A>'));
+		$this->assertSame('Contacts partagés de Marie', VCard::fileName('Contacts partagés de Marie'));
+		$this->assertSame('Contacts', VCard::fileName(' \\ / '));
+	}
 }
