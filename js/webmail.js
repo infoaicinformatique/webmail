@@ -1062,6 +1062,8 @@
 					class: 'wm-folder' + (active ? ' active' : '') + (f.unread ? ' has-unread' : ''),
 					style: 'padding-inline-start:' + (12 + depth * 16) + 'px',
 					onclick: (e) => { e.preventDefault(); selectFolder(f.id) },
+					// right-click: the actions of the folder, as with « ⋯ »
+					oncontextmenu: (e) => { e.preventDefault(); openFolderMenu({ x: e.clientX, y: e.clientY }, f) },
 					dataset: { folderId: f.id },
 				},
 				h('span', { class: 'wm-folder-icon', 'aria-hidden': 'true' }, ROLE_ICON[f.role] || '📁'),
@@ -1235,19 +1237,9 @@
 							type: 'button',
 							class: 'wm-small wm-danger wm-space-empty',
 							onclick: async (e) => {
-								const deleted = f.role === 'deleteditems'
-								if (!window.confirm(deleted
-									? _('Supprimer définitivement les {count} éléments supprimés ? Ils ne pourront pas être récupérés ici.', { count: f.total })
-									: _('Mettre les {count} messages indésirables dans les éléments supprimés ?', { count: f.total }))) return
 								e.currentTarget.disabled = true
-								try {
-									await api('/accounts/' + state.accountId + '/folders/empty', { method: 'POST', body: { role: f.role } })
-									toast(deleted ? _('Éléments supprimés vidés') : _('Courrier indésirable vidé'))
-									listCache.delete(state.accountId + '|' + f.id)
-									if (f.id === state.folderId) loadMessages(true)
-									await loadFolders()
-									render()
-								} catch (err) { toast(err.message, true); render() }
+								await emptyFolder(f)
+								render()
 							},
 						}, '🗑 ' + _('Vider')) : null))
 			})))
@@ -2419,6 +2411,30 @@
 		renderNav()
 	}
 
+	/**
+	 * « Éléments supprimés » emptied for good, or « Courrier indésirable » put in
+	 * « Éléments supprimés », after a confirmation.
+	 * @return {Promise<boolean>} emptied
+	 */
+	async function emptyFolder(f) {
+		const deleted = f.role === 'deleteditems'
+		if (!window.confirm(deleted
+			? _('Supprimer définitivement les {count} éléments supprimés ? Ils ne pourront pas être récupérés ici.', { count: f.total })
+			: _('Mettre les {count} messages indésirables dans les éléments supprimés ?', { count: f.total }))) return false
+		try {
+			await api('/accounts/' + state.accountId + '/folders/empty', { method: 'POST', body: { role: f.role } })
+			toast(deleted ? _('Éléments supprimés vidés') : _('Courrier indésirable vidé'))
+			listCache.delete(state.accountId + '|' + f.id)
+			if (f.id === state.folderId) loadMessages(true)
+			await loadFolders()
+			return true
+		} catch (err) {
+			toast(err.message, true)
+			return false
+		}
+	}
+
+	/** @param {Element|{x: number, y: number}} anchor the « ⋯ » button, or where the folder was right-clicked */
 	function openFolderMenu(anchor, f) {
 		document.querySelectorAll('.wm-folder-menu').forEach((m) => m.remove())
 		const fixed = FIXED_ROLES.includes(f.role)
@@ -2434,6 +2450,8 @@
 				: item('★ ' + _('Ajouter aux favoris'), () => setFavorite(f, true)),
 			item('＋ ' + _('Nouveau sous-dossier'), () => createFolder(f)),
 			f.unread ? item('✓ ' + _('Tout marquer comme lu'), () => markFolderRead(f)) : null,
+			f.role === 'deleteditems' && f.total > 0 ? item('🗑 ' + _('Vider les éléments supprimés'), () => emptyFolder(f), true) : null,
+			f.role === 'junkemail' && f.total > 0 ? item('🗑 ' + _('Vider le courrier indésirable'), () => emptyFolder(f), true) : null,
 			item('📥 ' + _('Importer des messages (.eml)…'), () => pickEml(f)),
 			fixed ? null : item('✏️ ' + _('Renommer'), () => renameFolder(f)),
 			fixed ? null : item('↪ ' + _('Déplacer…'), () => moveFolder(f)),
@@ -2443,10 +2461,10 @@
 		const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close() } }
 		document.addEventListener('mousedown', outside, true)
 		document.addEventListener('keydown', onKey, true)
-		const r = anchor.getBoundingClientRect()
-		menu.style.top = Math.min(r.bottom + 2, window.innerHeight - 180) + 'px'
-		menu.style.left = Math.max(8, r.right - 210) + 'px'
+		const r = anchor instanceof Element ? anchor.getBoundingClientRect() : { bottom: anchor.y, right: anchor.x + 210 }
 		document.body.appendChild(menu)
+		menu.style.top = Math.max(8, Math.min(r.bottom + 2, window.innerHeight - menu.offsetHeight - 8)) + 'px'
+		menu.style.left = Math.max(8, Math.min(r.right - 210, window.innerWidth - menu.offsetWidth - 8)) + 'px'
 		const first = menu.querySelector('button')
 		if (first) first.focus()
 	}
