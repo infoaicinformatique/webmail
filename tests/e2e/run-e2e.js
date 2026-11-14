@@ -4607,6 +4607,8 @@ async function main() {
 		}, fraction)
 		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector(row)
+		// the rest of the page after its first rows (FIRST_PAGE): the list drawn again, not under the finger
+		await page.waitForLoadState('networkidle')
 		assert.ok(!(await page.$(row + '.unread')), 'read to start with')
 		// not far enough: nothing
 		await swipe(0.2)
