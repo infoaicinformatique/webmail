@@ -1520,5 +1520,8 @@
 	"Pièces jointes trop lourdes ({size}, {max} au plus) : envoyez les plus grosses avec « 🔗 Envoyer en lien ».": "Attachments too large ({size}, {max} at most): send the largest ones with “🔗 Send as link”.",
 	"Réponse NTLM invalide du serveur Exchange": "Invalid NTLM response from the Exchange server",
 	"Vider les éléments supprimés": "Empty deleted items",
-	"Vider le courrier indésirable": "Empty junk email"
+	"Vider le courrier indésirable": "Empty junk email",
+	"Largeur des dossiers": "Width of the folders",
+	"Largeur de la liste des messages": "Width of the message list",
+	"Glisser pour élargir ou rétrécir (double-clic : largeur d'origine)": "Drag to widen or narrow (double-click: original width)"
 }

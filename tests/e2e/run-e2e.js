@@ -4333,6 +4333,58 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 	})
 
+	await step('separators: the columns widened by dragging, kept after a reload, reset by a double-click', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-message')
+		const width = (sel) => page.$eval(sel, (el) => Math.round(el.getBoundingClientRect().width))
+		const drag = async (pane, dx) => {
+			const box = await page.locator('.wm-splitter[data-pane="' + pane + '"]').boundingBox()
+			const x = box.x + box.width / 2
+			const y = box.y + 200
+			await page.mouse.move(x, y)
+			await page.mouse.down()
+			await page.mouse.move(x + dx / 2, y, { steps: 3 })
+			await page.mouse.move(x + dx, y, { steps: 3 })
+			await page.mouse.up()
+		}
+		const nav0 = await width('.wm-nav')
+		const list0 = await width('.wm-list')
+		await drag('nav', 100)
+		assert.ok(Math.abs(await width('.wm-nav') - (nav0 + 100)) <= 2, 'folders wider: ' + await width('.wm-nav'))
+		await drag('list', -80)
+		assert.ok(Math.abs(await width('.wm-list') - (list0 - 80)) <= 2, 'list narrower: ' + await width('.wm-list'))
+		// the separator follows the edge of its column
+		const edge = await page.$eval('.wm-list', (el) => Math.round(el.getBoundingClientRect().right))
+		const sep = await page.locator('.wm-splitter[data-pane="list"]').boundingBox()
+		assert.ok(Math.abs(sep.x + sep.width / 2 - edge) <= 2)
+		await shot('91-separators')
+		// kept in this browser
+		await page.reload()
+		await page.waitForSelector('.wm-message')
+		assert.ok(Math.abs(await width('.wm-nav') - (nav0 + 100)) <= 2)
+		assert.ok(Math.abs(await width('.wm-list') - (list0 - 80)) <= 2)
+		// the keyboard: 16 px a press
+		await page.focus('.wm-splitter[data-pane="nav"]')
+		await page.keyboard.press('ArrowLeft')
+		assert.ok(Math.abs(await width('.wm-nav') - (nav0 + 84)) <= 2)
+		// never so wide that the message can no longer be read
+		await drag('list', 3000)
+		const detail = await width('.wm-detail')
+		assert.ok(detail >= 318, 'reading pane kept: ' + detail)
+		// the calendar has no list: no separator for it
+		await page.click('.wm-tab[data-module="calendar"]')
+		await page.waitForSelector('.wm-splitter[data-pane="list"][hidden]', { state: 'attached' })
+		assert.ok(await page.isVisible('.wm-splitter[data-pane="nav"]'))
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.waitForSelector('.wm-splitter[data-pane="list"]:not([hidden])')
+		// a double-click: the widths of the page again
+		await page.dblclick('.wm-splitter[data-pane="nav"]')
+		await page.dblclick('.wm-splitter[data-pane="list"]')
+		assert.strictEqual(await width('.wm-nav'), nav0)
+		assert.strictEqual(await width('.wm-list'), list0)
+		assert.strictEqual(await page.evaluate(() => localStorage.getItem('webmail.panes')), '{}')
+	})
+
 	await step('one sender: « Tous ses messages… » shows them, moves them all, and back', async () => {
 		// (one of the newsletters, found by a search: far down the inbox by now)
 		const openNewsletter = async () => {

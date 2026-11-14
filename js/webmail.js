@@ -602,9 +602,129 @@
 		navEl = h('nav', { class: 'wm-nav', 'aria-label': _('Dossiers') })
 		listEl = h('section', { class: 'wm-list', 'aria-label': _('Messages') })
 		detailEl = h('section', { class: 'wm-detail', 'aria-label': _('Lecture') })
-		root.append(navEl, listEl, detailEl)
+		root.append(navEl, listEl, detailEl, splitter('nav'), splitter('list'))
+		applyPanes()
 		root.dataset.module = state.module
 		setView('list')
+		watchSplitters()
+		placeSplitters()
+	}
+
+	// ------------------------------------------------------------------
+	// widths of the columns: the separators between them
+	// ------------------------------------------------------------------
+	const PANES_KEY = 'webmail.panes'
+	/** smallest and largest width of each column (px); the reading pane keeps at least DETAIL_MIN */
+	const PANE_LIMITS = { nav: [160, 480], list: [240, 900] }
+	const DETAIL_MIN = 320
+	let splitterObserver = null
+
+	function panes() {
+		try {
+			const v = JSON.parse(localStorage.getItem(PANES_KEY) || '{}')
+			return v && typeof v === 'object' ? v : {}
+		} catch (e) { return {} }
+	}
+
+	function savePanes(p) {
+		try { localStorage.setItem(PANES_KEY, JSON.stringify(p)) } catch (e) { /* not kept */ }
+	}
+
+	/** The widths chosen (none: those of the page). */
+	function applyPanes() {
+		const p = panes()
+		;['nav', 'list'].forEach((k) => {
+			if (Number.isFinite(p[k])) root.style.setProperty('--wm-' + k + '-w', Math.round(p[k]) + 'px')
+			else root.style.removeProperty('--wm-' + k + '-w')
+		})
+	}
+
+	/** A width within the limits, the reading pane keeping its least width. */
+	function clampPane(which, w) {
+		const [min, max] = PANE_LIMITS[which]
+		const other = which === 'nav' ? listEl.getBoundingClientRect().width : navEl.getBoundingClientRect().width
+		const room = root.getBoundingClientRect().width - other - DETAIL_MIN
+		return Math.round(Math.max(min, Math.min(max, room, w)))
+	}
+
+	function setPane(which, w, keep) {
+		root.style.setProperty('--wm-' + which + '-w', w + 'px')
+		placeSplitters()
+		if (keep) savePanes(Object.assign(panes(), { [which]: w }))
+	}
+
+	/** The separators on the edges of the columns (hidden with their column: calendar, phone). */
+	function placeSplitters() {
+		const box = root.getBoundingClientRect()
+		root.querySelectorAll(':scope > .wm-splitter').forEach((s) => {
+			const pane = s.dataset.pane === 'nav' ? navEl : listEl
+			const r = pane.getBoundingClientRect()
+			s.hidden = r.width === 0
+			s.style.left = (r.right - box.left) + 'px'
+			s.setAttribute('aria-valuenow', String(Math.round(r.width)))
+		})
+	}
+
+	function splitter(which) {
+		const pane = () => (which === 'nav' ? navEl : listEl)
+		const [min, max] = PANE_LIMITS[which]
+		const el = h('div', {
+			class: 'wm-splitter',
+			role: 'separator',
+			tabindex: '0',
+			'aria-orientation': 'vertical',
+			'aria-valuemin': String(min),
+			'aria-valuemax': String(max),
+			'aria-label': which === 'nav' ? _('Largeur des dossiers') : _('Largeur de la liste des messages'),
+			title: _('Glisser pour élargir ou rétrécir (double-clic : largeur d\'origine)'),
+			dataset: { pane: which },
+		})
+		el.addEventListener('pointerdown', (e) => {
+			if (e.button !== 0) return
+			e.preventDefault()
+			const startX = e.clientX
+			const startW = pane().getBoundingClientRect().width
+			let last = startW
+			el.setPointerCapture(e.pointerId)
+			el.classList.add('wm-dragging')
+			root.classList.add('wm-resizing')
+			const move = (ev) => { last = clampPane(which, startW + ev.clientX - startX); setPane(which, last, false) }
+			const up = () => {
+				el.removeEventListener('pointermove', move)
+				el.removeEventListener('pointerup', up)
+				el.removeEventListener('pointercancel', up)
+				el.classList.remove('wm-dragging')
+				root.classList.remove('wm-resizing')
+				if (last !== startW) setPane(which, last, true)
+			}
+			el.addEventListener('pointermove', move)
+			el.addEventListener('pointerup', up)
+			el.addEventListener('pointercancel', up)
+		})
+		// back to the width of the page
+		el.addEventListener('dblclick', () => {
+			const p = panes()
+			delete p[which]
+			savePanes(p)
+			applyPanes()
+			placeSplitters()
+		})
+		el.addEventListener('keydown', (e) => {
+			const step = e.shiftKey ? 64 : 16
+			const d = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+			if (!d) return
+			e.preventDefault()
+			setPane(which, clampPane(which, pane().getBoundingClientRect().width + d), true)
+		})
+		return el
+	}
+
+	// the separators follow the columns (window resized, column shown or hidden)
+	function watchSplitters() {
+		if (!window.ResizeObserver) return
+		if (splitterObserver) splitterObserver.disconnect()
+		splitterObserver = new ResizeObserver(() => placeSplitters())
+		;[root, navEl, listEl].forEach((el) => splitterObserver.observe(el))
 	}
 
 	function moduleTabs() {

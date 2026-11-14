@@ -4,7 +4,9 @@
 
 #webmail-app {
 	display: grid;
-	grid-template-columns: 260px minmax(300px, 400px) 1fr;
+	/* widths set by dragging the separators (--wm-nav-w, --wm-list-w), else these */
+	grid-template-columns: var(--wm-nav-w, 260px) var(--wm-list-w, minmax(300px, 400px)) minmax(0, 1fr);
+	position: relative;
 	height: 100%;
 	min-height: calc(100vh - var(--header-height, 50px) - 16px);
 	background: var(--color-main-background);
@@ -78,11 +80,13 @@
 	display: flex;
 	gap: 4px;
 	align-items: center;
+	flex-wrap: wrap;
 	padding: 8px;
 	background: var(--color-main-background);
 	border-bottom: 1px solid var(--color-border);
 }
-.wm-search { flex: 1; margin: 0; min-width: 0; }
+/* a narrow list (its separator moved): the buttons go under the search, which stays usable */
+.wm-search { flex: 1 1 110px; margin: 0; min-width: 110px; }
 .wm-icon-btn { min-width: 36px; margin: 0; font-size: 18px; padding: 0 8px; }
 /* « Trier par »: narrow, the chosen order readable when it is not the default */
 .wm-sort { margin: 0; max-width: 112px; min-width: 0; flex: 0 1 auto; font-size: 13px; padding: 0 4px; }
@@ -263,11 +267,12 @@
 
 /* ---------- responsive ---------- */
 @media (max-width: 1100px) {
-	#webmail-app { grid-template-columns: 220px minmax(260px, 340px) 1fr; }
+	#webmail-app { grid-template-columns: var(--wm-nav-w, 220px) var(--wm-list-w, minmax(260px, 340px)) minmax(0, 1fr); }
 }
 @media (max-width: 800px) {
 	#webmail-app { grid-template-columns: 1fr; }
 	.wm-mobile-only { display: inline-flex !important; }
+	.wm-splitter { display: none !important; }
 	.wm-nav, .wm-list, .wm-detail { display: none; border: none; }
 	#webmail-app[data-view="nav"] .wm-nav { display: flex; }
 	#webmail-app[data-view="list"] .wm-list { display: flex; }
@@ -1105,3 +1110,30 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-sender-actions button { margin: 0; }
 .wm-sender-move { display: flex; gap: 8px; }
 .wm-sender-move select { flex: 1; margin: 0; }
+
+/* ---------- separators between the columns (dragged, or arrows of the keyboard) ---------- */
+.wm-splitter {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 9px;
+	margin-inline-start: -4px;
+	z-index: 5;
+	cursor: col-resize;
+	touch-action: none;
+}
+.wm-splitter[hidden] { display: none; }
+.wm-splitter::after {
+	content: '';
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	inset-inline-start: 4px;
+	width: 1px;
+	background: transparent;
+	transition: background .15s;
+}
+.wm-splitter:hover::after, .wm-splitter:focus-visible::after, .wm-splitter.wm-dragging::after { width: 3px; inset-inline-start: 3px; background: var(--color-primary-element, var(--color-primary)); }
+.wm-splitter:focus-visible { outline: none; }
+#webmail-app.wm-resizing { cursor: col-resize; user-select: none; }
+#webmail-app.wm-resizing iframe { pointer-events: none; }
