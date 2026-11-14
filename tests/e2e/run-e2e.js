@@ -1601,6 +1601,28 @@ async function main() {
 		await shot('17-week')
 	})
 
+	await step('calendar: a second time zone beside the hours (week and day views), then none', async () => {
+		await page.selectOption('select[name=tz2]', 'Asia/Tokyo')
+		await page.waitForSelector('.wm-with-tz2 .wm-week-head .wm-week-tz2:has-text("Tokyo UTC+9")')
+		// the hour of Tokyo at 08:00 here, that day (summer or winter time)
+		const first = await page.getAttribute('.wm-week-col >> nth=0', 'data-date')
+		const expected = await page.evaluate((d) => {
+			const [y, m, day] = d.split('-').map(Number)
+			return new Date(y, m - 1, day, 8).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Tokyo' })
+		}, first)
+		assert.strictEqual(await page.textContent('.wm-week-grid .wm-week-tz2 .wm-week-hour >> nth=8'), expected)
+		assert.strictEqual(await page.textContent('.wm-week-grid .wm-week-hours:not(.wm-week-tz2) .wm-week-hour >> nth=8'), '08:00')
+		// the events stay where they were
+		assert.strictEqual(await page.locator('.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")').evaluate((e) => e.style.top), '432px')
+		await shot('17b-week-second-zone')
+		// kept: the day view has it too
+		await page.click('.wm-segmented button:has-text("Jour")')
+		await page.waitForSelector('.wm-day-view.wm-with-tz2 .wm-week-tz2')
+		await page.click('.wm-segmented button:has-text("Semaine")')
+		await page.selectOption('select[name=tz2]', '')
+		await page.waitForSelector('.wm-week-tz2', { state: 'detached' })
+	})
+
 	await step('calendar: week view, click on an empty slot and overlapping events', async () => {
 		// a locator is resolved again if the week is re-rendered meanwhile
 		await page.locator('.icon-loading-small').waitFor({ state: 'detached' })
@@ -2448,6 +2470,43 @@ async function main() {
 		await page.click('.wm-toolbar button:has-text("Supprimer")')
 		await page.waitForSelector('.wm-toast:has-text("Contact supprimé")')
 		assert(!(await page.$('.wm-contact:has-text("Zoé Garnier")')))
+	})
+
+	await step('contacts: duplicates found (same address, same name) and merged into one card, nothing lost', async () => {
+		await page.click('.wm-tab[data-module="contacts"]')
+		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
+		const made = await page.evaluate(async () => {
+			const accounts = await (await fetch(OC.generateUrl('/apps/webmail/api/accounts'), { headers: { requesttoken: OC.requestToken } })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const create = (contact) => fetch(OC.generateUrl('/apps/webmail/api/accounts/' + id + '/contacts'), {
+				method: 'POST', headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ book: 'contacts', contact }),
+			}).then((r) => r.status)
+			return [
+				await create({ givenName: 'Hugo', surname: 'Lefèvre', emails: ['hugo@lefevre.example'], mobilePhone: '06 11 22 33 44' }),
+				await create({ givenName: 'HUGO', surname: 'Lefevre', company: 'Lefèvre Menuiserie', businessPhone: '04 93 44 55 66', emails: [], notes: 'Rappeler le lundi' }),
+			]
+		})
+		assert.deepStrictEqual(made, [200, 200])
+		await page.click('.wm-contact >> nth=0')
+		await page.click('.wm-dup-btn')
+		const group = '.wm-dup-group:has-text("hugo@lefevre.example")'
+		await page.waitForSelector(group)
+		assert.strictEqual(await page.locator(group + ' .wm-dup-item').count(), 2)
+		await shot('53-duplicates')
+		// the card with the address is kept by default
+		assert.ok(await page.isChecked(group + ' .wm-dup-item:has-text("hugo@lefevre.example") input[type=radio]'))
+		await page.click(group + ' .wm-dup-merge')
+		await page.waitForSelector('.wm-toast:has-text("2 fiches fusionnées")')
+		await page.waitForSelector(group, { state: 'detached' })
+		await page.click('.wm-dup-dialog .wm-modal-close')
+		await page.waitForSelector('.wm-contact:has-text("Hugo Lefèvre")')
+		assert.strictEqual(await page.locator('.wm-contact:has-text("Lef")').count(), 1)
+		await page.click('.wm-contact:has-text("Hugo Lefèvre")')
+		const card = await (await page.waitForSelector('.wm-contact-card:has-text("Lefèvre Menuiserie")')).textContent()
+		for (const v of ['hugo@lefevre.example', '06 11 22 33 44', '04 93 44 55 66', 'Rappeler le lundi']) assert.ok(card.includes(v), v + ' in ' + card)
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-toolbar button:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Contact supprimé")')
 	})
 
 	await step('contacts: birthdays, the upcoming ones above the list, set and cleared', async () => {
@@ -4095,6 +4154,127 @@ async function main() {
 		assert.ok(!(await page.$eval('.wm-sort', (e) => e.classList.contains('active'))))
 	})
 
+	await step('.ics received: « Ajouter à mon agenda » puts its event in the Exchange calendar', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-folder >> nth=0')
+		const day = new Date(Date.now() + 9 * 86400000)
+		const ymd = (d) => d.getUTCFullYear() + String(d.getUTCMonth() + 1).padStart(2, '0') + String(d.getUTCDate()).padStart(2, '0')
+		const ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//SNCF//Billet//FR\r\nBEGIN:VEVENT\r\nUID:billet-4242\r\n'
+			+ 'DTSTART:' + ymd(day) + 'T070000Z\r\nDTEND:' + ymd(day) + 'T100000Z\r\nSUMMARY:Train Nice → Paris\r\nLOCATION:Gare de Nice-Ville\, voie B\r\n'
+			+ 'DESCRIPTION:Voiture 12\\, place 45\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n'
+		await page.click('.wm-compose-btn')
+		await page.fill('input[name=to]', 'user@societe-a.fr')
+		await page.fill('input[name=subject]', 'Votre billet de train')
+		await page.fill('.wm-editor', 'Bon voyage !')
+		await page.setInputFiles('.wm-file-input', { name: 'billet.ics', mimeType: 'text/calendar', buffer: Buffer.from(ics) })
+		await submitCompose()
+		await page.click('.wm-message:has-text("Votre billet de train")')
+		await page.click('.wm-attachment:has-text("billet.ics") .wm-ics-add')
+		await page.waitForSelector('.wm-toast:has-text("« Train Nice → Paris » ajouté à votre agenda")')
+		await page.waitForSelector('.wm-attachment:has-text("billet.ics") .wm-ics-add:has-text("Ajouté à l\'agenda")')
+		await shot('90-ics-added')
+		await page.click('.wm-toast:has-text("Train Nice") button:has-text("Voir")')
+		await page.waitForSelector('.wm-modal h2:has-text("Train Nice → Paris")')
+		const detail = await page.textContent('.wm-modal')
+		assert.ok(detail.includes('Gare de Nice-Ville, voie B'), detail)
+		assert.ok(detail.includes('Voiture 12, place 45'), detail)
+		await page.click('.wm-modal-close')
+		await page.click('.wm-tab[data-module="mail"]')
+	})
+
+	await step('free space: the heaviest folders from the gauge, their largest messages, the junk mail emptied', async () => {
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-list-period')
+		// one message in « Courrier indésirable », to empty it
+		await page.fill('.wm-list .wm-search', 'Newsletter n°52')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°52"))')
+		await page.click('.wm-toolbar .wm-junk-btn')
+		await page.waitForSelector('.wm-toast:has-text("Courrier indésirable")')
+		await page.click('.wm-search-info a:has-text("effacer")')
+		await page.click('.wm-quota')
+		await page.waitForSelector('.wm-space-dialog')
+		const names = await page.$$eval('.wm-space-name', (els) => els.map((e) => e.textContent))
+		assert.strictEqual(names[0], 'Boîte de réception', names.join('|'))
+		assert.ok((await page.textContent('.wm-space-dialog p >> nth=0')).includes('utilisés sur 2 Go'))
+		await shot('89-free-space')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-space-row[data-role="junkemail"] .wm-space-empty')
+		await page.waitForSelector('.wm-toast:has-text("Courrier indésirable vidé")')
+		await page.waitForSelector('.wm-space-row[data-role="junkemail"] .wm-space-empty', { state: 'detached' })
+		// the largest messages of the inbox: the list sorted by size
+		await page.click('.wm-space-row:has(.wm-space-name:text-is("Boîte de réception")) .wm-space-largest')
+		await page.waitForSelector('.wm-space-dialog', { state: 'detached' })
+		await page.waitForFunction(() => document.querySelector('.wm-sort') && document.querySelector('.wm-sort').value === 'size-desc')
+		await page.selectOption('.wm-sort', 'date-desc')
+		await page.waitForSelector('.wm-list-period')
+	})
+
+	await step('one sender: « Tous ses messages… » shows them, moves them all, and back', async () => {
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-list-period')
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
+		await page.click('.wm-toolbar .wm-sender-btn')
+		const text = await (await page.waitForSelector('.wm-sender-dialog p:has-text("de cet expéditeur dans « Boîte de réception »")')).textContent()
+		const count = parseInt(text, 10)
+		assert.ok(count > 20, text)
+		assert.ok((await page.textContent('.wm-sender-dialog h2')).includes('news@exemple.org'))
+		await shot('88-sender-messages')
+		// shown: a search on the address, his messages only
+		await page.click('.wm-sender-show')
+		await page.waitForSelector('.wm-search-info:has-text("from:\\"news@exemple.org\\"")')
+		const froms = await page.$$eval('.wm-message-from', (els) => [...new Set(els.map((e) => e.textContent))])
+		assert.deepStrictEqual(froms, ['Lettre d\'info'])
+		await page.click('.wm-search-info a:has-text("effacer")')
+		await page.waitForSelector('.wm-list-period')
+		// all moved to « Clients », then all back
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
+		await page.click('.wm-toolbar .wm-sender-btn')
+		await page.waitForSelector('.wm-sender-dialog .wm-sender-move select')
+		await page.selectOption('.wm-sender-dialog .wm-sender-move select', { label: 'Clients' })
+		await page.click('.wm-sender-move-btn')
+		await page.waitForSelector('.wm-toast:has-text("' + count + ' messages déplacés dans « Clients »")')
+		await page.waitForSelector('.wm-message:has-text("Lettre d\'info")', { state: 'detached' })
+		await page.click('.wm-folder:has-text("Clients")')
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
+		await page.click('.wm-toolbar .wm-sender-btn')
+		await page.waitForSelector('.wm-sender-dialog p:has-text("' + count + ' messages de cet expéditeur dans « Clients »")')
+		await page.selectOption('.wm-sender-dialog .wm-sender-move select', { label: 'Boîte de réception' })
+		await page.click('.wm-sender-move-btn')
+		await page.waitForSelector('.wm-toast:has-text("' + count + ' messages déplacés dans « Boîte de réception »")')
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
+	})
+
+	await step('pinned: a message pinned stays at the top of its folder, whatever the order, until unpinned', async () => {
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-list-period')
+		const row = '.wm-message:has-text("Réunion de lundi")'
+		await page.click(row)
+		await page.click('.wm-toolbar .wm-pin-btn')
+		await page.waitForSelector('.wm-toast:has-text("Message épinglé en haut de « Boîte de réception »")')
+		const first = () => page.$eval('.wm-messages .wm-message', (e) => e.textContent)
+		assert.ok((await first()).includes('Réunion de lundi'), await first())
+		assert.strictEqual(await page.textContent('.wm-list-period >> nth=0'), '📌 Épinglés')
+		assert.ok(await page.$eval(row, (e) => e.classList.contains('wm-pinned')))
+		assert.strictEqual(await page.locator(row).count(), 1, 'shown once')
+		assert.strictEqual(await page.getAttribute('.wm-toolbar .wm-pin-btn', 'aria-pressed'), 'true')
+		// another order: still first, the others under « Autres messages »
+		await page.selectOption('.wm-sort', 'subject-asc')
+		await page.waitForSelector('.wm-list-period:text-is("Autres messages")')
+		assert.ok((await first()).includes('Réunion de lundi'))
+		await page.selectOption('.wm-sort', 'date-desc')
+		// kept by Nextcloud: after a reload too
+		await page.reload()
+		await page.waitForSelector('.wm-message.wm-pinned:has-text("Réunion de lundi")')
+		await shot('87-pinned')
+		await page.click(row)
+		await page.click('.wm-toolbar .wm-pin-btn')
+		await page.waitForSelector('.wm-toast:has-text("Message désépinglé")')
+		await page.waitForSelector('.wm-message.wm-pinned', { state: 'detached' })
+		assert.notStrictEqual(await page.textContent('.wm-list-period >> nth=0'), '📌 Épinglés')
+	})
+
 	await step('completion: the people of Nextcloud (an account of this Nextcloud) are offered too', async () => {
 		const occ = (args, env) => execSync((env ? OCC.replace('docker exec ', 'docker exec ' + env + ' ') : OCC) + ' ' + args, { encoding: 'utf8' })
 		try { occ('user:delete sophie') } catch (e) { /* not there */ }
@@ -4114,6 +4294,42 @@ async function main() {
 			await page.waitForSelector('.wm-compose', { state: 'detached' })
 		} finally {
 			occ('user:delete sophie')
+		}
+	})
+
+	await step('completion: a Nextcloud group, chosen, adds all its members (each once, the user aside)', async () => {
+		const occ = (args, env) => execSync((env ? OCC.replace('docker exec ', 'docker exec ' + env + ' ') : OCC) + ' ' + args, { encoding: 'utf8' })
+		const people = [['lea', 'Léa Compta', 'lea@nc.example'], ['marc', 'Marc Compta', 'marc@nc.example'], ['nomail', 'Sans Adresse', '']]
+		for (const [uid] of people) { try { occ('user:delete ' + uid) } catch (e) { /* not there */ } }
+		try { occ('group:delete comptabilite') } catch (e) { /* not there */ }
+		occ('group:add --display-name "Comptabilité" comptabilite')
+		try {
+			for (const [uid, name, email] of people) {
+				occ('user:add --password-from-env --display-name "' + name + '" ' + uid, '-e OC_PASS=Compta-Pass-2026')
+				if (email) occ('user:setting ' + uid + ' settings email ' + email)
+				occ('group:adduser comptabilite ' + uid)
+			}
+			occ('group:adduser comptabilite admin')
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'Jean Dupont <jean.dupont@client-exemple.fr>, marc@nc.example, ')
+			await page.click('input[name=to]')
+			await page.keyboard.type('Compta')
+			const item = '.wm-ac-item:has-text("Comptabilité"):has-text("groupe Nextcloud · 4 membres")'
+			await page.waitForSelector(item)
+			await shot('09b-autocomplete-group')
+			await page.click(item)
+			// Léa added; Marc already there; the user and the member without an address left out
+			await page.waitForSelector('.wm-toast:has-text("1 membre du groupe « Comptabilité » ajouté ; 1 sans adresse e-mail")')
+			assert.strictEqual(await page.inputValue('input[name=to]'), 'Jean Dupont <jean.dupont@client-exemple.fr>, marc@nc.example, Léa Compta <lea@nc.example>, ')
+			// a group one cannot see (sharing limited to one's groups): refused
+			const r = await page.evaluate(async () => (await fetch(OC.generateUrl('/apps/webmail/api/nextcloud-groups/members') + '?gid=nexistepas', { headers: { requesttoken: OC.requestToken } })).status)
+			assert.ok(r >= 400, String(r))
+			await page.click('.wm-compose button:has-text("Annuler")')
+			await page.waitForSelector('.wm-compose', { state: 'detached' })
+		} finally {
+			for (const [uid] of people) { try { occ('user:delete ' + uid) } catch (e) { /* gone */ } }
+			occ('group:delete comptabilite')
 		}
 	})
 

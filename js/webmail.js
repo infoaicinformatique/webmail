@@ -29,6 +29,7 @@
 		filters: { unread: false, attachments: false, flagged: false, since: '', all: false },
 		// messages put aside (« Reporter »): id in « Reportés » → when it comes back (UTC)
 		snoozes: new Map(),
+		pinned: new Map(), // id -> summary (with its folder): kept at the top of their folder
 		showFilters: false,
 		// the list grouped by conversation (one row each), remembered
 		grouped: (() => { try { return localStorage.getItem('webmail.grouped') === '1' } catch (e) { return false } })(),
@@ -1164,15 +1165,87 @@
 	function usageGauge() {
 		const u = state.usage
 		if (!u || typeof u.used !== 'number') return null
+		// a click: where the space goes, and how to free some
+		const title = _('Espace utilisé par la boîte aux lettres — cliquez pour voir les dossiers les plus lourds et libérer de l\'espace')
 		if (!u.limit) {
-			return h('div', { class: 'wm-quota', title: _('Espace utilisé par la boîte aux lettres') }, h('span', { class: 'wm-muted' }, _('{size} utilisés', { size: formatBytes(u.used) })))
+			return h('button', { type: 'button', class: 'wm-quota', title, onclick: openSpace }, h('span', { class: 'wm-muted' }, _('{size} utilisés', { size: formatBytes(u.used) })))
 		}
 		const pct = Math.min(100, Math.round((u.used / u.limit) * 100))
 		const level = pct >= 90 ? 'full' : (pct >= 75 ? 'high' : 'ok')
-		return h('div', { class: 'wm-quota wm-quota-' + level, title: _('Espace utilisé par la boîte aux lettres') },
-			h('div', { class: 'wm-quota-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': _('Espace utilisé') },
-				h('div', { class: 'wm-quota-fill', style: 'width:' + pct + '%' })),
+		return h('button', { type: 'button', class: 'wm-quota wm-quota-' + level, title, onclick: openSpace },
+			h('span', { class: 'wm-quota-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': _('Espace utilisé') },
+				h('span', { class: 'wm-quota-fill', style: 'width:' + pct + '%' })),
 			h('span', { class: 'wm-quota-text' }, _('{used} sur {limit} ({percent} %)', { used: formatBytes(u.used), limit: formatBytes(u.limit), percent: pct })))
+	}
+
+	/**
+	 * « Libérer de l'espace »: the heaviest folders, each with its largest
+	 * messages one click away; the deleted items and the junk mail emptied.
+	 */
+	function openSpace() {
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const title = _('Libérer de l\'espace')
+		const body = h('div', { class: 'wm-space-body' })
+		const render = () => {
+			clear(body)
+			const u = state.usage || {}
+			body.appendChild(h('p', {}, u.limit
+				? _('{used} utilisés sur {limit}.', { used: formatBytes(u.used), limit: formatBytes(u.limit) })
+				: _('{used} utilisés.', { used: formatBytes(u.used || 0) })))
+			const folders = state.folders.filter((f) => f.size > 0).sort((a, b) => b.size - a.size).slice(0, 12)
+			const max = folders.length ? folders[0].size : 1
+			body.appendChild(h('ul', { class: 'wm-space-list' }, folders.map((f) => {
+				const emptyable = (f.role === 'deleteditems' || f.role === 'junkemail') && f.total > 0
+				return h('li', { class: 'wm-space-row', dataset: { role: f.role || '' } },
+					h('div', { class: 'wm-space-head' },
+						h('span', { class: 'wm-space-name' }, folderName(f.id)),
+						h('span', { class: 'wm-muted' }, formatBytes(f.size) + ' · ' + (f.total > 1 ? _('{count} messages', { count: f.total }) : _('{count} message', { count: f.total })))),
+					h('div', { class: 'wm-space-bar' }, h('div', { class: 'wm-space-fill', style: 'width:' + Math.max(2, Math.round((f.size / max) * 100)) + '%' })),
+					h('div', { class: 'wm-space-actions' },
+						f.total > 0 ? h('button', {
+							type: 'button',
+							class: 'wm-small wm-space-largest',
+							onclick: () => {
+								close()
+								state.sort = 'size-desc'
+								try { localStorage.setItem('webmail.sort', state.sort) } catch (ex) { /* not kept */ }
+								state.grouped = false
+								selectFolder(f.id)
+							},
+						}, _('Plus gros messages')) : null,
+						emptyable ? h('button', {
+							type: 'button',
+							class: 'wm-small wm-danger wm-space-empty',
+							onclick: async (e) => {
+								const deleted = f.role === 'deleteditems'
+								if (!window.confirm(deleted
+									? _('Supprimer définitivement les {count} éléments supprimés ? Ils ne pourront pas être récupérés ici.', { count: f.total })
+									: _('Mettre les {count} messages indésirables dans les éléments supprimés ?', { count: f.total }))) return
+								e.currentTarget.disabled = true
+								try {
+									await api('/accounts/' + state.accountId + '/folders/empty', { method: 'POST', body: { role: f.role } })
+									toast(deleted ? _('Éléments supprimés vidés') : _('Courrier indésirable vidé'))
+									listCache.delete(state.accountId + '|' + f.id)
+									if (f.id === state.folderId) loadMessages(true)
+									await loadFolders()
+									render()
+								} catch (err) { toast(err.message, true); render() }
+							},
+						}, '🗑 ' + _('Vider')) : null))
+			})))
+			body.appendChild(h('p', { class: 'wm-muted' }, _('Avant de supprimer un message, enregistrez dans Fichiers les pièces jointes à garder ; pour en envoyer de lourdes, préférez un lien de partage Nextcloud.')))
+		}
+		render()
+		overlay.appendChild(h('div', { class: 'wm-modal wm-space-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, title), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			body))
+		document.body.appendChild(overlay)
+		const first = body.querySelector('button')
+		if (first) first.focus()
 	}
 
 	const warnedFull = new Set()
@@ -1191,9 +1264,34 @@
 		} catch (e) { /* the messages are shown without their time */ }
 	}
 
+	async function loadPinned() {
+		const account = state.accountId
+		try {
+			const r = await api('/accounts/' + account + '/pinned')
+			if (account !== state.accountId) return
+			const before = [...state.pinned.keys()].join('|')
+			state.pinned = new Map(r.messages.map((m) => [m.id, m]))
+			if ([...state.pinned.keys()].join('|') !== before && state.module === 'mail') renderList(false)
+		} catch (e) { /* the list without its pinned messages on top */ }
+	}
+
+	/** « Épingler » / « Désépingler »: at the top of its folder, whatever the order. */
+	async function togglePin(m) {
+		const pinned = !state.pinned.has(m.id)
+		try {
+			await api('/accounts/' + state.accountId + '/pinned', { method: 'POST', body: { itemId: m.id, pinned } })
+			if (pinned) state.pinned = new Map([[m.id, Object.assign({}, m, { folderId: m.folderId || state.folderId })]].concat([...state.pinned]))
+			else state.pinned.delete(m.id)
+			toast(pinned ? _('Message épinglé en haut de « {folder} »', { folder: folderName(m.folderId || state.folderId) }) : _('Message désépinglé'))
+			renderList(false)
+			if (state.selectedId === m.id) openMessage(m.id)
+		} catch (e) { toast(e.message, true) }
+	}
+
 	async function loadFolders() {
 		loadSnoozes()
 		if (!signatureSets.has(state.accountId)) loadSignatures(state.accountId)
+		loadPinned()
 		try {
 			const data = await api('/accounts/' + state.accountId + '/folders')
 			state.folders = data.folders
@@ -1713,15 +1811,22 @@
 		const bySize = !conv && sortField()[0] === 'size'
 		const period = dayPeriods()
 		let lastPeriod = null
-		state.messages.forEach((m) => {
-			const p = byDate ? period(m.date) : null
+		// the pinned messages of this folder first (not in a search, nor by conversation)
+		const pinnedHere = conv || isSearching() ? [] : [...state.pinned.values()]
+			.filter((p) => p.folderId === state.folderId)
+			.map((p) => state.messages.find((x) => x.id === p.id) || p)
+		const pinnedIds = new Set(pinnedHere.map((p) => p.id))
+		const rows = pinnedHere.concat(state.messages.filter((m) => !pinnedIds.has(m.id)))
+		rows.forEach((m) => {
+			const pin = pinnedIds.has(m.id)
+			const p = pin ? '📌 ' + _('Épinglés') : (byDate ? period(m.date) : (pinnedHere.length && lastPeriod === '📌 ' + _('Épinglés') ? _('Autres messages') : null))
 			if (p && p !== lastPeriod) {
 				lastPeriod = p
 				ul.appendChild(h('li', { class: 'wm-list-period', role: 'presentation' }, p))
 			}
 			const who = showRecipients ? _('À : {names}', { names: m.displayTo || '' }) : (personShort(m.from) || _('(expéditeur inconnu)'))
 			const li = h('li', {
-				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : '') + (state.checked.has(m.id) ? ' checked' : ''),
+				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : '') + (state.checked.has(m.id) ? ' checked' : '') + (pin ? ' wm-pinned' : ''),
 				tabindex: '0',
 				draggable: conv ? 'false' : 'true',
 				dataset: { id: m.id },
@@ -2284,6 +2389,67 @@
 		})
 	}
 
+	/**
+	 * « Tous ses messages »: the messages of one sender in the folder shown,
+	 * to see them, or to mark as read, move or delete them all at once.
+	 */
+	async function senderMessages(m) {
+		const email = m.from && m.from.email
+		if (!email) return
+		const folderId = state.folderId
+		const base = '/accounts/' + state.accountId + '/sender'
+		const who = m.from.name && m.from.name !== email ? m.from.name + ' <' + email + '>' : email
+		const title = _('Messages de {who}', { who })
+		const body = h('div', { class: 'wm-sender-body' }, h('span', { class: 'icon-loading' }))
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		overlay.appendChild(h('div', { class: 'wm-modal wm-modal-small wm-sender-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, title), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			body))
+		document.body.appendChild(overlay)
+		let info
+		try {
+			info = await api(base, { query: { folderId, email } })
+		} catch (e) { close(); toast(e.message, true); return }
+		const folder = folderName(folderId)
+		const apply = async (action, target, done) => {
+			try {
+				const r = await api(base, { method: 'POST', body: { folderId, email, action, target: target || '' } })
+				close()
+				if (action !== 'read') removeFromList(r.itemIds)
+				else r.itemIds.forEach((id) => updateListItem(id, { isRead: true }))
+				toast(done(r.count))
+				listCache.delete(state.accountId + '|' + folderId)
+				if (target) listCache.delete(state.accountId + '|' + target)
+				loadFolders()
+			} catch (e) { toast(e.message, true) }
+		}
+		clear(body)
+		const n = info.count
+		body.appendChild(h('p', {}, n > 1 ? _('{count} messages de cet expéditeur dans « {folder} ».', { count: n, folder }) : _('{count} message de cet expéditeur dans « {folder} ».', { count: n, folder })))
+		if (n >= info.max) body.appendChild(h('p', { class: 'wm-muted' }, _('Les {max} plus récents seulement : recommencez pour les suivants.', { max: info.max })))
+		const targets = state.folders.filter((f) => f.id !== folderId && f.role !== 'drafts' && f.role !== 'outbox')
+		const target = h('select', { name: 'senderTarget', 'aria-label': _('Dossier de destination') }, targets.map((f) => h('option', { value: f.id, selected: f.role === 'archive' }, folderName(f.id))))
+		body.appendChild(h('div', { class: 'wm-sender-actions' },
+			h('button', { type: 'button', class: 'wm-sender-show', onclick: () => { close(); resetSearch(); state.query = info.query; loadMessages(true) } }, '🔍 ' + _('Les afficher')),
+			h('button', { type: 'button', class: 'wm-sender-read', onclick: () => apply('read', '', (c) => c > 1 ? _('{count} messages marqués comme lus', { count: c }) : _('{count} message marqué comme lu', { count: c })) }, '✓ ' + _('Tout marquer comme lu')),
+			h('div', { class: 'wm-sender-move' }, target,
+				h('button', { type: 'button', class: 'wm-sender-move-btn', onclick: () => apply('move', target.value, (c) => c > 1 ? _('{count} messages déplacés dans « {folder} »', { count: c, folder: folderName(target.value) }) : _('{count} message déplacé dans « {folder} »', { count: c, folder: folderName(target.value) })) }, _('Tout déplacer'))),
+			h('button', {
+				type: 'button',
+				class: 'wm-danger wm-sender-delete',
+				onclick: () => {
+					if (!window.confirm(n > 1 ? _('Mettre les {count} messages de {who} à la corbeille ?', { count: n, who }) : _('Mettre le message de {who} à la corbeille ?', { who }))) return
+					apply('delete', '', (c) => c > 1 ? _('{count} messages mis à la corbeille', { count: c }) : _('{count} message mis à la corbeille', { count: c }))
+				},
+			}, '🗑 ' + _('Tout supprimer'))))
+		const first = body.querySelector('button')
+		if (first) first.focus()
+	}
+
 	async function folderAction(path, body, message) {
 		try {
 			const r = await api('/accounts/' + state.accountId + '/folders' + path, { method: 'POST', body })
@@ -2706,9 +2872,17 @@
 				title: _('Télécharger le message (.eml, pour Outlook, Thunderbird…)'),
 				'aria-label': _('Télécharger le message'),
 			}, '⬇\uFE0E'),
+			h('button', {
+				class: 'wm-pin-btn' + (state.pinned.has(m.id) ? ' on' : ''),
+				title: state.pinned.has(m.id) ? _('Désépingler : le message reprend sa place dans la liste') : _('Épingler en haut du dossier, quel que soit le tri'),
+				'aria-label': state.pinned.has(m.id) ? _('Désépingler') : _('Épingler'),
+				'aria-pressed': state.pinned.has(m.id) ? 'true' : 'false',
+				onclick: () => togglePin(m),
+			}, '📌'),
 			window.WebmailModules.tasks ? h('button', { class: 'wm-task-from-msg', title: _('Créer une tâche à partir de ce message'), 'aria-label': _('Créer une tâche à partir de ce message'), onclick: () => taskFromMessage(m) }, '✅') : null,
 			window.WebmailModules.calendar ? h('button', { class: 'wm-event-from-msg', title: _('Créer un événement à partir de ce message'), 'aria-label': _('Créer un événement à partir de ce message'), onclick: () => eventFromMessage(m) }, '📅') : null,
 			h('button', { class: 'wm-eml-save-btn', title: _('Enregistrer le message dans Fichiers (.eml)'), 'aria-label': _('Enregistrer le message dans Fichiers'), onclick: () => saveMessageToFiles(m) }, '☁️'),
+			m.from && m.from.email && !isSearching() ? h('button', { class: 'wm-sender-btn', title: _('Les messages de cet expéditeur dans ce dossier : les afficher, les marquer comme lus, les déplacer ou les supprimer d\'un coup'), onclick: () => senderMessages(m) }, '👤 ' + _('Tous ses messages…')) : null,
 			h('button', { class: 'wm-rule-from-msg', title: _('Créer une règle pour les messages de cet expéditeur'), onclick: () => ruleFromMessage(m) }, '📋 ' + _('Règle…')),
 		)
 		detailEl.appendChild(toolbar)
@@ -2790,6 +2964,9 @@
 					h('span', { class: 'wm-muted' }, ' ' + formatSize(a.size) + ' '),
 					kind ? h('button', { class: 'wm-small wm-preview-btn', onclick: open }, '👁 ' + _('Aperçu')) : null,
 					h('button', { class: 'wm-small', onclick: () => saveAttachment(a) }, _('Enregistrer dans Fichiers')),
+					!a.isItem && window.WebmailModules.calendar && (/\.ics$/i.test(a.name || '') || /text\/calendar/i.test(a.contentType || ''))
+						? h('button', { class: 'wm-small wm-ics-add', title: _('Les événements de ce fichier dans votre agenda Exchange'), onclick: (e) => addIcsToCalendar(a, e.currentTarget) }, '📅 ' + _('Ajouter à mon agenda'))
+						: null,
 					a.isItem ? null : h('button', { class: 'wm-small wm-open-nc', title: _('Une copie dans Fichiers, ouverte avec l\'éditeur ou le visionneur de Nextcloud'), onclick: (e) => openInNextcloud(a, e.currentTarget) }, '↗ ' + _('Ouvrir dans Nextcloud'))))
 			})
 			detailEl.appendChild(list)
@@ -3676,6 +3853,33 @@
 		} catch (e) { toast(e.message, true) }
 	}
 
+	/** « Ajouter à mon agenda »: the events of an .ics file received (a ticket, a booking…). */
+	async function addIcsToCalendar(a, button) {
+		button.disabled = true
+		try {
+			const r = await api('/accounts/' + state.accountId + '/calendar/import-ics', { method: 'POST', body: { attachmentId: a.id, tz: TZ } })
+			const first = r.events[0]
+			const when = first.allDay
+				? new Date(first.start + 'T00:00:00').toLocaleDateString(locale(), { day: 'numeric', month: 'long', year: 'numeric' })
+				: new Date(first.start).toLocaleString(locale(), { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+			const msg = r.events.length > 1
+				? _('{count} événements ajoutés à votre agenda', { count: r.events.length })
+				: _('« {subject} » ajouté à votre agenda ({when})', { subject: first.subject, when })
+			toast(msg + (r.events.some((e) => e.recurring) ? ' ' + _('(sans ses répétitions)') : ''), false, {
+				label: _('Voir'),
+				run: () => {
+					selectModule('calendar')
+					const cal = window.WebmailModules.calendar
+					if (cal && cal.openLinked) cal.openLinked(core, first.id)
+				},
+			})
+			button.textContent = '✓ ' + _('Ajouté à l\'agenda')
+		} catch (e) {
+			button.disabled = false
+			toast(e.message, true)
+		}
+	}
+
 	function saveAttachment(a) {
 		const doSave = async (dir) => {
 			try {
@@ -3767,9 +3971,25 @@
 		}
 		const close = () => { menu.hidden = true; active = -1 }
 		const choose = (r) => {
+			if (r.source === 'nextcloud-group') { chooseGroup(r); return }
 			const { head } = lastToken()
 			input.value = head + (r.name && r.name !== r.email ? r.name + ' <' + r.email + '>' : r.email) + ', '
 			close()
+			input.focus()
+		}
+		/** A group of Nextcloud: all its members (those with an address, the user aside), once each. */
+		const chooseGroup = async (r) => {
+			close()
+			try {
+				const g = await api('/nextcloud-groups/members', { query: { gid: r.gid } })
+				const { head } = lastToken()
+				const there = new Set((head.match(/[^\s<>,;]+@[^\s<>,;]+/g) || []).map((e) => e.toLowerCase()))
+				const added = g.addresses.filter((a) => !there.has(a.email))
+				input.value = head + added.map((a) => (a.name !== a.email ? a.name + ' <' + a.email + '>' : a.email) + ', ').join('')
+				const parts = [added.length > 1 ? _('{count} membres du groupe « {name} » ajoutés', { count: added.length, name: g.name }) : _('{count} membre du groupe « {name} » ajouté', { count: added.length, name: g.name })]
+				if (g.without) parts.push(g.without > 1 ? _('{count} sans adresse e-mail', { count: g.without }) : _('{count} sans adresse e-mail', { count: g.without }))
+				toast(parts.join(_(' ; ')))
+			} catch (e) { toast(e.message, true) }
 			input.focus()
 		}
 		const render = () => {
@@ -3779,7 +3999,9 @@
 				class: 'wm-ac-item' + (i === active ? ' active' : ''),
 				onmousedown: (e) => { e.preventDefault(); choose(r) },
 			}, h('span', { class: 'wm-ac-name' }, r.name || r.email), ' ',
-			h('span', { class: 'wm-muted' }, r.email + ({ directory: ' · ' + _('annuaire'), recent: ' · ' + _('récent'), nextcloud: ' · ' + _('contacts Nextcloud'), 'nextcloud-user': ' · ' + _('compte Nextcloud') }[r.source] || '')))))
+			h('span', { class: 'wm-muted' }, r.source === 'nextcloud-group'
+				? '👥 ' + (r.count > 1 ? _('groupe Nextcloud · {count} membres', { count: r.count }) : _('groupe Nextcloud · {count} membre', { count: r.count }))
+				: r.email + ({ directory: ' · ' + _('annuaire'), recent: ' · ' + _('récent'), nextcloud: ' · ' + _('contacts Nextcloud'), 'nextcloud-user': ' · ' + _('compte Nextcloud') }[r.source] || '')))))
 			// a late answer must not reopen the menu once the field is left
 			menu.hidden = items.length === 0 || document.activeElement !== input
 		}
@@ -3805,7 +4027,7 @@
 					if (mine !== seq) return
 					// the recent ones first, then the contacts and the directory (each address once)
 					const seen = new Set(recent.map((r) => r.email.toLowerCase()))
-					items = recent.concat(data.results.filter((r) => !seen.has(String(r.email).toLowerCase())))
+					items = recent.concat(data.results.filter((r) => r.source === 'nextcloud-group' || !seen.has(String(r.email).toLowerCase())))
 					active = items.length ? 0 : -1
 					render()
 				} catch (e) { /* autocompletion is best effort */ }

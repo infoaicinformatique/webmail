@@ -19,6 +19,7 @@ use OCA\Webmail\Service\UnsubscribeService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\DataDisplayResponse;
 use OCP\AppFramework\Http\DataDownloadResponse;
 use OCP\AppFramework\Http\Response;
@@ -73,6 +74,22 @@ class MailController extends Controller {
 
 	private function client(int $id): EwsClient {
 		return $this->accounts->getClient($this->accounts->find((string)$this->userId, $id));
+	}
+
+	/**
+	 * « Vider » the deleted items (for good) or the junk mail (to the
+	 * deleted items): only these two, by their well-known names.
+	 */
+	#[NoAdminRequired]
+	#[UserRateLimit(limit: 10, period: 300)]
+	public function emptyFolder(int $id, string $role): Response {
+		return $this->handle(function () use ($id, $role) {
+			if (!in_array($role, ['deleteditems', 'junkemail'], true)) {
+				throw new MailException('Seuls les éléments supprimés et le courrier indésirable se vident d\'un coup');
+			}
+			$this->client($id)->emptyFolder($role, $role === 'deleteditems');
+			return ['emptied' => $role];
+		});
 	}
 
 	/** @param string $parentId "" = top of the mailbox */
