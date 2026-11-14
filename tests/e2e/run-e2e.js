@@ -495,8 +495,11 @@ async function main() {
 		const editorText = await page.textContent('.wm-editor')
 		assert.ok(editorText.includes('protégé par un mot de passe') && editorText.includes('lien valable jusqu'), editorText)
 		assert.ok(!editorText.includes(password), 'the password is not in the message')
-		const protectedHref = (await page.$$eval('.wm-editor a', (els) => els.map((e) => e.getAttribute('href')))).pop()
-		assert.notStrictEqual(protectedHref, hrefs[0])
+		// (inserted where the cursor is: the one link that is new)
+		const all = await page.$$eval('.wm-editor a', (els) => els.map((e) => e.getAttribute('href')))
+		const fresh = all.filter((x) => x !== hrefs[0] && x !== big)
+		assert.strictEqual(fresh.length, 1, all.join(' '))
+		const protectedHref = fresh[0]
 		// without the password: no file
 		const locked = await visitor.request.get(protectedHref + '/download', { maxRedirects: 5 })
 		assert.notStrictEqual((await locked.body()).toString('latin1', 0, 5), '%PDF-', 'protected')
