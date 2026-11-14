@@ -3364,6 +3364,8 @@ async function main() {
 
 	await step('keyboard: Tab stays in a dialog, the focus goes back to its button, fields have a name', async () => {
 		await page.click('.wm-tab[data-module="calendar"]')
+		// the button of the calendar, not the one of the mail still drawn a moment
+		await page.waitForSelector('.wm-compose-btn:has-text("Nouvel événement")')
 		await page.focus('.wm-compose-btn')
 		await page.keyboard.press('Enter')
 		await page.waitForSelector('.wm-modal input[name=subject]')
