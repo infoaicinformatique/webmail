@@ -4533,7 +4533,8 @@ async function main() {
 		await page.goto(NC + '/apps/files/?dir=/Documents')
 		const row = '[data-cy-files-list-row-name="devis-2027.pdf"]'
 		await page.waitForSelector(row)
-		await page.click(row + ' [data-cy-files-list-row-actions] button')
+		// the « … » menu of the row (the first buttons are inline ones: sharing…)
+		await page.click(row + ' [data-cy-files-list-row-actions] .action-item__menutoggle')
 		const item = page.locator('[data-cy-files-list-row-action="webmail-send-by-mail"]')
 		await item.waitFor()
 		assert((await item.textContent()).includes('Envoyer par e-mail'))
