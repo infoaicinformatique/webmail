@@ -56,8 +56,6 @@
 		<job>OCA\Webmail\BackgroundJob\FollowUpJob</job>
 		<job>OCA\Webmail\BackgroundJob\OofStatusJob</job>
 		<job>OCA\Webmail\BackgroundJob\AutoFileJob</job>
-		<job>OCA\Webmail\BackgroundJob\FollowUpJob</job>
-		<job>OCA\Webmail\BackgroundJob\OofStatusJob</job>
 	</background-jobs>
 	<settings>
 		<admin>OCA\Webmail\Settings\Admin</admin>
