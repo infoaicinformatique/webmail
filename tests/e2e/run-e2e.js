@@ -4274,6 +4274,8 @@ async function main() {
 		assert(await page.isVisible('.wm-list'))
 		await page.click('.wm-list-header .wm-back')
 		await page.click('.wm-tab[data-module="calendar"]')
+		// the view chosen last is kept: the list, the one for phones
+		await page.click('.wm-segmented button:has-text("Liste")')
 		await page.waitForSelector('.wm-agenda-item')
 		assert(await page.isVisible('.wm-detail'))
 		await shot('15-mobile-calendar')
