@@ -659,6 +659,10 @@ def handle(op, el, user):
                 conds.append(lambda m: any(not ATTACHMENTS[a].get('inline') for a in m['attachments']))
             elif tok == 'isflagged:true':
                 conds.append(lambda m: m['flagged'])
+            elif tok.startswith('from:'):
+                # « Tous ses messages »: one sender's address
+                addr = tok[len('from:'):].strip('"')
+                conds.append(lambda m, addr=addr: m['sender'][1].lower() == addr)
             elif tok.startswith('received>='):
                 since = tok[len('received>='):]
                 conds.append(lambda m, since=since: m['date'][:10] >= since)
@@ -847,6 +851,22 @@ def handle(op, el, user):
             if el.get('MoveItem') == 'true':
                 m['folder'] = target
             out.append(ok(op, '<m:MovedItemId Id="%s" ChangeKey="%s"/>' % (m['id'], m['ck'])))
+        return wrap(op, out)
+
+    if op == 'EmptyFolder':
+        hard = el.get('DeleteType') == 'HardDelete'
+        out = []
+        for f in el.find('m:FolderIds', NS):
+            fid = folder_id(f)
+            if fid is None:
+                out.append(err(op, 'ErrorFolderNotFound', 'Folder not found'))
+                continue
+            for m in [m for m in MESSAGES.values() if m['folder'] == fid]:
+                if hard:
+                    del MESSAGES[m['id']]
+                else:
+                    m['folder'] = 'F-DELETED'
+            out.append(ok(op, ''))
         return wrap(op, out)
 
     if op in ('MoveItem', 'DeleteItem'):

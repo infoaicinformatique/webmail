@@ -25,7 +25,7 @@ class EwsSharedMailboxTest extends EwsTestCase {
 		$client = $this->client();
 		$folders = $client->listFolders($used, 'contact@example.fr');
 		$this->assertSame('full', $client->mailboxAccess());
-		$this->assertSame([['id' => 'S-INBOX', 'name' => 'Boîte de réception', 'parentId' => null, 'total' => 3, 'unread' => 2, 'role' => 'inbox']], $folders);
+		$this->assertSame([['id' => 'S-INBOX', 'name' => 'Boîte de réception', 'parentId' => null, 'total' => 3, 'unread' => 2, 'role' => 'inbox', 'size' => 0]], $folders);
 		$this->assertStringContainsString('<t:DistinguishedFolderId Id="inbox"><t:Mailbox><t:EmailAddress>contact@example.fr</t:EmailAddress></t:Mailbox></t:DistinguishedFolderId>', $this->requests[0]);
 		$this->assertStringContainsString('<m:ParentFolderIds><t:DistinguishedFolderId Id="msgfolderroot"><t:Mailbox><t:EmailAddress>contact@example.fr</t:EmailAddress></t:Mailbox></t:DistinguishedFolderId></m:ParentFolderIds>', $this->lastRequest());
 	}
