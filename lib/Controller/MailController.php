@@ -9,6 +9,7 @@ use OCA\Webmail\Ews\EwsClient;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\AttachmentZip;
+use OCA\Webmail\Service\FollowUpService;
 use OCA\Webmail\Service\HtmlSanitizer;
 use OCA\Webmail\Service\MailNotificationService;
 use OCA\Webmail\Service\SharedFolderService;
@@ -42,6 +43,7 @@ class MailController extends Controller {
 		private MailNotificationService $bell,
 		private SharedFolderService $shared,
 		private SnoozeService $snooze,
+		private FollowUpService $followUps,
 		private TrustedImagesService $trustedImages,
 		private UnsubscribeService $unsubscribe,
 		private IRootFolder $rootFolder,
@@ -393,6 +395,12 @@ class MailController extends Controller {
 	#[NoAdminRequired]
 	public function unsubscribe(int $id, string $itemId): Response {
 		return $this->handle(fn () => $this->unsubscribe->unsubscribe($this->client($id), $itemId));
+	}
+
+	/** « Me rappeler si pas de réponse »: a message just sent waits $days days for an answer. */
+	#[NoAdminRequired]
+	public function followUp(int $id, string $subject, string $to, int $days = 3): Response {
+		return $this->handle(fn () => $this->followUps->add($this->accounts->find((string)$this->userId, $id), $subject, $to, $days));
 	}
 
 	/** A message as an .eml file, to download. */
