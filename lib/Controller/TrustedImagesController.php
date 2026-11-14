@@ -33,7 +33,16 @@ class TrustedImagesController extends Controller {
 
 	#[NoAdminRequired]
 	public function index(): Response {
-		return $this->handle(fn () => ['trusted' => $this->trusted->list((string)$this->userId)]);
+		return $this->handle(fn () => ['trusted' => $this->trusted->list((string)$this->userId), 'folders' => $this->trusted->folders((string)$this->userId)]);
+	}
+
+	/**
+	 * The folders whose messages show their remote images at once.
+	 * @param array<string, mixed> $folders inbox, sentitems, other, junkemail: true or false
+	 */
+	#[NoAdminRequired]
+	public function folders(array $folders = []): Response {
+		return $this->handle(fn () => ['folders' => $this->trusted->setFolders((string)$this->userId, $folders)]);
 	}
 
 	#[NoAdminRequired]

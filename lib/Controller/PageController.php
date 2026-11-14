@@ -9,6 +9,7 @@ use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\MailNotificationService;
 use OCA\Webmail\Service\MeetingReminderService;
 use OCA\Webmail\Service\ServerConfigService;
+use OCA\Webmail\Service\TrustedImagesService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
@@ -33,6 +34,7 @@ class PageController extends Controller {
 		private MailNotificationService $bell,
 		private MeetingReminderService $reminders,
 		private IInitialState $initialState,
+		private TrustedImagesService $trustedImages,
 		private LoggerInterface $logger,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -74,6 +76,8 @@ class PageController extends Controller {
 			'visio' => $this->servers->getVisio(),
 			// most attachments of one message (bytes), set by the administrator
 			'maxAttachments' => $this->servers->getMaxAttachmentsBytes(),
+			// folders whose messages show their remote images at once (the user's choice)
+			'imageFolders' => $user !== null ? $this->trustedImages->folders($user->getUID()) : null,
 		]);
 
 		// The message body is rendered in a sandboxed srcdoc iframe which
