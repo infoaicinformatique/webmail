@@ -4168,6 +4168,8 @@ async function main() {
 		await page.fill('.wm-editor', 'Bon voyage !')
 		await page.setInputFiles('.wm-file-input', { name: 'billet.ics', mimeType: 'text/calendar', buffer: Buffer.from(ics) })
 		await submitCompose()
+		// (sent to oneself: in the inbox at the next refresh)
+		await page.click('.wm-list-header button[title="Actualiser"]')
 		await page.click('.wm-message:has-text("Votre billet de train")')
 		await page.click('.wm-attachment:has-text("billet.ics") .wm-ics-add')
 		await page.waitForSelector('.wm-toast:has-text("« Train Nice → Paris » ajouté à votre agenda")')
