@@ -2316,6 +2316,69 @@
 		})
 	}
 
+	/**
+	 * « Tous ses messages »: the messages of one sender in the folder shown,
+	 * to see them, or to mark as read, move or delete them all at once.
+	 */
+	async function senderMessages(m) {
+		const email = m.from && m.from.email
+		if (!email) return
+		// the folder of the message (a search may show it from another one)
+		const folderId = m.folderId || state.folderId
+		const base = '/accounts/' + state.accountId + '/sender'
+		const who = m.from.name && m.from.name !== email ? m.from.name + ' <' + email + '>' : email
+		// (the address in angle brackets: put in after the translation, which would strip it)
+		const title = _('Messages de {who}').replace('{who}', who)
+		const body = h('div', { class: 'wm-sender-body' }, h('span', { class: 'icon-loading' }))
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		overlay.appendChild(h('div', { class: 'wm-modal wm-modal-small wm-sender-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, title), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			body))
+		document.body.appendChild(overlay)
+		let info
+		try {
+			info = await api(base, { query: { folderId, email } })
+		} catch (e) { close(); toast(e.message, true); return }
+		const folder = folderName(folderId)
+		const apply = async (action, target, done) => {
+			try {
+				const r = await api(base, { method: 'POST', body: { folderId, email, action, target: target || '' } })
+				close()
+				if (action !== 'read') removeFromList(r.itemIds)
+				else r.itemIds.forEach((id) => updateListItem(id, { isRead: true }))
+				toast(done(r.count))
+				listCache.delete(state.accountId + '|' + folderId)
+				if (target) listCache.delete(state.accountId + '|' + target)
+				loadFolders()
+			} catch (e) { toast(e.message, true) }
+		}
+		clear(body)
+		const n = info.count
+		body.appendChild(h('p', {}, n > 1 ? _('{count} messages de cet expéditeur dans « {folder} ».', { count: n, folder }) : _('{count} message de cet expéditeur dans « {folder} ».', { count: n, folder })))
+		if (n >= info.max) body.appendChild(h('p', { class: 'wm-muted' }, _('Les {max} plus récents seulement : recommencez pour les suivants.', { max: info.max })))
+		const targets = state.folders.filter((f) => f.id !== folderId && f.role !== 'drafts' && f.role !== 'outbox')
+		const target = h('select', { name: 'senderTarget', 'aria-label': _('Dossier de destination') }, targets.map((f) => h('option', { value: f.id, selected: f.role === 'archive' }, folderName(f.id))))
+		body.appendChild(h('div', { class: 'wm-sender-actions' },
+			h('button', { type: 'button', class: 'wm-sender-show', onclick: () => { close(); resetSearch(); state.query = info.query; loadMessages(true) } }, '🔍 ' + _('Les afficher')),
+			h('button', { type: 'button', class: 'wm-sender-read', onclick: () => apply('read', '', (c) => c > 1 ? _('{count} messages marqués comme lus', { count: c }) : _('{count} message marqué comme lu', { count: c })) }, '✓ ' + _('Tout marquer comme lu')),
+			h('div', { class: 'wm-sender-move' }, target,
+				h('button', { type: 'button', class: 'wm-sender-move-btn', onclick: () => apply('move', target.value, (c) => c > 1 ? _('{count} messages déplacés dans « {folder} »', { count: c, folder: folderName(target.value) }) : _('{count} message déplacé dans « {folder} »', { count: c, folder: folderName(target.value) })) }, _('Tout déplacer'))),
+			h('button', {
+				type: 'button',
+				class: 'wm-danger wm-sender-delete',
+				onclick: () => {
+					if (!window.confirm((n > 1 ? _('Mettre les {count} messages de {who} à la corbeille ?', { count: n }) : _('Mettre le message de {who} à la corbeille ?')).replace('{who}', who))) return
+					apply('delete', '', (c) => c > 1 ? _('{count} messages mis à la corbeille', { count: c }) : _('{count} message mis à la corbeille', { count: c }))
+				},
+			}, '🗑 ' + _('Tout supprimer'))))
+		const first = body.querySelector('button')
+		if (first) first.focus()
+	}
+
 	async function folderAction(path, body, message) {
 		try {
 			const r = await api('/accounts/' + state.accountId + '/folders' + path, { method: 'POST', body })
@@ -2748,6 +2811,7 @@
 			window.WebmailModules.tasks ? h('button', { class: 'wm-task-from-msg', title: _('Créer une tâche à partir de ce message'), 'aria-label': _('Créer une tâche à partir de ce message'), onclick: () => taskFromMessage(m) }, '✅') : null,
 			window.WebmailModules.calendar ? h('button', { class: 'wm-event-from-msg', title: _('Créer un événement à partir de ce message'), 'aria-label': _('Créer un événement à partir de ce message'), onclick: () => eventFromMessage(m) }, '📅') : null,
 			h('button', { class: 'wm-eml-save-btn', title: _('Enregistrer le message dans Fichiers (.eml)'), 'aria-label': _('Enregistrer le message dans Fichiers'), onclick: () => saveMessageToFiles(m) }, '☁️'),
+			m.from && m.from.email && !m.from.email.startsWith('/') ? h('button', { class: 'wm-sender-btn', title: _('Les messages de cet expéditeur dans ce dossier : les afficher, les marquer comme lus, les déplacer ou les supprimer d\'un coup'), onclick: () => senderMessages(m) }, '👤 ' + _('Tous ses messages…')) : null,
 			h('button', { class: 'wm-rule-from-msg', title: _('Créer une règle pour les messages de cet expéditeur'), onclick: () => ruleFromMessage(m) }, '📋 ' + _('Règle…')),
 		)
 		detailEl.appendChild(toolbar)

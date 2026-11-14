@@ -57,6 +57,8 @@ return [
 		['name' => 'mail#importEml', 'url' => '/api/accounts/{id}/import', 'verb' => 'POST'],
 		['name' => 'mail#flags', 'url' => '/api/accounts/{id}/flags', 'verb' => 'POST'],
 		['name' => 'mail#snoozes', 'url' => '/api/accounts/{id}/snoozes', 'verb' => 'GET'],
+		['name' => 'sender#count', 'url' => '/api/accounts/{id}/sender', 'verb' => 'GET'],
+		['name' => 'sender#apply', 'url' => '/api/accounts/{id}/sender', 'verb' => 'POST'],
 		['name' => 'pin#index', 'url' => '/api/accounts/{id}/pinned', 'verb' => 'GET'],
 		['name' => 'pin#set', 'url' => '/api/accounts/{id}/pinned', 'verb' => 'POST'],
 		['name' => 'mail#snooze', 'url' => '/api/accounts/{id}/snooze', 'verb' => 'POST'],

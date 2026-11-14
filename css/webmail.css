@@ -1055,3 +1055,9 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-link-options { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .wm-link-options[open] { padding: 4px 8px; border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); }
 .wm-link-options summary { cursor: pointer; }
+
+/* « Tous ses messages » */
+.wm-sender-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.wm-sender-actions button { margin: 0; }
+.wm-sender-move { display: flex; gap: 8px; }
+.wm-sender-move select { flex: 1; margin: 0; }
