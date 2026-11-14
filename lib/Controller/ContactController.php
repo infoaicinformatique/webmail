@@ -9,6 +9,8 @@ use OCA\Webmail\Ews\EwsContacts;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\ContactDuplicates;
+use OCA\Webmail\Service\NcCalendarRules;
+use OCA\Webmail\Service\NextcloudContactsService;
 use OCA\Webmail\Service\NextcloudGroups;
 use OCA\Webmail\Service\NextcloudPeople;
 use OCA\Webmail\Service\PresenceService;
@@ -35,6 +37,7 @@ class ContactController extends Controller {
 		private NextcloudPeople $people,
 		private NextcloudGroups $groups,
 		private PresenceService $presence,
+		private NextcloudContactsService $nextcloud,
 		private LoggerInterface $logger,
 		private ?string $userId,
 	) {
@@ -43,6 +46,17 @@ class ContactController extends Controller {
 
 	protected function logger(): LoggerInterface {
 		return $this->logger;
+	}
+
+	/**
+	 * An address book of Nextcloud Contacts (« nc:<id> »): the account is still checked to be the user's.
+	 */
+	private function isNextcloud(int $id, string $book): bool {
+		if (!NcCalendarRules::isKey($book)) {
+			return false;
+		}
+		$this->accounts->find((string)$this->userId, $id);
+		return true;
 	}
 
 	/**
@@ -73,7 +87,13 @@ class ContactController extends Controller {
 				'canEdit' => $c['canEdit'],
 			], $this->shared->list(SharedFolderService::PUBLIC_CONTACTS, (string)$this->userId, $id));
 			$directory = [['key' => 'directory', 'name' => $this->l10n()->t('Annuaire de l\'entreprise'), 'kind' => 'directory', 'canEdit' => false]];
-			return ['books' => array_merge($own, $shared, $public, $directory)];
+			try {
+				$nextcloud = $this->nextcloud->books((string)$this->userId);
+			} catch (\Throwable $e) {
+				$this->logger->warning('Nextcloud address books not listed: ' . $e->getMessage(), ['exception' => $e]);
+				$nextcloud = [];
+			}
+			return ['books' => array_merge($own, $shared, $public, $directory, $nextcloud)];
 		});
 	}
 
@@ -230,6 +250,9 @@ class ContactController extends Controller {
 	public function index(int $id, int $offset = 0, int $limit = 100, string $q = '', string $book = 'contacts'): Response {
 		$limit = max(1, min(200, $limit));
 		return $this->handle(function () use ($id, $offset, $limit, $q, $book) {
+			if ($this->isNextcloud($id, $book)) {
+				return $this->nextcloud->list((string)$this->userId, $book, max(0, $offset), $limit, $q);
+			}
 			if ($book === 'directory') {
 				$items = $this->contacts($id)->searchDirectory($q);
 				return ['items' => $items, 'total' => count($items), 'hasMore' => false];
@@ -259,7 +282,7 @@ class ContactController extends Controller {
 
 	/** « Doublons » are looked for in one's own books only (not a colleague's, nor the public ones). */
 	private function assertOwnBook(int $id, string $book): void {
-		if ($book === 'directory' || $this->sharedEntry($id, $book) !== null) {
+		if ($book === 'directory' || NcCalendarRules::isKey($book) || $this->sharedEntry($id, $book) !== null) {
 			throw new MailException('Les doublons se cherchent dans vos propres carnets');
 		}
 	}
@@ -319,6 +342,9 @@ class ContactController extends Controller {
 	#[NoAdminRequired]
 	public function show(int $id, string $contactId, string $book = ''): Response {
 		return $this->handle(function () use ($id, $contactId, $book) {
+			if ($this->isNextcloud($id, $book)) {
+				return $this->nextcloud->get((string)$this->userId, $book, $contactId);
+			}
 			$this->assertKnownBook($id, $book);
 			return $this->contacts($id, $book)->getContact($contactId);
 		});
@@ -330,6 +356,12 @@ class ContactController extends Controller {
 	#[NoAdminRequired]
 	public function create(int $id, array $contact, string $book = 'contacts'): Response {
 		return $this->handle(function () use ($id, $contact, $book) {
+			if ($this->isNextcloud($id, $book)) {
+				if (!empty($contact['isGroup'])) {
+					throw new MailException('Les groupes se créent dans un carnet Exchange');
+				}
+				return ['id' => $this->nextcloud->create((string)$this->userId, $book, $contact)];
+			}
 			if ($book === 'directory') {
 				throw new MailException('L\'annuaire de l\'entreprise est en lecture seule');
 			}
@@ -350,6 +382,10 @@ class ContactController extends Controller {
 	#[NoAdminRequired]
 	public function update(int $id, string $contactId, array $contact, string $book = ''): Response {
 		return $this->handle(function () use ($id, $contactId, $contact, $book) {
+			if ($this->isNextcloud($id, $book)) {
+				$this->nextcloud->update((string)$this->userId, $book, $contactId, $contact);
+				return ['status' => 'ok'];
+			}
 			$this->assertKnownBook($id, $book);
 			$c = $this->contacts($id, $book);
 			if (!empty($contact['isGroup'])) {
@@ -373,8 +409,12 @@ class ContactController extends Controller {
 			if ($book === 'directory') {
 				throw new MailException('L\'annuaire de l\'entreprise ne s\'exporte pas');
 			}
-			$this->assertKnownBook($id, $book);
-			$vcf = VCard::export($this->contacts($id, $book)->exportContacts($book));
+			$vcf = $this->isNextcloud($id, $book)
+				? VCard::export($this->nextcloud->all((string)$this->userId, $book))
+				: (function () use ($id, $book) {
+					$this->assertKnownBook($id, $book);
+					return VCard::export($this->contacts($id, $book)->exportContacts($book));
+				})();
 			$file = VCard::fileName($name);
 			return new DataDownloadResponse($vcf, $file . '.vcf', 'text/vcard; charset=utf-8');
 		});
@@ -391,9 +431,14 @@ class ContactController extends Controller {
 			if ($book === 'directory') {
 				throw new MailException('L\'annuaire de l\'entreprise est en lecture seule');
 			}
-			$entry = $this->sharedEntry($id, $book);
-			if ($entry === false || ($entry !== null && !$entry['canEdit'])) {
-				throw new MailException('Vous ne pouvez pas ajouter de contact dans ce carnet');
+			$nextcloud = $this->isNextcloud($id, $book);
+			if ($nextcloud) {
+				$this->nextcloud->book((string)$this->userId, $book, true);
+			} else {
+				$entry = $this->sharedEntry($id, $book);
+				if ($entry === false || ($entry !== null && !$entry['canEdit'])) {
+					throw new MailException('Vous ne pouvez pas ajouter de contact dans ce carnet');
+				}
 			}
 			$file = $this->request->getUploadedFile('file');
 			if (!is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_file((string)$file['tmp_name'])) {
@@ -409,8 +454,19 @@ class ContactController extends Controller {
 			if (count($cards) > EwsContacts::MAX_TRANSFER) {
 				throw new MailException('Trop de contacts dans ce fichier (%s au plus)', [EwsContacts::MAX_TRANSFER]);
 			}
-			$contacts = $this->contacts($id, $book);
-			$known = $contacts->knownEmails($book);
+			if ($nextcloud) {
+				$known = [];
+				foreach ($this->nextcloud->all((string)$this->userId, $book) as $c) {
+					foreach ($c['emails'] as $e) {
+						$known[mb_strtolower($e)] = true;
+					}
+				}
+				$create = fn (array $card) => $this->nextcloud->create((string)$this->userId, $book, $card);
+			} else {
+				$contacts = $this->contacts($id, $book);
+				$known = $contacts->knownEmails($book);
+				$create = fn (array $card) => $contacts->createContact($card, $book);
+			}
 			$created = 0;
 			$skipped = 0;
 			$failed = [];
@@ -421,7 +477,7 @@ class ContactController extends Controller {
 					continue;
 				}
 				try {
-					$contacts->createContact($card, $book);
+					$create($card);
 					$created++;
 					foreach ($emails as $e) {
 						$known[$e] = true;
@@ -437,6 +493,10 @@ class ContactController extends Controller {
 	#[NoAdminRequired]
 	public function delete(int $id, string $contactId, string $book = ''): Response {
 		return $this->handle(function () use ($id, $contactId, $book) {
+			if ($this->isNextcloud($id, $book)) {
+				$this->nextcloud->delete((string)$this->userId, $book, $contactId);
+				return ['status' => 'ok'];
+			}
 			$this->assertKnownBook($id, $book);
 			$this->contacts($id, $book)->deleteContact($contactId, EwsContacts::isPublic($book));
 			return ['status' => 'ok'];
@@ -453,6 +513,10 @@ class ContactController extends Controller {
 	#[NoCSRFRequired]
 	public function photo(int $id, string $contactId, string $book = ''): Response {
 		return $this->handle(function () use ($id, $contactId, $book) {
+			if ($this->isNextcloud($id, $book)) {
+				$p = $this->nextcloud->photo((string)$this->userId, $book, $contactId);
+				return self::image($p === null ? null : ['content' => $p['data'], 'contentType' => $p['mime']], 300);
+			}
 			$this->assertKnownBook($id, $book);
 			return self::image($this->contacts($id, $book)->contactPhoto($contactId), 300);
 		});
@@ -474,10 +538,13 @@ class ContactController extends Controller {
 	#[UserRateLimit(limit: 60, period: 300)]
 	public function setPhoto(int $id, string $contactId, string $photo = '', string $book = ''): Response {
 		return $this->handle(function () use ($id, $contactId, $photo, $book) {
-			$this->assertKnownBook($id, $book);
-			$entry = $this->sharedEntry($id, $book);
-			if (is_array($entry) && !$entry['canEdit']) {
-				throw new MailException('Ce carnet est en lecture seule');
+			$nextcloud = $this->isNextcloud($id, $book);
+			if (!$nextcloud) {
+				$this->assertKnownBook($id, $book);
+				$entry = $this->sharedEntry($id, $book);
+				if (is_array($entry) && !$entry['canEdit']) {
+					throw new MailException('Ce carnet est en lecture seule');
+				}
 			}
 			$content = '';
 			if ($photo !== '') {
@@ -486,7 +553,11 @@ class ContactController extends Controller {
 				}
 				$content = (string)base64_decode($m[2], true);
 			}
-			$this->contacts($id, $book)->setContactPhoto($contactId, $content);
+			if ($nextcloud) {
+				$this->nextcloud->setPhoto((string)$this->userId, $book, $contactId, $content);
+			} else {
+				$this->contacts($id, $book)->setContactPhoto($contactId, $content);
+			}
 			return ['hasPhoto' => $content !== ''];
 		});
 	}

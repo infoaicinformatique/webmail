@@ -12,6 +12,8 @@ use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\IcsImport;
 use OCA\Webmail\Service\MeetingReminderService;
+use OCA\Webmail\Service\NcCalendarRules;
+use OCA\Webmail\Service\NextcloudCalendarService;
 use OCA\Webmail\Service\SharedFolderService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -31,6 +33,7 @@ class CalendarController extends Controller {
 		private AccountService $accounts,
 		private SharedFolderService $shared,
 		private MeetingReminderService $reminders,
+		private NextcloudCalendarService $nextcloud,
 		private LoggerInterface $logger,
 		private ?string $userId,
 	) {
@@ -64,6 +67,17 @@ class CalendarController extends Controller {
 		return new EwsCalendar($client);
 	}
 
+	/**
+	 * A calendar of Nextcloud (« nc:<id> »): the account is still checked to be the user's.
+	 */
+	private function isNextcloud(int $id, string $calendar): bool {
+		if (!NcCalendarRules::isKey($calendar)) {
+			return false;
+		}
+		$this->accounts->find((string)$this->userId, $id);
+		return true;
+	}
+
 	private static function date(string $value): \DateTimeImmutable {
 		try {
 			return new \DateTimeImmutable($value);
@@ -95,7 +109,14 @@ class CalendarController extends Controller {
 				'canEdit' => $c['canEdit'],
 				'mode' => 'full',
 			], $this->shared->list(SharedFolderService::PUBLIC_CALENDARS, (string)$this->userId, $id));
-			return ['calendars' => array_merge($own, $shared, $public)];
+			// the calendars of Nextcloud (own and shared with the user): not having them leaves the others
+			try {
+				$nextcloud = $this->nextcloud->calendars((string)$this->userId);
+			} catch (\Throwable $e) {
+				$this->logger->warning('Nextcloud calendars not listed: ' . $e->getMessage(), ['exception' => $e]);
+				$nextcloud = [];
+			}
+			return ['calendars' => array_merge($own, $shared, $public, $nextcloud)];
 		});
 	}
 
@@ -173,6 +194,9 @@ class CalendarController extends Controller {
 	#[NoAdminRequired]
 	public function events(int $id, string $start, string $end, string $tz = 'UTC', string $calendar = 'calendar'): Response {
 		return $this->handle(function () use ($id, $start, $end, $tz, $calendar) {
+			if ($this->isNextcloud($id, $calendar)) {
+				return ['events' => $this->nextcloud->events((string)$this->userId, $calendar, self::date($start), self::date($end), $tz)];
+			}
 			$cal = $this->calendar($id, $tz, $calendar);
 			if (str_starts_with($calendar, 'shared:')) {
 				$entry = $this->shared->find(SharedFolderService::CALENDARS, (string)$this->userId, $id, substr($calendar, 7));
@@ -256,6 +280,9 @@ class CalendarController extends Controller {
 	#[NoAdminRequired]
 	public function search(int $id, string $q, string $tz = 'UTC', string $calendar = 'calendar'): Response {
 		return $this->handle(function () use ($id, $q, $tz, $calendar) {
+			if ($this->isNextcloud($id, $calendar)) {
+				return ['events' => $this->nextcloud->search((string)$this->userId, $calendar, $q, $tz)];
+			}
 			if (str_starts_with($calendar, 'shared:')) {
 				$entry = $this->shared->find(SharedFolderService::CALENDARS, (string)$this->userId, $id, substr($calendar, 7));
 				if ($entry === null) {
@@ -271,7 +298,9 @@ class CalendarController extends Controller {
 
 	#[NoAdminRequired]
 	public function event(int $id, string $eventId, string $tz = 'UTC', string $calendar = ''): Response {
-		return $this->handle(fn () => $this->calendar($id, $tz, $calendar)->getEvent($eventId));
+		return $this->handle(fn () => $this->isNextcloud($id, $calendar)
+			? $this->nextcloud->event((string)$this->userId, $calendar, $eventId, $tz)
+			: $this->calendar($id, $tz, $calendar)->getEvent($eventId));
 	}
 
 	/**
@@ -280,6 +309,9 @@ class CalendarController extends Controller {
 	#[NoAdminRequired]
 	public function create(int $id, array $event, string $tz = 'UTC', string $calendar = 'calendar'): Response {
 		return $this->handle(function () use ($id, $event, $tz, $calendar) {
+			if ($this->isNextcloud($id, $calendar)) {
+				return ['id' => $this->nextcloud->create((string)$this->userId, $calendar, $event, $tz)];
+			}
 			if (str_starts_with($calendar, 'shared:')) {
 				$entry = $this->shared->find(SharedFolderService::CALENDARS, (string)$this->userId, $id, substr($calendar, 7));
 				if ($entry === null || !$entry['canEdit']) {
@@ -322,7 +354,9 @@ class CalendarController extends Controller {
 	 */
 	#[NoAdminRequired]
 	public function series(int $id, string $eventId, string $tz = 'UTC', string $calendar = ''): Response {
-		return $this->handle(fn () => $this->calendar($id, $tz, $calendar)->getSeries($eventId));
+		return $this->handle(fn () => $this->isNextcloud($id, $calendar)
+			? $this->nextcloud->series((string)$this->userId, $calendar, $eventId, $tz)
+			: $this->calendar($id, $tz, $calendar)->getSeries($eventId));
 	}
 
 	/**
@@ -332,6 +366,10 @@ class CalendarController extends Controller {
 	#[NoAdminRequired]
 	public function update(int $id, string $eventId, array $event, string $tz = 'UTC', bool $series = false, string $calendar = ''): Response {
 		return $this->handle(function () use ($id, $eventId, $event, $tz, $series, $calendar) {
+			if ($this->isNextcloud($id, $calendar)) {
+				$this->nextcloud->update((string)$this->userId, $calendar, $eventId, $event, $tz, $series);
+				return ['status' => 'ok'];
+			}
 			$this->calendar($id, $tz, $calendar, true)->updateEvent($eventId, $event, $series);
 			$this->reminders->changed($id);
 			return ['status' => 'ok'];
@@ -344,6 +382,10 @@ class CalendarController extends Controller {
 	#[NoAdminRequired]
 	public function move(int $id, string $eventId, string $start, string $end, bool $allDay = false, bool $notify = false, string $tz = 'UTC', string $calendar = ''): Response {
 		return $this->handle(function () use ($id, $eventId, $start, $end, $allDay, $notify, $tz, $calendar) {
+			if ($this->isNextcloud($id, $calendar)) {
+				$this->nextcloud->move((string)$this->userId, $calendar, $eventId, $start, $end, $allDay, $tz);
+				return ['status' => 'ok'];
+			}
 			$this->calendar($id, $tz, $calendar, true)->moveEvent($eventId, $start, $end, $allDay, $notify);
 			$this->reminders->changed($id);
 			return ['status' => 'ok'];
@@ -353,6 +395,10 @@ class CalendarController extends Controller {
 	#[NoAdminRequired]
 	public function delete(int $id, string $eventId, bool $series = false, string $calendar = ''): Response {
 		return $this->handle(function () use ($id, $eventId, $series, $calendar) {
+			if ($this->isNextcloud($id, $calendar)) {
+				$this->nextcloud->delete((string)$this->userId, $calendar, $eventId, $series);
+				return ['status' => 'ok'];
+			}
 			$this->calendar($id, 'UTC', $calendar, true)->deleteEvent($eventId, $series, str_starts_with($calendar, 'public:'));
 			$this->reminders->changed($id);
 			return ['status' => 'ok'];
@@ -408,6 +454,9 @@ class CalendarController extends Controller {
 	#[NoAdminRequired]
 	public function respond(int $id, string $eventId, string $response, string $message = '', string $calendar = '', string $proposedStart = '', string $proposedEnd = '', string $tz = 'UTC'): Response {
 		return $this->handle(function () use ($id, $eventId, $response, $message, $calendar, $proposedStart, $proposedEnd, $tz) {
+			if ($this->isNextcloud($id, $calendar)) {
+				throw new MailException('Répondez à cette invitation dans l\'Agenda de Nextcloud');
+			}
 			// answering in a colleague's calendar = answering on their behalf:
 			// only with edit rights on it (delegate / editor in Outlook)
 			if (str_starts_with($calendar, 'shared:')) {

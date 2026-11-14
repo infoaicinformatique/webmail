@@ -1171,3 +1171,6 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-collapsed .wm-period-toggle::before { transform: rotate(-90deg); }
 .wm-period-toggle:hover { background: var(--color-background-hover) !important; }
 .wm-period-count { font-weight: normal; }
+
+/* the fields of a meeting (invitations, rooms): not for a calendar of Nextcloud */
+.wm-meeting-field[hidden] { display: none !important; }

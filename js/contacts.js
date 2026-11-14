@@ -214,6 +214,7 @@
 	/** "Contacts de Marie Martin", "« Clients VIP » de Marie Martin", or the book's own name */
 	function bookTitle(b) {
 		if (b.kind === 'public') return _('« {name} » (dossiers publics)', { name: b.name })
+		if (b.kind === 'nextcloud') return _('{name} (Nextcloud)', { name: b.name })
 		if (b.kind !== 'shared') return b.name
 		return b.folderName ? _('« {folder} » de {name}', { folder: b.folderName, name: b.name }) : _('Contacts de {name}', { name: b.name })
 	}
@@ -227,9 +228,9 @@
 				title: b.kind === 'public' ? _('Dossiers publics') + ' › ' + (b.path || b.name) : (b.email || b.name),
 				onclick: (e) => { e.preventDefault(); selectBook(b.key) },
 			},
-			h('span', { class: 'wm-book-icon', 'aria-hidden': 'true' }, { directory: '🏢', shared: '👥', public: '🗂️' }[b.kind] || '📇'),
+			h('span', { class: 'wm-book-icon', 'aria-hidden': 'true' }, { directory: '🏢', shared: '👥', public: '🗂️', nextcloud: '☁️' }[b.kind] || '📇'),
 			h('span', { class: 'wm-cal-name' }, b.kind === 'shared' && b.folderName ? b.folderName + ' (' + b.name + ')' : b.name)),
-			b.kind === 'shared' || b.kind === 'public' ? h('span', { class: 'wm-cal-mode' + (b.canEdit ? ' wm-cal-mode-edit' : '') }, b.canEdit ? _('modification') : _('lecture')) : null,
+			b.kind === 'shared' || b.kind === 'public' || (b.kind === 'nextcloud' && (b.shared || !b.canEdit)) ? h('span', { class: 'wm-cal-mode' + (b.canEdit ? ' wm-cal-mode-edit' : '') }, b.canEdit ? _('modification') : _('lecture')) : null,
 			b.kind === 'own' ? h('button', {
 				type: 'button',
 				class: 'wm-cal-share',
@@ -255,6 +256,7 @@
 		const shared = ct.books.filter((b) => b.kind === 'shared')
 		const publicBooks = ct.books.filter((b) => b.kind === 'public')
 		const directory = ct.books.filter((b) => b.kind === 'directory')
+		const nextcloud = ct.books.filter((b) => b.kind === 'nextcloud')
 		return h('div', { class: 'wm-cal-list' },
 			h('div', { class: 'wm-cal-section' }, _('Mes carnets')),
 			h('ul', {}, own.map(row)),
@@ -264,7 +266,10 @@
 			h('div', { class: 'wm-cal-section' }, _('Dossiers publics')),
 			publicBooks.length ? h('ul', {}, publicBooks.map(row)) : null,
 			h('button', { type: 'button', class: 'wm-cal-add wm-public-add', onclick: openAddPublic }, '＋ ' + _('Ajouter un carnet des dossiers publics')),
-			directory.length ? h('ul', { class: 'wm-directory' }, directory.map(row)) : null)
+			directory.length ? h('ul', { class: 'wm-directory' }, directory.map(row)) : null,
+			// the address books of the Contacts app (own and shared with you): the same cards, read and changed here
+			nextcloud.length ? h('div', { class: 'wm-cal-section' }, _('Carnets Nextcloud')) : null,
+			nextcloud.length ? h('ul', { class: 'wm-nc-books' }, nextcloud.map(row)) : null)
 	}
 
 	/**
@@ -867,9 +872,10 @@
 		const list = h('ul', { class: 'wm-group-edit' })
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
 		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? _('Créer le groupe') : _('Enregistrer'))
-		const writable = ct.books.filter((b) => b.canEdit)
+		// (the groups are Outlook's distribution lists: in an Exchange book)
+		const writable = ct.books.filter((b) => b.canEdit && b.kind !== 'nextcloud')
 		const bookSelect = isNew && writable.length > 1
-			? h('select', { name: 'book', 'aria-label': _('Carnet') }, writable.map((b) => h('option', { value: b.key, selected: b.key === (currentBook().canEdit ? ct.book : 'contacts') }, bookTitle(b))))
+			? h('select', { name: 'book', 'aria-label': _('Carnet') }, writable.map((b) => h('option', { value: b.key, selected: b.key === (currentBook().canEdit && currentBook().kind !== 'nextcloud' ? ct.book : 'contacts') }, bookTitle(b))))
 			: null
 		const render = () => {
 			core.clear(list)

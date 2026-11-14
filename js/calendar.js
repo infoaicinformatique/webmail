@@ -113,6 +113,10 @@
 	const PALETTE = ['#c0392b', '#27ae60', '#8e44ad', '#d35400', '#16a085', '#2c3e50', '#c71585', '#7f8c00', '#1f6fb2', '#a0522d']
 
 	function hiddenKey() { return 'webmail.calhidden.' + core.accountId }
+	/** the calendars hidden by default that the user ticked */
+	function shownByChoice() {
+		try { return new Set(JSON.parse(localStorage.getItem('webmail.calshown.' + core.accountId) || '[]')) } catch (e) { return new Set() }
+	}
 
 	/** @param {boolean} quiet loaded ahead, while another module is shown: no message, no redraw */
 	async function loadCalendars(force, quiet) {
@@ -128,12 +132,16 @@
 		if (accountId !== core.accountId) return
 		// the default calendar keeps the theme colour, the others get a palette colour
 		let i = 0
-		list.forEach((c) => { c.color = c.key === 'calendar' ? null : PALETTE[i++ % PALETTE.length] })
+		// (a Nextcloud calendar keeps its colour of the Calendar app)
+		list.forEach((c) => { c.color = c.key === 'calendar' ? null : (c.color || PALETTE[i++ % PALETTE.length]) })
 		cal.calendars = list
 		cal.calendarsFor = accountId
 		try {
 			cal.hidden = new Set(JSON.parse(localStorage.getItem(hiddenKey()) || '[]'))
 		} catch (e) { cal.hidden = new Set() }
+		// (the birthdays of Nextcloud: hidden until ticked)
+		const shown = shownByChoice()
+		list.forEach((c) => { if (c.hiddenByDefault && !shown.has(c.key)) cal.hidden.add(c.key) })
 		if (core.state.module === 'calendar') core.renderNav()
 	}
 
@@ -255,17 +263,24 @@
 				onchange: () => {
 					box.checked ? cal.hidden.delete(c.key) : cal.hidden.add(c.key)
 					try { localStorage.setItem(hiddenKey(), JSON.stringify([...cal.hidden])) } catch (e) { /* ignore */ }
+					if (c.hiddenByDefault) {
+						const shown = shownByChoice()
+						box.checked ? shown.add(c.key) : shown.delete(c.key)
+						try { localStorage.setItem('webmail.calshown.' + core.accountId, JSON.stringify([...shown])) } catch (e) { /* ignore */ }
+					}
 					load()
 				},
 			})
-			const mode = c.kind !== 'shared' && c.kind !== 'public' ? null : (c.mode === 'freebusy' ? 'freebusy' : (c.canEdit ? 'edit' : 'read'))
+			const mode = c.kind === 'nextcloud'
+				? (!c.canEdit ? 'read' : (c.shared ? 'edit' : null))
+				: c.kind !== 'shared' && c.kind !== 'public' ? null : (c.mode === 'freebusy' ? 'freebusy' : (c.canEdit ? 'edit' : 'read'))
 			return h('li', { class: 'wm-cal-row', dataset: { key: c.key } },
 				h('label', { class: 'wm-cal-label', title: c.email || c.path || c.name },
 					box,
 					h('span', { class: 'wm-cal-dot', style: c.color ? 'background:' + c.color : '' }),
 					h('span', { class: 'wm-cal-name' }, c.name)),
 				mode ? h('span', { class: 'wm-cal-mode wm-cal-mode-' + mode }, MODE_LABEL()[mode]) : null,
-				c.kind !== 'shared' && c.kind !== 'public' ? h('button', {
+				c.kind === 'own' ? h('button', {
 					type: 'button',
 					class: 'wm-cal-share',
 					title: _('Partager cet agenda'),
@@ -287,7 +302,8 @@
 					onclick: () => removePublic(c),
 				}, '✕') : null)
 		}
-		const own = cal.calendars.filter((c) => c.kind !== 'shared' && c.kind !== 'public')
+		const own = cal.calendars.filter((c) => c.kind !== 'shared' && c.kind !== 'public' && c.kind !== 'nextcloud')
+		const nextcloud = cal.calendars.filter((c) => c.kind === 'nextcloud')
 		const shared = cal.calendars.filter((c) => c.kind === 'shared')
 		const publicCals = cal.calendars.filter((c) => c.kind === 'public')
 		return h('div', { class: 'wm-cal-list' },
@@ -299,7 +315,9 @@
 			h('div', { class: 'wm-cal-section' }, _('Dossiers publics')),
 			publicCals.length ? h('ul', {}, publicCals.map(row)) : null,
 			h('button', { type: 'button', class: 'wm-cal-add wm-public-cal-add', onclick: openAddPublic }, '＋ ' + _('Ajouter un agenda des dossiers publics')),
-			h('div', { class: 'wm-cal-section' }, _('Nextcloud')),
+			h('div', { class: 'wm-cal-section' }, _('Agendas Nextcloud')),
+			// the calendars of the Calendar app (own and shared with you): read and changed here too
+			nextcloud.length ? h('ul', { class: 'wm-nc-calendars' }, nextcloud.map(row)) : null,
 			ncCalendarToggle(),
 			h('div', { class: 'wm-cal-section' }, _('Affichage')),
 			secondZonePicker())
@@ -1407,7 +1425,8 @@
 		const h = core.h
 		const calendar = calendarOf(summary)
 		const calendarLine = calendar && calendar.key !== 'calendar'
-			? h('div', { class: 'wm-muted' }, h('span', { class: 'wm-cal-dot', style: calendar.color ? 'background:' + calendar.color : '' }), ' ' + (calendar.kind === 'shared' ? _('Agenda de {name}', { name: calendar.name }) : _('Agenda {name}', { name: calendar.name })))
+			? h('div', { class: 'wm-muted' }, h('span', { class: 'wm-cal-dot', style: calendar.color ? 'background:' + calendar.color : '' }), ' ' + (calendar.kind === 'shared' ? _('Agenda de {name}', { name: calendar.name })
+				: calendar.kind === 'nextcloud' ? _('Agenda Nextcloud « {name} »', { name: calendar.name }) : _('Agenda {name}', { name: calendar.name })))
 			: null
 		if (summary.freeBusyOnly) {
 			// only availability is shared: nothing more to fetch
@@ -1556,7 +1575,7 @@
 			actions.appendChild(h('button', { class: 'wm-matrix-send-btn', title: _('Envoyer sur Matrix (Element)'), onclick: () => { close(); core.sendToMatrix(text) } }, '💬 ' + _('Matrix')))
 		}
 		if (readOnly) {
-			actions.appendChild(h('span', { class: 'wm-muted' }, '🔒 ' + _('Agenda partagé en lecture seule')))
+			actions.appendChild(h('span', { class: 'wm-muted' }, '🔒 ' + (calendar && calendar.kind === 'nextcloud' ? _('Agenda Nextcloud en lecture seule') : _('Agenda partagé en lecture seule'))))
 		}
 		if (isOccurrence) {
 			// describe the rule, and allow editing the whole series
@@ -1632,8 +1651,13 @@
 		try { lastCalendar = localStorage.getItem('webmail.lastcal.' + core.accountId) || 'calendar' } catch (e) { /* ignore */ }
 		const calendarSelect = isNew && writable.length > 1
 			? h('select', { name: 'calendar', 'aria-label': _('Agenda') }, writable.map((c) => h('option', { value: c.key, selected: c.key === lastCalendar },
-				c.kind === 'shared' ? _('Agenda de {name}', { name: c.name }) : c.name)))
+				c.kind === 'shared' ? _('Agenda de {name}', { name: c.name }) : c.kind === 'nextcloud' ? _('{name} (Nextcloud)', { name: c.name }) : c.name)))
 			: null
+		// invitations and rooms go through Exchange: not offered for a calendar of Nextcloud
+		const isNextcloudTarget = () => String(calendarSelect ? calendarSelect.value : ((ev && ev.calendar) || 'calendar')).startsWith('nc:')
+		const meetingOnly = (el) => { el.classList.add('wm-meeting-field'); return el }
+		const syncMeetingFields = () => form.querySelectorAll('.wm-meeting-field').forEach((el) => { el.hidden = isNextcloudTarget() })
+		if (calendarSelect) calendarSelect.addEventListener('change', () => syncMeetingFields())
 		const allDay = h('input', { type: 'checkbox', name: 'allDay', checked: ev ? ev.allDay : !!prefill.allDay })
 		const startDate = h('input', { type: 'date', name: 'startDate', required: true, value: ymd(start), 'aria-label': _('Date de début') })
 		const startTime = h('input', { type: 'time', name: 'startTime', value: hm(start), step: '300', 'aria-label': _('Heure de début') })
@@ -1980,6 +2004,7 @@
 					freeBusy: freeBusy.value,
 				}
 				if (rule) data.recurrence = rule.value()
+				if (isNextcloudTarget()) Object.assign(data, { attendees: '', optionalAttendees: '', resources: [] })
 				if (isSeries && !window.confirm(ev.attendees.length || ev.optionalAttendees.length
 					? _('Modifier toutes les occurrences de « {subject} » ? Les participants recevront la mise à jour.', { subject: subject.value || ev.subject })
 					: _('Modifier toutes les occurrences de « {subject} » ?', { subject: subject.value || ev.subject }))) return
@@ -1993,7 +2018,7 @@
 					} else {
 						await api('/accounts/' + core.accountId + '/calendar/update', { method: 'POST', body: { eventId: ev.id, event: data, tz: core.TZ, series: isSeries, calendar: ev.calendar || '' } })
 					}
-					const invited = (attendees.value + optional.value).trim() !== ''
+					const invited = !isNextcloudTarget() && (attendees.value + optional.value).trim() !== ''
 					core.toast(isNew ? (invited ? _('Événement créé, invitations envoyées') : _('Événement créé'))
 						: isSeries ? (invited ? _('Série modifiée, participants prévenus') : _('Série modifiée'))
 							: (invited ? _('Événement modifié, participants prévenus') : _('Événement modifié')))
@@ -2019,10 +2044,10 @@
 		field(_('Début'), startDate, startTime),
 		field(_('Fin'), endDate, endTime),
 		field(_('Lieu'), location, visioBtn, talkBtn),
-		h('div', { class: 'wm-field' }, h('span', {}, _('Salle')), h('div', { class: 'wm-room-field' }, roomChips, roomBtn, roomBox)),
-		field(_('Participants'), core.attachAutocomplete(attendees)),
-		field(_('Facultatifs'), core.attachAutocomplete(optional)),
-		h('div', { class: 'wm-field' }, h('span', {}), h('div', {}, planBtn, planBox)),
+		meetingOnly(h('div', { class: 'wm-field' }, h('span', {}, _('Salle')), h('div', { class: 'wm-room-field' }, roomChips, roomBtn, roomBox))),
+		meetingOnly(field(_('Participants'), core.attachAutocomplete(attendees))),
+		meetingOnly(field(_('Facultatifs'), core.attachAutocomplete(optional))),
+		meetingOnly(h('div', { class: 'wm-field' }, h('span', {}), h('div', {}, planBtn, planBox))),
 		rule ? h('div', { class: 'wm-field wm-field-top' }, h('span', {}, _('Répétition')), rule.el) : (ev.isRecurring ? h('p', { class: 'wm-muted' }, '🔁 ' + _('Seule cette occurrence sera modifiée.')) : null),
 		isSeries ? h('p', { class: 'wm-muted' }, customRule
 			? '🔁 ' + _('Les modifications s\'appliquent à toutes les occurrences. La répétition a été définie dans Outlook : seuls les horaires sont modifiables ici, pas les dates.')
@@ -2033,6 +2058,7 @@
 		err,
 		h('div', { class: 'wm-compose-actions' }, save, h('button', { type: 'button', onclick: () => close() }, _('Annuler'))))
 
+		syncMeetingFields()
 		const close = modal(isNew ? _('Nouvel événement') : isSeries ? _('Modifier la série') : _('Modifier l\'événement'), form)
 	}
 
