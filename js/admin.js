@@ -76,6 +76,11 @@
 			if (res.ok) showDiscovered((await res.json()).discovered)
 		})
 
+		const noVerify = document.getElementById('webmail-no-verify-tls')
+		const tlsWarning = document.getElementById('webmail-tls-warning')
+		const maxAttachments = document.getElementById('webmail-max-attachments')
+		noVerify.addEventListener('change', () => { tlsWarning.hidden = !noVerify.checked })
+
 		document.getElementById('webmail-save').addEventListener('click', async () => {
 			const servers = Array.from(tbody.querySelectorAll('tr')).map((tr) => ({
 				domain: tr.querySelector('.wm-domain').value.trim(),
@@ -92,6 +97,8 @@
 					body: JSON.stringify({
 						servers,
 						visio: document.getElementById('webmail-visio').value.trim(),
+						verifyTls: !noVerify.checked,
+						maxAttachmentsMb: parseInt(maxAttachments.value, 10) || 0,
 						autodiscover: {
 							enabled: document.getElementById('webmail-autodiscover').checked,
 							hosts: document.getElementById('webmail-autodiscover-hosts').value.split(/[,;\s]+/).filter(Boolean),
@@ -110,6 +117,9 @@
 					tbody.appendChild(tr)
 				})
 				document.getElementById('webmail-visio').value = data.visio
+				noVerify.checked = !data.verifyTls
+				tlsWarning.hidden = data.verifyTls
+				maxAttachments.value = data.maxAttachmentsMb
 				document.getElementById('webmail-autodiscover').checked = data.autodiscover.enabled
 				document.getElementById('webmail-autodiscover-hosts').value = data.autodiscover.hosts.join(', ')
 				showDiscovered(data.discovered)

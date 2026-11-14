@@ -53,10 +53,10 @@ et sur les téléphones, et inversement.
 | Pas de réponse | En envoyant, « Me rappeler si pas de réponse sous 3 jours » (1 à 14) : si aucun des destinataires n'a répondu dans ce délai (un message de leur part dans la boîte de réception, avec l'objet), la **cloche de Nextcloud** le signale (« Pas de réponse : … », envoyé le …, à …), webmail fermé ou non |
 | Options d'envoi | « Demander un accusé de lecture », et « **Envoyer plus tard** » à la date et l'heure choisies (demain 8 h proposé) : Exchange garde le message dans « Boîte d'envoi » jusque-là, même si Nextcloud est fermé. « 🖨 » imprime un message (en-têtes et contenu) ; « ⬇ » le télécharge en **.eml** (ouvert par Outlook, Thunderbird, Apple Mail…, pièces jointes comprises) et « ☁️ » l'enregistre en .eml dans Fichiers. Dans l'autre sens, « Tout marquer comme lu » du menu d'un dossier (s'il a des non-lus) le fait en une seule requête Exchange, sans accusé de lecture, quel que soit le nombre de messages. « Importer des messages (.eml)… » du même menu (ou des fichiers .eml déposés sur le dossier) y range des messages venant d'Outlook, de Thunderbird ou d'une autre boîte, comme des messages reçus et lus. **Annuler l'envoi** : après « Envoyer », le message attend quelques secondes (5 par défaut, réglable dans « Comptes et signature » : aucun, 5, 10, 20 ou 30 s) avec « Annuler l'envoi », qui le rouvre tel quel, et « Envoyer maintenant » ; fermer la page pendant ce délai demande confirmation ([capture](docs/capture-annuler-envoi.png)). **Pièce jointe oubliée** : si le texte parle d'une pièce jointe (« ci-joint », « en PJ », « pièce jointe », « attached »…, hors signature et citation) et qu'aucun fichier n'est joint, l'envoi demande confirmation |
 | Éditeur | Texte **mis en forme** : gras, italique, souligné, listes à puces et numérotées, liens, citations ; les adresses web tapées deviennent des liens. Le contenu est nettoyé sur le serveur avant l'envoi (aucun script ne peut passer) |
-| Images dans le texte | Une **capture d'écran collée** (Ctrl+V), une image **glissée** dans le texte ou ajoutée avec « 🖼 » s'insère à l'endroit du curseur. Les photos de plus de 1600 pixels sont réduites (JPEG), les captures restent nettes (PNG). À l'envoi, chaque image devient une **image intégrée** (`cid:`), comme avec Outlook : elle s'affiche chez tous les destinataires sans apparaître en pièce jointe, et une même image collée deux fois n'est jointe qu'une fois. Les images comptent dans la limite de 25 Mo |
+| Images dans le texte | Une **capture d'écran collée** (Ctrl+V), une image **glissée** dans le texte ou ajoutée avec « 🖼 » s'insère à l'endroit du curseur. Les photos de plus de 1600 pixels sont réduites (JPEG), les captures restent nettes (PNG). À l'envoi, chaque image devient une **image intégrée** (`cid:`), comme avec Outlook : elle s'affiche chez tous les destinataires sans apparaître en pièce jointe, et une même image collée deux fois n'est jointe qu'une fois. Les images comptent dans la limite des pièces jointes (25 Mo par défaut, réglable par l'administrateur) |
 | Signature | Dans « Comptes et signature », une signature **mise en forme** pour chaque compte : gras, italique, souligné, liens, et un **logo** (image ajoutée avec « 🖼 » ou collée, réduite à 400 pixels). Elle s'ajoute sous chaque nouveau message et chaque réponse, le logo étant envoyé en image intégrée. Une signature écrite avant en texte simple est reprise telle quelle |
 | Brouillons | Le message en cours est **enregistré automatiquement** dans « Brouillons » quelques secondes après chaque modification (« Brouillon enregistré à 15:42 ») et en fermant avec « Annuler ». Dans « Brouillons », un clic **rouvre le brouillon** pour le terminer et l'envoyer (y compris une réponse ou un transfert, avec sa citation et ses pièces jointes). « Supprimer le brouillon » le jette. Les **pièces jointes d'un nouveau message** (ordinateur ou Fichiers) sont enregistrées avec le brouillon dès qu'on les ajoute : rien n'est perdu en fermant la fenêtre, et « retirer » les enlève du brouillon. Celles d'une réponse ou d'un transfert, et les fichiers lourds (15 Mo et plus, qu'on peut encore envoyer en lien), partent au moment de l'envoi |
-| Pièces jointes | Téléchargement (une par une ou **toutes dans un .zip** nommé d'après l'objet, un message joint en .eml), **enregistrement dans Fichiers** (une par une ou **toutes d'un coup**), ajout depuis l'ordinateur ou **depuis Fichiers** (25 Mo au total) |
+| Pièces jointes | Téléchargement (une par une ou **toutes dans un .zip** nommé d'après l'objet, un message joint en .eml), **enregistrement dans Fichiers** (une par une ou **toutes d'un coup**), ajout depuis l'ordinateur ou **depuis Fichiers** (25 Mo au total par défaut, réglable par l'administrateur) |
 | Agenda dans Nextcloud | « Visible dans l'Agenda de Nextcloud » (barre latérale de l'agenda) : l'agenda Exchange du compte apparaît en lecture seule dans l'application Agenda de Nextcloud et sur les téléphones synchronisés avec Nextcloud (CalDAV), à côté des agendas Nextcloud — le mois passé et l'année à venir, relus au plus toutes les 5 minutes ; chaque événement renvoie au webmail pour être modifié |
 | Envoyer depuis Fichiers | Dans l'application Fichiers, l'action « Envoyer par e-mail » d'un fichier (ou de plusieurs, sélectionnés) ouvre un nouveau message du webmail avec les fichiers en pièces jointes et le nom du fichier en objet |
 | Copie dans Nextcloud Contacts | « ☁ » dans le carnet Contacts : les contacts Exchange copiés dans un carnet « Exchange — adresse » de Nextcloud Contacts, visible par l'application Contacts, les téléphones synchronisés avec Nextcloud (CardDAV) et les autres applications. Exchange reste la référence : la copie est remise à jour toutes les 6 heures (ou à la demande), sans toucher aux cartes ajoutées à la main ; « Arrêter » retire le carnet |
@@ -275,7 +275,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.126.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.127.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -318,7 +318,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.126 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.127 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -392,8 +392,11 @@ Les requêtes vers Exchange suivent les réglages réseau de Nextcloud, comme se
 - Autodiscover se connecte uniquement aux adresses publiques vérifiées juste avant (une seconde réponse DNS ne peut pas
   rediriger la requête vers le réseau local).
 - L'ajout de compte est limité à 10 tentatives par 5 minutes et par utilisateur.
-- Le certificat TLS du serveur Exchange est vérifié. Pour un environnement de test uniquement, cette vérification se désactive avec
-  `occ config:app:set webmail verify_tls --value=no`.
+- Le certificat TLS des serveurs Exchange et Matrix est vérifié. Pour un serveur interne avec un certificat auto-signé
+  uniquement, cette vérification se désactive dans Administration → Webmail Exchange → « Sécurité et limites »
+  (avertissement affiché, changement noté dans le journal de Nextcloud) ou avec `occ config:app:set webmail verify_tls --value=no`.
+- La taille maximale des pièces jointes d'un message (25 Mo par défaut, de 1 à 150 Mo) se règle au même endroit, pour
+  tous les comptes. Exchange applique aussi sa propre limite : ne la dépassez pas.
 
 ## Dépannage
 

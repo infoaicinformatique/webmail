@@ -37,9 +37,21 @@ class AdminController extends Controller {
 	 * @param array<int, array<string, string>> $servers
 	 * @param ?array{enabled?: bool, hosts?: string[]} $autodiscover
 	 * @param ?string $visio the address of the video meetings (Element Call…), '' for none
+	 * @param ?bool $verifyTls whether the certificates of the servers are checked
+	 * @param ?int $maxAttachmentsMb most attachments of one message (MB)
 	 */
-	public function save(array $servers = [], ?array $autodiscover = null, ?string $visio = null): Response {
-		return $this->handle(function () use ($servers, $autodiscover, $visio) {
+	public function save(array $servers = [], ?array $autodiscover = null, ?string $visio = null, ?bool $verifyTls = null, ?int $maxAttachmentsMb = null): Response {
+		return $this->handle(function () use ($servers, $autodiscover, $visio, $verifyTls, $maxAttachmentsMb) {
+			// checked first: nothing is saved when the size is refused
+			if ($maxAttachmentsMb !== null) {
+				$this->servers->setMaxAttachmentsMb($maxAttachmentsMb);
+			}
+			if ($verifyTls !== null) {
+				if ($verifyTls !== $this->servers->getVerifyTls()) {
+					$this->logger->warning('Webmail: certificate checks of the Exchange and Matrix servers ' . ($verifyTls ? 'enabled' : 'DISABLED') . ' by an administrator');
+				}
+				$this->servers->setVerifyTls($verifyTls);
+			}
 			if ($visio !== null) {
 				$this->servers->setVisio($visio);
 			}
@@ -65,6 +77,8 @@ class AdminController extends Controller {
 			'autodiscover' => $this->servers->getAutodiscover(),
 			'discovered' => $this->servers->getDiscovered(),
 			'visio' => $this->servers->getVisio(),
+			'verifyTls' => $this->servers->getVerifyTls(),
+			'maxAttachmentsMb' => $this->servers->getMaxAttachmentsMb(),
 		];
 	}
 }

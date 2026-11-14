@@ -20,6 +20,15 @@ class ServerConfigServiceTest extends TestCase {
 		ServerConfigService::normalizeUrl('http://ex3.mail.ovh.net');
 	}
 
+	public function testSizeOfTheAttachments(): void {
+		$this->assertSame(25, ServerConfigService::attachmentsMb(''), 'the usual limit of Exchange by default');
+		$this->assertSame(35, ServerConfigService::attachmentsMb(' 35 '));
+		$this->assertSame(150, ServerConfigService::attachmentsMb('150'));
+		foreach (['0', '151', '-3', '20.5', 'abc'] as $wrong) {
+			$this->assertSame(25, ServerConfigService::attachmentsMb($wrong), $wrong);
+		}
+	}
+
 	public function testVisioAddress(): void {
 		$this->assertSame('', ServerConfigService::visioUrl('  '));
 		// Element Call: its address, links made from it

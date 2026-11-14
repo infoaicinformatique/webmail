@@ -12,6 +12,7 @@ use OCA\Webmail\Service\AttachmentZip;
 use OCA\Webmail\Service\FollowUpService;
 use OCA\Webmail\Service\HtmlSanitizer;
 use OCA\Webmail\Service\MailNotificationService;
+use OCA\Webmail\Service\ServerConfigService;
 use OCA\Webmail\Service\SharedFolderService;
 use OCA\Webmail\Service\SnoozeService;
 use OCA\Webmail\Service\TrustedImagesService;
@@ -36,7 +37,6 @@ class MailController extends Controller {
 	use ErrorHandling;
 
 	/** Maximum total size of attachments sent in one message. */
-	private const MAX_ATTACHMENTS_BYTES = 25 * 1024 * 1024;
 
 	public function __construct(
 		IRequest $request,
@@ -52,6 +52,7 @@ class MailController extends Controller {
 		private IURLGenerator $urlGenerator,
 		private LoggerInterface $logger,
 		private ICacheFactory $cacheFactory,
+		private ServerConfigService $serverConfig,
 		private ?string $userId,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -692,9 +693,9 @@ class MailController extends Controller {
 			$new = $this->collectAttachments();
 			$size = array_sum(array_map(fn ($a) => strlen($a['content']), $new))
 				+ array_sum(array_column($client->draftAttachments($draftId), 'size'));
-			if ($size > self::MAX_ATTACHMENTS_BYTES) {
+			if ($size > $this->serverConfig->getMaxAttachmentsBytes()) {
 				throw new MailException('Pièces jointes trop lourdes (%1$s Mo, %2$s Mo au plus) : envoyez les plus grosses en lien Nextcloud',
-					[round($size / 1048576, 1), self::MAX_ATTACHMENTS_BYTES / 1048576]);
+					[round($size / 1048576, 1), $this->serverConfig->getMaxAttachmentsMb()]);
 			}
 			return ['attachments' => $client->addDraftAttachments($draftId, $new)];
 		});
@@ -739,9 +740,9 @@ class MailController extends Controller {
 			$inline = HtmlSanitizer::extractInlineImages($m['html']);
 			$m['html'] = $inline['html'];
 			$size = array_sum(array_map(fn ($a) => strlen($a['content']), array_merge($attachments, $inline['images'])));
-			if ($size > self::MAX_ATTACHMENTS_BYTES) {
+			if ($size > $this->serverConfig->getMaxAttachmentsBytes()) {
 				throw new MailException('Pièces jointes et images trop lourdes (%1$s Mo, %2$s Mo au plus) : envoyez les plus grosses en lien Nextcloud',
-					[round($size / 1048576, 1), self::MAX_ATTACHMENTS_BYTES / 1048576]);
+					[round($size / 1048576, 1), $this->serverConfig->getMaxAttachmentsMb()]);
 			}
 			$attachments = array_merge($attachments, $inline['images']);
 			$draftId = (string)$this->request->getParam('draftId', '');
@@ -819,15 +820,15 @@ class MailController extends Controller {
 					throw new MailException('Impossible de joindre : %s', [$path]);
 				}
 				$total += $node->getSize();
-				if ($total > self::MAX_ATTACHMENTS_BYTES) {
+				if ($total > $this->serverConfig->getMaxAttachmentsBytes()) {
 					break;
 				}
 				$out[] = ['name' => $node->getName(), 'contentType' => $node->getMimetype(), 'content' => $node->getContent()];
 			}
 		}
 
-		if ($total > self::MAX_ATTACHMENTS_BYTES) {
-			throw new MailException('Les pièces jointes dépassent 25 Mo');
+		if ($total > $this->serverConfig->getMaxAttachmentsBytes()) {
+			throw new MailException('Les pièces jointes dépassent %s Mo', [$this->serverConfig->getMaxAttachmentsMb()]);
 		}
 		return $out;
 	}

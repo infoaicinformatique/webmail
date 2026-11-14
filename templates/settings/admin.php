@@ -62,6 +62,21 @@ $code = fn (string $text): string => '<code>' . \OCP\Util::sanitizeHTML($text) .
 		<label for="webmail-visio"><?php p($l->t('Adresse de la visio')); ?></label>
 		<input type="url" id="webmail-visio" value="<?php p($_['visio']); ?>" placeholder="https://call.element.io" size="50">
 	</p>
+	<h3><?php p($l->t('Sécurité et limites')); ?></h3>
+	<p class="settings-hint">
+		<?php p($l->t('Taille totale des pièces jointes d\'un message, pour tous les comptes. Exchange applique aussi sa propre limite (25 Mo par défaut chez OVH Hosted Exchange) : ne la dépassez pas, sinon il refusera les messages. Au-delà, les utilisateurs envoient leurs fichiers en lien Nextcloud.')); ?>
+	</p>
+	<p>
+		<label for="webmail-max-attachments"><?php p($l->t('Taille maximale des pièces jointes par message (Mo)')); ?></label>
+		<input type="number" id="webmail-max-attachments" min="1" max="<?php p((string)$_['maxAttachmentsLimit']); ?>" step="1" value="<?php p((string)$_['maxAttachmentsMb']); ?>">
+	</p>
+	<p>
+		<input type="checkbox" class="checkbox" id="webmail-no-verify-tls" <?php if (!$_['verifyTls']) { print_unescaped('checked'); } ?>>
+		<label for="webmail-no-verify-tls"><?php p($l->t('Ne pas vérifier le certificat des serveurs (Exchange, Matrix)')); ?></label>
+	</p>
+	<p id="webmail-tls-warning" class="wm-tls-warning" role="alert" <?php if ($_['verifyTls']) { print_unescaped('hidden'); } ?>>
+		<?php p($l->t('Attention : sans vérification du certificat, une personne placée sur le réseau peut se faire passer pour le serveur et lire les mots de passe et les messages. À n\'utiliser que pour un serveur interne avec un certificat auto-signé, jamais pour OVH Hosted Exchange dont les certificats sont valides.')); ?>
+	</p>
 	<p>
 		<button type="button" id="webmail-add"><?php p($l->t('Ajouter un domaine')); ?></button>
 		<button type="button" id="webmail-save" class="primary"><?php p($l->t('Enregistrer')); ?></button>

@@ -72,6 +72,8 @@ class PageController extends Controller {
 			'talk' => $user !== null && $this->apps->isEnabledForUser('spreed', $user),
 			// video meetings with Element Call (Matrix) or another service, set by the administrator
 			'visio' => $this->servers->getVisio(),
+			// most attachments of one message (bytes), set by the administrator
+			'maxAttachments' => $this->servers->getMaxAttachmentsBytes(),
 		]);
 
 		// The message body is rendered in a sandboxed srcdoc iframe which
