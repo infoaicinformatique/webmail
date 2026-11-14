@@ -497,9 +497,8 @@ def seed():
     # a contact with its photo (set in Outlook)
     next(c for c in CONTACTS.values() if c.get('displayName') == 'Anne Bernard')['photo'] = ('image/png', PNG_BLUE)
     # a birthday in 3 days, as Outlook saves it from Paris: midnight there, the day before at 23:00 UTC
-    soon = dt.date.today() + dt.timedelta(days=3)
-    born = dt.datetime(1980, soon.month, soon.day) - dt.timedelta(hours=1)
-    next(c for c in CONTACTS.values() if c.get('displayName') == 'Anne Bernard')['birthday'] = born.strftime('%Y-%m-%dT%H:%M:%SZ')
+    # (computed when asked: a test running across midnight still sees « dans 3 jours »)
+    next(c for c in CONTACTS.values() if c.get('displayName') == 'Anne Bernard')['birthday'] = 'IN-3-DAYS'
     gid = new_id('DL')
     CONTACTS[gid] = dict(id=gid, kind='DistributionList', displayName='Équipe projet', folder='F-CONTACTS',
                          members=[('Anne Bernard', 'anne@cabinet-bernard.fr'), ('Lucas Petit', 'lucas.petit@exemple.org')])
@@ -587,7 +586,13 @@ def contact_xml(c, detail):
     if phones:
         x += '<t:PhoneNumbers>%s</t:PhoneNumbers>' % ''.join('<t:Entry Key="%s">%s</t:Entry>' % (el, esc(c[k])) for k, el in phones)
     if c.get('birthday'):
-        x += '<t:Birthday>%s</t:Birthday>' % c['birthday']
+        b = c['birthday']
+        if b == 'IN-3-DAYS':
+            # (the day in Paris, as the browser of the test sees it)
+            from zoneinfo import ZoneInfo
+            soon = dt.datetime.now(ZoneInfo('Europe/Paris')).date() + dt.timedelta(days=3)
+            b = (dt.datetime(1980, soon.month, soon.day) - dt.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
+        x += '<t:Birthday>%s</t:Birthday>' % b
     if detail and c['department']:
         x += '<t:Department>%s</t:Department>' % esc(c['department'])
     if detail and c.get('matrix'):
