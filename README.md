@@ -308,9 +308,9 @@ et en français, dépôt, captures). Pour publier une version :
 make appstore APP_KEY=~/.nextcloud/certificates/webmail.key
 ```
 
-3. Publier l'archive à une adresse publique : pousser l'étiquette `v<version>` (celle de
-   `appinfo/info.xml`, par exemple `git tag v1.127.1 && git push origin v1.127.1`) crée la
-   release GitHub avec l'archive (`.github/workflows/release.yml`). La déclarer ensuite sur apps.nextcloud.com avec le contenu de `build/webmail-<version>.tar.gz.sig`.
+3. Publier l'archive à une adresse publique : chaque nouvelle version de `appinfo/info.xml`
+   arrivée sur `main` est publiée en release GitHub `v<version>` avec l'archive
+   (`.github/workflows/release.yml`, aussi lançable à la main depuis l'onglet Actions). La déclarer ensuite sur apps.nextcloud.com avec le contenu de `build/webmail-<version>.tar.gz.sig`.
 
 Les captures déclarées dans `info.xml` sont lues sur GitHub : le dépôt doit être
 public au moment de la publication.
