@@ -2399,7 +2399,8 @@
 		const folderId = m.folderId || state.folderId
 		const base = '/accounts/' + state.accountId + '/sender'
 		const who = m.from.name && m.from.name !== email ? m.from.name + ' <' + email + '>' : email
-		const title = _('Messages de {who}', { who })
+		// (the address in angle brackets: put in after the translation, which would strip it)
+		const title = _('Messages de {who}').replace('{who}', who)
 		const body = h('div', { class: 'wm-sender-body' }, h('span', { class: 'icon-loading' }))
 		const overlay = h('div', { class: 'wm-overlay' })
 		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
@@ -2442,7 +2443,7 @@
 				type: 'button',
 				class: 'wm-danger wm-sender-delete',
 				onclick: () => {
-					if (!window.confirm(n > 1 ? _('Mettre les {count} messages de {who} à la corbeille ?', { count: n, who }) : _('Mettre le message de {who} à la corbeille ?', { who }))) return
+					if (!window.confirm((n > 1 ? _('Mettre les {count} messages de {who} à la corbeille ?', { count: n }) : _('Mettre le message de {who} à la corbeille ?')).replace('{who}', who))) return
 					apply('delete', '', (c) => c > 1 ? _('{count} messages mis à la corbeille', { count: c }) : _('{count} message mis à la corbeille', { count: c }))
 				},
 			}, '🗑 ' + _('Tout supprimer'))))
