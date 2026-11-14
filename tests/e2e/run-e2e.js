@@ -4516,9 +4516,9 @@ async function main() {
 		await shot('16-mobile-contact')
 	})
 
-	// expected: deliberate 400s (bad domain/password, missing recipient) and the fake tracker pixel
+	// expected: the copy a second run would make, looked for (404); deliberate 400s (bad domain/password, missing recipient) and the fake tracker pixel
 	// errors of other Nextcloud apps (Files, Text… where the unified search is tried) are not ours
-	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED/.test(e)
+	const relevant = errors.filter((e) => !/favicon|ResizeObserver|status of 400|ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|facture-novembre%20\(2\)/.test(e)
 		&& !/\/apps\/(?!webmail\/)[a-z_]+\//.test(e))
 	await browser.close()
 	if (relevant.length) {
