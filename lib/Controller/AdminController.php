@@ -40,8 +40,14 @@ class AdminController extends Controller {
 	 * @param ?bool $verifyTls whether the certificates of the servers are checked
 	 * @param ?int $maxAttachmentsMb most attachments of one message (MB)
 	 */
-	public function save(array $servers = [], ?array $autodiscover = null, ?string $visio = null, ?bool $verifyTls = null, ?int $maxAttachmentsMb = null): Response {
-		return $this->handle(function () use ($servers, $autodiscover, $visio, $verifyTls, $maxAttachmentsMb) {
+	public function save(array $servers = [], ?array $autodiscover = null, ?string $visio = null, ?bool $verifyTls = null, ?int $maxAttachmentsMb = null, ?string $visioMode = null): Response {
+		return $this->handle(function () use ($servers, $autodiscover, $visio, $verifyTls, $maxAttachmentsMb, $visioMode) {
+			if ($visioMode !== null) {
+				if ($visioMode === ServerConfigService::VISIO_ELEMENT_ROOM && trim((string)$visio) === '') {
+					throw new \OCA\Webmail\Exception\MailException('Indiquez l\'adresse de votre Element (par exemple %s)', ['https://chat.example.org']);
+				}
+				$this->servers->setVisioMode($visioMode);
+			}
 			// checked first: nothing is saved when the size is refused
 			if ($maxAttachmentsMb !== null) {
 				$this->servers->setMaxAttachmentsMb($maxAttachmentsMb);
@@ -77,6 +83,7 @@ class AdminController extends Controller {
 			'autodiscover' => $this->servers->getAutodiscover(),
 			'discovered' => $this->servers->getDiscovered(),
 			'visio' => $this->servers->getVisio(),
+			'visioMode' => $this->servers->getVisioMode(),
 			'verifyTls' => $this->servers->getVerifyTls(),
 			'maxAttachmentsMb' => $this->servers->getMaxAttachmentsMb(),
 		];

@@ -4742,6 +4742,58 @@ async function main() {
 			await page.selectOption('select[name=matrixAlerts]', 'off')
 			await page.waitForSelector('.wm-toast:has-text("Plus d\'alertes sur Matrix")')
 
+			// « Visio Element » with an Element Web without Element Call: preset by the administration
+			// from the « Sites externes » of Nextcloud, a room made for the meeting with this Matrix account
+			const created = () => new Promise((resolve, reject) => {
+				require('https').get('https://localhost:8443/_matrix/test/created', { rejectUnauthorized: false }, (res) => {
+					let data = ''
+					res.on('data', (c) => { data += c })
+					res.on('end', () => resolve(JSON.parse(data)))
+				}).on('error', reject)
+			})
+			occ('config:app:delete webmail visio')
+			occ('config:app:delete webmail visio_mode')
+			occ('config:app:set external sites --value=\'' + JSON.stringify({ 1: { id: 1, name: 'Chat PBCAN', url: 'https://ex3.fake.test:8443/element/', lang: '', type: 'link', device: '', icon: 'external.svg', groups: [], redirect: false } }) + '\'')
+			try {
+				await page.goto(NC + '/settings/admin/webmail')
+				await page.waitForSelector('#webmail-visio-detected')
+				assert.strictEqual(await page.inputValue('#webmail-visio'), 'https://ex3.fake.test:8443/element')
+				assert.ok(await page.isChecked('#webmail-visio-room'))
+				const detected = await page.textContent('#webmail-visio-detected')
+				assert.ok(detected.includes('Chat PBCAN') && detected.includes('https://ex3.fake.test:8443'), detected)
+				await shot('94-visio-element-preset')
+				await page.click('#webmail-save')
+				await page.waitForSelector('#webmail-admin-msg.success')
+				assert.strictEqual(occ('config:app:get webmail visio_mode').trim(), 'element-room')
+				assert.strictEqual(occ('config:app:get webmail visio').trim(), 'https://ex3.fake.test:8443/element')
+				// the button of the event form makes the room
+				await page.goto(NC + '/apps/webmail/')
+				await page.waitForSelector('.wm-tab')
+				await page.click('.wm-tab[data-module="calendar"]')
+				await page.waitForSelector('.wm-compose-btn:has-text("Nouvel événement")')
+				for (let i = 0; i < 5 && !(await page.$('.wm-modal input[name=subject]')); i++) {
+					await page.click('.wm-compose-btn')
+					await page.waitForSelector('.wm-modal input[name=subject]', { timeout: 3000 }).catch(() => {})
+				}
+				await page.fill('.wm-modal input[name=subject]', 'Point visio chantier')
+				await page.click('.wm-visio-btn')
+				await page.waitForSelector('.wm-toast:has-text("Salle de visio ajoutée")')
+				const place = await page.inputValue('.wm-modal input[name=location]')
+				assert.ok(place.startsWith('https://ex3.fake.test:8443/element/#/room/%21meet') && place.endsWith('?via=fake.test'), place)
+				assert.ok((await page.inputValue('.wm-modal textarea[name=body]')).includes(place))
+				const room = (await created()).pop()
+				assert.strictEqual(room.name, 'Point visio chantier')
+				assert.strictEqual(room.creation_content['m.federate'], false)
+				assert.strictEqual(room.creation_content.type, 'org.matrix.msc3417.call')
+				await page.click('.wm-modal .wm-modal-close')
+			} finally {
+				occ('config:app:delete webmail visio')
+				occ('config:app:delete webmail visio_mode')
+				occ('config:app:delete external sites')
+			}
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('text=Comptes et signature')
+
 			// disconnected: the button asks to connect
 			await page.click('.wm-matrix-form button:has-text("Déconnecter")')
 			await page.waitForSelector('.wm-toast:has-text("Compte Matrix déconnecté")')

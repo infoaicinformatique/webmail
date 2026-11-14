@@ -136,6 +136,48 @@ class MatrixService {
 		return ['room' => $roomId, 'eventId' => (string)($r['event_id'] ?? '')];
 	}
 
+	/**
+	 * A video room for a meeting, made with the user's Matrix account.
+	 *
+	 * @return string its id (« !abc:server »)
+	 * @throws MailException
+	 */
+	public function createMeetingRoom(string $userId, string $subject, string $when): string {
+		[$hs, $token] = $this->account($userId);
+		$r = $this->call('POST', $hs, '/createRoom', $token, Matrix::meetingRoom($subject, $when));
+		$id = (string)($r['room_id'] ?? '');
+		if ($id === '') {
+			throw new MailException('Le serveur Matrix n\'a pas créé le salon');
+		}
+		return $id;
+	}
+
+	/**
+	 * The Element Web of the organisation among the « Sites externes » of Nextcloud:
+	 * the first one whose config.json names a homeserver.
+	 *
+	 * @return ?array{name: string, url: string, homeserver: string, serverName: string}
+	 */
+	public function detectElement(): ?array {
+		foreach (array_slice(Matrix::externalSites($this->config->getAppValue('external', 'sites', '')), 0, 5) as $site) {
+			try {
+				$response = $this->http->newClient()->get($site['url'] . '/config.json', [
+					'timeout' => 5,
+					'http_errors' => false,
+					'verify' => $this->config->getAppValue(Application::APP_ID, 'verify_tls', 'yes') !== 'no',
+				]);
+				$config = json_decode((string)$response->getBody(), true);
+			} catch (\Throwable $e) {
+				continue;
+			}
+			$hs = is_array($config) && $response->getStatusCode() === 200 ? Matrix::elementHomeserver($config) : null;
+			if ($hs !== null) {
+				return $site + $hs;
+			}
+		}
+		return null;
+	}
+
 	/** @return array{0: string, 1: string} homeserver, token */
 	private function account(string $userId): array {
 		$hs = $this->config->getUserValue($userId, Application::APP_ID, 'matrix_homeserver', '');
@@ -186,7 +228,11 @@ class MatrixService {
 		}
 		try {
 			$client = $this->http->newClient();
-			$response = $method === 'PUT' ? $client->put($hs . self::API . $path, $options) : $client->get($hs . self::API . $path, $options);
+			$response = match ($method) {
+				'PUT' => $client->put($hs . self::API . $path, $options),
+				'POST' => $client->post($hs . self::API . $path, $options),
+				default => $client->get($hs . self::API . $path, $options),
+			};
 			$status = $response->getStatusCode();
 			$data = json_decode((string)$response->getBody(), true);
 		} catch (\Throwable $e) {

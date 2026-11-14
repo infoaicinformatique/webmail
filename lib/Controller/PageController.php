@@ -74,6 +74,7 @@ class PageController extends Controller {
 			'talk' => $user !== null && $this->apps->isEnabledForUser('spreed', $user),
 			// video meetings with Element Call (Matrix) or another service, set by the administrator
 			'visio' => $this->servers->getVisio(),
+			'visioMode' => $this->servers->getVisioMode(),
 			// most attachments of one message (bytes), set by the administrator
 			'maxAttachments' => $this->servers->getMaxAttachmentsBytes(),
 			// folders whose messages show their remote images at once (the user's choice)

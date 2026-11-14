@@ -97,6 +97,7 @@
 					body: JSON.stringify({
 						servers,
 						visio: document.getElementById('webmail-visio').value.trim(),
+						visioMode: document.getElementById('webmail-visio-room').checked ? 'element-room' : '',
 						verifyTls: !noVerify.checked,
 						maxAttachmentsMb: parseInt(maxAttachments.value, 10) || 0,
 						autodiscover: {
@@ -117,6 +118,9 @@
 					tbody.appendChild(tr)
 				})
 				document.getElementById('webmail-visio').value = data.visio
+				document.getElementById('webmail-visio-room').checked = data.visioMode === 'element-room'
+				const detected = document.getElementById('webmail-visio-detected')
+				if (detected) detected.remove()
 				noVerify.checked = !data.verifyTls
 				tlsWarning.hidden = data.verifyTls
 				maxAttachments.value = data.maxAttachmentsMb

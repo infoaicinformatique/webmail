@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace OCA\Webmail\Controller;
 
 use OCA\Webmail\AppInfo\Application;
+use OCA\Webmail\Exception\MailException;
+use OCA\Webmail\Service\Matrix;
 use OCA\Webmail\Service\MatrixService;
+use OCA\Webmail\Service\ServerConfigService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Response;
@@ -21,6 +24,7 @@ class MatrixController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private MatrixService $matrix,
+		private ServerConfigService $servers,
 		private LoggerInterface $logger,
 		private ?string $userId,
 	) {
@@ -63,5 +67,20 @@ class MatrixController extends Controller {
 	#[NoAdminRequired]
 	public function send(string $text, string $room = ''): Response {
 		return $this->handle(fn () => $this->matrix->send((string)$this->userId, $room, $text));
+	}
+
+	/**
+	 * « Visio Element » with an Element Web without Element Call: a video room made for the
+	 * meeting with the user's Matrix account, and its link in Element Web.
+	 */
+	#[NoAdminRequired]
+	public function meeting(string $subject = '', string $when = ''): Response {
+		return $this->handle(function () use ($subject, $when) {
+			if ($this->servers->getVisioMode() !== ServerConfigService::VISIO_ELEMENT_ROOM || $this->servers->getVisio() === '') {
+				throw new MailException('La visio Element n\'est pas configurée par l\'administrateur');
+			}
+			$roomId = $this->matrix->createMeetingRoom((string)$this->userId, $subject, $when);
+			return ['roomId' => $roomId, 'url' => Matrix::roomLink($this->servers->getVisio(), $roomId)];
+		});
 	}
 }
