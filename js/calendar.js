@@ -300,7 +300,9 @@
 			publicCals.length ? h('ul', {}, publicCals.map(row)) : null,
 			h('button', { type: 'button', class: 'wm-cal-add wm-public-cal-add', onclick: openAddPublic }, '＋ ' + _('Ajouter un agenda des dossiers publics')),
 			h('div', { class: 'wm-cal-section' }, _('Nextcloud')),
-			ncCalendarToggle())
+			ncCalendarToggle(),
+			h('div', { class: 'wm-cal-section' }, _('Affichage')),
+			secondZonePicker())
 	}
 
 	/** account id → shown in the Calendar app of Nextcloud */
@@ -737,8 +739,11 @@
 		const now = new Date()
 		const dayNames = DAY_NAMES()
 
+		// a second time zone (a colleague abroad, a trip): its hours beside ours
+		const tz2 = secondZone()
 		const head = h('div', { class: 'wm-week-row wm-week-head' },
-			h('div', { class: 'wm-week-gutter' }),
+			tz2 ? h('div', { class: 'wm-week-gutter wm-week-tz2 wm-tz-label', title: tz2 }, zoneLabel(tz2, days[0])) : null,
+			h('div', { class: 'wm-week-gutter' + (tz2 ? ' wm-tz-label' : ''), title: core.TZ }, tz2 ? zoneLabel(core.TZ, days[0]) : null),
 			days.map((d) => h('button', {
 				type: 'button',
 				class: 'wm-week-dayname' + (sameDay(d, now) ? ' today' : ''),
@@ -747,13 +752,18 @@
 			}, h('span', { class: 'wm-week-dow' }, dayNames[(d.getDay() + 6) % 7]), h('span', { class: 'wm-week-date' }, String(d.getDate())))))
 
 		const allDay = h('div', { class: 'wm-week-row wm-week-allday' },
+			tz2 ? h('div', { class: 'wm-week-gutter wm-week-tz2' }) : null,
 			h('div', { class: 'wm-week-gutter wm-muted' }, _('Journée')),
 			days.map((d) => h('div', { class: 'wm-week-allday-cell', dataset: { date: ymd(d) } },
 				eventsOn(d).filter((ev) => ev.allDay).map((ev) => draggable(chip(ev, d), ev, 'day', d)))))
 
 		const hours = h('div', { class: 'wm-week-gutter wm-week-hours' },
 			Array.from({ length: 24 }, (x, hr) => h('div', { class: 'wm-week-hour', style: 'height:' + HOUR_PX + 'px' }, hr ? pad(hr) + ':00' : '')))
-		const grid = h('div', { class: 'wm-week-row wm-week-grid', style: 'height:' + (24 * HOUR_PX) + 'px' }, hours)
+		const grid = h('div', { class: 'wm-week-row wm-week-grid', style: 'height:' + (24 * HOUR_PX) + 'px' },
+			tz2 ? h('div', { class: 'wm-week-gutter wm-week-hours wm-week-tz2', 'aria-label': _('Heures à {zone}', { zone: zoneCity(tz2) }) },
+				Array.from({ length: 24 }, (x, hr) => h('div', { class: 'wm-week-hour', style: 'height:' + HOUR_PX + 'px' },
+					hr ? zoneTime(new Date(days[0].getFullYear(), days[0].getMonth(), days[0].getDate(), hr), tz2) : ''))) : null,
+			hours)
 
 		days.forEach((d) => {
 			const col = h('div', {
@@ -802,7 +812,65 @@
 
 		const scroll = h('div', { class: 'wm-week-scroll' }, grid)
 		scroll.addEventListener('scroll', () => { cal.weekScroll = scroll.scrollTop })
-		return h('div', { class: 'wm-week' + (cal.view === 'day' ? ' wm-day-view' : '') }, head, allDay, scroll)
+		return h('div', { class: 'wm-week' + (cal.view === 'day' ? ' wm-day-view' : '') + (tz2 ? ' wm-with-tz2' : '') }, head, allDay, scroll)
+	}
+
+	// ------------------------------------------------------------------
+	// A second time zone in the week and day views
+	// ------------------------------------------------------------------
+
+	const TZ2_KEY = 'webmail.tz2'
+	/** the zones offered first (the others follow, from the browser's list) */
+	const COMMON_ZONES = ['Europe/London', 'Europe/Lisbon', 'Europe/Berlin', 'Europe/Athens', 'Europe/Moscow', 'Africa/Casablanca', 'Africa/Abidjan',
+		'America/New_York', 'America/Montreal', 'America/Chicago', 'America/Los_Angeles', 'America/Sao_Paulo', 'America/Martinique', 'America/Cayenne',
+		'Indian/Reunion', 'Asia/Dubai', 'Asia/Kolkata', 'Asia/Singapore', 'Asia/Shanghai', 'Asia/Tokyo', 'Australia/Sydney', 'Pacific/Noumea', 'Pacific/Tahiti', 'UTC']
+
+	function validZone(z) {
+		try { new Intl.DateTimeFormat('en', { timeZone: z }); return true } catch (e) { return false }
+	}
+	function secondZone() {
+		let z = ''
+		try { z = localStorage.getItem(TZ2_KEY) || '' } catch (e) { /* none */ }
+		return z && z !== core.TZ && validZone(z) ? z : ''
+	}
+	/** « Tokyo », « New York » */
+	function zoneCity(z) {
+		return z === 'UTC' ? 'UTC' : z.split('/').pop().replace(/_/g, ' ')
+	}
+	/** 14:30 in that zone, at the time given */
+	function zoneTime(d, z) {
+		return d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: z })
+	}
+	/** The column heading: the city, and the offset that day (« UTC+9 »). */
+	function zoneLabel(z, d) {
+		let off = ''
+		try {
+			off = new Intl.DateTimeFormat('en-GB', { timeZone: z, timeZoneName: 'shortOffset' }).formatToParts(d).find((p) => p.type === 'timeZoneName').value
+		} catch (e) { /* older browsers: the city alone */ }
+		return [zoneCity(z), off.replace('GMT', 'UTC').replace(/^UTC$/, 'UTC±0')].filter(Boolean).join(' ')
+	}
+
+	/** In the side bar: the second zone, or none. */
+	function secondZonePicker() {
+		const h = core.h
+		const current = secondZone()
+		let all = []
+		try { all = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : [] } catch (e) { all = [] }
+		const others = all.filter((z) => !COMMON_ZONES.includes(z) && z !== core.TZ)
+		const opt = (z) => h('option', { value: z, selected: z === current }, zoneCity(z) + (z.includes('/') ? ' — ' + z.split('/')[0] : ''))
+		const select = h('select', {
+			name: 'tz2',
+			'aria-label': _('Deuxième fuseau horaire'),
+			onchange: () => {
+				try { select.value ? localStorage.setItem(TZ2_KEY, select.value) : localStorage.removeItem(TZ2_KEY) } catch (e) { /* this time only */ }
+				refreshAll()
+			},
+		},
+		h('option', { value: '' }, _('Aucun')),
+		h('optgroup', { label: _('Fréquents') }, COMMON_ZONES.filter((z) => z !== core.TZ && validZone(z)).map(opt)),
+		others.length ? h('optgroup', { label: _('Tous les fuseaux') }, others.map(opt)) : null)
+		return h('label', { class: 'wm-cal-tz2', title: _('Les heures d\'un autre fuseau à côté des vôtres, dans les vues Semaine et Jour') },
+			h('span', {}, _('Deuxième fuseau horaire')), select)
 	}
 
 	function restoreWeekScroll(scroll) {
