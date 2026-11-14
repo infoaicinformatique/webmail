@@ -31,6 +31,7 @@ return [
 		['name' => 'mail#conversations', 'url' => '/api/accounts/{id}/conversations', 'verb' => 'GET'],
 		['name' => 'mail#message', 'url' => '/api/accounts/{id}/message', 'verb' => 'GET'],
 		['name' => 'mail#conversation', 'url' => '/api/accounts/{id}/conversation', 'verb' => 'GET'],
+		['name' => 'mail#ignoreConversation', 'url' => '/api/accounts/{id}/conversation/ignore', 'verb' => 'POST'],
 		['name' => 'mail#junk', 'url' => '/api/accounts/{id}/junk', 'verb' => 'POST'],
 		['name' => 'mail#createFolder', 'url' => '/api/accounts/{id}/folders', 'verb' => 'POST'],
 		['name' => 'mail#renameFolder', 'url' => '/api/accounts/{id}/folders/rename', 'verb' => 'POST'],

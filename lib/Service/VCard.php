@@ -12,6 +12,12 @@ namespace OCA\Webmail\Service;
 class VCard {
 	private const PHONE_TYPES = ['mobilePhone' => 'CELL', 'businessPhone' => 'WORK', 'homePhone' => 'HOME'];
 
+	/** The name of an exported file (without « .vcf »): the book's, without what a file name cannot have. */
+	public static function fileName(string $name): string {
+		$name = trim((string)preg_replace(['~[\\\\/:*?"<>|\x00-\x1f]+~', '~\s+~u'], ' ', $name));
+		return $name !== '' ? mb_substr($name, 0, 100) : 'Contacts';
+	}
+
 	/** @param array<int, array<string, mixed>> $contacts */
 	public static function export(array $contacts): string {
 		$out = '';
@@ -41,6 +47,13 @@ class VCard {
 			if (($c['matrix'] ?? '') !== '') {
 				// the matrix: URI scheme (« matrix:u/alice:example.org »), read by Element and other apps
 				$lines[] = 'IMPP;X-SERVICE-TYPE=Matrix:matrix:u/' . self::esc(substr((string)$c['matrix'], 1));
+			}
+			if (($c['birthday'] ?? '') !== '') {
+				// a birthday without a year (Outlook's 1604): « --0512 » (RFC 6350)
+				$b = (string)$c['birthday'];
+				$lines[] = str_starts_with($b, \OCA\Webmail\Ews\EwsContacts::NO_YEAR . '-')
+					? 'BDAY;VALUE=date:--' . substr($b, 5, 2) . substr($b, 8, 2)
+					: 'BDAY;VALUE=date:' . str_replace('-', '', $b);
 			}
 			if (trim((string)($c['notes'] ?? '')) !== '') {
 				$lines[] = 'NOTE:' . self::esc(trim((string)$c['notes']));
@@ -162,6 +175,9 @@ class VCard {
 						$card['matrix'] = $id;
 					}
 					break;
+				case 'BDAY':
+					$card['birthday'] = self::birthday(trim($value));
+					break;
 				case 'KIND':
 				case 'X-ADDRESSBOOKSERVER-KIND':
 					$card['group'] = strtolower(trim($value)) === 'group';
@@ -169,6 +185,21 @@ class VCard {
 			}
 		}
 		return $contacts;
+	}
+
+	/**
+	 * BDAY: « 19800512 », « 1980-05-12 », « 1980-05-12T00:00:00Z », or without a year « --0512 ».
+	 * Anything else (text, impossible dates): left out.
+	 */
+	private static function birthday(string $v): string {
+		if (preg_match('/^--(\d{2})-?(\d{2})$/', $v, $m)) {
+			$date = \OCA\Webmail\Ews\EwsContacts::NO_YEAR . '-' . $m[1] . '-' . $m[2];
+		} elseif (preg_match('/^(\d{4})-?(\d{2})-?(\d{2})(T.*)?$/', $v, $m)) {
+			$date = $m[1] . '-' . $m[2] . '-' . $m[3];
+		} else {
+			return '';
+		}
+		return \OCA\Webmail\Ews\EwsContacts::birthday($date) ?? '';
 	}
 
 	/** @param array<string, mixed> $card */
@@ -188,6 +219,7 @@ class VCard {
 			'street' => '', 'city' => '', 'postalCode' => '', 'country' => '',
 			'notes' => (string)($card['notes'] ?? ''),
 			'matrix' => (string)($card['matrix'] ?? ''),
+			'birthday' => (string)($card['birthday'] ?? ''),
 		];
 		$rest = [];
 		foreach ($card['phones'] as [$number, $types]) {

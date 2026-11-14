@@ -14,7 +14,7 @@ class EwsTasks {
 	public const STATUSES = ['NotStarted', 'InProgress', 'Completed', 'WaitingOnOthers', 'Deferred'];
 	private const IMPORTANCES = ['Low', 'Normal', 'High'];
 	private const FIELDS = ['item:Subject', 'item:Importance', 'item:Categories', 'task:DueDate', 'task:StartDate', 'task:Status',
-		'task:PercentComplete', 'task:CompleteDate', 'task:IsRecurring', 'item:DateTimeCreated'];
+		'task:PercentComplete', 'task:CompleteDate', 'task:IsRecurring', 'item:DateTimeCreated', 'item:ReminderIsSet', 'item:ReminderDueBy'];
 
 	public function __construct(
 		private EwsClient $client,
@@ -69,6 +69,7 @@ class EwsTasks {
 			. '<t:Subject>' . $this->client->esc($t['subject']) . '</t:Subject>'
 			. '<t:Body BodyType="Text">' . $this->client->esc($t['notes']) . '</t:Body>'
 			. '<t:Importance>' . $t['importance'] . '</t:Importance>'
+			. ($t['reminder'] !== null ? '<t:ReminderDueBy>' . $t['reminder'] . '</t:ReminderDueBy><t:ReminderIsSet>true</t:ReminderIsSet>' : '')
 			. ($t['due'] !== null ? '<t:DueDate>' . $t['due'] . '</t:DueDate>' : '')
 			. ($t['status'] === 'Completed' ? '<t:PercentComplete>100</t:PercentComplete>' : '')
 			. '<t:Status>' . $t['status'] . '</t:Status>'
@@ -84,6 +85,9 @@ class EwsTasks {
 		$updates = $set('item:Subject', '<t:Subject>' . $this->client->esc($t['subject']) . '</t:Subject>')
 			. $set('item:Body', '<t:Body BodyType="Text">' . $this->client->esc($t['notes']) . '</t:Body>')
 			. $set('item:Importance', '<t:Importance>' . $t['importance'] . '</t:Importance>')
+			. ($t['reminder'] !== null
+				? $set('item:ReminderDueBy', '<t:ReminderDueBy>' . $t['reminder'] . '</t:ReminderDueBy>') . $set('item:ReminderIsSet', '<t:ReminderIsSet>true</t:ReminderIsSet>')
+				: $set('item:ReminderIsSet', '<t:ReminderIsSet>false</t:ReminderIsSet>'))
 			. ($t['due'] !== null
 				? $set('task:DueDate', '<t:DueDate>' . $t['due'] . '</t:DueDate>')
 				: '<t:DeleteItemField><t:FieldURI FieldURI="task:DueDate"/></t:DeleteItemField>')
@@ -131,6 +135,8 @@ class EwsTasks {
 			'completed' => $c->text($xp, 't:CompleteDate', $node),
 			'recurring' => $c->text($xp, 't:IsRecurring', $node) === 'true',
 			'created' => $c->text($xp, 't:DateTimeCreated', $node),
+			// the time of the reminder (UTC), when one is set
+			'reminder' => $c->text($xp, 't:ReminderIsSet', $node) === 'true' ? self::utc((string)$c->text($xp, 't:ReminderDueBy', $node)) : null,
 		];
 	}
 
@@ -146,6 +152,35 @@ class EwsTasks {
 	public static function day(string $iso): string {
 		// 23:00Z (Paris) or 22:00Z (summer) → the next day; 12:00Z (set here) or 05:00Z (Americas) → that day
 		return (new \DateTimeImmutable($iso))->setTimezone(new \DateTimeZone('UTC'))->modify('+11 hours')->format('Y-m-d');
+	}
+
+	/** A time as UTC « 2026-11-20T08:00:00Z »; null if it is not one. */
+	public static function utc(string $value): ?string {
+		if ($value === '' || !preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/', $value)) {
+			return null;
+		}
+		try {
+			return (new \DateTimeImmutable($value))->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
+		} catch (\Exception) {
+			return null;
+		}
+	}
+
+	/**
+	 * The tasks to do whose reminder time has come (within the last week: an old one
+	 * missed while Nextcloud was off is not worth a notification).
+	 * @param list<array<string, mixed>> $tasks
+	 * @return list<array<string, mixed>>
+	 */
+	public static function dueReminders(array $tasks, \DateTimeImmutable $now): array {
+		$t = $now->getTimestamp();
+		return array_values(array_filter($tasks, function (array $task) use ($t): bool {
+			if (!empty($task['done']) || empty($task['reminder'])) {
+				return false;
+			}
+			$at = strtotime((string)$task['reminder']);
+			return $at !== false && $at <= $t && $at > $t - 7 * 86400;
+		}));
 	}
 
 	/** @param list<array<string, mixed>> $tasks */
@@ -173,7 +208,7 @@ class EwsTasks {
 		return $tasks;
 	}
 
-	/** @return array{subject: string, notes: string, due: ?string, status: string, importance: string} */
+	/** @return array{subject: string, notes: string, due: ?string, status: string, importance: string, reminder: ?string} */
 	public static function normalize(array $data): array {
 		$subject = trim((string)($data['subject'] ?? ''));
 		if ($subject === '') {
@@ -191,12 +226,17 @@ class EwsTasks {
 			// noon UTC: the same day in every time zone of Europe and Africa
 			$due = $d->format('Y-m-d') . 'T12:00:00Z';
 		}
+		$reminder = trim((string)($data['reminder'] ?? ''));
+		if ($reminder !== '') {
+			$reminder = self::utc($reminder) ?? throw new MailException('Heure de rappel invalide');
+		}
 		$status = (string)($data['status'] ?? 'NotStarted');
 		$importance = (string)($data['importance'] ?? 'Normal');
 		if (!in_array($status, self::STATUSES, true) || !in_array($importance, self::IMPORTANCES, true)) {
 			throw new MailException('Tâche invalide');
 		}
-		return ['subject' => $subject, 'notes' => (string)($data['notes'] ?? ''), 'due' => $due !== '' ? $due : null, 'status' => $status, 'importance' => $importance];
+		return ['subject' => $subject, 'notes' => (string)($data['notes'] ?? ''), 'due' => $due !== '' ? $due : null, 'status' => $status, 'importance' => $importance,
+			'reminder' => $reminder !== '' ? $reminder : null];
 	}
 
 	private static function fields(array $uris): string {
