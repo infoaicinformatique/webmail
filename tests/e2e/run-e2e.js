@@ -4055,6 +4055,35 @@ async function main() {
 		assert.ok(!(await page.$eval('.wm-sort', (e) => e.classList.contains('active'))))
 	})
 
+	await step('pinned: a message pinned stays at the top of its folder, whatever the order, until unpinned', async () => {
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-list-period')
+		const row = '.wm-message:has-text("Réunion de lundi")'
+		await page.click(row)
+		await page.click('.wm-toolbar .wm-pin-btn')
+		await page.waitForSelector('.wm-toast:has-text("Message épinglé en haut de « Boîte de réception »")')
+		const first = () => page.$eval('.wm-messages .wm-message', (e) => e.textContent)
+		assert.ok((await first()).includes('Réunion de lundi'), await first())
+		assert.strictEqual(await page.textContent('.wm-list-period >> nth=0'), '📌 Épinglés')
+		assert.ok(await page.$eval(row, (e) => e.classList.contains('wm-pinned')))
+		assert.strictEqual(await page.locator(row).count(), 1, 'shown once')
+		assert.strictEqual(await page.getAttribute('.wm-toolbar .wm-pin-btn', 'aria-pressed'), 'true')
+		// another order: still first, the others under « Autres messages »
+		await page.selectOption('.wm-sort', 'subject-asc')
+		await page.waitForSelector('.wm-list-period:text-is("Autres messages")')
+		assert.ok((await first()).includes('Réunion de lundi'))
+		await page.selectOption('.wm-sort', 'date-desc')
+		// kept by Nextcloud: after a reload too
+		await page.reload()
+		await page.waitForSelector('.wm-message.wm-pinned:has-text("Réunion de lundi")')
+		await shot('87-pinned')
+		await page.click(row)
+		await page.click('.wm-toolbar .wm-pin-btn')
+		await page.waitForSelector('.wm-toast:has-text("Message désépinglé")')
+		await page.waitForSelector('.wm-message.wm-pinned', { state: 'detached' })
+		assert.notStrictEqual(await page.textContent('.wm-list-period >> nth=0'), '📌 Épinglés')
+	})
+
 	await step('completion: the people of Nextcloud (an account of this Nextcloud) are offered too', async () => {
 		const occ = (args, env) => execSync((env ? OCC.replace('docker exec ', 'docker exec ' + env + ' ') : OCC) + ' ' + args, { encoding: 'utf8' })
 		try { occ('user:delete sophie') } catch (e) { /* not there */ }

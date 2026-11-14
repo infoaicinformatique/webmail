@@ -29,6 +29,7 @@
 		filters: { unread: false, attachments: false, flagged: false, since: '', all: false },
 		// messages put aside (« Reporter »): id in « Reportés » → when it comes back (UTC)
 		snoozes: new Map(),
+		pinned: new Map(), // id -> summary (with its folder): kept at the top of their folder
 		showFilters: false,
 		// the list grouped by conversation (one row each), remembered
 		grouped: (() => { try { return localStorage.getItem('webmail.grouped') === '1' } catch (e) { return false } })(),
@@ -1191,8 +1192,33 @@
 		} catch (e) { /* the messages are shown without their time */ }
 	}
 
+	async function loadPinned() {
+		const account = state.accountId
+		try {
+			const r = await api('/accounts/' + account + '/pinned')
+			if (account !== state.accountId) return
+			const before = [...state.pinned.keys()].join('|')
+			state.pinned = new Map(r.messages.map((m) => [m.id, m]))
+			if ([...state.pinned.keys()].join('|') !== before && state.module === 'mail') renderList(false)
+		} catch (e) { /* the list without its pinned messages on top */ }
+	}
+
+	/** « Épingler » / « Désépingler »: at the top of its folder, whatever the order. */
+	async function togglePin(m) {
+		const pinned = !state.pinned.has(m.id)
+		try {
+			await api('/accounts/' + state.accountId + '/pinned', { method: 'POST', body: { itemId: m.id, pinned } })
+			if (pinned) state.pinned = new Map([[m.id, Object.assign({}, m, { folderId: m.folderId || state.folderId })]].concat([...state.pinned]))
+			else state.pinned.delete(m.id)
+			toast(pinned ? _('Message épinglé en haut de « {folder} »', { folder: folderName(m.folderId || state.folderId) }) : _('Message désépinglé'))
+			renderList(false)
+			if (state.selectedId === m.id) openMessage(m.id)
+		} catch (e) { toast(e.message, true) }
+	}
+
 	async function loadFolders() {
 		loadSnoozes()
+		loadPinned()
 		try {
 			const data = await api('/accounts/' + state.accountId + '/folders')
 			state.folders = data.folders
@@ -1712,15 +1738,22 @@
 		const bySize = !conv && sortField()[0] === 'size'
 		const period = dayPeriods()
 		let lastPeriod = null
-		state.messages.forEach((m) => {
-			const p = byDate ? period(m.date) : null
+		// the pinned messages of this folder first (not in a search, nor by conversation)
+		const pinnedHere = conv || isSearching() ? [] : [...state.pinned.values()]
+			.filter((p) => p.folderId === state.folderId)
+			.map((p) => state.messages.find((x) => x.id === p.id) || p)
+		const pinnedIds = new Set(pinnedHere.map((p) => p.id))
+		const rows = pinnedHere.concat(state.messages.filter((m) => !pinnedIds.has(m.id)))
+		rows.forEach((m) => {
+			const pin = pinnedIds.has(m.id)
+			const p = pin ? '📌 ' + _('Épinglés') : (byDate ? period(m.date) : (pinnedHere.length && lastPeriod === '📌 ' + _('Épinglés') ? _('Autres messages') : null))
 			if (p && p !== lastPeriod) {
 				lastPeriod = p
 				ul.appendChild(h('li', { class: 'wm-list-period', role: 'presentation' }, p))
 			}
 			const who = showRecipients ? _('À : {names}', { names: m.displayTo || '' }) : (personShort(m.from) || _('(expéditeur inconnu)'))
 			const li = h('li', {
-				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : '') + (state.checked.has(m.id) ? ' checked' : ''),
+				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : '') + (state.checked.has(m.id) ? ' checked' : '') + (pin ? ' wm-pinned' : ''),
 				tabindex: '0',
 				draggable: conv ? 'false' : 'true',
 				dataset: { id: m.id },
@@ -2705,6 +2738,13 @@
 				title: _('Télécharger le message (.eml, pour Outlook, Thunderbird…)'),
 				'aria-label': _('Télécharger le message'),
 			}, '⬇\uFE0E'),
+			h('button', {
+				class: 'wm-pin-btn' + (state.pinned.has(m.id) ? ' on' : ''),
+				title: state.pinned.has(m.id) ? _('Désépingler : le message reprend sa place dans la liste') : _('Épingler en haut du dossier, quel que soit le tri'),
+				'aria-label': state.pinned.has(m.id) ? _('Désépingler') : _('Épingler'),
+				'aria-pressed': state.pinned.has(m.id) ? 'true' : 'false',
+				onclick: () => togglePin(m),
+			}, '📌'),
 			window.WebmailModules.tasks ? h('button', { class: 'wm-task-from-msg', title: _('Créer une tâche à partir de ce message'), 'aria-label': _('Créer une tâche à partir de ce message'), onclick: () => taskFromMessage(m) }, '✅') : null,
 			window.WebmailModules.calendar ? h('button', { class: 'wm-event-from-msg', title: _('Créer un événement à partir de ce message'), 'aria-label': _('Créer un événement à partir de ce message'), onclick: () => eventFromMessage(m) }, '📅') : null,
 			h('button', { class: 'wm-eml-save-btn', title: _('Enregistrer le message dans Fichiers (.eml)'), 'aria-label': _('Enregistrer le message dans Fichiers'), onclick: () => saveMessageToFiles(m) }, '☁️'),
