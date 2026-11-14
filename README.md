@@ -24,6 +24,7 @@ et sur les téléphones, et inversement.
 | Dossiers | Arborescence Exchange (Boîte de réception, Envoyés, Brouillons, Indésirables, Supprimés, dossiers personnels) avec le nombre de non-lus. « ＋ Nouveau dossier » sous la liste ; le bouton « ⋯ » d'un dossier propose **Nouveau sous-dossier, Renommer, Déplacer** (dans un autre dossier ou en haut de la boîte) et **Supprimer** (le dossier et son contenu vont dans « Éléments supprimés »). Les dossiers indispensables à Exchange (Boîte de réception, Brouillons, Envoyés, Supprimés, Indésirables) ne peuvent être que complétés de sous-dossiers |
 | Espace utilisé | Sous les dossiers : espace occupé par la boîte et limite fixée dans Exchange (« 1,2 Go sur 2 Go (60 %) »), en orange à 75 %, en rouge à 90 % avec un avertissement : au-delà de la limite, Exchange bloque l'envoi. Sans limite connue, seul l'espace occupé est affiché |
 | Liste | Défilement continu (50 messages à la fois), aperçu, pièce jointe, importance, suivi (drapeau), actualisation toutes les 2 minutes Des **intertitres** séparent les périodes : « Aujourd'hui », « Hier », « Cette semaine », « La semaine dernière », « Ce mois-ci », puis chaque mois (« Octobre 2026 ») |
+| Hors connexion | Si le réseau (ou Nextcloud) ne répond plus, un bandeau l'indique au lieu d'une erreur à chaque clic ; les dossiers, la liste et les messages déjà chargés restent lisibles. Nouvel essai automatique (5 s, puis 10, 20, 30, 60), tout de suite quand le navigateur retrouve le réseau, ou « Réessayer » ; au retour, « Connexion rétablie » et la liste est mise à jour |
 | Favoris | « ★ Ajouter aux favoris » dans le menu « ⋯ » d'un dossier l'épingle en haut du volet, sous « Favoris », avec son nombre de non lus : un clic, quelle que soit sa profondeur dans l'arborescence ; on peut y déposer des messages. « ✕ » le retire. Mémorisé par compte dans le navigateur |
 | Affichage | Dans « Comptes et signature », la liste des messages peut être **confortable** (avec l'aperçu du texte), **compacte** (sans aperçu) ou sur **une ligne par message** (expéditeur, objet, date côte à côte, sur grand écran) : plus de messages à l'écran. Mémorisé dans le navigateur |
 | Trier | Le menu de la liste trie les messages par **date** (récents ou anciens d'abord), par **expéditeur**, par **objet** ou par **taille** (la taille s'affiche alors à la place de la date) ; le tri est fait par Exchange, aussi pour les résultats de recherche, et mémorisé. Les intertitres de période ne s'affichent qu'en tri par date |
@@ -249,7 +250,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.99.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.100.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -292,7 +293,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.99 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.100 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

@@ -264,7 +264,21 @@
 			Object.entries(opts.query).forEach(([k, v]) => { if (v !== undefined && v !== null) qs.append(k, v) })
 			full += (full.includes('?') ? '&' : '?') + qs.toString()
 		}
-		const res = await fetch(full, init)
+		let res
+		try {
+			res = await fetch(full, init)
+		} catch (e) {
+			// no network (or Nextcloud unreachable): said once, in the banner, not in every toast
+			if (e && e.name === 'AbortError') throw e
+			setOffline(true)
+			throw new Error(_('Pas de connexion'))
+		}
+		// a proxy in front of Nextcloud answering for it: Nextcloud is unreachable
+		if (res.status === 502 || res.status === 503 || res.status === 504) {
+			setOffline(true)
+			throw new Error(_('Nextcloud ne répond pas (erreur {status})', { status: res.status }))
+		}
+		setOffline(false)
 		let data = null
 		try { data = await res.json() } catch (e) { /* empty */ }
 		if (!res.ok) {
@@ -272,6 +286,77 @@
 		}
 		return data
 	}
+
+	// ------------------------------------------------------------------
+	// offline: a banner, what is already loaded stays readable, and a new try
+	// every few seconds (at once when the browser says the network is back)
+	// ------------------------------------------------------------------
+
+	const RETRY_DELAYS = [5, 10, 20, 30, 60]
+	const offline = { on: false, tries: 0, timer: null, tick: null, at: 0, banner: null }
+
+	function setOffline(on) {
+		if (on === offline.on) {
+			if (on && !offline.timer) scheduleRetry()
+			return
+		}
+		offline.on = on
+		if (on) {
+			offline.tries = 0
+			scheduleRetry()
+		} else {
+			clearTimeout(offline.timer)
+			clearInterval(offline.tick)
+			offline.timer = null
+			toast(_('Connexion rétablie'))
+			// what changed meanwhile
+			if (state.accountId && state.module === 'mail') { loadFolders(); loadMessages(true) }
+		}
+		renderOffline()
+	}
+
+	function scheduleRetry() {
+		clearTimeout(offline.timer)
+		clearInterval(offline.tick)
+		const delay = RETRY_DELAYS[Math.min(offline.tries, RETRY_DELAYS.length - 1)]
+		offline.at = Date.now() + delay * 1000
+		offline.timer = setTimeout(retryNow, delay * 1000)
+		offline.tick = setInterval(renderOffline, 1000)
+		renderOffline()
+	}
+
+	/** A light request: its answer says the connection is back (api() then leaves offline mode). */
+	async function retryNow() {
+		clearTimeout(offline.timer)
+		offline.timer = null
+		offline.tries++
+		try {
+			await api('/accounts')
+		} catch (e) {
+			if (offline.on) scheduleRetry()
+		}
+	}
+
+	function renderOffline() {
+		if (!root) return
+		if (!offline.on) {
+			if (offline.banner) { offline.banner.remove(); offline.banner = null }
+			root.classList.remove('wm-is-offline')
+			return
+		}
+		root.classList.add('wm-is-offline')
+		const secs = Math.max(0, Math.ceil((offline.at - Date.now()) / 1000))
+		const text = _('Hors connexion : les messages déjà chargés restent lisibles.') + ' ' + (offline.timer ? _('Nouvel essai dans {secs} s.', { secs }) : _('Nouvel essai…'))
+		if (!offline.banner) {
+			offline.banner = h('div', { class: 'wm-offline', role: 'status', 'aria-live': 'polite' },
+				h('span', { class: 'wm-offline-text' }),
+				h('button', { type: 'button', class: 'wm-small', onclick: () => { clearInterval(offline.tick); retryNow(); renderOffline() } }, _('Réessayer')))
+			root.prepend(offline.banner)
+		}
+		offline.banner.querySelector('.wm-offline-text').textContent = '⚠ ' + text
+	}
+	window.addEventListener('offline', () => setOffline(true))
+	window.addEventListener('online', () => { if (offline.on) retryNow() })
 
 	/** Tiny DOM builder: h('div', {class: 'x', onclick: fn}, child, 'text') */
 	function h(tag, attrs, ...children) {
