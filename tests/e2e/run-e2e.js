@@ -4055,6 +4055,42 @@ async function main() {
 		assert.ok(!(await page.$eval('.wm-sort', (e) => e.classList.contains('active'))))
 	})
 
+	await step('one sender: « Tous ses messages… » shows them, moves them all, and back', async () => {
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-list-period')
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
+		await page.click('.wm-toolbar .wm-sender-btn')
+		const text = await (await page.waitForSelector('.wm-sender-dialog p:has-text("de cet expéditeur dans « Boîte de réception »")')).textContent()
+		const count = parseInt(text, 10)
+		assert.ok(count > 20, text)
+		assert.ok((await page.textContent('.wm-sender-dialog h2')).includes('news@exemple.org'))
+		await shot('88-sender-messages')
+		// shown: a search on the address, his messages only
+		await page.click('.wm-sender-show')
+		await page.waitForSelector('.wm-search-info:has-text("from:\\"news@exemple.org\\"")')
+		const froms = await page.$$eval('.wm-message-from', (els) => [...new Set(els.map((e) => e.textContent))])
+		assert.deepStrictEqual(froms, ['Lettre d\'info'])
+		await page.click('.wm-search-info a:has-text("effacer")')
+		await page.waitForSelector('.wm-list-period')
+		// all moved to « Clients », then all back
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
+		await page.click('.wm-toolbar .wm-sender-btn')
+		await page.waitForSelector('.wm-sender-dialog .wm-sender-move select')
+		await page.selectOption('.wm-sender-dialog .wm-sender-move select', { label: 'Clients' })
+		await page.click('.wm-sender-move-btn')
+		await page.waitForSelector('.wm-toast:has-text("' + count + ' messages déplacés dans « Clients »")')
+		await page.waitForSelector('.wm-message:has-text("Lettre d\'info")', { state: 'detached' })
+		await page.click('.wm-folder:has-text("Clients")')
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
+		await page.click('.wm-toolbar .wm-sender-btn')
+		await page.waitForSelector('.wm-sender-dialog p:has-text("' + count + ' messages de cet expéditeur dans « Clients »")')
+		await page.selectOption('.wm-sender-dialog .wm-sender-move select', { label: 'Boîte de réception' })
+		await page.click('.wm-sender-move-btn')
+		await page.waitForSelector('.wm-toast:has-text("' + count + ' messages déplacés dans « Boîte de réception »")')
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-message:has(.wm-message-subject:text-is("Newsletter n°10"))')
+	})
+
 	await step('completion: the people of Nextcloud (an account of this Nextcloud) are offered too', async () => {
 		const occ = (args, env) => execSync((env ? OCC.replace('docker exec ', 'docker exec ' + env + ' ') : OCC) + ' ' + args, { encoding: 'utf8' })
 		try { occ('user:delete sophie') } catch (e) { /* not there */ }
