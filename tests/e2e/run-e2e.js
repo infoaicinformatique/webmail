@@ -82,6 +82,36 @@ async function main() {
 		await shot('01-admin')
 	})
 
+	await step('admin settings: certificates and size of the attachments', async () => {
+		// this test Nextcloud talks to the fake server without checking its certificate (occ verify_tls=no)
+		assert(await page.isChecked('#webmail-no-verify-tls'))
+		assert(await page.isVisible('#webmail-tls-warning'))
+		await page.uncheck('#webmail-no-verify-tls')
+		assert(!(await page.isVisible('#webmail-tls-warning')))
+		await page.check('#webmail-no-verify-tls')
+		assert(await page.isVisible('#webmail-tls-warning'))
+		assert.strictEqual(await page.inputValue('#webmail-max-attachments'), '25')
+		// out of the allowed sizes: refused, nothing saved
+		await page.fill('#webmail-max-attachments', '500')
+		await page.click('#webmail-save')
+		await page.waitForSelector('#webmail-admin-msg.error:has-text("entre 1 et 150 Mo")')
+		await page.fill('#webmail-max-attachments', '30')
+		await page.click('#webmail-save')
+		await page.waitForSelector('#webmail-admin-msg.success')
+		await page.reload()
+		assert.strictEqual(await page.inputValue('#webmail-max-attachments'), '30')
+		assert(await page.isChecked('#webmail-no-verify-tls'), 'still not checked')
+		assert.strictEqual(execSync(OCC + ' config:app:get webmail verify_tls').toString().trim(), 'no')
+		// the limit reaches the page of the webmail
+		await page.goto(NC + '/apps/webmail/')
+		await page.waitForSelector('#webmail-app')
+		assert.strictEqual(await page.getAttribute('#webmail-app', 'data-max-attachments'), String(30 * 1024 * 1024))
+		await page.goto(NC + '/settings/admin/webmail')
+		await page.fill('#webmail-max-attachments', '25')
+		await page.click('#webmail-save')
+		await page.waitForSelector('#webmail-admin-msg.success')
+	})
+
 	await step('first run: unknown domain is rejected', async () => {
 		await page.goto(NC + '/apps/webmail/')
 		await page.waitForSelector('.wm-add-account')

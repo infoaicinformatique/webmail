@@ -6,5 +6,8 @@
 #webmail-admin .wm-url { width: 420px; max-width: 60vw; }
 #webmail-admin .wm-remove { width: 34px; min-height: 34px; background-color: transparent; border: none; }
 #webmail-admin .msg { margin-inline-start: 12px; }
+#webmail-admin #webmail-max-attachments { width: 90px; }
+#webmail-admin .wm-tls-warning { max-width: 760px; padding: 8px 12px; border-inline-start: 4px solid var(--color-error); background: var(--color-background-hover); color: var(--color-error-text, var(--color-error)); font-weight: bold; }
+#webmail-admin .wm-tls-warning[hidden] { display: none; }
 #webmail-admin .msg.success { color: var(--color-success-text, var(--color-success)); }
 #webmail-admin .msg.error { color: var(--color-error-text, var(--color-error)); }

@@ -4736,8 +4736,9 @@
 				button.textContent = '🔗 ' + _('Envoyer en lien')
 			}
 		}
-		// Exchange (OVH) refuses messages over about 25 MB once encoded
-		const HEAVY = 15 * 1024 * 1024
+		// warned from 60 % of the most the administrator allows (15 MB of 25): the encoding
+		// makes the message about a third larger, and Exchange may refuse it
+		const HEAVY = Math.round(state.maxAttachments * 0.6)
 
 		// files kept in Exchange with the draft (a new message, or a draft opened from « Brouillons »);
 		// a reply or a forward is created again at each save: its files are sent with it
@@ -4800,7 +4801,10 @@
 				h('button', { type: 'button', class: 'wm-small wm-to-link', onclick: async () => { if (await shareLinks([p])) { ncFiles.splice(ncFiles.indexOf(p), 1); renderAttachList() } } }, '🔗 ' + _('en lien')),
 				' ',
 				h('button', { type: 'button', class: 'wm-small', onclick: () => { ncFiles.splice(i, 1); renderAttachList() } }, _('retirer')))))
-			if (total >= HEAVY) {
+			if (total > state.maxAttachments) {
+				attachList.appendChild(h('li', { class: 'wm-warning wm-heavy-warning wm-too-heavy' },
+					_('Pièces jointes trop lourdes ({size}, {max} au plus) : envoyez les plus grosses avec « 🔗 Envoyer en lien ».', { size: formatSize(total), max: formatSize(state.maxAttachments) })))
+			} else if (total >= HEAVY) {
 				attachList.appendChild(h('li', { class: 'wm-warning wm-heavy-warning' },
 					_('Pièces jointes lourdes ({size}) : Exchange peut refuser le message. Préférez « 🔗 Envoyer en lien » : le fichier est déposé dans vos Fichiers et le destinataire reçoit un lien de téléchargement.', { size: formatSize(total) })))
 			}
@@ -5594,6 +5598,7 @@
 		keepFocusInDialogs()
 		try { state.domains = JSON.parse(root.dataset.domains || '[]') } catch (e) { state.domains = [] }
 		state.autodiscover = root.dataset.autodiscover === '1'
+		state.maxAttachments = parseInt(root.dataset.maxAttachments || '', 10) || 25 * 1024 * 1024
 		state.isAdmin = root.dataset.isAdmin === '1'
 		restoreTab()
 		window.addEventListener('pagehide', writeTab)

@@ -24,6 +24,9 @@ class Admin implements ISettings {
 			'autodiscover' => $this->servers->getAutodiscover(),
 			'discovered' => $this->servers->getDiscovered(),
 			'visio' => $this->servers->getVisio(),
+			'verifyTls' => $this->servers->getVerifyTls(),
+			'maxAttachmentsMb' => $this->servers->getMaxAttachmentsMb(),
+			'maxAttachmentsLimit' => ServerConfigService::MAX_ATTACHMENTS_MB_LIMIT,
 		], '');
 	}
 

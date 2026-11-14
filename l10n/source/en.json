@@ -851,7 +851,6 @@
 	"Échec de l'envoi de la pièce jointe « %s » (fichier trop gros ?)": "Failed to send the attachment “%s” (file too large?)",
 	"Fichier introuvable : %s": "File not found: %s",
 	"Impossible de joindre : %s": "Cannot attach: %s",
-	"Les pièces jointes dépassent 25 Mo": "The attachments exceed 25 MB",
 	"Agenda Exchange": "Exchange calendar",
 	"Aucun rendez-vous dans les 7 prochains jours": "No appointments in the next 7 days",
 	"Ouvrir l'agenda": "Open the calendar",
@@ -1510,5 +1509,13 @@
 	"groupe Nextcloud · {count} membres": "Nextcloud group · {count} members",
 	"groupe Nextcloud · {count} membre": "Nextcloud group · {count} member",
 	"Groupe introuvable : %s": "Group not found: %s",
-	"Le groupe « %s » a plus de %s membres : écrivez plutôt à une liste de diffusion": "The group « %s » has more than %s members: write to a mailing list instead"
+	"Le groupe « %s » a plus de %s membres : écrivez plutôt à une liste de diffusion": "The group « %s » has more than %s members: write to a mailing list instead",
+	"Sécurité et limites": "Security and limits",
+	"Taille totale des pièces jointes d'un message, pour tous les comptes. Exchange applique aussi sa propre limite (25 Mo par défaut chez OVH Hosted Exchange) : ne la dépassez pas, sinon il refusera les messages. Au-delà, les utilisateurs envoient leurs fichiers en lien Nextcloud.": "Total size of the attachments of a message, for all accounts. Exchange also applies its own limit (25 MB by default at OVH Hosted Exchange): do not exceed it, or it will refuse the messages. Beyond it, users send their files as a Nextcloud link.",
+	"Taille maximale des pièces jointes par message (Mo)": "Maximum size of attachments per message (MB)",
+	"Ne pas vérifier le certificat des serveurs (Exchange, Matrix)": "Do not check the certificate of the servers (Exchange, Matrix)",
+	"Attention : sans vérification du certificat, une personne placée sur le réseau peut se faire passer pour le serveur et lire les mots de passe et les messages. À n'utiliser que pour un serveur interne avec un certificat auto-signé, jamais pour OVH Hosted Exchange dont les certificats sont valides.": "Warning: without certificate checks, someone on the network can impersonate the server and read passwords and messages. Use only for an internal server with a self-signed certificate, never for OVH Hosted Exchange, whose certificates are valid.",
+	"Taille maximale des pièces jointes : entre %1$s et %2$s Mo": "Maximum size of attachments: between %1$s and %2$s MB",
+	"Les pièces jointes dépassent %s Mo": "The attachments exceed %s MB",
+	"Pièces jointes trop lourdes ({size}, {max} au plus) : envoyez les plus grosses avec « 🔗 Envoyer en lien ».": "Attachments too large ({size}, {max} at most): send the largest ones with “🔗 Send as link”."
 }

@@ -181,6 +181,48 @@ class ServerConfigService {
 	}
 
 	// ------------------------------------------------------------------
+	// Security and limits of the whole server
+	// ------------------------------------------------------------------
+
+	/** Default size of the attachments of one message (MB): the usual limit of Exchange. */
+	public const MAX_ATTACHMENTS_MB_DEFAULT = 25;
+	/** Largest value an administrator may set (MB): Exchange Online stops at 150. */
+	public const MAX_ATTACHMENTS_MB_LIMIT = 150;
+
+	/** Whether the certificates of the Exchange and Matrix servers are checked (yes unless an administrator said no). */
+	public function getVerifyTls(): bool {
+		return $this->config->getAppValue(Application::APP_ID, 'verify_tls', 'yes') !== 'no';
+	}
+
+	public function setVerifyTls(bool $verify): void {
+		$this->config->setAppValue(Application::APP_ID, 'verify_tls', $verify ? 'yes' : 'no');
+	}
+
+	/** Most attachments of one message, in MB. */
+	public function getMaxAttachmentsMb(): int {
+		return self::attachmentsMb($this->config->getAppValue(Application::APP_ID, 'max_attachments_mb', ''));
+	}
+
+	/** The size kept, the default when none or a wrong one is set (by occ). */
+	public static function attachmentsMb(string $raw): int {
+		$mb = ctype_digit(trim($raw)) ? (int)trim($raw) : 0;
+		return $mb >= 1 && $mb <= self::MAX_ATTACHMENTS_MB_LIMIT ? $mb : self::MAX_ATTACHMENTS_MB_DEFAULT;
+	}
+
+	public function getMaxAttachmentsBytes(): int {
+		return $this->getMaxAttachmentsMb() * 1024 * 1024;
+	}
+
+	/** @throws MailException */
+	public function setMaxAttachmentsMb(int $mb): int {
+		if ($mb < 1 || $mb > self::MAX_ATTACHMENTS_MB_LIMIT) {
+			throw new MailException('Taille maximale des pièces jointes : entre %1$s et %2$s Mo', [1, self::MAX_ATTACHMENTS_MB_LIMIT]);
+		}
+		$this->config->setAppValue(Application::APP_ID, 'max_attachments_mb', (string)$mb);
+		return $mb;
+	}
+
+	// ------------------------------------------------------------------
 	// Video meetings: Element Call (Matrix), or any service with a room name in its links (Jitsi…)
 	// ------------------------------------------------------------------
 
