@@ -4232,6 +4232,7 @@ async function main() {
 		// shown: a search on the address, his messages only
 		await page.click('.wm-sender-show')
 		await page.waitForSelector('.wm-search-info:has-text("from:\\"news@exemple.org\\"")')
+		await page.waitForSelector('.wm-message .wm-message-from')
 		const froms = await page.$$eval('.wm-message-from', (els) => [...new Set(els.map((e) => e.textContent))])
 		assert.deepStrictEqual(froms, ['Lettre d\'info'])
 		await page.click('.wm-search-info a:has-text("effacer")')
