@@ -4596,22 +4596,28 @@ async function main() {
 	await step('touch: a message swiped to the right is read / unread, to the left goes to the trash (with « Annuler »)', async () => {
 		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°2"))'
 		// a finger on the row, moved by a fraction of its width (touch events, as a phone sends them)
-		const swipe = (fraction) => page.locator(row).evaluate((el, f) => {
+		const swipeOnce = (fraction) => page.locator(row).evaluate((el, f) => {
 			const r = el.getBoundingClientRect()
+			// a row the list has just drawn again is no longer on the page (no width): not swiped
+			if (!el.isConnected || r.width === 0) return false
 			const x = r.left + r.width / 2
 			const y = r.top + r.height / 2
 			const t = (cx) => new Touch({ identifier: 1, target: el, clientX: cx, clientY: y })
 			el.dispatchEvent(new TouchEvent('touchstart', { touches: [t(x)], bubbles: true, cancelable: true }))
 			for (let i = 1; i <= 10; i++) el.dispatchEvent(new TouchEvent('touchmove', { touches: [t(x + r.width * f * i / 10)], bubbles: true, cancelable: true }))
 			el.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [t(x + r.width * f)], bubbles: true, cancelable: true }))
+			return true
 		}, fraction)
-		// the list shown from memory is drawn again when Exchange answers: the gestures come after
-		await Promise.all([
-			page.waitForResponse((r) => /\/apps\/webmail\/api\/accounts\/\d+\/messages\?/.test(r.url())),
-			page.click('.wm-folder >> nth=0'),
-		])
+		// a finger only touches a row on the screen: again on the new row if the list was drawn again
+		const swipe = async (fraction) => {
+			for (let i = 0; i < 20; i++) {
+				if (await swipeOnce(fraction)) return
+				await page.waitForTimeout(100)
+			}
+			throw new Error('row never on the screen')
+		}
+		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector(row)
-		await page.waitForTimeout(300)
 		assert.ok(!(await page.$(row + '.unread')), 'read to start with')
 		// not far enough: nothing
 		await swipe(0.2)
