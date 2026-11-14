@@ -93,6 +93,67 @@ class UnifiedSearchService {
 		return ['entries' => $entries, 'next' => $hasMore ? $offset + $limit : null];
 	}
 
+	/**
+	 * A link of the webmail (a message or an event, as given by the search) for its preview
+	 * in Talk, Text, Deck…: its title and line, if the account is the user's.
+	 *
+	 * @return ?array{title: string, description: string, kind: string}
+	 */
+	public function reference(string $userId, string $url): ?array {
+		$ref = self::parseLink($url, $this->url->linkToRouteAbsolute('webmail.page.index'));
+		if ($ref === null) {
+			return null;
+		}
+		try {
+			$account = $this->accounts->find($userId, $ref['account']);
+			$client = $this->accounts->getClient($account);
+			$tz = $this->timeZone($userId);
+			if ($ref['message'] !== null) {
+				$m = $client->summaries([$ref['message']])[0] ?? null;
+				if ($m === null) {
+					return null;
+				}
+				return [
+					'title' => trim((string)$m['subject']) !== '' ? (string)$m['subject'] : $this->l->t('(sans objet)'),
+					'description' => self::messageSubline($m + ['email' => $account->getEmail()], $tz, true, null, $this->l),
+					'kind' => 'message',
+				];
+			}
+			$ev = (new EwsCalendar($client))->getEvent((string)$ref['event']);
+			return [
+				'title' => trim((string)$ev['subject']) !== '' ? (string)$ev['subject'] : $this->l->t('(sans titre)'),
+				'description' => self::eventSubline($ev + ['email' => $account->getEmail()], $tz, new \DateTimeImmutable('now', new \DateTimeZone('UTC')), true, $this->l),
+				'kind' => 'event',
+			];
+		} catch (\Throwable $e) {
+			// another user's account, a message deleted, a server down: no preview, the link stays
+			return null;
+		}
+	}
+
+	/**
+	 * The account and the message (or event) of a webmail link « …/apps/webmail/?account=3&message=AAMk… »
+	 * (« &module=calendar&event=… »), only on this Nextcloud.
+	 *
+	 * @return ?array{account: int, message: ?string, event: ?string}
+	 */
+	public static function parseLink(string $url, string $base): ?array {
+		$u = parse_url($url);
+		$b = parse_url($base);
+		if ($u === false || $b === false || empty($u['host']) || strcasecmp((string)$u['host'], (string)($b['host'] ?? '')) !== 0
+			|| ($u['port'] ?? null) !== ($b['port'] ?? null) || rtrim((string)($u['path'] ?? ''), '/') !== rtrim((string)($b['path'] ?? ''), '/')) {
+			return null;
+		}
+		parse_str((string)($u['query'] ?? ''), $q);
+		$account = (string)($q['account'] ?? '');
+		$message = is_string($q['message'] ?? null) && $q['message'] !== '' ? $q['message'] : null;
+		$event = is_string($q['event'] ?? null) && $q['event'] !== '' ? $q['event'] : null;
+		if (!ctype_digit($account) || ($message === null) === ($event === null)) {
+			return null;
+		}
+		return ['account' => (int)$account, 'message' => $message, 'event' => $event];
+	}
+
 	private function failed(Account $account, \Throwable $e): void {
 		if ($e instanceof MailException) {
 			$this->logger->info('Webmail: search in ' . $account->getEmail() . ' failed: ' . $e->getMessage(), ['app' => 'webmail']);

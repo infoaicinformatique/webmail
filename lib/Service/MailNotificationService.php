@@ -12,6 +12,7 @@ use OCA\Webmail\Exception\MailException;
 use OCP\IConfig;
 use OCP\IL10N;
 use OCP\IUserManager;
+use OCP\L10N\IFactory;
 use OCP\Notification\IManager;
 use Psr\Log\LoggerInterface;
 
@@ -32,6 +33,8 @@ class MailNotificationService {
 		private IManager $notifications,
 		private IUserManager $users,
 		private LoggerInterface $logger,
+		private MatrixService $matrix,
+		private IFactory $l10n,
 	) {
 	}
 
@@ -198,6 +201,35 @@ class MailNotificationService {
 			])
 			->setMessage('preview', ['preview' => mb_substr((string)($item['preview'] ?? ''), 0, 200)]);
 		$this->notifications->notify($n);
+		$this->alertOnMatrix($account, $item, $n->getSubjectParameters());
+	}
+
+	/**
+	 * The same news in the user's Matrix room (Element), when asked for: every new message,
+	 * or the important ones only. A Matrix server down does not stop the bell.
+	 *
+	 * @param array<string, mixed> $item
+	 * @param array<string, mixed> $p the parameters of the notification
+	 */
+	private function alertOnMatrix(Account $account, array $item, array $p): void {
+		$userId = $account->getUserId();
+		$mode = $this->matrix->settings($userId)['alerts'];
+		if (!self::matrixWanted($mode, $item)) {
+			return;
+		}
+		try {
+			$user = $this->users->get($userId);
+			$l = $this->l10n->get(Application::APP_ID, $user !== null ? $this->l10n->getUserLanguage($user) : null);
+			[$title, $message] = self::texts($p, (string)($item['preview'] ?? ''), $l);
+			$this->matrix->send($userId, '', '📬 ' . $title . "\n" . $message);
+		} catch (\Throwable $e) {
+			$this->logger->info('Webmail: new message of ' . $account->getEmail() . ' not posted on Matrix: ' . $e->getMessage(), ['app' => Application::APP_ID]);
+		}
+	}
+
+	/** « all »: every new message; « important »: those of high importance; else none. */
+	public static function matrixWanted(string $mode, array $item): bool {
+		return $mode === 'all' || ($mode === 'important' && ($item['importance'] ?? 'Normal') === 'High');
 	}
 
 	/**
