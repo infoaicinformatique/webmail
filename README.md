@@ -62,6 +62,7 @@ et sur les téléphones, et inversement.
 | Copie dans Nextcloud Contacts | « ☁ » dans le carnet Contacts : les contacts Exchange copiés dans un carnet « Exchange — adresse » de Nextcloud Contacts, visible par l'application Contacts, les téléphones synchronisés avec Nextcloud (CardDAV) et les autres applications. Exchange reste la référence : la copie est remise à jour toutes les 6 heures (ou à la demande), sans toucher aux cartes ajoutées à la main ; « Arrêter » retire le carnet |
 | Classement dans Fichiers | « 📂 Pièces jointes → Fichiers » (carte du compte) ou « Ranger celles de cet expéditeur… » sous les pièces jointes d'un message : les pièces jointes des messages qui **arrivent** d'un expéditeur (adresse, ou « @domaine » pour toute une société) sont rangées par Nextcloud dans le dossier choisi — factures dans « Documents/Factures »… —, toutes les 10 minutes, webmail fermé ou non. Les messages déjà reçus ne sont pas concernés ; une pièce jointe n'est rangée qu'une fois |
 | Ouvrir dans Nextcloud | « ↗ Ouvrir dans Nextcloud » sur une pièce jointe : une copie dans Fichiers (« Pièces jointes »), ouverte avec ce que votre Nextcloud a pour ce type — **Nextcloud Office** (Collabora, OnlyOffice) pour les documents, Text, le lecteur PDF, les images —, pour la lire, l'annoter ou la modifier |
+| Messages épinglés | « 📌 » dans la barre d'un message : il reste en tête de son dossier, sous « Épinglés », quel que soit le tri, jusqu'à « Désépingler » (20 au plus par compte, gardés par Nextcloud : sur tous vos appareils). Un message supprimé ou déplacé quitte la liste |
 | Groupes Nextcloud | Dans « À », « Cc » ou « Cci », taper le nom d'un groupe Nextcloud (« Comptabilité ») le propose avec son nombre de membres ; choisi, il est remplacé par l'adresse de chacun de ses membres (une fois chacun, sans vous, ceux sans adresse signalés). Seuls les groupes avec lesquels Nextcloud vous laisse partager sont proposés ; au-delà de 300 membres, une liste de diffusion est conseillée |
 | Aperçu | Miniatures des photos ; **aperçu plein écran** des images, des PDF et des fichiers texte (← / → pour passer de l'une à l'autre, Échap pour fermer). Le texte est affiché tel quel, rien n'y est interprété ; les autres types (Word, zip…) se téléchargent |
 | Destinataires | Complétion automatique des adresses à partir des contacts Exchange **et de l'annuaire de l'entreprise** Les **destinataires récents** (ceux à qui vous avez écrit ou répondu depuis ce navigateur, les plus fréquents d'abord) sont proposés **en premier, dès la première lettre**, sans attendre Exchange (« · récent ») |
@@ -266,7 +267,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.116.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.117.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -309,7 +310,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.116 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.117 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

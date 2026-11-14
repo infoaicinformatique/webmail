@@ -4055,6 +4055,40 @@ async function main() {
 		assert.ok(!(await page.$eval('.wm-sort', (e) => e.classList.contains('active'))))
 	})
 
+	await step('pinned: a message pinned stays at the top of its folder, whatever the order, until unpinned', async () => {
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-list-period')
+		const row = '.wm-message:has(.wm-message-subject:text-is("Newsletter n°44"))'
+		// (found by a search: it may be far down the inbox), then the whole inbox again
+		await page.fill('.wm-list .wm-search', 'Newsletter n°44')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.click(row)
+		await page.click('.wm-toolbar .wm-pin-btn')
+		await page.waitForSelector('.wm-toast:has-text("Message épinglé en haut de « Boîte de réception »")')
+		await page.click('.wm-search-info a:has-text("effacer")')
+		await page.waitForSelector('.wm-list-period')
+		const first = () => page.$eval('.wm-messages .wm-message', (e) => e.textContent)
+		assert.ok((await first()).includes('Newsletter n°44'), await first())
+		assert.strictEqual(await page.textContent('.wm-list-period >> nth=0'), '📌 Épinglés')
+		assert.ok(await page.$eval(row, (e) => e.classList.contains('wm-pinned')))
+		assert.strictEqual(await page.locator(row).count(), 1, 'shown once')
+		assert.strictEqual(await page.getAttribute('.wm-toolbar .wm-pin-btn', 'aria-pressed'), 'true')
+		// another order: still first, the others under « Autres messages »
+		await page.selectOption('.wm-sort', 'subject-asc')
+		await page.waitForSelector('.wm-list-period:text-is("Autres messages")')
+		assert.ok((await first()).includes('Newsletter n°44'))
+		await page.selectOption('.wm-sort', 'date-desc')
+		// kept by Nextcloud: after a reload too
+		await page.reload()
+		await page.waitForSelector('.wm-message.wm-pinned:has-text("Newsletter n°44")')
+		await shot('87-pinned')
+		await page.click(row)
+		await page.click('.wm-toolbar .wm-pin-btn')
+		await page.waitForSelector('.wm-toast:has-text("Message désépinglé")')
+		await page.waitForSelector('.wm-message.wm-pinned', { state: 'detached' })
+		assert.notStrictEqual(await page.textContent('.wm-list-period >> nth=0'), '📌 Épinglés')
+	})
+
 	await step('completion: the people of Nextcloud (an account of this Nextcloud) are offered too', async () => {
 		const occ = (args, env) => execSync((env ? OCC.replace('docker exec ', 'docker exec ' + env + ' ') : OCC) + ' ' + args, { encoding: 'utf8' })
 		try { occ('user:delete sophie') } catch (e) { /* not there */ }
