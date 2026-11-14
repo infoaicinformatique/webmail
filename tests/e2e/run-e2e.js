@@ -2994,6 +2994,26 @@ async function main() {
 		}
 	})
 
+	await step('recent searches: a search made (Enter, or a result opened) is offered again under the field', async () => {
+		const offered = () => page.$$eval('#wm-recent-searches option', (els) => els.map((e) => e.value))
+		// (the searches of the steps before forgotten)
+		await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('webmail.searches')).forEach((k) => localStorage.removeItem(k)))
+		await page.click('.wm-folder >> nth=0')
+		await page.fill('.wm-list .wm-search', 'maintenance')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForSelector('.wm-search-info:has-text("maintenance")')
+		// a word typed then left without looking at a result: not kept
+		await page.fill('.wm-list .wm-search', 'zzz')
+		await page.waitForSelector('.wm-search-info:has-text("zzz")')
+		await page.fill('.wm-list .wm-search', 'Devis')
+		await page.waitForSelector('.wm-search-info:has-text("Devis")')
+		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+		await page.click('.wm-search-info a:has-text("effacer")')
+		await page.waitForSelector('.wm-list-period')
+		assert.deepStrictEqual(await offered(), ['Devis', 'maintenance'])
+		assert.strictEqual(await page.getAttribute('.wm-list .wm-search', 'list'), 'wm-recent-searches')
+	})
+
 	await step('quick start: the accounts come with the page, the folders and the messages are asked for at once', async () => {
 		const asked = []
 		const onRequest = (r) => { const u = new URL(r.url()); if (u.pathname.includes('/apps/webmail/api/')) asked.push([Date.now(), r.method(), u.pathname]) }
