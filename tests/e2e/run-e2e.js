@@ -4490,7 +4490,8 @@ async function main() {
 		assert.strictEqual(r.status, 207, r.text.slice(0, 300))
 		assert(r.text.includes('SUMMARY:Comité de pilotage'), r.text.slice(0, 600))
 		assert(/UID:webmail-[0-9a-f]{32}/.test(r.text))
-		assert(r.text.includes('apps/webmail/?account='), 'a link back to the webmail')
+		// (long lines folded by iCalendar: unfolded first)
+		assert(r.text.replace(/\r?\n[ \t]/g, '').includes('apps/webmail/?account='), 'a link back to the webmail')
 		// read only: Nextcloud refuses a new event there
 		const put = await caldav('PUT', 'nouveau.ics', 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:nouveau\r\nDTSTAMP:20260101T000000Z\r\nDTSTART:20260101T100000Z\r\nSUMMARY:x\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')
 		assert(put.status === 403 || put.status === 405 || put.status === 501, 'PUT ' + put.status)
