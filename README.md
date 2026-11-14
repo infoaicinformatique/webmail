@@ -143,6 +143,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Semaine | Grille horaire sur 7 jours. Une ligne « Journée » regroupe les événements sur la journée entière. Les événements qui se chevauchent sont placés côte à côte, et un trait rouge marque l'heure actuelle. Un clic sur un créneau libre crée un événement à cette heure. Un clic sur un jour du mini-calendrier affiche sa semaine **Glisser pour créer** : appuyer sur une heure libre et tirer jusqu'à l'heure de fin dessine le créneau (par quarts d'heure), puis ouvre le formulaire avec ce début et cette fin ; un simple clic ouvre toujours une demi-heure |
 | Détail | Horaire, lieu, organisateur, participants et leur réponse, description |
 | Création / modification | Titre, journée entière, début et fin, lieu, participants et facultatifs (avec complétion), rappel, disponibilité |
+| Dupliquer | « ⧉ Dupliquer » dans le détail d'un événement ouvre un nouvel événement avec le même titre, le même lieu, les mêmes participants, la même description et la même durée : il reste à choisir le jour |
 | Répétition | Chaque jour, semaine, mois ou année, **tous les N** jours, semaines ou mois, **plusieurs jours de la semaine** (par ex. lundi et jeudi). Fin : jamais, à une date ou après N occurrences. Chaque mois ou chaque année **à une date** (« le 12 ») **ou un jour de la semaine** (« le 2e mardi », « le dernier vendredi », « le 4e jeudi de novembre »), proposés d'après la date du premier événement. Un résumé en clair s'affiche, par ex. « Toutes les 2 semaines le lundi et le jeudi, 10 fois » |
 | Plusieurs agendas | **Vos autres agendas** Exchange (par ex. « Congés équipe ») apparaissent automatiquement. Chaque agenda a sa couleur et une case pour l'afficher ou le masquer. À la création d'un événement, on choisit l'agenda |
 | Agendas partagés | « Ajouter un agenda partagé » : saisissez l'adresse d'un collègue (avec complétion). Le niveau d'accès est **détecté automatiquement** : **modification** ou **lecture** si l'agenda vous a été partagé dans Outlook, sinon **disponibilités** seulement (le partage par défaut d'Exchange : créneaux occupés, hachurés, avec l'objet s'il est partagé). En lecture, rien n'est modifiable ; en modification, on peut créer, modifier, déplacer et supprimer. La liste est propre à chaque utilisateur et à chaque compte ; retirer un agenda ne supprime rien dans Exchange |
@@ -253,7 +254,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.103.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.104.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -296,7 +297,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.103 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.104 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

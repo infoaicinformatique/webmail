@@ -1370,6 +1370,25 @@
 		if (canEdit) {
 			actions.appendChild(h('button', { class: 'primary', onclick: () => { close(); openForm(ev) } }, isOccurrence ? '✏️ ' + _('Modifier cette occurrence') : '✏️ ' + _('Modifier')))
 		}
+		if (cal.calendars.some((c) => c.canEdit)) {
+			// « Dupliquer »: a new event with the same title, place, people and length, to put on another day
+			const emails = (list) => (list || []).map((a) => a.email).filter((e) => e && !e.startsWith('/'))
+			actions.appendChild(h('button', {
+				class: 'wm-duplicate-btn',
+				title: _('Un nouvel événement avec le même titre, le même lieu, les mêmes participants et la même durée'),
+				onclick: () => {
+					close()
+					const start = new Date(ev.start)
+					const end = new Date(ev.end)
+					openForm(null, start, !ev.allDay, { prefill: {
+						subject: ev.subject, location: ev.location, body: ev.body, allDay: ev.allDay,
+						attendees: emails(ev.attendees), optional: emails(ev.optionalAttendees),
+						// (all day: the form shows the last day itself)
+						end: ev.allDay ? addDays(end, -1) : end,
+					} })
+				},
+			}, '⧉ ' + _('Dupliquer')))
+		}
 		if (core.sendToMatrix) {
 			// a summary of the event in a Matrix room (Element): when, where, the visio link if any
 			const visio = ((ev.body || '').match(/https:\/\/[^\s<>"']+\/room\/[^\s<>"']+|https:\/\/[^\s<>"']*(?:element|matrix)[^\s<>"']*/i) || [])[0]
@@ -1456,16 +1475,16 @@
 			? h('select', { name: 'calendar', 'aria-label': _('Agenda') }, writable.map((c) => h('option', { value: c.key, selected: c.key === lastCalendar },
 				c.kind === 'shared' ? _('Agenda de {name}', { name: c.name }) : c.name)))
 			: null
-		const allDay = h('input', { type: 'checkbox', name: 'allDay', checked: ev ? ev.allDay : false })
+		const allDay = h('input', { type: 'checkbox', name: 'allDay', checked: ev ? ev.allDay : !!prefill.allDay })
 		const startDate = h('input', { type: 'date', name: 'startDate', required: true, value: ymd(start), 'aria-label': _('Date de début') })
 		const startTime = h('input', { type: 'time', name: 'startTime', value: hm(start), step: '300', 'aria-label': _('Heure de début') })
 		const endDate = h('input', { type: 'date', name: 'endDate', required: true, value: ymd(end), 'aria-label': _('Date de fin') })
 		const endTime = h('input', { type: 'time', name: 'endTime', value: hm(end), step: '300', 'aria-label': _('Heure de fin') })
-		const location = h('input', { type: 'text', name: 'location', value: ev ? ev.location : '', placeholder: _('Salle, adresse ou lien visio') })
+		const location = h('input', { type: 'text', name: 'location', value: ev ? ev.location : (prefill.location || ''), placeholder: _('Salle, adresse ou lien visio') })
 		const attendees = h('input', { type: 'text', name: 'attendees', placeholder: _('Inviter des participants (adresses e-mail)'),
 			value: ev ? ev.attendees.map((a) => a.email).filter((e) => e && !e.startsWith('/')).join(', ') : (prefill.attendees || []).join(', ') })
 		const optional = h('input', { type: 'text', name: 'optionalAttendees', placeholder: _('Facultatif'),
-			value: ev ? ev.optionalAttendees.map((a) => a.email).filter((e) => e && !e.startsWith('/')).join(', ') : '' })
+			value: ev ? ev.optionalAttendees.map((a) => a.email).filter((e) => e && !e.startsWith('/')).join(', ') : (prefill.optional || []).join(', ') })
 		const description = h('textarea', { name: 'body', rows: '5', placeholder: _('Description') })
 		description.value = ev ? ev.body : (prefill.body || '')
 

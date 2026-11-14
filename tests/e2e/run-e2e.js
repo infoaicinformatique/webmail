@@ -1416,6 +1416,28 @@ async function main() {
 		await shot('10-calendar-month')
 	})
 
+	await step('calendar: duplicate an event (same title, place, people, length) on another day', async () => {
+		await page.click('.wm-month-cell.today .wm-event:has-text("Point hebdo équipe")')
+		await page.waitForSelector('.wm-modal .wm-attendees')
+		await page.click('.wm-modal .wm-duplicate-btn')
+		await page.waitForSelector('.wm-modal h2:has-text("Nouvel événement")')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=subject]'), 'Point hebdo équipe')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=location]'), 'Salle Méditerranée')
+		assert.ok((await page.inputValue('.wm-modal input[name=attendees]')).includes('marie.martin@societe-a.fr'))
+		// one hour, as the original
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=startTime]'), '09:00')
+		assert.strictEqual(await page.inputValue('.wm-modal input[name=endTime]'), '10:00')
+		// to the next day
+		const d = new Date()
+		d.setDate(d.getDate() + 1)
+		const day = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+		await page.fill('.wm-modal input[name=startDate]', day)
+		await page.fill('.wm-modal input[name=endDate]', day)
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
+		await shot('93-duplicate-event')
+	})
+
 	await step('calendar: event details and edit', async () => {
 		await page.click('.wm-month-cell.today .wm-event:has-text("Point hebdo équipe")')
 		await page.waitForSelector('.wm-modal .wm-attendees')
