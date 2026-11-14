@@ -3807,9 +3807,25 @@
 		}
 		const close = () => { menu.hidden = true; active = -1 }
 		const choose = (r) => {
+			if (r.source === 'nextcloud-group') { chooseGroup(r); return }
 			const { head } = lastToken()
 			input.value = head + (r.name && r.name !== r.email ? r.name + ' <' + r.email + '>' : r.email) + ', '
 			close()
+			input.focus()
+		}
+		/** A group of Nextcloud: all its members (those with an address, the user aside), once each. */
+		const chooseGroup = async (r) => {
+			close()
+			try {
+				const g = await api('/nextcloud-groups/members', { query: { gid: r.gid } })
+				const { head } = lastToken()
+				const there = new Set((head.match(/[^\s<>,;]+@[^\s<>,;]+/g) || []).map((e) => e.toLowerCase()))
+				const added = g.addresses.filter((a) => !there.has(a.email))
+				input.value = head + added.map((a) => (a.name !== a.email ? a.name + ' <' + a.email + '>' : a.email) + ', ').join('')
+				const parts = [added.length > 1 ? _('{count} membres du groupe « {name} » ajoutés', { count: added.length, name: g.name }) : _('{count} membre du groupe « {name} » ajouté', { count: added.length, name: g.name })]
+				if (g.without) parts.push(g.without > 1 ? _('{count} sans adresse e-mail', { count: g.without }) : _('{count} sans adresse e-mail', { count: g.without }))
+				toast(parts.join(_(' ; ')))
+			} catch (e) { toast(e.message, true) }
 			input.focus()
 		}
 		const render = () => {
@@ -3819,7 +3835,9 @@
 				class: 'wm-ac-item' + (i === active ? ' active' : ''),
 				onmousedown: (e) => { e.preventDefault(); choose(r) },
 			}, h('span', { class: 'wm-ac-name' }, r.name || r.email), ' ',
-			h('span', { class: 'wm-muted' }, r.email + ({ directory: ' · ' + _('annuaire'), recent: ' · ' + _('récent'), nextcloud: ' · ' + _('contacts Nextcloud'), 'nextcloud-user': ' · ' + _('compte Nextcloud') }[r.source] || '')))))
+			h('span', { class: 'wm-muted' }, r.source === 'nextcloud-group'
+				? '👥 ' + (r.count > 1 ? _('groupe Nextcloud · {count} membres', { count: r.count }) : _('groupe Nextcloud · {count} membre', { count: r.count }))
+				: r.email + ({ directory: ' · ' + _('annuaire'), recent: ' · ' + _('récent'), nextcloud: ' · ' + _('contacts Nextcloud'), 'nextcloud-user': ' · ' + _('compte Nextcloud') }[r.source] || '')))))
 			// a late answer must not reopen the menu once the field is left
 			menu.hidden = items.length === 0 || document.activeElement !== input
 		}
@@ -3845,7 +3863,7 @@
 					if (mine !== seq) return
 					// the recent ones first, then the contacts and the directory (each address once)
 					const seen = new Set(recent.map((r) => r.email.toLowerCase()))
-					items = recent.concat(data.results.filter((r) => !seen.has(String(r.email).toLowerCase())))
+					items = recent.concat(data.results.filter((r) => r.source === 'nextcloud-group' || !seen.has(String(r.email).toLowerCase())))
 					active = items.length ? 0 : -1
 					render()
 				} catch (e) { /* autocompletion is best effort */ }

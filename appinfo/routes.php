@@ -109,6 +109,7 @@ return [
 		['name' => 'contact#setPhoto', 'url' => '/api/accounts/{id}/contacts/photo', 'verb' => 'POST'],
 		['name' => 'contact#userPhoto', 'url' => '/api/accounts/{id}/contacts/userphoto', 'verb' => 'GET'],
 		['name' => 'contact#resolve', 'url' => '/api/accounts/{id}/contacts/resolve', 'verb' => 'GET'],
+		['name' => 'contact#groupMembers', 'url' => '/api/nextcloud-groups/members', 'verb' => 'GET'],
 
 		['name' => 'auto_file#index', 'url' => '/api/accounts/{id}/autofile', 'verb' => 'GET'],
 		['name' => 'auto_file#add', 'url' => '/api/accounts/{id}/autofile', 'verb' => 'POST'],

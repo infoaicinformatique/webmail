@@ -1417,5 +1417,12 @@
 	"Désépingler": "Unpin",
 	"Épingler": "Pin",
 	"Message invalide": "Invalid message",
-	"%s messages épinglés au plus : désépinglez-en un d'abord": "%s pinned messages at most: unpin one first"
+	"%s messages épinglés au plus : désépinglez-en un d'abord": "%s pinned messages at most: unpin one first",
+	"{count} membres du groupe « {name} » ajoutés": "{count} members of the group « {name} » added",
+	"{count} membre du groupe « {name} » ajouté": "{count} member of the group « {name} » added",
+	"{count} sans adresse e-mail": "{count} without an e-mail address",
+	"groupe Nextcloud · {count} membres": "Nextcloud group · {count} members",
+	"groupe Nextcloud · {count} membre": "Nextcloud group · {count} member",
+	"Groupe introuvable : %s": "Group not found: %s",
+	"Le groupe « %s » a plus de %s membres : écrivez plutôt à une liste de diffusion": "The group « %s » has more than %s members: write to a mailing list instead"
 }

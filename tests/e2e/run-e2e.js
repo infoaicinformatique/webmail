@@ -4106,6 +4106,42 @@ async function main() {
 		}
 	})
 
+	await step('completion: a Nextcloud group, chosen, adds all its members (each once, the user aside)', async () => {
+		const occ = (args, env) => execSync((env ? OCC.replace('docker exec ', 'docker exec ' + env + ' ') : OCC) + ' ' + args, { encoding: 'utf8' })
+		const people = [['lea', 'Léa Compta', 'lea@nc.example'], ['marc', 'Marc Compta', 'marc@nc.example'], ['nomail', 'Sans Adresse', '']]
+		for (const [uid] of people) { try { occ('user:delete ' + uid) } catch (e) { /* not there */ } }
+		try { occ('group:delete comptabilite') } catch (e) { /* not there */ }
+		occ('group:add --display-name "Comptabilité" comptabilite')
+		try {
+			for (const [uid, name, email] of people) {
+				occ('user:add --password-from-env --display-name "' + name + '" ' + uid, '-e OC_PASS=Compta-Pass-2026')
+				if (email) occ('user:setting ' + uid + ' settings email ' + email)
+				occ('group:adduser comptabilite ' + uid)
+			}
+			occ('group:adduser comptabilite admin')
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'Jean Dupont <jean.dupont@client-exemple.fr>, marc@nc.example, ')
+			await page.click('input[name=to]')
+			await page.keyboard.type('Compta')
+			const item = '.wm-ac-item:has-text("Comptabilité"):has-text("groupe Nextcloud · 4 membres")'
+			await page.waitForSelector(item)
+			await shot('09b-autocomplete-group')
+			await page.click(item)
+			// Léa added; Marc already there; the user and the member without an address left out
+			await page.waitForSelector('.wm-toast:has-text("1 membre du groupe « Comptabilité » ajouté ; 1 sans adresse e-mail")')
+			assert.strictEqual(await page.inputValue('input[name=to]'), 'Jean Dupont <jean.dupont@client-exemple.fr>, marc@nc.example, Léa Compta <lea@nc.example>, ')
+			// a group one cannot see (sharing limited to one's groups): refused
+			const r = await page.evaluate(async () => (await fetch(OC.generateUrl('/apps/webmail/api/nextcloud-groups/members') + '?gid=nexistepas', { headers: { requesttoken: OC.requestToken } })).status)
+			assert.ok(r >= 400, String(r))
+			await page.click('.wm-compose button:has-text("Annuler")')
+			await page.waitForSelector('.wm-compose', { state: 'detached' })
+		} finally {
+			for (const [uid] of people) { try { occ('user:delete ' + uid) } catch (e) { /* gone */ } }
+			occ('group:delete comptabilite')
+		}
+	})
+
 	await step('recent recipients: the people written to come first in the completion, from the first letter', async () => {
 		await page.click('.wm-folder >> nth=0')
 		await page.click('.wm-compose-btn')
