@@ -2410,6 +2410,43 @@ async function main() {
 		assert(!(await page.$('.wm-contact:has-text("Zoé Garnier")')))
 	})
 
+	await step('contacts: duplicates found (same address, same name) and merged into one card, nothing lost', async () => {
+		await page.click('.wm-tab[data-module="contacts"]')
+		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
+		const made = await page.evaluate(async () => {
+			const accounts = await (await fetch(OC.generateUrl('/apps/webmail/api/accounts'), { headers: { requesttoken: OC.requestToken } })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const create = (contact) => fetch(OC.generateUrl('/apps/webmail/api/accounts/' + id + '/contacts'), {
+				method: 'POST', headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ book: 'contacts', contact }),
+			}).then((r) => r.status)
+			return [
+				await create({ givenName: 'Hugo', surname: 'Lefèvre', emails: ['hugo@lefevre.example'], mobilePhone: '06 11 22 33 44' }),
+				await create({ givenName: 'HUGO', surname: 'Lefevre', company: 'Lefèvre Menuiserie', businessPhone: '04 93 44 55 66', emails: [], notes: 'Rappeler le lundi' }),
+			]
+		})
+		assert.deepStrictEqual(made, [200, 200])
+		await page.click('.wm-contact >> nth=0')
+		await page.click('.wm-dup-btn')
+		const group = '.wm-dup-group:has-text("hugo@lefevre.example")'
+		await page.waitForSelector(group)
+		assert.strictEqual(await page.locator(group + ' .wm-dup-item').count(), 2)
+		await shot('53-duplicates')
+		// the card with the address is kept by default
+		assert.ok(await page.isChecked(group + ' .wm-dup-item:has-text("hugo@lefevre.example") input[type=radio]'))
+		await page.click(group + ' .wm-dup-merge')
+		await page.waitForSelector('.wm-toast:has-text("2 fiches fusionnées")')
+		await page.waitForSelector(group, { state: 'detached' })
+		await page.click('.wm-dup-dialog .wm-modal-close')
+		await page.waitForSelector('.wm-contact:has-text("Hugo Lefèvre")')
+		assert.strictEqual(await page.locator('.wm-contact:has-text("Lef")').count(), 1)
+		await page.click('.wm-contact:has-text("Hugo Lefèvre")')
+		const card = await (await page.waitForSelector('.wm-contact-card:has-text("Lefèvre Menuiserie")')).textContent()
+		for (const v of ['hugo@lefevre.example', '06 11 22 33 44', '04 93 44 55 66', 'Rappeler le lundi']) assert.ok(card.includes(v), v + ' in ' + card)
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-toolbar button:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Contact supprimé")')
+	})
+
 	await step('contacts: birthdays, the upcoming ones above the list, set and cleared', async () => {
 		// Anne Bernard: in 3 days (saved by Outlook in Paris, the day before at 23:00 UTC: the right day here)
 		const soon = new Date()

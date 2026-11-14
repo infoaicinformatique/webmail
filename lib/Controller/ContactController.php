@@ -8,6 +8,7 @@ use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Ews\EwsContacts;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
+use OCA\Webmail\Service\ContactDuplicates;
 use OCA\Webmail\Service\NextcloudGroups;
 use OCA\Webmail\Service\NextcloudPeople;
 use OCA\Webmail\Service\SharedFolderService;
@@ -252,6 +253,56 @@ class ContactController extends Controller {
 			return null;
 		}
 		return $this->shared->find(SharedFolderService::CONTACTS, (string)$this->userId, $id, $parsed[0], $parsed[1]) ?? false;
+	}
+
+	/** « Doublons » are looked for in one's own books only (not a colleague's, nor the public ones). */
+	private function assertOwnBook(int $id, string $book): void {
+		if ($book === 'directory' || $this->sharedEntry($id, $book) !== null) {
+			throw new MailException('Les doublons se cherchent dans vos propres carnets');
+		}
+	}
+
+	/** The groups of contacts that look like the same person. */
+	#[NoAdminRequired]
+	#[UserRateLimit(limit: 20, period: 300)]
+	public function duplicates(int $id, string $book = 'contacts'): Response {
+		return $this->handle(function () use ($id, $book) {
+			$this->assertOwnBook($id, $book);
+			$groups = ContactDuplicates::groups($this->contacts($id, $book)->exportContacts($book));
+			$slim = fn (array $c) => [
+				'id' => $c['id'], 'displayName' => (string)($c['displayName'] ?? ''), 'emails' => array_values((array)($c['emails'] ?? [])),
+				'company' => (string)($c['company'] ?? ''), 'phone' => (string)($c['mobilePhone'] ?? '') ?: (string)($c['businessPhone'] ?? ''),
+			];
+			return ['groups' => array_map(fn ($g) => array_map($slim, $g), $groups)];
+		});
+	}
+
+	/**
+	 * Merge contacts into one: the card $keepId completed by the others, which are deleted.
+	 * @param string[] $ids the other contacts
+	 */
+	#[NoAdminRequired]
+	public function mergeDuplicates(int $id, string $keepId, array $ids, string $book = 'contacts'): Response {
+		return $this->handle(function () use ($id, $keepId, $ids, $book) {
+			$this->assertOwnBook($id, $book);
+			$ids = array_values(array_unique(array_filter(array_map('strval', $ids), fn ($x) => $x !== '' && $x !== $keepId)));
+			if ($ids === [] || count($ids) > 20) {
+				throw new MailException('Choisissez les contacts à fusionner');
+			}
+			$contacts = $this->contacts($id, $book);
+			$keep = $contacts->getContact($keepId);
+			$others = array_map(fn ($x) => $contacts->getContact($x), $ids);
+			foreach (array_merge([$keep], $others) as $c) {
+				if (!empty($c['isGroup'])) {
+					throw new MailException('Un groupe ne se fusionne pas avec un contact');
+				}
+			}
+			$contacts->updateContact($keepId, ContactDuplicates::merge($keep, $others));
+			foreach ($ids as $x) {
+				$contacts->deleteContact($x);
+			}
+			return ['id' => $keepId, 'merged' => count($ids)];
+		});
 	}
 
 	private function assertKnownBook(int $id, string $book): void {
