@@ -112,8 +112,10 @@ def handle(op, el):
         parent = el.find('m:ParentFolderIds/t:DistinguishedFolderId', NS)
         if parent is None or parent.get('Id') != 'tasks':
             return None
-        open_only = el.find('m:Restriction/t:IsNotEqualTo/t:FieldURIOrConstant/t:Constant[@Value="Completed"]', NS) is not None
-        items = [t for t in TASKS.values() if not (open_only and t['status'] == 'Completed')]
+        # as OVH Hosted Exchange: a Restriction on task:Status is refused
+        if el.find('m:Restriction//t:FieldURI[@FieldURI="task:Status"]', NS) is not None:
+            return wrap(op, [err(op, 'ErrorInvalidValueForProperty', 'The specified value is invalid for property.')])
+        items = list(TASKS.values())
         return wrap(op, [ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Items>%s</t:Items></m:RootFolder>'
                             % (len(items), ''.join(task_xml(t) for t in items)))])
     if op == 'CreateItem':

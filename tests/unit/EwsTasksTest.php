@@ -27,9 +27,22 @@ class EwsTasksTest extends EwsTestCase {
 		$this->assertTrue($tasks[3]['done']);
 		$this->assertStringNotContainsString('<m:Restriction>', $this->lastRequest());
 
-		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="0" IncludesLastItemInRange="true"><t:Items/></m:RootFolder>'));
-		(new EwsTasks($this->client()))->list();
-		$this->assertStringContainsString('<t:IsNotEqualTo><t:FieldURI FieldURI="task:Status"/><t:FieldURIOrConstant><t:Constant Value="Completed"/></t:FieldURIOrConstant></t:IsNotEqualTo>', $this->lastRequest());
+		// to do only: the completed ones left out here, not by a Restriction (refused by OVH)
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="2" IncludesLastItemInRange="true"><t:Items>'
+			. self::task('T3', 'Faire le devis', '2026-11-16T23:00:00Z')
+			. self::task('T4', 'Ancienne', '2026-11-01T23:00:00Z', 'Completed', 'Normal', '2026-11-02T10:00:00Z')
+			. '</t:Items></m:RootFolder>'));
+		$this->assertSame(['T3'], array_column((new EwsTasks($this->client()))->list(), 'id'));
+		$this->assertStringNotContainsString('<m:Restriction>', $this->lastRequest());
+	}
+
+	public function testListAsksTheNextPages(): void {
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="501" IncludesLastItemInRange="false"><t:Items>'
+			. self::task('T1', 'Une', '2026-11-16T23:00:00Z') . '</t:Items></m:RootFolder>'));
+		$this->queue(self::ok('FindItem', '<m:RootFolder TotalItemsInView="501" IncludesLastItemInRange="true"><t:Items>'
+			. self::task('T2', 'Deux', '2026-11-17T23:00:00Z') . '</t:Items></m:RootFolder>'));
+		$this->assertSame(['T1', 'T2'], array_column((new EwsTasks($this->client()))->list(), 'id'));
+		$this->assertStringContainsString('Offset="500"', $this->lastRequest());
 	}
 
 	public function testCreate(): void {
