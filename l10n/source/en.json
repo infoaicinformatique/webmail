@@ -1283,5 +1283,7 @@
 	"Expéditeur (Z → A)": "Sender (Z → A)",
 	"Objet (A → Z)": "Subject (A → Z)",
 	"Plus volumineux": "Largest first",
-	"Trier par": "Sort by"
+	"Trier par": "Sort by",
+	"Envoyer par e-mail": "Send by e-mail",
+	"Un nouveau message du webmail, avec ce fichier en pièce jointe": "A new message of the webmail, with this file attached"
 }
