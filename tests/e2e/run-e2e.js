@@ -4605,10 +4605,13 @@ async function main() {
 			for (let i = 1; i <= 10; i++) el.dispatchEvent(new TouchEvent('touchmove', { touches: [t(x + r.width * f * i / 10)], bubbles: true, cancelable: true }))
 			el.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [t(x + r.width * f)], bubbles: true, cancelable: true }))
 		}, fraction)
-		await page.click('.wm-folder >> nth=0')
+		// the list shown from memory is drawn again when Exchange answers: the gestures come after
+		await Promise.all([
+			page.waitForResponse((r) => /\/apps\/webmail\/api\/accounts\/\d+\/messages\?/.test(r.url())),
+			page.click('.wm-folder >> nth=0'),
+		])
 		await page.waitForSelector(row)
-		// the rest of the page after its first rows (FIRST_PAGE): the list drawn again, not under the finger
-		await page.waitForLoadState('networkidle')
+		await page.waitForTimeout(300)
 		assert.ok(!(await page.$(row + '.unread')), 'read to start with')
 		// not far enough: nothing
 		await swipe(0.2)
