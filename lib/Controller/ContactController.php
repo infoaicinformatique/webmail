@@ -318,7 +318,7 @@ class ContactController extends Controller {
 			}
 			$this->assertKnownBook($id, $book);
 			$vcf = VCard::export($this->contacts($id, $book)->exportContacts($book));
-			$file = trim(preg_replace('/[\\\/:*?"<>|]+/', ' ', $name) ?? '') ?: 'Contacts';
+			$file = VCard::fileName($name);
 			return new DataDownloadResponse($vcf, $file . '.vcf', 'text/vcard; charset=utf-8');
 		});
 	}
