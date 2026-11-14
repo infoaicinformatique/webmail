@@ -1053,3 +1053,15 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-link-options { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .wm-link-options[open] { padding: 4px 8px; border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); }
 .wm-link-options summary { cursor: pointer; }
+
+/* a second time zone: one more column of hours, on the left */
+.wm-with-tz2 .wm-week-row { grid-template-columns: 50px 56px repeat(7, minmax(0, 1fr)); }
+.wm-with-tz2.wm-day-view .wm-week-row { grid-template-columns: 50px 56px minmax(0, 1fr); }
+.wm-week-tz2 { color: var(--color-text-maxcontrast); background: var(--color-background-hover); }
+.wm-tz-label { font-size: 10px; line-height: 1.2; display: flex; align-items: flex-end; justify-content: flex-end; text-align: end; padding-bottom: 4px; }
+.wm-cal-tz2 { display: flex; flex-direction: column; gap: 2px; padding: 4px 6px; font-size: 13px; }
+.wm-cal-tz2 select { margin: 0; width: 100%; }
+@media (max-width: 800px) {
+	.wm-with-tz2 .wm-week-row { grid-template-columns: 34px 34px repeat(7, minmax(0, 1fr)); }
+	.wm-with-tz2.wm-day-view .wm-week-row { grid-template-columns: 40px 40px minmax(0, 1fr); }
+}

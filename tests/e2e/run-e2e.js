@@ -1561,6 +1561,28 @@ async function main() {
 		await shot('17-week')
 	})
 
+	await step('calendar: a second time zone beside the hours (week and day views), then none', async () => {
+		await page.selectOption('select[name=tz2]', 'Asia/Tokyo')
+		await page.waitForSelector('.wm-with-tz2 .wm-week-head .wm-week-tz2:has-text("Tokyo UTC+9")')
+		// the hour of Tokyo at 08:00 here, that day (summer or winter time)
+		const first = await page.getAttribute('.wm-week-col >> nth=0', 'data-date')
+		const expected = await page.evaluate((d) => {
+			const [y, m, day] = d.split('-').map(Number)
+			return new Date(y, m - 1, day, 8).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Tokyo' })
+		}, first)
+		assert.strictEqual(await page.textContent('.wm-week-grid .wm-week-tz2 .wm-week-hour >> nth=8'), expected)
+		assert.strictEqual(await page.textContent('.wm-week-grid .wm-week-hours:not(.wm-week-tz2) .wm-week-hour >> nth=8'), '08:00')
+		// the events stay where they were
+		assert.strictEqual(await page.locator('.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")').evaluate((e) => e.style.top), '432px')
+		await shot('17b-week-second-zone')
+		// kept: the day view has it too
+		await page.click('.wm-segmented button:has-text("Jour")')
+		await page.waitForSelector('.wm-day-view.wm-with-tz2 .wm-week-tz2')
+		await page.click('.wm-segmented button:has-text("Semaine")')
+		await page.selectOption('select[name=tz2]', '')
+		await page.waitForSelector('.wm-week-tz2', { state: 'detached' })
+	})
+
 	await step('calendar: week view, click on an empty slot and overlapping events', async () => {
 		// a locator is resolved again if the week is re-rendered meanwhile
 		await page.locator('.icon-loading-small').waitFor({ state: 'detached' })

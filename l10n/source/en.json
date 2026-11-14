@@ -1407,5 +1407,10 @@
 	"Nouvel essai…": "Trying again…",
 	"Réessayer": "Try again",
 	"Un nouvel événement avec le même titre, le même lieu, les mêmes participants et la même durée": "A new event with the same title, place, attendees and length",
-	"Dupliquer": "Duplicate"
+	"Dupliquer": "Duplicate",
+	"Heures à {zone}": "Hours in {zone}",
+	"Deuxième fuseau horaire": "Second time zone",
+	"Fréquents": "Frequent",
+	"Tous les fuseaux": "All time zones",
+	"Les heures d'un autre fuseau à côté des vôtres, dans les vues Semaine et Jour": "The hours of another time zone beside yours, in the Week and Day views"
 }
