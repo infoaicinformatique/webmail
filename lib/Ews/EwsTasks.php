@@ -13,6 +13,9 @@ use OCA\Webmail\Exception\MailException;
 class EwsTasks {
 	public const STATUSES = ['NotStarted', 'InProgress', 'Completed', 'WaitingOnOthers', 'Deferred'];
 	private const IMPORTANCES = ['Low', 'Normal', 'High'];
+	/** tasks asked at once, and at most in all (completed ones included) */
+	private const PAGE = 500;
+	private const MAX_TASKS = 5000;
 	private const FIELDS = ['item:Subject', 'item:Importance', 'item:Categories', 'task:DueDate', 'task:StartDate', 'task:Status',
 		'task:PercentComplete', 'task:CompleteDate', 'task:IsRecurring', 'item:DateTimeCreated', 'item:ReminderIsSet', 'item:ReminderDueBy'];
 
@@ -27,19 +30,27 @@ class EwsTasks {
 	 * @return list<array<string, mixed>>
 	 */
 	public function list(bool $withCompleted = false): array {
-		$restriction = $withCompleted ? '' : '<m:Restriction><t:IsNotEqualTo><t:FieldURI FieldURI="task:Status"/>'
-			. '<t:FieldURIOrConstant><t:Constant Value="Completed"/></t:FieldURIOrConstant></t:IsNotEqualTo></m:Restriction>';
-		$xp = $this->client->request(
-			'<m:FindItem Traversal="Shallow">'
-			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . self::fields(self::FIELDS) . '</t:AdditionalProperties></m:ItemShape>'
-			. '<m:IndexedPageItemView MaxEntriesReturned="500" Offset="0" BasePoint="Beginning"/>'
-			. $restriction
-			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="tasks"/></m:ParentFolderIds>'
-			. '</m:FindItem>'
-		);
+		// no Restriction on task:Status: OVH Hosted Exchange refuses it
+		// (ErrorInvalidValueForProperty); the completed ones are left out here
 		$tasks = [];
-		foreach ($xp->query('//m:RootFolder/t:Items/t:Task') as $node) {
-			$tasks[] = $this->parse($xp, $node);
+		for ($offset = 0; $offset < self::MAX_TASKS; $offset += self::PAGE) {
+			$xp = $this->client->request(
+				'<m:FindItem Traversal="Shallow">'
+				. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . self::fields(self::FIELDS) . '</t:AdditionalProperties></m:ItemShape>'
+				. '<m:IndexedPageItemView MaxEntriesReturned="' . self::PAGE . '" Offset="' . $offset . '" BasePoint="Beginning"/>'
+				. '<m:ParentFolderIds><t:DistinguishedFolderId Id="tasks"/></m:ParentFolderIds>'
+				. '</m:FindItem>'
+			);
+			foreach ($xp->query('//m:RootFolder/t:Items/t:Task') as $node) {
+				$task = $this->parse($xp, $node);
+				if ($withCompleted || !$task['done']) {
+					$tasks[] = $task;
+				}
+			}
+			$root = $xp->query('//m:RootFolder')->item(0);
+			if (!$root instanceof \DOMElement || $root->getAttribute('IncludesLastItemInRange') !== 'false') {
+				break;
+			}
 		}
 		return self::sort($tasks);
 	}
