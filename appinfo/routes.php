@@ -99,6 +99,8 @@ return [
 		['name' => 'nextcloud_calendar#status', 'url' => '/api/accounts/{id}/calendar/nextcloud', 'verb' => 'GET'],
 		['name' => 'nextcloud_calendar#set', 'url' => '/api/accounts/{id}/calendar/nextcloud', 'verb' => 'POST'],
 		['name' => 'contact#export', 'url' => '/api/accounts/{id}/contacts/export', 'verb' => 'GET'],
+		['name' => 'contact#duplicates', 'url' => '/api/accounts/{id}/contacts/duplicates', 'verb' => 'GET'],
+		['name' => 'contact#mergeDuplicates', 'url' => '/api/accounts/{id}/contacts/duplicates/merge', 'verb' => 'POST'],
 		['name' => 'contact#import', 'url' => '/api/accounts/{id}/contacts/import', 'verb' => 'POST'],
 		['name' => 'contact_copy#status', 'url' => '/api/accounts/{id}/contacts/copy', 'verb' => 'GET'],
 		['name' => 'contact_copy#copy', 'url' => '/api/accounts/{id}/contacts/copy', 'verb' => 'POST'],
