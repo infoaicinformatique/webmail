@@ -2444,6 +2444,46 @@ async function main() {
 		await page.waitForFunction(() => document.querySelectorAll('.wm-contact').length === 6)
 	})
 
+	await step('contacts: a dot shows who is on line (the Nextcloud status of the account with their address)', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const setStatus = (statusType) => page.evaluate(async (type) => {
+			const r = await fetch(OC.linkToOCS('apps/user_status/api/v1/user_status', 2) + 'status?format=json', {
+				method: 'PUT', headers: { requesttoken: OC.requestToken, 'OCS-APIRequest': 'true', 'Content-Type': 'application/json' }, body: JSON.stringify({ statusType: type }),
+			})
+			if (!r.ok) throw new Error('status ' + r.status)
+		}, statusType)
+		const dot = '.wm-contact:has-text("Jean Dupont") .wm-presence'
+		const reload = async () => {
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('.wm-tab[data-module="contacts"]')
+			await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
+		}
+		// Jean Dupont has a Nextcloud account (here: admin, with his address)
+		occ('user:setting admin settings email jean.dupont@client-exemple.fr')
+		try {
+			await setStatus('dnd')
+			await reload()
+			await page.waitForSelector(dot + '.wm-presence-dnd:not([hidden])')
+			assert.strictEqual(await page.getAttribute(dot, 'title'), 'Ne pas déranger')
+			// the others have no Nextcloud account: no dot
+			assert.strictEqual(await page.$$eval('.wm-contacts .wm-presence:not([hidden])', (els) => els.length), 1)
+			await setStatus('online')
+			await reload()
+			await page.waitForSelector(dot + '.wm-presence-online:not([hidden])')
+			// on his card too
+			await page.click('.wm-contact:has-text("Jean Dupont")')
+			await page.waitForSelector('.wm-contact-head .wm-presence-online[title="En ligne"]')
+			await shot('14b-contacts-presence')
+			// « Invisible »: shown as off line, as Nextcloud does
+			await setStatus('invisible')
+			await reload()
+			await page.waitForSelector(dot + '.wm-presence-offline[title="Hors ligne"]')
+		} finally {
+			await setStatus('online').catch(() => {})
+			occ('user:setting admin settings email --delete')
+		}
+	})
+
 	await step('contacts: edit', async () => {
 		await page.click('.wm-contact:has-text("Jean Dupont")')
 		await page.click('.wm-toolbar button:has-text("Modifier")')

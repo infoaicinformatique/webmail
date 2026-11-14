@@ -514,6 +514,17 @@
 .wm-contact-head { display: flex; gap: 16px; align-items: center; margin-bottom: 8px; }
 .wm-contact-head .wm-avatar { width: 64px; height: 64px; font-size: 24px; }
 .wm-contact-head .wm-subject { margin: 0; }
+/* the Nextcloud status of the contact, on the corner of its avatar */
+.wm-avatar-wrap { position: relative; display: inline-flex; flex-shrink: 0; }
+.wm-presence { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%; box-sizing: border-box;
+	border: 2px solid var(--color-main-background); background: #949494; }
+.wm-presence[hidden] { display: none; }
+.wm-presence-online { background: #2d7b41; }
+.wm-presence-away { background: #e9a23b; }
+.wm-presence-dnd { background: #db0606; }
+.wm-presence-offline { background: #949494; }
+.wm-contact-head .wm-presence { width: 18px; height: 18px; border-width: 3px; right: 1px; bottom: 1px; }
+.wm-contact.selected .wm-presence { border-color: var(--color-primary-element-light, var(--color-main-background)); }
 .wm-contact-row { display: flex; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
 .wm-contact-icon { width: 22px; flex-shrink: 0; }
 .wm-contact-label { width: 90px; flex-shrink: 0; }
