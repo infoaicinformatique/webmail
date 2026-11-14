@@ -139,8 +139,8 @@ async function main() {
 		const folders = await page.$$eval('.wm-folder-name', (els) => els.map((e) => e.textContent))
 		assert.deepStrictEqual(folders.slice(0, 6), ['Boîte de réception', 'Clients', 'Brouillons', 'Éléments envoyés', 'Courrier indésirable', 'Éléments supprimés'])
 		assert(!folders.includes('Calendrier'), 'calendar folder must be hidden')
-		const count = await page.$$eval('.wm-message', (els) => els.length)
-		assert.strictEqual(count, 50)
+		// the first 25 rows come first, the rest of the page right after (FIRST_PAGE)
+		await page.waitForFunction(() => document.querySelectorAll('.wm-message').length === 50)
 		assert.strictEqual(await page.textContent('.wm-folder.active .wm-badge'), '3')
 		// space used by the mailbox, against the limit set in Exchange
 		await page.waitForSelector('.wm-quota-text')
