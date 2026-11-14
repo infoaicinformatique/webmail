@@ -270,6 +270,10 @@ Les deux sont actualisés toutes les quelques minutes ; Exchange n'est interrog�
 
 ## Installation
 
+L'archive de chaque version est publiée dans les
+[releases GitHub](https://github.com/infoaicinformatique/webmail/releases) (`webmail-<version>.tar.gz`,
+avec son empreinte SHA-256). Vous pouvez aussi la construire vous-même :
+
 ```bash
 make dist
 ```
@@ -304,8 +308,9 @@ et en français, dépôt, captures). Pour publier une version :
 make appstore APP_KEY=~/.nextcloud/certificates/webmail.key
 ```
 
-3. Publier l'archive à une adresse publique (par exemple une « release » GitHub),
-   puis la déclarer sur apps.nextcloud.com avec le contenu de `build/webmail-<version>.tar.gz.sig`.
+3. Publier l'archive à une adresse publique : pousser l'étiquette `v<version>` (celle de
+   `appinfo/info.xml`, par exemple `git tag v1.127.1 && git push origin v1.127.1`) crée la
+   release GitHub avec l'archive (`.github/workflows/release.yml`). La déclarer ensuite sur apps.nextcloud.com avec le contenu de `build/webmail-<version>.tar.gz.sig`.
 
 Les captures déclarées dans `info.xml` sont lues sur GitHub : le dépôt doit être
 public au moment de la publication.
