@@ -2561,7 +2561,12 @@ async function main() {
 		await shot('52b-nextcloud-contacts-copy')
 		// the address book, seen by any CardDAV client (the Contacts app, a phone…)
 		const dav = () => page.evaluate(async () => {
-			const list = await (await fetch('/remote.php/dav/addressbooks/users/' + OC.getCurrentUser().uid + '/', { method: 'PROPFIND', headers: { Depth: '1', requesttoken: OC.requestToken } })).text()
+			// (the name only when asked for: Nextcloud gives no « allprop »)
+			const list = await (await fetch('/remote.php/dav/addressbooks/users/' + OC.getCurrentUser().uid + '/', {
+				method: 'PROPFIND',
+				headers: { Depth: '1', requesttoken: OC.requestToken, 'Content-Type': 'application/xml' },
+				body: '<d:propfind xmlns:d="DAV:"><d:prop><d:displayname/></d:prop></d:propfind>',
+			})).text()
 			const m = /addressbooks\/users\/[^/]+\/(webmail-exchange-\d+)\//.exec(list)
 			if (!m) return null
 			const r = await fetch('/remote.php/dav/addressbooks/users/' + OC.getCurrentUser().uid + '/' + m[1] + '/?export', { headers: { requesttoken: OC.requestToken } })
