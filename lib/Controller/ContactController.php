@@ -8,6 +8,7 @@ use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Ews\EwsContacts;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
+use OCA\Webmail\Service\NextcloudPeople;
 use OCA\Webmail\Service\SharedFolderService;
 use OCA\Webmail\Service\VCard;
 use OCP\AppFramework\Controller;
@@ -28,6 +29,7 @@ class ContactController extends Controller {
 		IRequest $request,
 		private AccountService $accounts,
 		private SharedFolderService $shared,
+		private NextcloudPeople $people,
 		private LoggerInterface $logger,
 		private ?string $userId,
 	) {
@@ -454,6 +456,7 @@ class ContactController extends Controller {
 
 	#[NoAdminRequired]
 	public function resolve(int $id, string $q = ''): Response {
-		return $this->handle(fn () => ['results' => $this->contacts($id)->resolve($q)]);
+		// Exchange (contacts, directory), then the people of Nextcloud (Contacts, accounts of this Nextcloud)
+		return $this->handle(fn () => ['results' => NextcloudPeople::merge($this->contacts($id)->resolve($q), $this->people->search($q))]);
 	}
 }
