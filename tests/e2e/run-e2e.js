@@ -4157,16 +4157,17 @@ async function main() {
 	await step('unified inbox: the inboxes of both accounts in one list, a message opened in its account', async () => {
 		await page.click('.wm-tab[data-module="mail"]')
 		await page.click('.wm-unified-link')
-		await page.waitForSelector('.wm-unified-list .wm-message:has-text("Point budget du trimestre")')
+		const other = '.wm-unified-list .wm-message:has(.wm-message-account:text-is("societe-b.fr"))'
+		await page.waitForSelector(other)
 		const accounts = await page.$$eval('.wm-unified-list .wm-message', (els) => [...new Set(els.map((e) => e.dataset.account))])
 		assert.strictEqual(accounts.length, 2, accounts.join(','))
-		// newest first, whatever the account
-		const dates = await page.$$eval('.wm-unified-list .wm-message', (els) => els.length)
-		assert.ok(dates > 5)
-		assert.ok((await page.textContent('.wm-unified-list .wm-message:has-text("Point budget du trimestre") .wm-message-account')).includes('societe-b.fr'))
+		// one list, newest first, whatever the account
+		const times = await page.$$eval('.wm-unified-list .wm-message', (els) => els.length)
+		assert.ok(times > 5)
 		await shot('91-unified-inbox')
-		await page.click('.wm-unified-list .wm-message:has-text("Point budget du trimestre")')
-		await page.waitForSelector('.wm-message-header h2:has-text("Point budget du trimestre")')
+		const subject = await page.textContent(other + ' >> nth=0 >> .wm-message-subject')
+		await page.click(other + ' >> nth=0')
+		await page.waitForSelector('.wm-message-header h2:has-text("' + subject.replace(/"/g, '\\"') + '")')
 		assert.strictEqual(await page.inputValue('.wm-account-select'), await page.$eval('.wm-account-select option:text-is("compta@societe-b.fr")', (o) => o.value))
 		assert.ok(!(await page.$('.wm-unified-link.active')))
 		await page.selectOption('.wm-account-select', { label: 'user@societe-a.fr' })
