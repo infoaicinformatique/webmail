@@ -4055,6 +4055,34 @@ async function main() {
 		assert.ok(!(await page.$eval('.wm-sort', (e) => e.classList.contains('active'))))
 	})
 
+	await step('invitation: « Proposer un nouvel horaire » (provisional), then accepted again', async () => {
+		await page.click('.wm-tab[data-module="calendar"]')
+		await page.click('.wm-segmented button:has-text("Liste")')
+		await page.click('.wm-agenda-item:has-text("Comité de pilotage")')
+		await page.click('.wm-modal .wm-propose-btn')
+		await page.waitForSelector('.wm-modal .wm-propose')
+		const later = new Date(Date.now() + 20 * 86400000)
+		const day = later.getFullYear() + '-' + String(later.getMonth() + 1).padStart(2, '0') + '-' + String(later.getDate()).padStart(2, '0')
+		await page.fill('.wm-modal input[name=proposeDate]', day)
+		await page.fill('.wm-modal input[name=proposeStart]', '14:00')
+		await page.fill('.wm-modal input[name=proposeEnd]', '15:30')
+		await page.fill('.wm-modal textarea[name=proposeMessage]', 'Plutôt l\'après-midi ?')
+		await shot('18b-propose-new-time')
+		// the end before the start: refused
+		await page.fill('.wm-modal input[name=proposeEnd]', '13:00')
+		await page.click('.wm-modal .wm-propose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("La fin de l\'événement doit être après son début")')
+		await page.fill('.wm-modal input[name=proposeEnd]', '15:30')
+		await page.click('.wm-modal .wm-propose button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Nouvel horaire proposé à l\'organisateur")')
+		await page.waitForSelector('.wm-modal', { state: 'detached' })
+		await page.click('.wm-agenda-item:has-text("Comité de pilotage")')
+		await page.waitForSelector('.wm-modal:has-text("Votre réponse : provisoire")')
+		await page.click('.wm-modal button:has-text("Accepter")')
+		await page.waitForSelector('.wm-toast:has-text("Réponse envoyée : accepté")')
+		await page.click('.wm-tab[data-module="mail"]')
+	})
+
 	await step('completion: the people of Nextcloud (an account of this Nextcloud) are offered too', async () => {
 		const occ = (args, env) => execSync((env ? OCC.replace('docker exec ', 'docker exec ' + env + ' ') : OCC) + ' ' + args, { encoding: 'utf8' })
 		try { occ('user:delete sophie') } catch (e) { /* not there */ }

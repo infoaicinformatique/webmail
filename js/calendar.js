@@ -1401,7 +1401,51 @@
 					: _('Votre réponse : {answer}', { answer: responses[ev.response] || _('aucune') })),
 				h('button', { class: 'primary', onclick: () => answer('accept', _('accepté')) }, '✓ ' + _('Accepter')),
 				h('button', { onclick: () => answer('tentative', _('provisoire')) }, '? ' + _('Provisoire')),
-				h('button', { class: 'wm-danger', onclick: () => answer('decline', _('refusé')) }, '✗ ' + _('Refuser')))
+				h('button', { class: 'wm-danger', onclick: () => answer('decline', _('refusé')) }, '✗ ' + _('Refuser')),
+				principal ? null : h('button', { class: 'wm-propose-btn', title: _('Répondre « Provisoire » ou « Refuser » en proposant un autre horaire à l\'organisateur'), onclick: () => proposeForm() }, '🕑 ' + _('Proposer un nouvel horaire')))
+			// « Proposer un nouvel horaire »: the organizer gets the proposal, to accept in Outlook (or here)
+			const proposeForm = () => {
+				if (body.querySelector('.wm-propose')) return
+				const s0 = new Date(ev.start)
+				const e0 = new Date(ev.end)
+				const pad2 = (n) => String(n).padStart(2, '0')
+				const ymdLocal = (d) => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate())
+				const hm = (d) => pad2(d.getHours()) + ':' + pad2(d.getMinutes())
+				const date = h('input', { type: 'date', name: 'proposeDate', value: ymdLocal(s0), required: true })
+				const from = h('input', { type: 'time', name: 'proposeStart', value: hm(s0), required: true })
+				const to = h('input', { type: 'time', name: 'proposeEnd', value: hm(e0), required: true })
+				const kind = h('select', { name: 'proposeResponse' },
+					h('option', { value: 'tentative' }, _('Provisoire, avec cette proposition')),
+					h('option', { value: 'decline' }, _('Refuser, avec cette proposition')))
+				const note = h('textarea', { name: 'proposeMessage', rows: '2', placeholder: _('Un mot pour l\'organisateur (facultatif)') })
+				const form = h('form', {
+					class: 'wm-propose wm-event-form',
+					onsubmit: async (e) => {
+						e.preventDefault()
+						const sendBtn = form.querySelector('button[type=submit]')
+						sendBtn.disabled = true
+						try {
+							await api('/accounts/' + core.accountId + '/calendar/respond', {
+								method: 'POST',
+								body: { eventId: ev.id, response: kind.value, message: note.value, calendar: summary.calendar || 'calendar', proposedStart: date.value + 'T' + from.value, proposedEnd: date.value + 'T' + to.value, tz: core.TZ },
+							})
+							const when = new Date(date.value + 'T' + from.value).toLocaleString(locale(), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+							core.toast(_('Nouvel horaire proposé à l\'organisateur : {when}', { when }))
+							close()
+							load()
+						} catch (err) { sendBtn.disabled = false; core.toast(err.message, true) }
+					},
+				},
+				h('div', { class: 'wm-field-row' },
+					h('label', { class: 'wm-field' }, h('span', {}, _('Date')), date),
+					h('label', { class: 'wm-field' }, h('span', {}, _('De')), from),
+					h('label', { class: 'wm-field' }, h('span', {}, _('À')), to)),
+				h('label', { class: 'wm-field' }, h('span', {}, _('Votre réponse')), kind),
+				note,
+				h('div', { class: 'wm-compose-actions' }, h('button', { type: 'submit', class: 'primary' }, _('Envoyer la proposition'))))
+				body.appendChild(form)
+				date.focus()
+			}
 		}
 		const isOccurrence = ev.type === 'Occurrence' || ev.type === 'Exception'
 		if (canEdit) {

@@ -702,21 +702,55 @@ class EwsCalendar {
 	 * Answer a meeting invitation. $id may be the calendar item or the
 	 * meeting request received by e-mail.
 	 */
-	public function respond(string $id, string $response, string $message = ''): void {
+	/**
+	 * @param ?array{0: \DateTimeImmutable, 1: \DateTimeImmutable} $proposed another time for the
+	 *        meeting (« Proposer un nouvel horaire »), with « tentative » or « decline » only
+	 */
+	public function respond(string $id, string $response, string $message = '', ?array $proposed = null): void {
 		$element = match ($response) {
 			'accept' => 'AcceptItem',
 			'tentative' => 'TentativelyAcceptItem',
 			'decline' => 'DeclineItem',
 			default => throw new MailException('Réponse inconnue'),
 		};
+		if ($proposed !== null && $response === 'accept') {
+			throw new MailException('Un nouvel horaire se propose avec « Provisoire » ou « Refuser »');
+		}
 		$ref = $this->client->itemRef($id);
 		$body = trim($message) !== '' ? '<t:Body BodyType="Text">' . $this->client->esc($message) . '</t:Body>' : '';
 		$this->client->request(
 			'<m:CreateItem MessageDisposition="SendAndSaveCopy"><m:Items>'
 			. '<t:' . $element . '>' . $body
 			. '<t:ReferenceItemId Id="' . $this->client->esc($ref['id']) . '" ChangeKey="' . $this->client->esc($ref['changeKey']) . '"/>'
+			. ($proposed !== null ? '<t:ProposedStart>' . self::utc($proposed[0]) . '</t:ProposedStart><t:ProposedEnd>' . self::utc($proposed[1]) . '</t:ProposedEnd>' : '')
 			. '</t:' . $element . '></m:Items></m:CreateItem>'
 		);
+	}
+
+	/**
+	 * The time proposed, from the form (local times of $tz), in the future.
+	 * @return array{0: \DateTimeImmutable, 1: \DateTimeImmutable}
+	 * @throws MailException
+	 */
+	public static function proposedTime(string $start, string $end, \DateTimeZone $tz, ?\DateTimeImmutable $now = null): array {
+		$parse = function (string $v) use ($tz): \DateTimeImmutable {
+			foreach (['!Y-m-d\TH:i', '!Y-m-d\TH:i:s'] as $f) {
+				$d = \DateTimeImmutable::createFromFormat($f, trim($v), $tz);
+				if ($d !== false) {
+					return $d;
+				}
+			}
+			throw new MailException('Date et heure invalides : %s', [$v]);
+		};
+		$s = $parse($start);
+		$e = $parse($end);
+		if ($e <= $s) {
+			throw new MailException('La fin de l\'événement doit être après son début');
+		}
+		if ($s < ($now ?? new \DateTimeImmutable())) {
+			throw new MailException('Proposez un horaire à venir');
+		}
+		return [$s, $e];
 	}
 
 	// ------------------------------------------------------------------
