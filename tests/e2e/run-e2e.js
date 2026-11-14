@@ -4471,7 +4471,11 @@ async function main() {
 		await page.waitForSelector('.wm-toast:has-text("Agenda Exchange visible dans l\'Agenda de Nextcloud")')
 		const caldav = (method, sub = '', body = null) => page.evaluate(async ({ method, sub, body }) => {
 			const base = '/remote.php/dav/calendars/' + OC.getCurrentUser().uid + '/'
-			const list = await (await fetch(base, { method: 'PROPFIND', headers: { Depth: '1', requesttoken: OC.requestToken } })).text()
+			const list = await (await fetch(base, {
+				method: 'PROPFIND',
+				headers: { Depth: '1', requesttoken: OC.requestToken, 'Content-Type': 'application/xml' },
+				body: '<d:propfind xmlns:d="DAV:"><d:prop><d:displayname/></d:prop></d:propfind>',
+			})).text()
 			const m = /calendars\/[^/]+\/(app-generated--[a-z-]+--webmail-exchange-\d+)\//.exec(list)
 			if (!m) return { found: false }
 			const r = await fetch(base + m[1] + '/' + sub, { method, headers: { Depth: '1', requesttoken: OC.requestToken, 'Content-Type': method === 'PUT' ? 'text/calendar' : 'application/xml' }, body })
