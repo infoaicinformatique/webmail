@@ -7,6 +7,7 @@ namespace OCA\Webmail\Controller;
 use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Db\Account;
 use OCA\Webmail\Service\AccountService;
+use OCA\Webmail\Service\ContactCopyService;
 use OCA\Webmail\Service\MailNotificationService;
 use OCA\Webmail\Service\MeetingReminderService;
 use OCP\AppFramework\Controller;
@@ -24,6 +25,7 @@ class AccountController extends Controller {
 		private AccountService $accounts,
 		private MailNotificationService $bell,
 		private MeetingReminderService $reminders,
+		private ContactCopyService $contactCopies,
 		private LoggerInterface $logger,
 		private ?string $userId,
 	) {
@@ -79,6 +81,12 @@ class AccountController extends Controller {
 			$this->accounts->delete((string)$this->userId, $id);
 			$this->bell->forget((string)$this->userId, $id);
 			$this->reminders->forget((string)$this->userId, $id);
+			// its copy in Nextcloud Contacts goes with it
+			try {
+				$this->contactCopies->remove((string)$this->userId, $id);
+			} catch (\Throwable $e) {
+				$this->logger->warning('Webmail: copy of the contacts not removed', ['app' => Application::APP_ID, 'exception' => $e]);
+			}
 			return ['status' => 'ok'];
 		});
 	}
