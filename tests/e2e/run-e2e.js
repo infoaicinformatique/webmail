@@ -86,9 +86,11 @@ async function main() {
 		// this test Nextcloud talks to the fake server without checking its certificate (occ verify_tls=no)
 		assert(await page.isChecked('#webmail-no-verify-tls'))
 		assert(await page.isVisible('#webmail-tls-warning'))
-		await page.uncheck('#webmail-no-verify-tls')
+		// the box of Nextcloud's style is drawn by its label
+		await page.click('label[for=webmail-no-verify-tls]')
+		assert(!(await page.isChecked('#webmail-no-verify-tls')))
 		assert(!(await page.isVisible('#webmail-tls-warning')))
-		await page.check('#webmail-no-verify-tls')
+		await page.click('label[for=webmail-no-verify-tls]')
 		assert(await page.isVisible('#webmail-tls-warning'))
 		assert.strictEqual(await page.inputValue('#webmail-max-attachments'), '25')
 		// out of the allowed sizes: refused, nothing saved
