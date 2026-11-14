@@ -659,6 +659,10 @@ def handle(op, el, user):
                 conds.append(lambda m: any(not ATTACHMENTS[a].get('inline') for a in m['attachments']))
             elif tok == 'isflagged:true':
                 conds.append(lambda m: m['flagged'])
+            elif tok.startswith('from:'):
+                # « Tous ses messages »: one sender's address
+                addr = tok[len('from:'):].strip('"')
+                conds.append(lambda m, addr=addr: m['sender'][1].lower() == addr)
             elif tok.startswith('received>='):
                 since = tok[len('received>='):]
                 conds.append(lambda m, since=since: m['date'][:10] >= since)

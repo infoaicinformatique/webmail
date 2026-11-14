@@ -8,6 +8,7 @@ use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Ews\EwsContacts;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
+use OCA\Webmail\Service\NextcloudGroups;
 use OCA\Webmail\Service\NextcloudPeople;
 use OCA\Webmail\Service\SharedFolderService;
 use OCA\Webmail\Service\VCard;
@@ -30,6 +31,7 @@ class ContactController extends Controller {
 		private AccountService $accounts,
 		private SharedFolderService $shared,
 		private NextcloudPeople $people,
+		private NextcloudGroups $groups,
 		private LoggerInterface $logger,
 		private ?string $userId,
 	) {
@@ -457,6 +459,16 @@ class ContactController extends Controller {
 	#[NoAdminRequired]
 	public function resolve(int $id, string $q = ''): Response {
 		// Exchange (contacts, directory), then the people of Nextcloud (Contacts, accounts of this Nextcloud)
-		return $this->handle(fn () => ['results' => NextcloudPeople::merge($this->contacts($id)->resolve($q), $this->people->search($q))]);
+		return $this->handle(fn () => ['results' => array_merge(
+			NextcloudPeople::merge($this->contacts($id)->resolve($q), $this->people->search($q)),
+			// the groups of Nextcloud last: one choice adds all their members
+			$this->groups->search((string)$this->userId, $q),
+		)]);
+	}
+
+	/** The addresses of a Nextcloud group's members, to write to all of them. */
+	#[NoAdminRequired]
+	public function groupMembers(string $gid): Response {
+		return $this->handle(fn () => $this->groups->members((string)$this->userId, $gid));
 	}
 }

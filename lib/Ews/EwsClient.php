@@ -839,6 +839,50 @@ class EwsClient {
 		return $out;
 	}
 
+	/** At most this many messages of one sender in one go. */
+	public const SENDER_MAX = 1000;
+
+	/**
+	 * The ids of a folder's messages from one sender (« Tous ses messages »),
+	 * newest first, at most SENDER_MAX.
+	 * @return list<string>
+	 * @throws MailException
+	 */
+	public function idsFromSender(string $folderId, string $email): array {
+		$ids = [];
+		for ($offset = 0; $offset < self::SENDER_MAX; $offset += 200) {
+			$xp = $this->request(
+				'<m:FindItem Traversal="Shallow">'
+				. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape></m:ItemShape>'
+				. '<m:IndexedPageItemView MaxEntriesReturned="200" Offset="' . $offset . '" BasePoint="Beginning"/>'
+				. self::sortOrderXml('date', true)
+				. '<m:ParentFolderIds>' . $this->folderIdXml($folderId) . '</m:ParentFolderIds>'
+				. '<m:QueryString>' . $this->esc(self::fromQuery($email)) . '</m:QueryString>'
+				. '</m:FindItem>'
+			);
+			foreach ($xp->query('//m:RootFolder/t:Items/*/t:ItemId') as $n) {
+				$ids[] = $n->getAttribute('Id');
+			}
+			$root = $xp->query('//m:RootFolder')->item(0);
+			if (!$root instanceof \DOMElement || $root->getAttribute('IncludesLastItemInRange') !== 'false') {
+				break;
+			}
+		}
+		return array_slice(array_values(array_unique($ids)), 0, self::SENDER_MAX);
+	}
+
+	/**
+	 * The search (AQS) for the messages of one address.
+	 * @throws MailException
+	 */
+	public static function fromQuery(string $email): string {
+		$email = trim($email);
+		if (filter_var($email, FILTER_VALIDATE_EMAIL) === false || str_contains($email, '"')) {
+			throw new MailException('Adresse invalide : %s', [$email]);
+		}
+		return 'from:"' . mb_strtolower($email) . '"';
+	}
+
 	/** The orders of the message list: field => what Exchange sorts on. */
 	private const SORTS = [
 		'date' => '<t:FieldURI FieldURI="item:DateTimeReceived"/>',
