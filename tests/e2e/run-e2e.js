@@ -3548,6 +3548,26 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 	})
 
+	await step('rich links: a webmail link previewed by Nextcloud (Talk, Text, Deck…), and offered by the Smart Picker', async () => {
+		await page.click('.wm-folder >> nth=0')
+		const id = await page.getAttribute('.wm-message:has-text("Devis pour la maintenance annuelle")', 'data-id')
+		const r = await page.evaluate(async (messageId) => {
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()
+			const account = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const link = window.location.origin + OC.generateUrl('/apps/webmail/') + '?' + new URLSearchParams({ account, message: messageId })
+			const ocs = (path) => fetch('/ocs/v2.php' + path, { headers: { 'OCS-APIREQUEST': 'true', Accept: 'application/json', requesttoken: OC.requestToken } }).then((x) => x.json())
+			const resolved = await ocs('/references/resolve?' + new URLSearchParams({ reference: link }))
+			const providers = await ocs('/references/providers')
+			const ref = resolved.ocs.data.references[link]
+			return { link, ref: ref && ref.openGraphObject, providers: providers.ocs.data.map((p) => p.id + ' ' + p.title + ' ' + (p.search_providers_ids || []).join(',')) }
+		}, id)
+		assert.ok(r.ref, JSON.stringify(r))
+		assert.strictEqual(r.ref.name, 'Devis pour la maintenance annuelle')
+		assert.ok(r.ref.description.includes('Jean Dupont'), r.ref.description)
+		assert.strictEqual(r.ref.link, r.link)
+		assert.ok(r.providers.some((p) => p.startsWith('webmail-exchange Courrier et agenda Exchange webmail-mail,webmail-events')), r.providers.join(' | '))
+	})
+
 	await step('Internet headers: the SPF, DKIM and DMARC checks, the way of the message, every header', async () => {
 		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')

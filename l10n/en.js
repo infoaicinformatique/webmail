@@ -311,6 +311,7 @@ OC.L10N.register(
     "Couleur invalide": "Invalid colour",
     "Courrier": "Mail",
     "Courrier Exchange": "Exchange mail",
+    "Courrier et agenda Exchange": "Exchange mail and calendar",
     "Courrier non lu": "Unread mail",
     "Créer": "Create",
     "Créer le contact": "Create the contact",
