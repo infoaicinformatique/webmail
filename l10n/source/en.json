@@ -1424,5 +1424,22 @@
 	"Les messages de cet expéditeur dans ce dossier : les afficher, les marquer comme lus, les déplacer ou les supprimer d'un coup": "The messages of this sender in this folder: show them, mark them as read, move or delete them at once",
 	"Tous ses messages…": "All their messages…",
 	"Choisissez un autre dossier": "Choose another folder",
-	"Action inconnue": "Unknown action"
+	"Action inconnue": "Unknown action",
+	"Message épinglé en haut de « {folder} »": "Message pinned at the top of « {folder} »",
+	"Message désépinglé": "Message unpinned",
+	"Épinglés": "Pinned",
+	"Autres messages": "Other messages",
+	"Désépingler : le message reprend sa place dans la liste": "Unpin: the message goes back to its place in the list",
+	"Épingler en haut du dossier, quel que soit le tri": "Pin at the top of the folder, whatever the order",
+	"Désépingler": "Unpin",
+	"Épingler": "Pin",
+	"Message invalide": "Invalid message",
+	"%s messages épinglés au plus : désépinglez-en un d'abord": "%s pinned messages at most: unpin one first",
+	"{count} membres du groupe « {name} » ajoutés": "{count} members of the group « {name} » added",
+	"{count} membre du groupe « {name} » ajouté": "{count} member of the group « {name} » added",
+	"{count} sans adresse e-mail": "{count} without an e-mail address",
+	"groupe Nextcloud · {count} membres": "Nextcloud group · {count} members",
+	"groupe Nextcloud · {count} membre": "Nextcloud group · {count} member",
+	"Groupe introuvable : %s": "Group not found: %s",
+	"Le groupe « %s » a plus de %s membres : écrivez plutôt à une liste de diffusion": "The group « %s » has more than %s members: write to a mailing list instead"
 }

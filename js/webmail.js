@@ -29,6 +29,7 @@
 		filters: { unread: false, attachments: false, flagged: false, since: '', all: false },
 		// messages put aside (« Reporter »): id in « Reportés » → when it comes back (UTC)
 		snoozes: new Map(),
+		pinned: new Map(), // id -> summary (with its folder): kept at the top of their folder
 		showFilters: false,
 		// the list grouped by conversation (one row each), remembered
 		grouped: (() => { try { return localStorage.getItem('webmail.grouped') === '1' } catch (e) { return false } })(),
@@ -1191,8 +1192,33 @@
 		} catch (e) { /* the messages are shown without their time */ }
 	}
 
+	async function loadPinned() {
+		const account = state.accountId
+		try {
+			const r = await api('/accounts/' + account + '/pinned')
+			if (account !== state.accountId) return
+			const before = [...state.pinned.keys()].join('|')
+			state.pinned = new Map(r.messages.map((m) => [m.id, m]))
+			if ([...state.pinned.keys()].join('|') !== before && state.module === 'mail') renderList(false)
+		} catch (e) { /* the list without its pinned messages on top */ }
+	}
+
+	/** « Épingler » / « Désépingler »: at the top of its folder, whatever the order. */
+	async function togglePin(m) {
+		const pinned = !state.pinned.has(m.id)
+		try {
+			await api('/accounts/' + state.accountId + '/pinned', { method: 'POST', body: { itemId: m.id, pinned } })
+			if (pinned) state.pinned = new Map([[m.id, Object.assign({}, m, { folderId: m.folderId || state.folderId })]].concat([...state.pinned]))
+			else state.pinned.delete(m.id)
+			toast(pinned ? _('Message épinglé en haut de « {folder} »', { folder: folderName(m.folderId || state.folderId) }) : _('Message désépinglé'))
+			renderList(false)
+			if (state.selectedId === m.id) openMessage(m.id)
+		} catch (e) { toast(e.message, true) }
+	}
+
 	async function loadFolders() {
 		loadSnoozes()
+		loadPinned()
 		try {
 			const data = await api('/accounts/' + state.accountId + '/folders')
 			state.folders = data.folders
@@ -1712,15 +1738,22 @@
 		const bySize = !conv && sortField()[0] === 'size'
 		const period = dayPeriods()
 		let lastPeriod = null
-		state.messages.forEach((m) => {
-			const p = byDate ? period(m.date) : null
+		// the pinned messages of this folder first (not in a search, nor by conversation)
+		const pinnedHere = conv || isSearching() ? [] : [...state.pinned.values()]
+			.filter((p) => p.folderId === state.folderId)
+			.map((p) => state.messages.find((x) => x.id === p.id) || p)
+		const pinnedIds = new Set(pinnedHere.map((p) => p.id))
+		const rows = pinnedHere.concat(state.messages.filter((m) => !pinnedIds.has(m.id)))
+		rows.forEach((m) => {
+			const pin = pinnedIds.has(m.id)
+			const p = pin ? '📌 ' + _('Épinglés') : (byDate ? period(m.date) : (pinnedHere.length && lastPeriod === '📌 ' + _('Épinglés') ? _('Autres messages') : null))
 			if (p && p !== lastPeriod) {
 				lastPeriod = p
 				ul.appendChild(h('li', { class: 'wm-list-period', role: 'presentation' }, p))
 			}
 			const who = showRecipients ? _('À : {names}', { names: m.displayTo || '' }) : (personShort(m.from) || _('(expéditeur inconnu)'))
 			const li = h('li', {
-				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : '') + (state.checked.has(m.id) ? ' checked' : ''),
+				class: 'wm-message' + (m.isRead ? '' : ' unread') + (m.id === state.selectedId ? ' selected' : '') + (state.checked.has(m.id) ? ' checked' : '') + (pin ? ' wm-pinned' : ''),
 				tabindex: '0',
 				draggable: conv ? 'false' : 'true',
 				dataset: { id: m.id },
@@ -2766,6 +2799,13 @@
 				title: _('Télécharger le message (.eml, pour Outlook, Thunderbird…)'),
 				'aria-label': _('Télécharger le message'),
 			}, '⬇\uFE0E'),
+			h('button', {
+				class: 'wm-pin-btn' + (state.pinned.has(m.id) ? ' on' : ''),
+				title: state.pinned.has(m.id) ? _('Désépingler : le message reprend sa place dans la liste') : _('Épingler en haut du dossier, quel que soit le tri'),
+				'aria-label': state.pinned.has(m.id) ? _('Désépingler') : _('Épingler'),
+				'aria-pressed': state.pinned.has(m.id) ? 'true' : 'false',
+				onclick: () => togglePin(m),
+			}, '📌'),
 			window.WebmailModules.tasks ? h('button', { class: 'wm-task-from-msg', title: _('Créer une tâche à partir de ce message'), 'aria-label': _('Créer une tâche à partir de ce message'), onclick: () => taskFromMessage(m) }, '✅') : null,
 			window.WebmailModules.calendar ? h('button', { class: 'wm-event-from-msg', title: _('Créer un événement à partir de ce message'), 'aria-label': _('Créer un événement à partir de ce message'), onclick: () => eventFromMessage(m) }, '📅') : null,
 			h('button', { class: 'wm-eml-save-btn', title: _('Enregistrer le message dans Fichiers (.eml)'), 'aria-label': _('Enregistrer le message dans Fichiers'), onclick: () => saveMessageToFiles(m) }, '☁️'),
@@ -3829,9 +3869,25 @@
 		}
 		const close = () => { menu.hidden = true; active = -1 }
 		const choose = (r) => {
+			if (r.source === 'nextcloud-group') { chooseGroup(r); return }
 			const { head } = lastToken()
 			input.value = head + (r.name && r.name !== r.email ? r.name + ' <' + r.email + '>' : r.email) + ', '
 			close()
+			input.focus()
+		}
+		/** A group of Nextcloud: all its members (those with an address, the user aside), once each. */
+		const chooseGroup = async (r) => {
+			close()
+			try {
+				const g = await api('/nextcloud-groups/members', { query: { gid: r.gid } })
+				const { head } = lastToken()
+				const there = new Set((head.match(/[^\s<>,;]+@[^\s<>,;]+/g) || []).map((e) => e.toLowerCase()))
+				const added = g.addresses.filter((a) => !there.has(a.email))
+				input.value = head + added.map((a) => (a.name !== a.email ? a.name + ' <' + a.email + '>' : a.email) + ', ').join('')
+				const parts = [added.length > 1 ? _('{count} membres du groupe « {name} » ajoutés', { count: added.length, name: g.name }) : _('{count} membre du groupe « {name} » ajouté', { count: added.length, name: g.name })]
+				if (g.without) parts.push(g.without > 1 ? _('{count} sans adresse e-mail', { count: g.without }) : _('{count} sans adresse e-mail', { count: g.without }))
+				toast(parts.join(_(' ; ')))
+			} catch (e) { toast(e.message, true) }
 			input.focus()
 		}
 		const render = () => {
@@ -3841,7 +3897,9 @@
 				class: 'wm-ac-item' + (i === active ? ' active' : ''),
 				onmousedown: (e) => { e.preventDefault(); choose(r) },
 			}, h('span', { class: 'wm-ac-name' }, r.name || r.email), ' ',
-			h('span', { class: 'wm-muted' }, r.email + ({ directory: ' · ' + _('annuaire'), recent: ' · ' + _('récent'), nextcloud: ' · ' + _('contacts Nextcloud'), 'nextcloud-user': ' · ' + _('compte Nextcloud') }[r.source] || '')))))
+			h('span', { class: 'wm-muted' }, r.source === 'nextcloud-group'
+				? '👥 ' + (r.count > 1 ? _('groupe Nextcloud · {count} membres', { count: r.count }) : _('groupe Nextcloud · {count} membre', { count: r.count }))
+				: r.email + ({ directory: ' · ' + _('annuaire'), recent: ' · ' + _('récent'), nextcloud: ' · ' + _('contacts Nextcloud'), 'nextcloud-user': ' · ' + _('compte Nextcloud') }[r.source] || '')))))
 			// a late answer must not reopen the menu once the field is left
 			menu.hidden = items.length === 0 || document.activeElement !== input
 		}
@@ -3867,7 +3925,7 @@
 					if (mine !== seq) return
 					// the recent ones first, then the contacts and the directory (each address once)
 					const seen = new Set(recent.map((r) => r.email.toLowerCase()))
-					items = recent.concat(data.results.filter((r) => !seen.has(String(r.email).toLowerCase())))
+					items = recent.concat(data.results.filter((r) => r.source === 'nextcloud-group' || !seen.has(String(r.email).toLowerCase())))
 					active = items.length ? 0 : -1
 					render()
 				} catch (e) { /* autocompletion is best effort */ }

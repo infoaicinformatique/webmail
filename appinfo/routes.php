@@ -59,6 +59,8 @@ return [
 		['name' => 'mail#snoozes', 'url' => '/api/accounts/{id}/snoozes', 'verb' => 'GET'],
 		['name' => 'sender#count', 'url' => '/api/accounts/{id}/sender', 'verb' => 'GET'],
 		['name' => 'sender#apply', 'url' => '/api/accounts/{id}/sender', 'verb' => 'POST'],
+		['name' => 'pin#index', 'url' => '/api/accounts/{id}/pinned', 'verb' => 'GET'],
+		['name' => 'pin#set', 'url' => '/api/accounts/{id}/pinned', 'verb' => 'POST'],
 		['name' => 'mail#snooze', 'url' => '/api/accounts/{id}/snooze', 'verb' => 'POST'],
 		['name' => 'mail#unsnooze', 'url' => '/api/accounts/{id}/snooze/back', 'verb' => 'POST'],
 		['name' => 'mail#move', 'url' => '/api/accounts/{id}/move', 'verb' => 'POST'],
@@ -109,6 +111,7 @@ return [
 		['name' => 'contact#setPhoto', 'url' => '/api/accounts/{id}/contacts/photo', 'verb' => 'POST'],
 		['name' => 'contact#userPhoto', 'url' => '/api/accounts/{id}/contacts/userphoto', 'verb' => 'GET'],
 		['name' => 'contact#resolve', 'url' => '/api/accounts/{id}/contacts/resolve', 'verb' => 'GET'],
+		['name' => 'contact#groupMembers', 'url' => '/api/nextcloud-groups/members', 'verb' => 'GET'],
 
 		['name' => 'auto_file#index', 'url' => '/api/accounts/{id}/autofile', 'verb' => 'GET'],
 		['name' => 'auto_file#add', 'url' => '/api/accounts/{id}/autofile', 'verb' => 'POST'],
