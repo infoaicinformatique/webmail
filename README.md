@@ -44,6 +44,7 @@ et sur les téléphones, et inversement.
 | Envoyer sur Matrix | Avec **votre compte Matrix** (Element) : dans « Comptes et signature », le serveur, le jeton d'accès (gardé **chiffré**) et un salon par défaut. Puis « 💬 » dans un message poste son résumé (objet, expéditeur, date, début du texte, modifiable) dans le salon choisi parmi les vôtres ; « 💬 Matrix » fait de même pour un rendez-vous (quand, où, lien de visio). Le texte est envoyé tel quel, sans HTML |
 | Alertes sur Matrix | Dans la carte Matrix : « Alertes des nouveaux messages » — **tous** ou **les importants seulement** — postées par Nextcloud dans votre salon par défaut (« 📬 Nouveau message de … »), même sans webmail ouvert, en même temps que la cloche ; un serveur Matrix injoignable n'empêche pas les notifications Nextcloud |
 | Transférer en pièce jointe | « 📎 » à côté de « Transférer » joint le message entier (fichier .eml, avec ses propres pièces jointes) à un nouveau message ; « ↪ Transférer » dans la barre de sélection fait de même pour plusieurs messages (20 au plus) : un seul envoi, chaque message en pièce jointe, que Outlook ou Thunderbird ouvrent comme un message |
+| Note depuis un message | « 📝 » garde le message comme **note Nextcloud Notes** : un fichier Markdown dans votre dossier de notes (celui réglé dans Notes, « Notes » sinon), avec l'objet en titre, l'expéditeur, la date, le texte et le lien « Ouvrir dans le webmail ». « Ouvrir dans Notes » (ou dans Fichiers sans l'application Notes) |
 | Tâche depuis un message | « ✅ » dans la barre d'un message ouvre une **nouvelle tâche** Exchange : titre repris de l'objet (sans « RE: »), notes avec l'expéditeur, la date et le texte du message ; il reste à choisir l'échéance. Pour ne pas oublier de traiter un message, comme « Assurer un suivi » d'Outlook mais en vraie tâche |
 | Événement depuis un message | « 📅 » dans la barre d'un message ouvre un **nouvel événement** de l'agenda : titre repris de l'objet (sans « RE: »), description avec le texte du message, expéditeur et destinataires (sauf soi) proposés comme participants ; comme « Répondre par une réunion » d'Outlook |
 | Ajouter l'expéditeur | « 👤＋ » à côté de l'expéditeur d'un message l'ajoute à « Contacts » (prénom et nom tirés du nom affiché) ; s'il y est déjà avec cette adresse, rien n'est créé en double |
@@ -257,7 +258,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.107.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.108.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -300,7 +301,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.107 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.108 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

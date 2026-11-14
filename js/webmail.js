@@ -2640,6 +2640,7 @@
 				: null,
 			h('button', { class: 'wm-cat-btn', title: _('Catégoriser'), 'aria-label': _('Catégoriser'), onclick: (e) => categoryMenu(e.currentTarget, () => [m]) }, '🏷'),
 			h('button', { class: 'wm-print-btn', title: _('Imprimer'), 'aria-label': _('Imprimer'), onclick: () => printMessage(m) }, '🖨'),
+			h('button', { class: 'wm-note-btn', title: _('Garder ce message comme note (Nextcloud Notes)'), 'aria-label': _('Créer une note'), onclick: () => messageToNote(m) }, '📝'),
 			h('button', { class: 'wm-matrix-send-btn', title: _('Envoyer sur Matrix (Element) : un résumé du message dans un salon'), 'aria-label': _('Envoyer sur Matrix'), onclick: () => sendToMatrix(mailSummaryForMatrix(m)) }, '💬'),
 			h('button', { class: 'wm-headers-btn', title: _('En-têtes Internet : expéditeur réel, serveurs traversés, contrôles SPF, DKIM et DMARC'), 'aria-label': _('Afficher les en-têtes Internet'), onclick: () => showHeaders(m) }, '🧾'),
 			h('a', {
@@ -3584,6 +3585,17 @@
 		} else {
 			doSave('/' + _('Pièces jointes'))
 		}
+	}
+
+	/** The message as a note of Nextcloud Notes (a Markdown file in the Notes folder), with the link back. */
+	async function messageToNote(m) {
+		try {
+			const r = await api('/accounts/' + state.accountId + '/message/note', { method: 'POST', body: { itemId: m.id } })
+			toast(_('Note créée : {path}', { path: r.path }), false, {
+				label: r.app === 'notes' ? _('Ouvrir dans Notes') : _('Ouvrir dans Fichiers'),
+				run: () => window.open(r.url, '_blank', 'noopener'),
+			})
+		} catch (e) { toast(e.message, true) }
 	}
 
 	function saveAttachment(a) {
