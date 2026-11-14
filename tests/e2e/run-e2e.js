@@ -3577,6 +3577,21 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 	})
 
+	await step('open in Nextcloud: an attachment copied in Files and opened with the viewer of Nextcloud', async () => {
+		await page.click('.wm-folder >> nth=0')
+		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
+		const btn = '.wm-attachment:has-text("devis-2027.pdf") .wm-open-nc'
+		await page.waitForSelector(btn)
+		const [tab] = await Promise.all([page.waitForEvent('popup'), page.click(btn)])
+		const copied = await (await page.waitForSelector('.wm-toast:has-text("Copié dans /Pièces jointes/devis-2027")')).textContent()
+		const path = copied.match(/\/Pièces jointes\/[^]*?\.pdf/)[0]
+		// the copy opened in Files, which shows it with its viewer
+		await tab.waitForURL(/\/apps\/files\/.*openfile=true|\/f\/\d+\?openfile=true/, { timeout: 30000 })
+		await tab.close()
+		const status = await page.evaluate(async (p) => (await fetch('/remote.php/dav/files/admin' + p.split('/').map(encodeURIComponent).join('/'), { method: 'DELETE', headers: { requesttoken: OC.requestToken } })).status, path)
+		assert.strictEqual(status, 204, 'the copy was there')
+	})
+
 	await step('note: a message kept as a note (Markdown in the Notes folder), opened in Files without the Notes app', async () => {
 		await page.click('.wm-folder >> nth=0')
 		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
