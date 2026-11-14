@@ -15,6 +15,11 @@ use OCP\IConfig;
  */
 class TrustedImagesService {
 	public const MAX = 500;
+	/**
+	 * Remote images shown at once, by folder: inbox, sent items, the other folders
+	 * (the user's own); never by default in the junk mail.
+	 */
+	public const FOLDERS_DEFAULT = ['inbox' => true, 'sentitems' => true, 'other' => true, 'junkemail' => false];
 
 	public function __construct(
 		private IConfig $config,
@@ -42,6 +47,38 @@ class TrustedImagesService {
 		$list = array_values(array_filter($this->list($userId), fn ($e) => $e !== $entry));
 		$this->store($userId, $list);
 		return $list;
+	}
+
+	/** @return array{inbox: bool, sentitems: bool, other: bool, junkemail: bool} */
+	public function folders(string $userId): array {
+		return self::folderChoice($this->config->getUserValue($userId, Application::APP_ID, 'images_folders', ''));
+	}
+
+	/**
+	 * @param array<string, mixed> $choice
+	 * @return array{inbox: bool, sentitems: bool, other: bool, junkemail: bool}
+	 */
+	public function setFolders(string $userId, array $choice): array {
+		$folders = self::folderChoice((string)json_encode($choice));
+		$this->config->setUserValue($userId, Application::APP_ID, 'images_folders', (string)json_encode($folders));
+		return $folders;
+	}
+
+	/**
+	 * The choice kept: the four keys, booleans, the default for each one missing or wrong.
+	 * @return array{inbox: bool, sentitems: bool, other: bool, junkemail: bool}
+	 */
+	public static function folderChoice(string $json): array {
+		$v = json_decode($json, true);
+		$out = self::FOLDERS_DEFAULT;
+		if (is_array($v)) {
+			foreach ($out as $k => $default) {
+				if (isset($v[$k]) && is_bool($v[$k])) {
+					$out[$k] = $v[$k];
+				}
+			}
+		}
+		return $out;
 	}
 
 	/** Whether this sender's images are shown at once: the address, or its domain, is in the list. */

@@ -324,6 +324,8 @@ class MailController extends Controller {
 			$msg['body'] = $clean['html'];
 			$msg['hasRemoteContent'] = $clean['hasRemoteContent'];
 			$msg['remoteTrusted'] = $trusted && $clean['hasRemoteContent'];
+			// the remote images are in the body (asked, or a trusted sender)
+			$msg['remoteShown'] = $remote || $trusted;
 
 			// Inline images referenced from the body are not listed as attachments
 			$used = [];

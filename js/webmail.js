@@ -17,6 +17,8 @@
 	const ROLE_ICON = { inbox: '📥', drafts: '📝', sentitems: '📤', junkemail: '⚠️', deleteditems: '🗑️', outbox: '📮' }
 
 	const state = {
+		// folders whose messages show their remote images at once (the choice of « Comptes et signature »)
+		imageFolders: { inbox: true, sentitems: true, other: true, junkemail: false },
 		accounts: [],
 		accountId: null,
 		folders: [],
@@ -2969,12 +2971,29 @@
 
 	let hoverTimer = null
 
+	/**
+	 * Whether a message of this folder shows its remote images at once: inbox,
+	 * sent items and the other folders by default, never the junk mail by default.
+	 */
+	function imagesWanted(folderId) {
+		const f = state.folders.find((x) => x.id === folderId || x.role === folderId)
+		const role = f ? f.role : folderId
+		const key = role === 'inbox' || role === 'sentitems' || role === 'junkemail' ? role : 'other'
+		return !!state.imageFolders[key]
+	}
+
+	/** The folder of a message of the list (a search in all folders: its own). */
+	const folderOfMessage = (id) => {
+		const m = state.messages.find((x) => x.id === id)
+		return (m && m.folderId) || state.folderId
+	}
+
 	/** Load a message in advance, without marking it as read. */
 	function prefetchMessage(id) {
 		const key = msgKey(id)
 		if (msgCache.has(key)) return Promise.resolve(msgCache.get(key))
 		if (!msgPending.has(key)) {
-			const p = api('/accounts/' + state.accountId + '/message', { query: { itemId: id, remote: 0, markRead: 0 } })
+			const p = api('/accounts/' + state.accountId + '/message', { query: { itemId: id, remote: imagesWanted(folderOfMessage(id)) ? 1 : 0, markRead: 0 } })
 				.then((msg) => { cacheMessage(msg); return msg })
 				.finally(() => msgPending.delete(key))
 			p.catch(() => { /* prefetch is best effort */ })
@@ -3008,17 +3027,25 @@
 		markSelected(id)
 		setView('detail')
 		const key = msgKey(id)
+		// the remote images at once, as chosen for the folder of the message
+		const auto = !remote && imagesWanted(folderOfMessage(id))
 		let msg = !remote ? msgCache.get(key) : null
 		let fromCache = !!msg
 		if (!msg && !remote && msgPending.has(key)) {
 			try { msg = await msgPending.get(key); fromCache = true } catch (e) { msg = null }
 			if (state.selectedId !== id) return
 		}
+		// loaded before without its images (choice changed, or another folder): again with them
+		if (msg && auto && msg.hasRemoteContent && !msg.remoteShown) {
+			msgCache.delete(key)
+			msg = null
+			fromCache = false
+		}
 		if (!msg) {
 			clear(detailEl)
 			detailEl.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
 			try {
-				msg = await api('/accounts/' + state.accountId + '/message', { query: { itemId: id, remote: remote ? 1 : 0 } })
+				msg = await api('/accounts/' + state.accountId + '/message', { query: { itemId: id, remote: remote || auto ? 1 : 0 } })
 				if (!remote) cacheMessage(msg)
 			} catch (e) {
 				if (state.selectedId !== id) return
@@ -3042,7 +3069,7 @@
 			return
 		}
 		msg.isRead = true
-		state.current = Object.assign({}, msg, { remoteAllowed: !!remote })
+		state.current = Object.assign({}, msg, { remoteAllowed: !!remote || !!msg.remoteShown })
 		markReadLocally(id)
 		renderMessage()
 		detailEl.scrollTop = 0
@@ -5555,11 +5582,43 @@
 					} catch (e) { toast(e.message, true) }
 				} }, '✕'))))
 		}
+		// the folders whose messages show their remote images at once
+		const IMAGE_FOLDERS = [
+			['inbox', _('Boîte de réception')],
+			['sentitems', _('Éléments envoyés')],
+			['other', _('Autres dossiers')],
+			['junkemail', _('Courrier indésirable')],
+		]
+		const imageBoxes = h('div', { class: 'wm-image-folders' }, IMAGE_FOLDERS.map(([k, label]) => h('label', {},
+			h('input', {
+				type: 'checkbox',
+				name: 'images_' + k,
+				checked: !!state.imageFolders[k],
+				onchange: async (e) => {
+					const box = e.currentTarget
+					try {
+						const r = await api('/trusted-images/folders', { method: 'POST', body: { folders: Object.assign({}, state.imageFolders, { [k]: box.checked }) } })
+						state.imageFolders = r.folders
+						msgCache.clear()
+						toast(_('Préférence des images enregistrée'))
+					} catch (err) { box.checked = !box.checked; toast(err.message, true) }
+				},
+			}), ' ', label)))
+		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-image-settings' },
+			h('legend', {}, _('Images distantes')),
+			h('p', { class: 'wm-muted' }, _('Afficher directement les images des messages de ces dossiers. Ailleurs, elles restent bloquées jusqu\'à « Afficher les images » : elles peuvent servir à savoir que vous avez lu le message, d\'où le courrier indésirable décoché par défaut.')),
+			imageBoxes))
 		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-trusted-settings' },
 			h('legend', {}, _('Images des expéditeurs de confiance')),
 			h('p', { class: 'wm-muted' }, _('Leurs messages affichent leurs images distantes directement ; pour les autres, elles restent bloquées (elles peuvent servir à savoir que vous avez lu le message).')),
 			trustedList))
-		api('/trusted-images').then((r) => showTrusted(r.trusted), (e) => toast(e.message, true))
+		api('/trusted-images').then((r) => {
+			showTrusted(r.trusted)
+			if (r.folders) {
+				state.imageFolders = r.folders
+				imageBoxes.querySelectorAll('input').forEach((b) => { b.checked = !!r.folders[b.name.slice(7)] })
+			}
+		}, (e) => toast(e.message, true))
 
 		state.accounts.forEach((a) => {
 			const name = h('input', { type: 'text', value: a.displayName === a.email ? '' : a.displayName, placeholder: _('Nom affiché (facultatif)') })
@@ -5801,6 +5860,10 @@
 		try { state.domains = JSON.parse(root.dataset.domains || '[]') } catch (e) { state.domains = [] }
 		state.autodiscover = root.dataset.autodiscover === '1'
 		state.maxAttachments = parseInt(root.dataset.maxAttachments || '', 10) || 25 * 1024 * 1024
+		try {
+			const folders = JSON.parse(root.dataset.imageFolders || 'null')
+			if (folders && typeof folders === 'object') state.imageFolders = Object.assign(state.imageFolders, folders)
+		} catch (e) { /* the defaults */ }
 		state.isAdmin = root.dataset.isAdmin === '1'
 		restoreTab()
 		window.addEventListener('pagehide', writeTab)

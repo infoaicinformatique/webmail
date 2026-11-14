@@ -7,6 +7,7 @@
 	data-autodiscover="<?php p(!empty($_['autodiscover']) ? '1' : '0'); ?>"
 	data-talk="<?php p(!empty($_['talk']) ? '1' : '0'); ?>"
 	data-visio="<?php p($_['visio'] ?? ''); ?>"
-	data-max-attachments="<?php p((string)($_['maxAttachments'] ?? 0)); ?>">
+	data-max-attachments="<?php p((string)($_['maxAttachments'] ?? 0)); ?>"
+	data-image-folders="<?php p(json_encode($_['imageFolders'] ?? null)); ?>">
 	<div class="wm-loading"><span class="icon-loading"></span></div>
 </div>

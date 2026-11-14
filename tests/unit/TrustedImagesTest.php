@@ -55,4 +55,14 @@ class TrustedImagesTest extends TestCase {
 		$this->expectException(MailException::class);
 		TrustedImagesService::with($list, 'one-more@x.org');
 	}
+
+	public function testFoldersShowingImages(): void {
+		// by default: inbox, sent items and the other folders, not the junk mail
+		$this->assertSame(['inbox' => true, 'sentitems' => true, 'other' => true, 'junkemail' => false], TrustedImagesService::folderChoice(''));
+		$this->assertSame(['inbox' => false, 'sentitems' => true, 'other' => true, 'junkemail' => true],
+			TrustedImagesService::folderChoice('{"inbox":false,"junkemail":true}'));
+		// only booleans, only these keys
+		$this->assertSame(TrustedImagesService::FOLDERS_DEFAULT, TrustedImagesService::folderChoice('{"inbox":"no","junkemail":1,"drafts":true}'));
+		$this->assertSame(TrustedImagesService::FOLDERS_DEFAULT, TrustedImagesService::folderChoice('not json'));
+	}
 }

@@ -1525,5 +1525,11 @@
 	"Largeur de la liste des messages": "Width of the message list",
 	"Glisser pour élargir ou rétrécir (double-clic : largeur d'origine)": "Drag to widen or narrow (double-click: original width)",
 	"Afficher ces messages": "Show these messages",
-	"Masquer ces messages": "Hide these messages"
+	"Masquer ces messages": "Hide these messages",
+	"Autres dossiers": "Other folders",
+	"Préférence des images enregistrée": "Image preference saved",
+	"Images distantes": "Remote images",
+	"Afficher directement les images des messages de ces dossiers. Ailleurs, elles restent bloquées jusqu'à « Afficher les images » : elles peuvent servir à savoir que vous avez lu le message, d'où le courrier indésirable décoché par défaut.": "Show the images of the messages of these folders at once. Elsewhere they stay blocked until “Show images”: they can be used to know that you read the message, hence junk email unchecked by default.",
+	"Éléments envoyés": "Sent Items",
+	"Courrier indésirable": "Junk Email"
 }

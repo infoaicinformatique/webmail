@@ -70,6 +70,9 @@ async function main() {
 		await page.waitForURL(/apps/)
 		// messages are sent at once in the other steps: the undo delay has its own step
 		await page.evaluate(() => localStorage.setItem('webmail.undoSend', '0'))
+		// remote images blocked in every folder for the steps about them; the folders that show
+		// them at once (inbox, sent items… by default) have their own step
+		execSync(OCC + ' user:setting admin webmail images_folders \'{"inbox":false,"sentitems":false,"other":false,"junkemail":false}\'')
 	})
 
 	await step('admin settings page lists both servers', async () => {
@@ -4127,6 +4130,41 @@ async function main() {
 		await page.waitForSelector('.wm-remote-banner .wm-trust-sender')
 		await page.waitForSelector('.wm-body-frame')
 		assert.strictEqual(await tracker(), false, 'blocked again')
+	})
+
+	await step('remote images by folder: shown at once in the inbox by default, not in the junk mail; the choice in the settings', async () => {
+		const row = '.wm-message:has-text("Devis pour la maintenance annuelle")'
+		const tracker = () => page.evaluate(() => { const f = document.querySelector('.wm-body-frame'); return !!(f && f.contentDocument && f.contentDocument.querySelector('img[src*="tracker.example"]')) })
+		const open = async () => {
+			await page.click('.wm-folder >> nth=0')
+			await page.click(row)
+			await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
+			await page.waitForSelector('.wm-body-frame')
+		}
+		// the choice of a user who never set it: the defaults
+		execSync(OCC + ' user:setting --delete admin webmail images_folders')
+		await page.reload()
+		await page.waitForSelector('.wm-message')
+		await open()
+		await page.waitForFunction(() => { const f = document.querySelector('.wm-body-frame'); return f && f.contentDocument && f.contentDocument.querySelector('img[src*="tracker.example"]') })
+		assert.strictEqual(await page.locator('.wm-remote-banner').count(), 0, 'no banner: shown at once')
+		// the settings: inbox, sent items, other folders ticked, junk mail not
+		await page.click('.wm-nav-footer a:has-text("Comptes et signature")')
+		await page.waitForSelector('.wm-image-settings')
+		const ticked = await page.$$eval('.wm-image-folders input', (els) => els.map((e) => e.name + '=' + e.checked))
+		assert.deepStrictEqual(ticked, ['images_inbox=true', 'images_sentitems=true', 'images_other=true', 'images_junkemail=false'])
+		await shot('93-image-folders')
+		// the inbox unticked: blocked again, the banner back
+		await page.uncheck('.wm-image-folders input[name=images_inbox]')
+		await page.waitForSelector('.wm-toast:has-text("Préférence des images enregistrée")')
+		assert.ok(execSync(OCC + ' user:setting admin webmail images_folders', { encoding: 'utf8' }).includes('"inbox":false'))
+		await open()
+		await page.waitForSelector('.wm-remote-banner')
+		assert.strictEqual(await tracker(), false, 'blocked')
+		// back for the next steps: blocked everywhere
+		execSync(OCC + ' user:setting admin webmail images_folders \'{"inbox":false,"sentitems":false,"other":false,"junkemail":false}\'')
+		await page.reload()
+		await page.waitForSelector('.wm-message')
 	})
 
 	await step('unsubscribe: « Se désabonner » of a mailing list, by a message sent for the user, or on its page', async () => {
