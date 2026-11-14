@@ -2550,6 +2550,46 @@ async function main() {
 		}
 	})
 
+	await step('contacts: copied into Nextcloud Contacts (CardDAV), brought up to date, removed', async () => {
+		await page.click('.wm-tab[data-module="contacts"]')
+		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
+		const people = await page.$$eval('.wm-contact', (els) => els.filter((e) => !e.textContent.includes('· groupe')).length)
+		await page.click('.wm-nc-copy')
+		await page.click('.wm-nc-copy-run:has-text("Copier mes contacts")')
+		await page.waitForSelector('.wm-toast:has-text("Nextcloud Contacts à jour : ' + people + ' ajoutés")')
+		await page.waitForSelector('.wm-nc-copy-state:has-text("' + people + ' contacts copiés")')
+		await shot('52b-nextcloud-contacts-copy')
+		// the address book, seen by any CardDAV client (the Contacts app, a phone…)
+		const dav = () => page.evaluate(async () => {
+			// (the name only when asked for: Nextcloud gives no « allprop »)
+			const list = await (await fetch('/remote.php/dav/addressbooks/users/' + OC.getCurrentUser().uid + '/', {
+				method: 'PROPFIND',
+				headers: { Depth: '1', requesttoken: OC.requestToken, 'Content-Type': 'application/xml' },
+				body: '<d:propfind xmlns:d="DAV:"><d:prop><d:displayname/></d:prop></d:propfind>',
+			})).text()
+			const m = /addressbooks\/users\/[^/]+\/(webmail-exchange-\d+)\//.exec(list)
+			if (!m) return null
+			const r = await fetch('/remote.php/dav/addressbooks/users/' + OC.getCurrentUser().uid + '/' + m[1] + '/?export', { headers: { requesttoken: OC.requestToken } })
+			return { name: list.includes('Exchange — ') , vcf: await r.text() }
+		})
+		let copy = await dav()
+		assert(copy && copy.name, 'address book not found')
+		assert.strictEqual((copy.vcf.match(/BEGIN:VCARD/g) || []).length, people, copy.vcf.slice(0, 300))
+		assert(copy.vcf.includes('FN:Jean Dupont'), copy.vcf.slice(0, 300))
+		assert(/UID:webmail-[0-9a-f]{32}/.test(copy.vcf))
+		// again: nothing changed, nothing written
+		await page.click('.wm-nc-copy-run:has-text("Mettre à jour maintenant")')
+		await page.waitForSelector('.wm-toast:text-is("Nextcloud Contacts à jour")')
+		// stopped: the address book goes
+		await page.click('.wm-nc-copy-remove')
+		await page.waitForSelector('.wm-toast:has-text("Carnet retiré de Nextcloud Contacts")')
+		await page.waitForSelector('.wm-nc-copy-run:has-text("Copier mes contacts")')
+		copy = await dav()
+		assert.strictEqual(copy, null)
+		await page.keyboard.press('Escape')
+		await page.waitForSelector('.wm-nc-copy-dialog', { state: 'detached' })
+	})
+
 	// ------------------------------------------------------------------ shared contacts
 	const book = (name) => '.wm-book-row:has-text("' + name + '") .wm-book-link'
 
