@@ -87,6 +87,8 @@ return [
 		['name' => 'contact#create', 'url' => '/api/accounts/{id}/contacts', 'verb' => 'POST'],
 		['name' => 'contact#update', 'url' => '/api/accounts/{id}/contacts/update', 'verb' => 'POST'],
 		['name' => 'contact#delete', 'url' => '/api/accounts/{id}/contacts/delete', 'verb' => 'POST'],
+		['name' => 'nextcloud_calendar#status', 'url' => '/api/accounts/{id}/calendar/nextcloud', 'verb' => 'GET'],
+		['name' => 'nextcloud_calendar#set', 'url' => '/api/accounts/{id}/calendar/nextcloud', 'verb' => 'POST'],
 		['name' => 'contact#export', 'url' => '/api/accounts/{id}/contacts/export', 'verb' => 'GET'],
 		['name' => 'contact#import', 'url' => '/api/accounts/{id}/contacts/import', 'verb' => 'POST'],
 		['name' => 'contact#photo', 'url' => '/api/accounts/{id}/contacts/photo', 'verb' => 'GET'],

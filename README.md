@@ -51,6 +51,7 @@ et sur les téléphones, et inversement.
 | Signature | Dans « Comptes et signature », une signature **mise en forme** pour chaque compte : gras, italique, souligné, liens, et un **logo** (image ajoutée avec « 🖼 » ou collée, réduite à 400 pixels). Elle s'ajoute sous chaque nouveau message et chaque réponse, le logo étant envoyé en image intégrée. Une signature écrite avant en texte simple est reprise telle quelle |
 | Brouillons | Le message en cours est **enregistré automatiquement** dans « Brouillons » quelques secondes après chaque modification (« Brouillon enregistré à 15:42 ») et en fermant avec « Annuler ». Dans « Brouillons », un clic **rouvre le brouillon** pour le terminer et l'envoyer (y compris une réponse ou un transfert, avec sa citation et ses pièces jointes). « Supprimer le brouillon » le jette. Les **pièces jointes d'un nouveau message** (ordinateur ou Fichiers) sont enregistrées avec le brouillon dès qu'on les ajoute : rien n'est perdu en fermant la fenêtre, et « retirer » les enlève du brouillon. Celles d'une réponse ou d'un transfert, et les fichiers lourds (15 Mo et plus, qu'on peut encore envoyer en lien), partent au moment de l'envoi |
 | Pièces jointes | Téléchargement (une par une ou **toutes dans un .zip** nommé d'après l'objet, un message joint en .eml), **enregistrement dans Fichiers** (une par une ou **toutes d'un coup**), ajout depuis l'ordinateur ou **depuis Fichiers** (25 Mo au total) |
+| Agenda dans Nextcloud | « Visible dans l'Agenda de Nextcloud » (barre latérale de l'agenda) : l'agenda Exchange du compte apparaît en lecture seule dans l'application Agenda de Nextcloud et sur les téléphones synchronisés avec Nextcloud (CalDAV), à côté des agendas Nextcloud — le mois passé et l'année à venir, relus au plus toutes les 5 minutes ; chaque événement renvoie au webmail pour être modifié |
 | Aperçu | Miniatures des photos ; **aperçu plein écran** des images, des PDF et des fichiers texte (← / → pour passer de l'une à l'autre, Échap pour fermer). Le texte est affiché tel quel, rien n'y est interprété ; les autres types (Word, zip…) se téléchargent |
 | Destinataires | Complétion automatique des adresses à partir des contacts Exchange **et de l'annuaire de l'entreprise** Les **destinataires récents** (ceux à qui vous avez écrit ou répondu depuis ce navigateur, les plus fréquents d'abord) sont proposés **en premier, dès la première lettre**, sans attendre Exchange (« · récent ») |
 | Invitations | Une invitation reçue par e-mail affiche la date et le lieu, avec les boutons **Accepter / Provisoire / Refuser** |
@@ -249,7 +250,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.99.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.115.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -292,7 +293,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.99 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.115 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

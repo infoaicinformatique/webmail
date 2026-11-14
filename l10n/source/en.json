@@ -1283,5 +1283,10 @@
 	"Expéditeur (Z → A)": "Sender (Z → A)",
 	"Objet (A → Z)": "Subject (A → Z)",
 	"Plus volumineux": "Largest first",
-	"Trier par": "Sort by"
+	"Trier par": "Sort by",
+	"Nextcloud": "Nextcloud",
+	"Agenda Exchange visible dans l'Agenda de Nextcloud (lecture seule)": "Exchange calendar visible in Nextcloud Calendar (read only)",
+	"Agenda Exchange retiré de l'Agenda de Nextcloud": "Exchange calendar removed from Nextcloud Calendar",
+	"Les événements de l'agenda Exchange (le mois passé et l'année à venir) dans l'application Agenda de Nextcloud et les téléphones synchronisés avec Nextcloud ; ils se modifient ici.": "The events of the Exchange calendar (the past month and the coming year) in the Nextcloud Calendar app and the phones synced with Nextcloud; they are changed here.",
+	"Visible dans l'Agenda de Nextcloud": "Visible in Nextcloud Calendar"
 }
