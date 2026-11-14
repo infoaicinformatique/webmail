@@ -10,6 +10,7 @@ Every request body is written to --log so it can be validated against the
 official EWS XSD afterwards (tests/e2e/validate_logged_requests.php).
 """
 import argparse
+import time
 import base64
 import datetime as dt
 import html
@@ -243,9 +244,19 @@ def folder_id(el):
     return el.get('Id')
 
 
+COUNTS = {}
+
+
 def counts(fid):
-    msgs = [m for m in MESSAGES.values() if m['folder'] == fid]
-    return len(msgs), sum(1 for m in msgs if not m['is_read'])
+    # once per request for all the folders (FindFolder of hundreds of folders, a very large mailbox)
+    if not COUNTS:
+        COUNTS['done'] = True
+        for m in MESSAGES.values():
+            c = COUNTS.setdefault(m['folder'], [0, 0])
+            c[0] += 1
+            c[1] += 0 if m['is_read'] else 1
+    total, unread = COUNTS.get(fid, (0, 0))
+    return total, unread
 
 
 # mailbox size: the inbox holds 1.2 GB of old mail, each message adds 60 KB; limit 2 GB (KB)
@@ -692,12 +703,17 @@ def handle(op, el, user):
         if unread is not None and unread.find('t:FieldURI', NS).get('FieldURI') == 'message:IsRead':
             conds.append(lambda m: not m['is_read'])
         out = []
+        # one pass over the mailbox for all the folders asked (a very large one has 200 000 messages)
+        by_folder = {}
+        for m in MESSAGES.values():
+            by_folder.setdefault(m['folder'], []).append(m)
+        known = {f[0] for f in FOLDERS}
         for parent in el.find('m:ParentFolderIds', NS):
             fid = folder_id(parent)
-            if fid is None or fid not in {f[0] for f in FOLDERS}:
+            if fid is None or fid not in known:
                 out.append(err(op, 'ErrorFolderNotFound', 'Folder not found'))
                 continue
-            msgs = [m for m in MESSAGES.values() if m['folder'] == fid and all(c(m) for c in conds)]
+            msgs = [m for m in by_folder.get(fid, []) if all(c(m) for c in conds)]
             if text:
                 msgs = [m for m in msgs if text in m['subject'].lower() or text in m['body'].lower() or text in m['sender'][0].lower()]
             msgs.sort(key=lambda m: m['date'], reverse=True)
@@ -1107,6 +1123,11 @@ class Handler(BaseHTTPRequestHandler):
         if LOG_DIR:
             with open(os.path.join(LOG_DIR, '%04d.xml' % next(REQ_COUNTER)), 'wb') as f:
                 f.write(raw)
+        if LATENCY:
+            # the network to a hosted Exchange (measures: --latency)
+            time.sleep(LATENCY)
+        started = time.perf_counter()
+        COUNTS.clear()
         try:
             root = ET.fromstring(raw)
             body = root.find('s:Body', NS)[0]
@@ -1117,6 +1138,10 @@ class Handler(BaseHTTPRequestHandler):
                 CURRENT_TZ = tzdef.get('Id') if tzdef is not None else 'UTC'
                 pim.REQUEST_HEADERS = dict(self.headers.items())
                 resp = handle(op, body, user)
+            if TIMING:
+                # the time this fake takes itself, to leave out of the measures
+                with open(TIMING, 'a') as f:
+                    f.write('%.1f\t%s\t%.1f\t%d\n' % (time.time() * 1000, op, (time.perf_counter() - started) * 1000, (resp or '').count('<t:ItemId ')))
             if resp is None:
                 self.send(500, envelope('<s:Fault><faultcode>s:Client</faultcode><faultstring>Unsupported operation %s</faultstring></s:Fault>' % esc(op)))
             else:
@@ -1125,15 +1150,52 @@ class Handler(BaseHTTPRequestHandler):
             self.send(500, envelope('<s:Fault><faultcode>s:Server</faultcode><faultstring>%s</faultstring></s:Fault>' % esc(repr(e))))
 
 
+LATENCY = 0.0
+TIMING = None
+
+
+def bulk(count, folders):
+    """A very large mailbox (measures of speed): `count` old messages, a third in the
+    inbox, the rest in `folders` archive folders, over ten years, from 2 000 senders."""
+    import random
+    rnd = random.Random(42)
+    archive = []
+    for i in range(folders):
+        fid = 'F-ARCH-%d' % i
+        FOLDERS.append((fid, 'Archives %d - %03d' % (2016 + i % 10, i), 'F-ROOT' if i < 40 else 'F-ARCH-%d' % (i % 40), None))
+        archive.append(fid)
+    senders = [('Correspondant %d' % i, 'correspondant%d@exemple-%d.fr' % (i, i % 50)) for i in range(2000)]
+    words = ['devis', 'facture', 'réunion', 'commande', 'chantier', 'planning', 'relance', 'contrat', 'livraison', 'budget']
+    t0 = dt.datetime.now(dt.timezone.utc)
+    for n in range(count):
+        folder = 'F-INBOX' if n % 3 == 0 or not archive else archive[n % len(archive)]
+        mid = 'MSG-%d' % next(COUNTER)
+        minutes = 60 * 24 * 3 + (n * 26) % (60 * 24 * 365 * 10)
+        MESSAGES[mid] = dict(id=mid, ck='CK-%d' % next(COUNTER), folder=folder,
+                             subject='%s %s n°%d' % (rnd.choice(words).capitalize(), rnd.choice(words), n),
+                             sender=rnd.choice(senders), body='<p>Message ancien %d : %s.</p>' % (n, ' '.join(rnd.choice(words) for _ in range(30))),
+                             date=(t0 - dt.timedelta(minutes=minutes)).strftime('%Y-%m-%dT%H:%M:%SZ'), is_read=True,
+                             attachments=[], importance='Normal', flagged=False,
+                             to=[('Utilisateur', 'user@societe-a.fr')], cc=[])
+
+
 def main():
-    global LOG_DIR
+    global LOG_DIR, LATENCY, TIMING
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8443)
     ap.add_argument('--cert', required=True)
     ap.add_argument('--key', required=True)
     ap.add_argument('--log')
+    ap.add_argument('--latency', type=float, default=0, help='milliseconds added to each request (network)')
+    ap.add_argument('--timing', help='file where the time taken by each request is written')
+    ap.add_argument('--bulk', type=int, default=0, help='old messages added (a very large mailbox)')
+    ap.add_argument('--bulk-folders', type=int, default=0, help='archive folders for them')
     args = ap.parse_args()
     LOG_DIR = args.log
+    LATENCY = args.latency / 1000
+    TIMING = args.timing
+    if args.bulk:
+        bulk(args.bulk, args.bulk_folders)
     if LOG_DIR:
         os.makedirs(LOG_DIR, exist_ok=True)
     srv = ThreadingHTTPServer(('0.0.0.0', args.port), Handler)
