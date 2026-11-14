@@ -1531,5 +1531,12 @@
 	"Images distantes": "Remote images",
 	"Afficher directement les images des messages de ces dossiers. Ailleurs, elles restent bloquées jusqu'à « Afficher les images » : elles peuvent servir à savoir que vous avez lu le message, d'où le courrier indésirable décoché par défaut.": "Show the images of the messages of these folders at once. Elsewhere they stay blocked until “Show images”: they can be used to know that you read the message, hence junk email unchecked by default.",
 	"Éléments envoyés": "Sent Items",
-	"Courrier indésirable": "Junk Email"
+	"Courrier indésirable": "Junk Email",
+	"Créer un salon visio Element (Matrix) pour cet événement, avec votre compte Matrix : son lien va dans le lieu et dans l'invitation": "Create an Element (Matrix) video room for this event, with your Matrix account: its link goes in the location and the invitation",
+	"La visio Element n'est pas configurée par l'administrateur": "Element video meetings are not set up by the administrator",
+	"Le serveur Matrix n'a pas créé le salon": "The Matrix server did not create the room",
+	"Element Web de l'organisation : un salon visio Matrix créé pour chaque réunion": "Element Web of the organisation: a Matrix video room made for each meeting",
+	"Pour un Element sans service Element Call autonome (appels intégrés à Element Web) : « Visio Element » crée, avec le compte Matrix de l'organisateur (relié dans Comptes et signature), un salon visio fermé aux autres serveurs, que tout compte de votre serveur rejoint par le lien de l'invitation.": "For an Element without a standalone Element Call (calls inside Element Web): “Element video” creates, with the organiser's Matrix account (linked in Accounts and signature), a video room closed to other servers, that any account of your server joins through the link of the invitation.",
+	"Préconfiguré avec votre Element des Sites externes de Nextcloud : « %1$s » (%2$s, serveur Matrix %3$s). Vérifiez puis enregistrez.": "Preset with your Element from the External sites of Nextcloud: “%1$s” (%2$s, Matrix server %3$s). Check, then save.",
+	"Indiquez l'adresse de votre Element (par exemple %s)": "Enter the address of your Element (for example %s)"
 }

@@ -1358,6 +1358,12 @@
 		return (root && root.dataset.visio) || ''
 	}
 
+	/** The visio is a room of Element Web made for each meeting (an Element without Element Call). */
+	function visioRooms() {
+		const root = document.getElementById('webmail-app')
+		return !!root && root.dataset.visioMode === 'element-room'
+	}
+
 	/** Random letters and digits (the room's secret), from the browser's secure generator. */
 	function randomToken(length) {
 		const chars = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -1761,12 +1767,30 @@
 		const visioBtn = visioBase() ? h('button', {
 			type: 'button',
 			class: 'wm-visio-btn',
-			title: visioBase().includes('{room}')
-				? _('Ajouter une salle de visio pour cet événement : son lien va dans le lieu et dans l\'invitation')
-				: _('Ajouter une salle Element (Matrix) chiffrée pour cet événement : son lien va dans le lieu et dans l\'invitation'),
+			title: visioRooms()
+				? _('Créer un salon visio Element (Matrix) pour cet événement, avec votre compte Matrix : son lien va dans le lieu et dans l\'invitation')
+				: visioBase().includes('{room}')
+					? _('Ajouter une salle de visio pour cet événement : son lien va dans le lieu et dans l\'invitation')
+					: _('Ajouter une salle Element (Matrix) chiffrée pour cet événement : son lien va dans le lieu et dans l\'invitation'),
 			hidden: hasVisio(),
-			onclick: () => {
-				const url = visioLink(subject.value.trim())
+			onclick: async () => {
+				let url
+				if (visioRooms()) {
+					// a room made on the Matrix server, with the organiser's account
+					visioBtn.disabled = true
+					try {
+						const at = startDate.value ? new Date(startDate.value + 'T' + (startTime.value || '00:00')) : null
+						const when = at && !isNaN(at) ? at.toLocaleString(locale(), { dateStyle: 'full', timeStyle: 'short' }) : ''
+						url = (await api('/matrix/meeting', { method: 'POST', body: { subject: subject.value.trim(), when } })).url
+					} catch (e) {
+						core.toast(e.message, true)
+						return
+					} finally {
+						visioBtn.disabled = false
+					}
+				} else {
+					url = visioLink(subject.value.trim())
+				}
 				if (!location.value.trim()) location.value = url
 				description.value = (description.value.trim() ? description.value.trim() + '\n\n' : '') + _('Rejoindre la visio : {url}', { url })
 				visioBtn.hidden = true

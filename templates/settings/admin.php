@@ -58,10 +58,23 @@ $code = fn (string $text): string => '<code>' . \OCP\Util::sanitizeHTML($text) .
 		<?php print_unescaped($l->t('Adresse de votre serveur Element Call (par ex. %1$s) : le formulaire d\'un événement propose alors « Visio Element », qui met dans l\'invitation le lien d\'une salle chiffrée, propre à la réunion. Une autre visio (Jitsi…) : une adresse avec %2$s à la place du nom de la salle, par ex. %3$s. Laissez vide pour ne rien proposer.',
 			[$code('https://call.element.io'), $code('{room}'), $code('https://meet.example.org/{room}')])); ?>
 	</p>
+	<?php $element = $_['element'] ?? null; $roomMode = $_['visioMode'] === 'element-room' || ($_['visio'] === '' && $element !== null); ?>
 	<p>
 		<label for="webmail-visio"><?php p($l->t('Adresse de la visio')); ?></label>
-		<input type="url" id="webmail-visio" value="<?php p($_['visio']); ?>" placeholder="https://call.element.io" size="50">
+		<input type="url" id="webmail-visio" value="<?php p($_['visio'] !== '' ? $_['visio'] : ($element['url'] ?? '')); ?>" placeholder="https://call.element.io" size="50">
 	</p>
+	<p>
+		<input type="checkbox" class="checkbox" id="webmail-visio-room" <?php if ($roomMode) { print_unescaped('checked'); } ?>>
+		<label for="webmail-visio-room"><?php p($l->t('Element Web de l\'organisation : un salon visio Matrix créé pour chaque réunion')); ?></label>
+	</p>
+	<p class="settings-hint">
+		<?php p($l->t('Pour un Element sans service Element Call autonome (appels intégrés à Element Web) : « Visio Element » crée, avec le compte Matrix de l\'organisateur (relié dans Comptes et signature), un salon visio fermé aux autres serveurs, que tout compte de votre serveur rejoint par le lien de l\'invitation.')); ?>
+	</p>
+	<?php if ($_['visio'] === '' && $element !== null): ?>
+	<p id="webmail-visio-detected" class="wm-detected">
+		<?php p($l->t('Préconfiguré avec votre Element des Sites externes de Nextcloud : « %1$s » (%2$s, serveur Matrix %3$s). Vérifiez puis enregistrez.', [$element['name'] !== '' ? $element['name'] : 'Element', $element['url'], $element['homeserver']])); ?>
+	</p>
+	<?php endif; ?>
 	<h3><?php p($l->t('Sécurité et limites')); ?></h3>
 	<p class="settings-hint">
 		<?php p($l->t('Taille totale des pièces jointes d\'un message, pour tous les comptes. Exchange applique aussi sa propre limite (25 Mo par défaut chez OVH Hosted Exchange) : ne la dépassez pas, sinon il refusera les messages. Au-delà, les utilisateurs envoient leurs fichiers en lien Nextcloud.')); ?>

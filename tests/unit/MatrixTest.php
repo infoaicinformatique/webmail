@@ -66,4 +66,41 @@ class MatrixTest extends TestCase {
 		$this->assertFalse(MailNotificationService::matrixWanted('important', []));
 		$this->assertFalse(MailNotificationService::matrixWanted('off', $high));
 	}
+
+	public function testMeetingRoom(): void {
+		$r = Matrix::meetingRoom("  Réunion   de chantier\n", 'lundi 16 novembre 2026 à 10:00');
+		$this->assertSame('Réunion de chantier', $r['name']);
+		$this->assertSame('lundi 16 novembre 2026 à 10:00', $r['topic']);
+		// joined by its link by the accounts of the server, not listed, not open to other servers
+		$this->assertSame('public_chat', $r['preset']);
+		$this->assertSame('private', $r['visibility']);
+		$this->assertFalse($r['creation_content']['m.federate']);
+		// a video room of Element: everyone may join its call
+		$this->assertSame('org.matrix.msc3417.call', $r['creation_content']['type']);
+		$this->assertSame(0, $r['power_level_content_override']['events']['org.matrix.msc3401.call.member']);
+		$this->assertSame('Réunion', Matrix::meetingRoom('')['name']);
+		$this->assertArrayNotHasKey('topic', Matrix::meetingRoom('x'));
+	}
+
+	public function testRoomLink(): void {
+		$this->assertSame('https://chat.example.org/#/room/%21abc%3Amatrix.example.org?via=matrix.example.org',
+			Matrix::roomLink('https://chat.example.org/', '!abc:matrix.example.org'));
+		$this->expectException(MailException::class);
+		Matrix::roomLink('https://chat.example.org', '#alias:example.org');
+	}
+
+	public function testElementOfTheExternalSites(): void {
+		$sites = json_encode([
+			'1' => ['id' => 1, 'name' => 'Chat', 'url' => 'https://chat.example.org/'],
+			'2' => ['id' => 2, 'name' => 'Intranet', 'url' => 'http://intranet.local'],
+			'3' => ['id' => 3, 'name' => 'Wiki', 'url' => 'javascript:alert(1)'],
+		]);
+		$this->assertSame([['name' => 'Chat', 'url' => 'https://chat.example.org']], Matrix::externalSites((string)$sites));
+		$this->assertSame([], Matrix::externalSites(''));
+		$this->assertSame(['homeserver' => 'https://matrix.example.org', 'serverName' => 'matrix.example.org'],
+			Matrix::elementHomeserver(['default_server_config' => ['m.homeserver' => ['base_url' => 'https://matrix.example.org/', 'server_name' => 'matrix.example.org']]]));
+		// not an Element Web
+		$this->assertNull(Matrix::elementHomeserver(['brand' => 'x']));
+		$this->assertNull(Matrix::elementHomeserver(['default_server_config' => ['m.homeserver' => ['base_url' => 'http://matrix.example.org']]]));
+	}
 }

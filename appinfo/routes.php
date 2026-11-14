@@ -20,6 +20,7 @@ return [
 		['name' => 'matrix#alerts', 'url' => '/api/matrix/alerts', 'verb' => 'POST'],
 		['name' => 'matrix#rooms', 'url' => '/api/matrix/rooms', 'verb' => 'GET'],
 		['name' => 'matrix#send', 'url' => '/api/matrix/send', 'verb' => 'POST'],
+		['name' => 'matrix#meeting', 'url' => '/api/matrix/meeting', 'verb' => 'POST'],
 		['name' => 'trusted_images#index', 'url' => '/api/trusted-images', 'verb' => 'GET'],
 		['name' => 'trusted_images#add', 'url' => '/api/trusted-images', 'verb' => 'POST'],
 		['name' => 'trusted_images#remove', 'url' => '/api/trusted-images/remove', 'verb' => 'POST'],

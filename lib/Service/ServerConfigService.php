@@ -226,6 +226,20 @@ class ServerConfigService {
 	// Video meetings: Element Call (Matrix), or any service with a room name in its links (Jitsi…)
 	// ------------------------------------------------------------------
 
+	/** The video meetings are rooms of Element Web made for each meeting (not links of Element Call). */
+	public const VISIO_ELEMENT_ROOM = 'element-room';
+
+	/** '' (Element Call or an address with {room}) or VISIO_ELEMENT_ROOM. */
+	public function getVisioMode(): string {
+		return $this->config->getAppValue(Application::APP_ID, 'visio_mode', '') === self::VISIO_ELEMENT_ROOM ? self::VISIO_ELEMENT_ROOM : '';
+	}
+
+	public function setVisioMode(string $mode): string {
+		$mode = $mode === self::VISIO_ELEMENT_ROOM ? $mode : '';
+		$this->config->setAppValue(Application::APP_ID, 'visio_mode', $mode);
+		return $mode;
+	}
+
 	/** The address of the video meetings, '' when none is set. */
 	public function getVisio(): string {
 		return $this->config->getAppValue(Application::APP_ID, 'visio', '');

@@ -110,6 +110,8 @@ ATTACHMENTS = {}
 MATRIX_ROOMS = {'!equipe:fake.test': 'Équipe chantier', '!notes:fake.test': 'Mes notes', '!dm:fake.test': ''}
 MATRIX_ALIASES = {'#equipe:fake.test': '!equipe:fake.test'}
 MATRIX_SENT = []
+# rooms made by createRoom (« Visio Element » with Element Web): their request
+MATRIX_CREATED = []
 # conversations ignored (« Ignorer la conversation »)
 IGNORED = set()
 
@@ -1061,7 +1063,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------------
     # a Matrix homeserver (client-server API), for « Envoyer sur Matrix »
-    def matrix(self, method):
+    def matrix(self, method, raw=None):
         import json
         import re
         from urllib.parse import unquote
@@ -1070,6 +1072,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/_matrix/test/sent':
             # (for the test: what was posted)
             return reply(200, MATRIX_SENT)
+        if path == '/_matrix/test/created':
+            return reply(200, MATRIX_CREATED)
         if self.headers.get('Authorization', '') != 'Bearer syt_test_token':
             return reply(401, {'errcode': 'M_UNKNOWN_TOKEN', 'error': 'Invalid access token'})
         api = '/_matrix/client/v3'
@@ -1094,11 +1098,22 @@ class Handler(BaseHTTPRequestHandler):
             if not any(x['txn'] == txn for x in MATRIX_SENT):
                 MATRIX_SENT.append({'room': room, 'txn': txn, 'content': body})
             return reply(200, {'event_id': '$%s' % txn})
+        if method == 'POST' and path == api + '/createRoom':
+            body = json.loads(raw or b'{}')
+            room = '!meet%d:fake.test' % (len(MATRIX_CREATED) + 1)
+            MATRIX_CREATED.append(body)
+            MATRIX_ROOMS[room] = body.get('name', '')
+            return reply(200, {'room_id': room})
         return reply(404, {'errcode': 'M_UNRECOGNIZED', 'error': 'Unrecognized request'})
 
     def do_GET(self):
         if self.path.startswith('/_matrix/'):
             return self.matrix('GET')
+        if self.path.split('?')[0] == '/element/config.json':
+            # an Element Web (its configuration names its homeserver), for « Sites externes »
+            import json
+            return self.send(200, json.dumps({'default_server_config': {'m.homeserver': {'base_url': 'https://ex3.fake.test:8443', 'server_name': 'fake.test'}},
+                                              'element_call': {'use_exclusively': True}}), {'Content-Type': 'application/json'})
         self.send(404, '')
 
     def do_PUT(self):
@@ -1109,6 +1124,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get('Content-Length', 0))
         raw = self.rfile.read(length)
+        if self.path.startswith('/_matrix/'):
+            return self.matrix('POST', raw)
         auth = self.headers.get('Authorization', '')
         user = None
         if NTLM_MODE:
