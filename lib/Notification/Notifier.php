@@ -39,6 +39,9 @@ class Notifier implements INotifier {
 		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'event_reminder') {
 			return $this->prepareReminder($notification, $l);
 		}
+		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'followup') {
+			return $this->prepareFollowUp($notification, $l);
+		}
 		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'task_reminder') {
 			return $this->prepareTaskReminder($notification, $l);
 		}
@@ -73,6 +76,20 @@ class Notifier implements INotifier {
 			->setParsedMessage(implode(' · ', array_filter($parts)))
 			->setLink($this->url->linkToRouteAbsolute('webmail.page.index') . '?' . http_build_query(['account' => $p['account'] ?? '', 'module' => 'tasks', 'task' => $p['taskId'] ?? '']))
 			->setIcon($this->url->getAbsoluteURL($this->url->imagePath('core', 'actions/checkmark.svg')));
+		return $notification;
+	}
+
+	/** "Pas de réponse : Devis toiture" — "Envoyé le 10 nov. à jean@… · user@…" */
+	private function prepareFollowUp(INotification $notification, IL10N $l): INotification {
+		$p = $notification->getSubjectParameters();
+		$subject = trim((string)($p['subject'] ?? '')) !== '' ? (string)$p['subject'] : $l->t('(sans objet)');
+		$since = date_create_immutable((string)($p['since'] ?? '')) ?: new \DateTimeImmutable();
+		$notification->setParsedSubject($l->t('Pas de réponse : %s', [$subject]))
+			->setRichSubject($l->t('Pas de réponse : %s', ['{message}']), ['message' => ['type' => 'highlight', 'id' => 'message', 'name' => $subject]])
+			->setParsedMessage($l->t('Envoyé le %1$s à %2$s', [(string)$l->l('date', \DateTime::createFromImmutable($since), ['width' => 'medium']), (string)($p['to'] ?? '')])
+				. ' · ' . (string)($p['email'] ?? ''))
+			->setLink($this->url->linkToRouteAbsolute('webmail.page.index') . '?' . http_build_query(['account' => $p['account'] ?? '']))
+			->setIcon($this->url->getAbsoluteURL($this->url->imagePath('core', 'actions/mail.svg')));
 		return $notification;
 	}
 
