@@ -64,6 +64,7 @@ et sur les téléphones, et inversement.
 | Réponse automatique | « 🌴 Réponse automatique » (dans « Comptes et signature ») : comme dans Outlook, activée tout de suite ou **pendant une période**, avec un message pour vos collègues et, au choix, aucune réponse, une réponse à vos contacts extérieurs ou à tout le monde à l'extérieur (même message ou un autre). Tant qu'elle est active, un rappel avec « Modifier » et « Désactiver » s'affiche au-dessus des dossiers |
 | Statut Nextcloud | Pendant une **réponse automatique** (activée, ou programmée et dans sa période), votre statut Nextcloud passe à « En vacances » (absent) ; le statut d'avant revient à la fin. Suivi à l'enregistrement et chaque heure (réponse réglée dans Outlook, dates atteintes). Case « Afficher « En vacances » dans mon statut Nextcloud » dans la réponse automatique |
 | Liens Nextcloud | « 🔗 Lien Nextcloud » dans la rédaction : un fichier ou un dossier de Fichiers devient un **lien de téléchargement** dans le texte du message (nom, taille, date de fin si l'administrateur en impose une), au lieu d'une pièce jointe. Un fichier déjà joint depuis Fichiers passe en lien avec « 🔗 en lien ». Un fichier lourd de l'ordinateur (15 Mo et plus) est signalé, et « 🔗 Envoyer en lien » le dépose dans Fichiers (dossier « Pièces jointes envoyées ») puis met son lien dans le message. Un lien en lecture seule déjà existant est réutilisé |
+| Liens protégés | « 🔒 Protéger les liens » dans la rédaction : les liens Nextcloud créés ensuite expirent (7, 30 ou 90 jours) et/ou ont un **mot de passe**, généré par Nextcloud et **jamais écrit dans le message** : il s'affiche une fois, avec « Copier », pour le transmettre autrement (téléphone, Matrix…). Si l'administrateur impose un mot de passe sur les liens, il est généré d'office |
 | Boîtes partagées | Dans « Comptes et signature », « 📮 Boîtes partagées » : ajoutez une boîte commune (contact@, accueil@…) dont l'administrateur Exchange vous a donné l'**accès total**. Ses dossiers s'affichent sous les vôtres (avec les non-lus) : lecture, réponse, déplacement entre ses dossiers, suppression. En répondant depuis la boîte partagée, « De : » propose cette boîte (il faut le droit « **Envoyer en tant que** ») ; la liste « De : » permet aussi d'écrire un nouveau message en son nom. Retirer une boîte du webmail ne supprime rien dans Exchange |
 | Boîtes des collègues (délégation) | Si un collègue vous a fait **délégué** de sa boîte de réception dans Outlook (Fichier → Paramètres du compte → Accès délégué), ajoutez son adresse au même endroit que les boîtes partagées. Elle s'affiche avec 👥, avec **seulement les dossiers qu'il vous a partagés** (sa boîte de réception et ses sous-dossiers, par exemple). On peut lire, classer et **répondre de sa part** : « De : » propose son adresse, et le message part « de la part de » lui. Mention « (délégué) » dans « Comptes et signature » |
 | Conversations | Sous l'en-tête d'un message : « ▸ Conversation : 3 messages » quand il fait partie d'un échange. Tous les messages de la conversation, **dans tous les dossiers** (vos réponses dans « Éléments envoyés » comprises, sauf brouillons et éléments supprimés), du plus ancien au plus récent, avec l'expéditeur, la date, le dossier et le début du texte. Un clic déplie un message sur place (avec « Ouvrir ce message » et « Répondre ») ; la conversation reste dépliée ou repliée d'un message à l'autre |
@@ -259,7 +260,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.109.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.110.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -302,7 +303,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.109 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.110 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
