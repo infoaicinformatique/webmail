@@ -94,6 +94,9 @@ return [
 		['name' => 'contact#userPhoto', 'url' => '/api/accounts/{id}/contacts/userphoto', 'verb' => 'GET'],
 		['name' => 'contact#resolve', 'url' => '/api/accounts/{id}/contacts/resolve', 'verb' => 'GET'],
 
+		['name' => 'auto_file#index', 'url' => '/api/accounts/{id}/autofile', 'verb' => 'GET'],
+		['name' => 'auto_file#add', 'url' => '/api/accounts/{id}/autofile', 'verb' => 'POST'],
+		['name' => 'auto_file#remove', 'url' => '/api/accounts/{id}/autofile/remove', 'verb' => 'POST'],
 		['name' => 'oof#show', 'url' => '/api/accounts/{id}/oof', 'verb' => 'GET'],
 		['name' => 'oof#update', 'url' => '/api/accounts/{id}/oof', 'verb' => 'POST'],
 		['name' => 'task#index', 'url' => '/api/accounts/{id}/tasks', 'verb' => 'GET'],
