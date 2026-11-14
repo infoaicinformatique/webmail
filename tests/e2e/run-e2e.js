@@ -4301,6 +4301,38 @@ async function main() {
 		await page.waitForSelector('.wm-list-period')
 	})
 
+	await step('right-click on « Éléments supprimés »: « Vider les éléments supprimés »', async () => {
+		// one message in « Éléments supprimés »
+		await page.click('.wm-folder >> nth=0')
+		await page.fill('.wm-list .wm-search', 'Newsletter n°53')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°53"))')
+		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°53")')
+		await page.click('.wm-toolbar button:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("éléments supprimés")')
+		await page.click('.wm-search-info a:has-text("effacer")')
+		const trash = '.wm-folder:has(.wm-folder-name:text-is("Éléments supprimés"))'
+		// the menu of the folder, from a right-click (no such entry for another folder)
+		await page.click('.wm-folder:has(.wm-folder-name:text-is("Clients"))', { button: 'right' })
+		await page.waitForSelector('.wm-folder-menu')
+		assert.strictEqual(await page.locator('.wm-folder-menu-item:has-text("Vider")').count(), 0)
+		await page.keyboard.press('Escape')
+		await page.click(trash, { button: 'right' })
+		await page.waitForSelector('.wm-folder-menu .wm-folder-menu-item:has-text("Vider les éléments supprimés")')
+		await shot('90-empty-deleted-items')
+		page.once('dialog', (d) => { assert.ok(d.message().includes('Supprimer définitivement')); d.accept() })
+		await page.click('.wm-folder-menu-item:has-text("Vider les éléments supprimés")')
+		await page.waitForSelector('.wm-toast:has-text("Éléments supprimés vidés")')
+		await page.click(trash)
+		await page.waitForSelector('.wm-empty:has-text("Aucun message")')
+		// nothing left: no such entry any more
+		await page.click(trash, { button: 'right' })
+		await page.waitForSelector('.wm-folder-menu')
+		assert.strictEqual(await page.locator('.wm-folder-menu-item:has-text("Vider")').count(), 0)
+		await page.keyboard.press('Escape')
+		await page.click('.wm-folder >> nth=0')
+	})
+
 	await step('one sender: « Tous ses messages… » shows them, moves them all, and back', async () => {
 		// (one of the newsletters, found by a search: far down the inbox by now)
 		const openNewsletter = async () => {
@@ -4868,11 +4900,15 @@ async function main() {
 		// read only: Nextcloud refuses a new event there
 		const put = await caldav('PUT', 'nouveau.ics', 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:nouveau\r\nDTSTAMP:20260101T000000Z\r\nDTSTART:20260101T100000Z\r\nSUMMARY:x\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')
 		assert(put.status === 403 || put.status === 405 || put.status === 501, 'PUT ' + put.status)
-		// the answer of the server (its toast may already have made way for another one)
-		const [off] = await Promise.all([
-			page.waitForResponse((res) => res.url().endsWith('/calendar/nextcloud') && res.request().method() === 'POST'),
-			page.uncheck('.wm-cal-nc input'),
-		])
+		// the answer of the server (its toast may already have made way for another one);
+		// again if the box was drawn anew under the click (the side of the calendar is redrawn when its data comes)
+		let off = null
+		for (let i = 0; i < 3 && !off; i++) {
+			const answer = page.waitForResponse((res) => res.url().endsWith('/calendar/nextcloud') && res.request().method() === 'POST', { timeout: 8000 }).catch(() => null)
+			await page.uncheck('.wm-cal-nc input')
+			off = await answer
+		}
+		assert.ok(off, 'no request to take the calendar away')
 		assert.strictEqual((await off.json()).enabled, false)
 		assert.strictEqual((await caldav('PROPFIND')).found, false)
 	})

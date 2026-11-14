@@ -1518,5 +1518,7 @@
 	"Taille maximale des pièces jointes : entre %1$s et %2$s Mo": "Maximum size of attachments: between %1$s and %2$s MB",
 	"Les pièces jointes dépassent %s Mo": "The attachments exceed %s MB",
 	"Pièces jointes trop lourdes ({size}, {max} au plus) : envoyez les plus grosses avec « 🔗 Envoyer en lien ».": "Attachments too large ({size}, {max} at most): send the largest ones with “🔗 Send as link”.",
-	"Réponse NTLM invalide du serveur Exchange": "Invalid NTLM response from the Exchange server"
+	"Réponse NTLM invalide du serveur Exchange": "Invalid NTLM response from the Exchange server",
+	"Vider les éléments supprimés": "Empty deleted items",
+	"Vider le courrier indésirable": "Empty junk email"
 }

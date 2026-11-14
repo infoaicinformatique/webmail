@@ -279,7 +279,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.127.4.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.127.5.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -344,7 +344,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.127.4 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.127.5 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

@@ -1221,6 +1221,8 @@ OC.L10N.register(
     "Vert": "Green",
     "Vert foncé": "Dark green",
     "Vider": "Empty",
+    "Vider le courrier indésirable": "Empty junk email",
+    "Vider les éléments supprimés": "Empty deleted items",
     "Ville": "City",
     "Violet": "Purple",
     "Violet foncé": "Dark purple",
