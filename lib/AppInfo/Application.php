@@ -7,8 +7,10 @@ namespace OCA\Webmail\AppInfo;
 use OCA\Webmail\Calendar\ExchangeCalendarProvider;
 use OCA\Webmail\Dashboard\AgendaWidget;
 use OCA\Webmail\Dashboard\UnreadWidget;
+use OCA\Webmail\Listener\FilesScriptsListener;
 use OCA\Webmail\Listener\UserDeletedListener;
 use OCA\Webmail\Notification\Notifier;
+use OCA\Webmail\Reference\WebmailReferenceProvider;
 use OCA\Webmail\Search\EventSearchProvider;
 use OCA\Webmail\Search\MailSearchProvider;
 use OCP\AppFramework\App;
@@ -26,6 +28,8 @@ class Application extends App implements IBootstrap {
 
 	public function register(IRegistrationContext $context): void {
 		$context->registerEventListener(UserDeletedEvent::class, UserDeletedListener::class);
+		// the class name only: the Files app may be disabled
+		$context->registerEventListener('OCA\\Files\\Event\\LoadAdditionalScriptsEvent', FilesScriptsListener::class);
 		$context->registerDashboardWidget(UnreadWidget::class);
 		$context->registerDashboardWidget(AgendaWidget::class);
 		$context->registerNotifierService(Notifier::class);
@@ -33,6 +37,8 @@ class Application extends App implements IBootstrap {
 		$context->registerSearchProvider(EventSearchProvider::class);
 		// the Exchange calendars chosen, in the Calendar app of Nextcloud (read only)
 		$context->registerCalendarProvider(ExchangeCalendarProvider::class);
+		// links of the webmail previewed in Talk, Text, Deck…, and the Smart Picker (« / »)
+		$context->registerReferenceProvider(WebmailReferenceProvider::class);
 	}
 
 	public function boot(IBootContext $context): void {

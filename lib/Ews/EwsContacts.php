@@ -413,7 +413,8 @@ class EwsContacts {
 				false
 			);
 			foreach ($xp->query('//m:Items/t:Contact') as $node) {
-				$contacts[] = $this->parseContact($xp, $node);
+				// the id too: the copy in Nextcloud Contacts keeps one card per contact
+				$contacts[] = ['id' => (string)$this->client->attr($xp, 't:ItemId', 'Id', $node)] + $this->parseContact($xp, $node);
 			}
 		}
 		return $contacts;

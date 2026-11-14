@@ -641,6 +641,68 @@ class EwsClient {
 	}
 
 	/**
+	 * The messages with attachments received in the inbox since $since (UTC), oldest first:
+	 * for « classer les pièces jointes dans Fichiers ».
+	 *
+	 * @return list<array{id: string, from: ?array{name: string, email: string}, subject: string, date: ?string}>
+	 * @throws MailException
+	 */
+	public function withAttachmentsSince(string $since, int $max = 50): array {
+		$xp = $this->request(
+			'<m:FindItem Traversal="Shallow">'
+			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties><t:FieldURI FieldURI="item:Subject"/>'
+			. '<t:FieldURI FieldURI="message:From"/><t:FieldURI FieldURI="item:DateTimeReceived"/></t:AdditionalProperties></m:ItemShape>'
+			. '<m:IndexedPageItemView MaxEntriesReturned="' . max(1, $max) . '" Offset="0" BasePoint="Beginning"/>'
+			. '<m:Restriction><t:And>'
+			. '<t:IsGreaterThan><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURIOrConstant><t:Constant Value="' . $this->esc($since) . '"/></t:FieldURIOrConstant></t:IsGreaterThan>'
+			. '<t:IsEqualTo><t:FieldURI FieldURI="item:HasAttachments"/><t:FieldURIOrConstant><t:Constant Value="true"/></t:FieldURIOrConstant></t:IsEqualTo>'
+			. '</t:And></m:Restriction>'
+			. '<m:SortOrder><t:FieldOrder Order="Ascending"><t:FieldURI FieldURI="item:DateTimeReceived"/></t:FieldOrder></m:SortOrder>'
+			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="inbox"/></m:ParentFolderIds>'
+			. '</m:FindItem>'
+		);
+		$out = [];
+		foreach ($xp->query('//m:RootFolder/t:Items/*') as $node) {
+			$out[] = [
+				'id' => (string)$this->attr($xp, 't:ItemId', 'Id', $node),
+				'from' => $this->mailbox($xp, 't:From/t:Mailbox', $node),
+				'subject' => (string)$this->text($xp, 't:Subject', $node),
+				'date' => $this->text($xp, 't:DateTimeReceived', $node),
+			];
+		}
+		return $out;
+	}
+
+	/**
+	 * The messages received in the inbox since $since (UTC), whose subject contains $subject
+	 * (case ignored; '' for any): their sender and subject, newest first. For « pas de réponse ».
+	 *
+	 * @return list<array{from: ?array{name: string, email: string}, subject: string}>
+	 * @throws MailException
+	 */
+	public function receivedSince(string $since, string $subject = '', int $max = 200): array {
+		$date = '<t:IsGreaterThanOrEqualTo><t:FieldURI FieldURI="item:DateTimeReceived"/>'
+			. '<t:FieldURIOrConstant><t:Constant Value="' . $this->esc($since) . '"/></t:FieldURIOrConstant></t:IsGreaterThanOrEqualTo>';
+		$restriction = $subject === '' ? $date
+			: '<t:And>' . $date . '<t:Contains ContainmentMode="Substring" ContainmentComparison="IgnoreCase"><t:FieldURI FieldURI="item:Subject"/>'
+				. '<t:Constant Value="' . $this->esc($subject) . '"/></t:Contains></t:And>';
+		$xp = $this->request(
+			'<m:FindItem Traversal="Shallow">'
+			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties><t:FieldURI FieldURI="item:Subject"/><t:FieldURI FieldURI="message:From"/></t:AdditionalProperties></m:ItemShape>'
+			. '<m:IndexedPageItemView MaxEntriesReturned="' . max(1, $max) . '" Offset="0" BasePoint="Beginning"/>'
+			. '<m:Restriction>' . $restriction . '</m:Restriction>'
+			. self::sortOrderXml()
+			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="inbox"/></m:ParentFolderIds>'
+			. '</m:FindItem>'
+		);
+		$out = [];
+		foreach ($xp->query('//m:RootFolder/t:Items/*') as $node) {
+			$out[] = ['from' => $this->mailbox($xp, 't:From/t:Mailbox', $node), 'subject' => (string)$this->text($xp, 't:Subject', $node)];
+		}
+		return $out;
+	}
+
+	/**
 	 * Unread messages received in the inbox on or after $since (for
 	 * notifications), and the number of unread messages of the inbox. Without
 	 * $since: the newest messages, read or not, and the date to start from.

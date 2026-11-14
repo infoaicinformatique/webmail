@@ -434,6 +434,69 @@
 		} catch (e) { core.toast(e.message, true) }
 	}
 
+	/**
+	 * The copy of the Exchange contacts in an address book of Nextcloud
+	 * Contacts, brought up to date every 6 hours by Nextcloud.
+	 */
+	async function openCopy() {
+		const h = core.h
+		const base = '/accounts/' + core.accountId + '/contacts/copy'
+		const body = h('div', { class: 'wm-copy-body' }, h('span', { class: 'icon-loading' }))
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		const title = _('Copie dans Nextcloud Contacts')
+		const overlay = h('div', { class: 'wm-overlay', onmousedown: (e) => { if (e.target === overlay) close() } },
+			h('div', { class: 'wm-modal wm-modal-small wm-nc-copy-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+				h('div', { class: 'wm-modal-header' }, h('h2', {}, title), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+				body))
+		document.addEventListener('keydown', onKey)
+		document.body.appendChild(overlay)
+		const contactsUrl = OC.generateUrl('/apps/contacts/')
+		const render = (st, busy) => {
+			core.clear(body)
+			body.appendChild(h('p', {}, _('Vos contacts Exchange sont copiés dans un carnet « Exchange — {email} » de Nextcloud Contacts : ils y sont visibles par l\'application Contacts, les téléphones synchronisés avec Nextcloud et les autres applications. Exchange reste la référence : la copie est remise à jour toutes les 6 heures, et les changements faits dans la copie sont remplacés.', { email: ((core.state.accounts || []).find((a) => a.id === core.accountId) || {}).email || '' })))
+			if (st.enabled) {
+				const when = new Date(st.last).toLocaleString(((window.OC && OC.getLanguage && OC.getLanguage()) || 'fr').replace('_', '-'), { dateStyle: 'short', timeStyle: 'short' })
+				body.appendChild(h('p', { class: 'wm-nc-copy-state' }, (st.count > 1 ? _('{count} contacts copiés', { count: st.count }) : _('{count} contact copié', { count: st.count })) + ' · ' + _('mise à jour : {when}', { when })))
+			}
+			body.appendChild(h('div', { class: 'wm-modal-actions' },
+				st.enabled ? h('button', { type: 'button', class: 'wm-nc-copy-remove', disabled: busy, onclick: remove }, _('Arrêter et retirer le carnet')) : null,
+				st.enabled ? h('a', { class: 'button', href: contactsUrl, target: '_blank', rel: 'noopener' }, _('Ouvrir Contacts')) : null,
+				h('button', { type: 'button', class: 'primary wm-nc-copy-run', disabled: busy, onclick: run }, busy ? _('Copie en cours…') : (st.enabled ? _('Mettre à jour maintenant') : _('Copier mes contacts')))))
+		}
+		let state = { enabled: false }
+		const run = async () => {
+			render(state, true)
+			try {
+				const r = await api(base, { method: 'POST' })
+				state = r
+				const parts = []
+				if (r.created) parts.push(r.created > 1 ? _('{count} ajoutés', { count: r.created }) : _('{count} ajouté', { count: r.created }))
+				if (r.updated) parts.push(r.updated > 1 ? _('{count} mis à jour', { count: r.updated }) : _('{count} mis à jour', { count: r.updated }))
+				if (r.deleted) parts.push(r.deleted > 1 ? _('{count} retirés', { count: r.deleted }) : _('{count} retiré', { count: r.deleted }))
+				core.toast(_('Nextcloud Contacts à jour') + (parts.length ? ' : ' + parts.join(', ') : ''))
+			} catch (e) { core.toast(e.message, true) }
+			render(state, false)
+		}
+		const remove = async () => {
+			render(state, true)
+			try {
+				state = await api(base + '/remove', { method: 'POST' })
+				core.toast(_('Carnet retiré de Nextcloud Contacts'))
+			} catch (e) { core.toast(e.message, true) }
+			render(state, false)
+		}
+		try {
+			state = await api(base)
+			render(state, false)
+			const b = body.querySelector('.wm-nc-copy-run')
+			if (b) b.focus()
+		} catch (e) {
+			close()
+			core.toast(e.message, true)
+		}
+	}
+
 	/** Add the cards of a .vcf file to the book shown. */
 	function importVcf(book) {
 		const input = document.createElement('input')
@@ -528,6 +591,7 @@
 			title: _('Exporter ce carnet (fichier vCard .vcf, pour Outlook, un téléphone, Nextcloud Contacts…)'),
 			'aria-label': _('Exporter ce carnet'),
 		}, '⬇\uFE0E'),
+		book.key === 'contacts' ? h('button', { type: 'button', class: 'wm-icon-btn wm-nc-copy', title: _('Copier ces contacts dans Nextcloud Contacts (téléphones, autres applications)'), 'aria-label': _('Copier dans Nextcloud Contacts'), onclick: () => openCopy() }, '☁\uFE0E') : null,
 		book.canEdit && !isDirectory ? h('button', { type: 'button', class: 'wm-icon-btn wm-vcf-import', title: _('Importer des contacts (fichier vCard .vcf)'), 'aria-label': _('Importer des contacts'), onclick: () => importVcf(book) }, '⬆\uFE0E') : null,
 		h('button', { type: 'button', class: 'wm-icon-btn primary wm-mobile-only', 'aria-label': _('Nouveau contact'), onclick: () => openForm(null) }, '＋')))
 
