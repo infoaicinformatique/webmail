@@ -1057,6 +1057,14 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-link-options[open] { padding: 4px 8px; border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); }
 .wm-link-options summary { cursor: pointer; }
 
+/* « Autres signatures » */
+.wm-signatures { margin: 8px 0; }
+.wm-signatures summary { cursor: pointer; font-weight: bold; padding: 4px 0; }
+.wm-signature-row { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); }
+.wm-signature-row input[type=text] { margin: 0; }
+.wm-signature-remove { align-self: flex-end; margin: 0; }
+.wm-signature-pick { max-width: 180px; }
+
 /* a second time zone: one more column of hours, on the left */
 .wm-with-tz2 .wm-week-row { grid-template-columns: 50px 56px repeat(7, minmax(0, 1fr)); }
 .wm-with-tz2.wm-day-view .wm-week-row { grid-template-columns: 50px 56px minmax(0, 1fr); }
