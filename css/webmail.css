@@ -1019,8 +1019,9 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 
 /* « Hors connexion »: above the panes, under the Nextcloud header */
 .wm-offline {
+	/* at the bottom, where nothing is to click (the list's buttons are at the top) */
 	position: fixed;
-	top: calc(var(--header-height, 50px) + 6px);
+	bottom: 24px;
 	left: 50%;
 	transform: translateX(-50%);
 	z-index: 2000;
@@ -1036,6 +1037,8 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 	font-size: 14px;
 }
 .wm-offline button { margin: 0; }
+/* the messages shown meanwhile, above the banner */
+body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 
 /* « Anniversaires à venir » above the contacts */
 .wm-birthdays { margin: 8px; padding: 8px 12px; border-radius: var(--border-radius-large, 10px); background: var(--color-background-hover); }
