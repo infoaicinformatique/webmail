@@ -17,6 +17,7 @@
 		book: 'contacts', // displayed address book
 		photoV: {}, // contact id -> version of its photo (changed here: not the cached one)
 		detailSeq: 0, // what the right pane shows: a card still loading does not replace a form opened since
+		presence: {}, // address (lower case) -> online | away | dnd | offline: the contacts with a Nextcloud account
 	}
 
 	/** "account|book" -> { items, total, hasMore }: a book seen before shows at once, then is refreshed */
@@ -78,6 +79,54 @@
 		const img = core.h('img', { class: 'wm-avatar wm-avatar-photo', src: photo, alt: '', loading: 'lazy', onerror: () => img.replaceWith(letters) })
 		return img
 	}
+
+	/** The address whose Nextcloud status is shown: the first one of the contact. */
+	const presenceEmail = (c) => String(c.email || (c.emails && c.emails[0]) || '').trim().toLowerCase()
+	const PRESENCE_LABELS = {
+		online: () => _('En ligne'),
+		away: () => _('Absent pour le moment'),
+		dnd: () => _('Ne pas déranger'),
+		offline: () => _('Hors ligne'),
+	}
+
+	/** The avatar with the dot of the Nextcloud status (hidden while unknown, or without Nextcloud account). */
+	function avatarWithPresence(c) {
+		const email = presenceEmail(c)
+		const dot = core.h('span', { class: 'wm-presence', role: 'img', dataset: { email } })
+		paintPresence(dot)
+		return core.h('span', { class: 'wm-avatar-wrap' }, avatar(c.displayName, photoUrl(c)), dot)
+	}
+
+	function paintPresence(dot) {
+		const status = ct.presence[dot.dataset.email]
+		dot.className = 'wm-presence' + (status ? ' wm-presence-' + status : '')
+		dot.hidden = !status
+		const label = status ? PRESENCE_LABELS[status]() : ''
+		dot.title = label
+		dot.setAttribute('aria-label', label)
+	}
+
+	let presenceSeq = 0
+	/** Asks the statuses of the contacts shown, then repaints their dots (silent: a nicety). */
+	async function refreshPresence() {
+		if (!core || core.state.module !== 'contacts') return
+		const emails = [...new Set(ct.items.map(presenceEmail).filter(Boolean))].slice(0, 200)
+		const card = core.detailEl && core.detailEl.querySelector('.wm-contact-head .wm-presence')
+		if (card && card.dataset.email && !emails.includes(card.dataset.email)) emails.unshift(card.dataset.email)
+		if (!emails.length) return
+		const mine = ++presenceSeq
+		try {
+			const r = await core.api('/presence', { method: 'POST', body: { emails: emails.slice(0, 200) } })
+			if (mine !== presenceSeq) return
+			emails.forEach((e) => { delete ct.presence[e] })
+			Object.assign(ct.presence, r.presence || {})
+			document.querySelectorAll('.wm-presence[data-email]').forEach(paintPresence)
+		} catch (e) {
+			// statuses not available (user_status disabled…): no dots
+		}
+	}
+	// kept up to date while the contacts are shown
+	setInterval(() => { if (!document.hidden) refreshPresence() }, 60000)
 
 	/** Photo URL: a contact's own, or (directory) the one of their Exchange account. */
 	function photoUrl(c) {
@@ -146,6 +195,7 @@
 			if (mine === ct.seq) {
 				ct.loading = false
 				renderList()
+				refreshPresence()
 			}
 		}
 	}
@@ -712,7 +762,7 @@
 				onclick: () => openContact(c.id),
 				onkeydown: (e) => { if (e.key === 'Enter') openContact(c.id) },
 			},
-			avatar(c.displayName, photoUrl(c)),
+			avatarWithPresence(c),
 			h('div', { class: 'wm-contact-text' },
 				h('div', { class: 'wm-contact-name' }, c.displayName || _('(sans nom)'), c.isGroup ? h('span', { class: 'wm-muted' }, ' · ' + _('groupe')) : null),
 				h('div', { class: 'wm-message-preview' }, [c.email, c.company].filter(Boolean).join(' · ') || c.phone || ''))))
@@ -776,7 +826,7 @@
 			!book.canEdit ? h('span', { class: 'wm-muted' }, book.kind === 'directory' ? '🏢 ' + _('Annuaire de l\'entreprise') : '🔒 ' + _('{name} (lecture seule)', { name: bookTitle(book) })) : null))
 
 		el.appendChild(h('div', { class: 'wm-contact-card' },
-			h('div', { class: 'wm-contact-head' }, avatar(c.displayName, photoUrl(c)),
+			h('div', { class: 'wm-contact-head' }, avatarWithPresence(c),
 				h('div', {},
 					h('h2', { class: 'wm-subject' }, c.displayName || _('(sans nom)')),
 					h('div', { class: 'wm-muted' }, [c.jobTitle, c.department, c.company].filter(Boolean).join(' · ')))),
@@ -796,7 +846,8 @@
 				h('ul', { class: 'wm-attendees' }, members.map((m) => h('li', {}, m.email
 					? h('a', { href: '#', onclick: (ev) => { ev.preventDefault(); core.openCompose('new', null, { to: (m.name !== m.email ? m.name + ' <' + m.email + '>' : m.email) + ', ' }) } },
 						m.name !== m.email ? m.name + ' <' + m.email + '>' : m.email)
-					: h('span', { class: 'wm-muted', title: _('Adresse interne d\'Exchange') }, m.name))))) : null))
+					: h('span', { class: 'wm-muted', title: _('Adresse interne d\'Exchange') }, m.name))))) : null))		// a contact outside the list (« Mes contacts » of a message…): its status asked now
+		if (presenceEmail(c) && !(presenceEmail(c) in ct.presence)) refreshPresence()
 	}
 
 	/**

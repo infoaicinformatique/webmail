@@ -1538,5 +1538,9 @@
 	"Element Web de l'organisation : un salon visio Matrix créé pour chaque réunion": "Element Web of the organisation: a Matrix video room made for each meeting",
 	"Pour un Element sans service Element Call autonome (appels intégrés à Element Web) : « Visio Element » crée, avec le compte Matrix de l'organisateur (relié dans Comptes et signature), un salon visio fermé aux autres serveurs, que tout compte de votre serveur rejoint par le lien de l'invitation.": "For an Element without a standalone Element Call (calls inside Element Web): “Element video” creates, with the organiser's Matrix account (linked in Accounts and signature), a video room closed to other servers, that any account of your server joins through the link of the invitation.",
 	"Préconfiguré avec votre Element des Sites externes de Nextcloud : « %1$s » (%2$s, serveur Matrix %3$s). Vérifiez puis enregistrez.": "Preset with your Element from the External sites of Nextcloud: “%1$s” (%2$s, Matrix server %3$s). Check, then save.",
-	"Indiquez l'adresse de votre Element (par exemple %s)": "Enter the address of your Element (for example %s)"
+	"Indiquez l'adresse de votre Element (par exemple %s)": "Enter the address of your Element (for example %s)",
+	"En ligne": "Online",
+	"Absent pour le moment": "Away",
+	"Ne pas déranger": "Do not disturb",
+	"Hors ligne": "Offline"
 }

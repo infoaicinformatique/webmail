@@ -11,6 +11,7 @@ use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\ContactDuplicates;
 use OCA\Webmail\Service\NextcloudGroups;
 use OCA\Webmail\Service\NextcloudPeople;
+use OCA\Webmail\Service\PresenceService;
 use OCA\Webmail\Service\SharedFolderService;
 use OCA\Webmail\Service\VCard;
 use OCP\AppFramework\Controller;
@@ -33,6 +34,7 @@ class ContactController extends Controller {
 		private SharedFolderService $shared,
 		private NextcloudPeople $people,
 		private NextcloudGroups $groups,
+		private PresenceService $presence,
 		private LoggerInterface $logger,
 		private ?string $userId,
 	) {
@@ -521,5 +523,14 @@ class ContactController extends Controller {
 	#[NoAdminRequired]
 	public function groupMembers(string $gid): Response {
 		return $this->handle(fn () => $this->groups->members((string)$this->userId, $gid));
+	}
+
+	/**
+	 * Who is on line among these addresses (the Nextcloud status of their accounts).
+	 * @param array<mixed> $emails
+	 */
+	#[NoAdminRequired]
+	public function presence(array $emails = []): Response {
+		return $this->handle(fn () => ['presence' => (object)$this->presence->forEmails($emails)]);
 	}
 }
