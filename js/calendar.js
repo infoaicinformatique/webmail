@@ -321,13 +321,17 @@
 			checked: ncShown.get(id) === true,
 			disabled: !ncShown.has(id),
 			onchange: async () => {
+				const wanted = box.checked
+				// the choice kept at once: a side drawn again meanwhile shows it, not the former state
+				ncShown.set(id, wanted)
 				box.disabled = true
 				try {
-					const r = await api(base, { method: 'POST', body: { enabled: box.checked } })
+					const r = await api(base, { method: 'POST', body: { enabled: wanted } })
 					ncShown.set(id, r.enabled)
 					core.toast(r.enabled ? _('Agenda Exchange visible dans l\'Agenda de Nextcloud (lecture seule)') : _('Agenda Exchange retiré de l\'Agenda de Nextcloud'))
 				} catch (e) {
-					box.checked = !box.checked
+					ncShown.set(id, !wanted)
+					box.checked = !wanted
 					core.toast(e.message, true)
 				}
 				box.disabled = false
