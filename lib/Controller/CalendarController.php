@@ -10,6 +10,7 @@ use OCA\Webmail\Ews\EwsContacts;
 use OCA\Webmail\Ews\TimeZones;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
+use OCA\Webmail\Service\IcsImport;
 use OCA\Webmail\Service\MeetingReminderService;
 use OCA\Webmail\Service\SharedFolderService;
 use OCP\AppFramework\Controller;
@@ -292,6 +293,31 @@ class CalendarController extends Controller {
 	}
 
 	/**
+	 * « Ajouter à mon agenda »: the events of an .ics file received, created
+	 * in the own calendar (the repetitions are not taken: one event each).
+	 */
+	#[NoAdminRequired]
+	#[\OCP\AppFramework\Http\Attribute\UserRateLimit(limit: 20, period: 300)]
+	public function importIcs(int $id, string $attachmentId, string $tz = 'UTC'): Response {
+		return $this->handle(function () use ($id, $attachmentId, $tz) {
+			$account = $this->accounts->find((string)$this->userId, $id);
+			$att = $this->accounts->getClient($account)->getAttachment($attachmentId);
+			if (strlen($att['content']) > 1048576) {
+				throw new MailException('Fichier d\'agenda trop volumineux');
+			}
+			$zone = new \DateTimeZone(TimeZones::isValidIana($tz) ? $tz : 'UTC');
+			$events = IcsImport::events($att['content'], $zone);
+			$calendar = $this->calendar($id, $zone->getName(), 'calendar', true);
+			$created = [];
+			foreach ($events as $e) {
+				$created[] = ['id' => $calendar->createEvent($e + ['reminder' => 15]), 'subject' => $e['subject'], 'start' => $e['start'], 'allDay' => $e['allDay'], 'recurring' => $e['recurring']];
+			}
+			$this->reminders->changed($id);
+			return ['events' => $created];
+		});
+	}
+
+	/**
 	 * The recurring series of an occurrence, with its recurrence rule.
 	 */
 	#[NoAdminRequired]
@@ -380,8 +406,8 @@ class CalendarController extends Controller {
 	 * @param string $calendar calendar key of the item; "shared:<email>" answers on behalf of that person
 	 */
 	#[NoAdminRequired]
-	public function respond(int $id, string $eventId, string $response, string $message = '', string $calendar = ''): Response {
-		return $this->handle(function () use ($id, $eventId, $response, $message, $calendar) {
+	public function respond(int $id, string $eventId, string $response, string $message = '', string $calendar = '', string $proposedStart = '', string $proposedEnd = '', string $tz = 'UTC'): Response {
+		return $this->handle(function () use ($id, $eventId, $response, $message, $calendar, $proposedStart, $proposedEnd, $tz) {
 			// answering in a colleague's calendar = answering on their behalf:
 			// only with edit rights on it (delegate / editor in Outlook)
 			if (str_starts_with($calendar, 'shared:')) {
@@ -390,7 +416,10 @@ class CalendarController extends Controller {
 					throw new MailException('Vous ne pouvez pas répondre au nom de cette personne : son agenda vous est partagé en lecture seule');
 				}
 			}
-			$this->calendar($id, 'UTC', $calendar)->respond($eventId, $response, $message);
+			$proposed = $proposedStart !== ''
+				? EwsCalendar::proposedTime($proposedStart, $proposedEnd, new \DateTimeZone(TimeZones::isValidIana($tz) ? $tz : 'UTC'))
+				: null;
+			$this->calendar($id, 'UTC', $calendar)->respond($eventId, $response, $message, $proposed);
 			$this->reminders->changed($id);
 			return ['status' => 'ok'];
 		});

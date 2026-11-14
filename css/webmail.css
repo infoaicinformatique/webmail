@@ -655,9 +655,10 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-list-more { padding: 12px 0; }
 
 /* mailbox size */
-.wm-quota { padding: 6px 12px 8px; font-size: 0.85em; color: var(--color-text-maxcontrast); }
-.wm-quota-bar { height: 6px; border-radius: 3px; background: var(--color-background-darker, #e5e5e5); overflow: hidden; margin-bottom: 4px; }
-.wm-quota-fill { height: 100%; background: var(--color-primary-element, #0082c9); border-radius: 3px; }
+.wm-quota { display: block; width: 100%; margin: 0; padding: 6px 12px 8px; font-size: 0.85em; font-weight: normal; text-align: left; color: var(--color-text-maxcontrast); background: none; border: none; border-radius: 0; cursor: pointer; }
+.wm-quota:hover, .wm-quota:focus-visible { background: var(--color-background-hover); }
+.wm-quota-bar { display: block; height: 6px; border-radius: 3px; background: var(--color-background-darker, #e5e5e5); overflow: hidden; margin-bottom: 4px; }
+.wm-quota-fill { display: block; height: 100%; background: var(--color-primary-element, #0082c9); border-radius: 3px; }
 .wm-quota-high .wm-quota-fill { background: var(--color-warning, #e9a200); }
 .wm-quota-full .wm-quota-fill { background: var(--color-error, #e9322d); }
 .wm-quota-full .wm-quota-text { color: var(--color-error-text, var(--color-error, #c00)); font-weight: 600; }
@@ -993,6 +994,8 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 
 /* headings of the message list: « Aujourd'hui », « Hier », « Cette semaine »… */
 .wm-list-period { padding: 4px 12px; font-size: 0.8em; font-weight: bold; color: var(--color-text-maxcontrast); background: var(--color-main-background); border-bottom: 1px solid var(--color-border); list-style: none; }
+.wm-message.wm-pinned { background: color-mix(in srgb, var(--color-primary-element) 6%, var(--color-main-background)); }
+.wm-pin-btn.on { color: var(--color-primary-element); }
 
 /* a slot being drawn with the mouse in the week grid */
 .wm-slot-ghost { position: absolute; left: 1px; width: calc(100% - 3px); border-radius: var(--border-radius, 4px); background: var(--color-primary-element-light, rgba(0, 130, 201, .2)); border: 1px dashed var(--color-primary-element, #0082c9); pointer-events: none; z-index: 2; padding: 2px 4px; box-sizing: border-box; font-size: 0.8em; }
@@ -1058,3 +1061,47 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-unified { margin-bottom: 4px; }
 .wm-unified-title { flex: 1; margin: 0; font-size: 1.05em; font-weight: bold; }
 .wm-message-account { flex-shrink: 0; margin-inline-start: 6px; padding: 0 6px; border-radius: 8px; font-size: 0.75em; background: var(--color-background-darker, #eee); color: var(--color-text-maxcontrast); }
+
+/* « Autres signatures » */
+.wm-signatures { margin: 8px 0; }
+.wm-signatures summary { cursor: pointer; font-weight: bold; padding: 4px 0; }
+.wm-signature-row { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); }
+.wm-signature-row input[type=text] { margin: 0; }
+.wm-signature-remove { align-self: flex-end; margin: 0; }
+.wm-signature-pick { max-width: 180px; }
+
+/* a second time zone: one more column of hours, on the left */
+.wm-with-tz2 .wm-week-row { grid-template-columns: 50px 56px repeat(7, minmax(0, 1fr)); }
+.wm-with-tz2.wm-day-view .wm-week-row { grid-template-columns: 50px 56px minmax(0, 1fr); }
+.wm-week-tz2 { color: var(--color-text-maxcontrast); background: var(--color-background-hover); }
+.wm-tz-label { font-size: 10px; line-height: 1.2; display: flex; align-items: flex-end; justify-content: flex-end; text-align: end; padding-bottom: 4px; }
+.wm-cal-tz2 { display: flex; flex-direction: column; gap: 2px; padding: 4px 6px; font-size: 13px; }
+.wm-cal-tz2 select { margin: 0; width: 100%; }
+@media (max-width: 800px) {
+	.wm-with-tz2 .wm-week-row { grid-template-columns: 34px 34px repeat(7, minmax(0, 1fr)); }
+	.wm-with-tz2.wm-day-view .wm-week-row { grid-template-columns: 40px 40px minmax(0, 1fr); }
+}
+
+/* « Doublons » of contacts */
+.wm-dup-group { margin: 12px 0; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); }
+.wm-dup-group ul { list-style: none; margin: 0 0 8px; padding: 0; }
+.wm-dup-item { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 0; }
+.wm-dup-keep { font-size: 0.85em; color: var(--color-text-maxcontrast); white-space: nowrap; }
+.wm-dup-name { font-weight: bold; }
+.wm-dup-merge { margin: 0; }
+
+/* « Libérer de l'espace » */
+.wm-space-list { list-style: none; margin: 8px 0; padding: 0; }
+.wm-space-row { padding: 8px 0; border-bottom: 1px solid var(--color-border); }
+.wm-space-head { display: flex; justify-content: space-between; gap: 8px; }
+.wm-space-name { font-weight: bold; }
+.wm-space-bar { height: 6px; margin: 4px 0; border-radius: 3px; background: var(--color-background-darker, #e5e5e5); overflow: hidden; }
+.wm-space-fill { height: 100%; background: var(--color-primary-element, #0082c9); }
+.wm-space-actions { display: flex; gap: 8px; }
+.wm-space-actions button { margin: 0; }
+
+/* « Tous ses messages » */
+.wm-sender-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.wm-sender-actions button { margin: 0; }
+.wm-sender-move { display: flex; gap: 8px; }
+.wm-sender-move select { flex: 1; margin: 0; }

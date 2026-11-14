@@ -172,6 +172,28 @@ class EwsCalendarTest extends EwsTestCase {
 		$this->assertStringContainsString('MessageDisposition="SendAndSaveCopy"', $req);
 	}
 
+	public function testProposeANewTime(): void {
+		$this->queue(self::ok('GetItem', '<m:Items><t:MeetingRequest><t:ItemId Id="MR1" ChangeKey="FRESH"/></t:MeetingRequest></m:Items>'));
+		$this->queue(self::ok('CreateItem', '<m:Items/>'));
+		$paris = new \DateTimeZone('Europe/Paris');
+		$proposed = EwsCalendar::proposedTime('2030-03-04T14:00', '2030-03-04T15:30', $paris);
+		$this->calendar()->respond('MR1', 'tentative', 'Plutôt l\'après-midi ?', $proposed);
+		// valid against the schema (checked by the test case): after the reference, in UTC
+		$this->assertStringContainsString('<t:ReferenceItemId Id="MR1" ChangeKey="FRESH"/><t:ProposedStart>2030-03-04T13:00:00Z</t:ProposedStart><t:ProposedEnd>2030-03-04T14:30:00Z</t:ProposedEnd></t:TentativelyAcceptItem>', $this->lastRequest());
+	}
+
+	public function testAProposalIsInTheFutureAndNotWithAccept(): void {
+		$paris = new \DateTimeZone('Europe/Paris');
+		try {
+			EwsCalendar::proposedTime('2020-01-01T10:00', '2020-01-01T11:00', $paris);
+			$this->fail('past time accepted');
+		} catch (MailException $e) {
+			$this->assertSame('Proposez un horaire à venir', $e->getMessage());
+		}
+		$this->expectException(MailException::class);
+		$this->calendar()->respond('MR1', 'accept', '', EwsCalendar::proposedTime('2030-03-04T14:00', '2030-03-04T15:00', $paris));
+	}
+
 	public static function responses(): array {
 		return [['accept', 'AcceptItem'], ['tentative', 'TentativelyAcceptItem'], ['decline', 'DeclineItem']];
 	}

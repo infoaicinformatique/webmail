@@ -300,7 +300,9 @@
 			publicCals.length ? h('ul', {}, publicCals.map(row)) : null,
 			h('button', { type: 'button', class: 'wm-cal-add wm-public-cal-add', onclick: openAddPublic }, '＋ ' + _('Ajouter un agenda des dossiers publics')),
 			h('div', { class: 'wm-cal-section' }, _('Nextcloud')),
-			ncCalendarToggle())
+			ncCalendarToggle(),
+			h('div', { class: 'wm-cal-section' }, _('Affichage')),
+			secondZonePicker())
 	}
 
 	/** account id → shown in the Calendar app of Nextcloud */
@@ -737,8 +739,11 @@
 		const now = new Date()
 		const dayNames = DAY_NAMES()
 
+		// a second time zone (a colleague abroad, a trip): its hours beside ours
+		const tz2 = secondZone()
 		const head = h('div', { class: 'wm-week-row wm-week-head' },
-			h('div', { class: 'wm-week-gutter' }),
+			tz2 ? h('div', { class: 'wm-week-gutter wm-week-tz2 wm-tz-label', title: tz2 }, zoneLabel(tz2, days[0])) : null,
+			h('div', { class: 'wm-week-gutter' + (tz2 ? ' wm-tz-label' : ''), title: core.TZ }, tz2 ? zoneLabel(core.TZ, days[0]) : null),
 			days.map((d) => h('button', {
 				type: 'button',
 				class: 'wm-week-dayname' + (sameDay(d, now) ? ' today' : ''),
@@ -747,13 +752,18 @@
 			}, h('span', { class: 'wm-week-dow' }, dayNames[(d.getDay() + 6) % 7]), h('span', { class: 'wm-week-date' }, String(d.getDate())))))
 
 		const allDay = h('div', { class: 'wm-week-row wm-week-allday' },
+			tz2 ? h('div', { class: 'wm-week-gutter wm-week-tz2' }) : null,
 			h('div', { class: 'wm-week-gutter wm-muted' }, _('Journée')),
 			days.map((d) => h('div', { class: 'wm-week-allday-cell', dataset: { date: ymd(d) } },
 				eventsOn(d).filter((ev) => ev.allDay).map((ev) => draggable(chip(ev, d), ev, 'day', d)))))
 
 		const hours = h('div', { class: 'wm-week-gutter wm-week-hours' },
 			Array.from({ length: 24 }, (x, hr) => h('div', { class: 'wm-week-hour', style: 'height:' + HOUR_PX + 'px' }, hr ? pad(hr) + ':00' : '')))
-		const grid = h('div', { class: 'wm-week-row wm-week-grid', style: 'height:' + (24 * HOUR_PX) + 'px' }, hours)
+		const grid = h('div', { class: 'wm-week-row wm-week-grid', style: 'height:' + (24 * HOUR_PX) + 'px' },
+			tz2 ? h('div', { class: 'wm-week-gutter wm-week-hours wm-week-tz2', 'aria-label': _('Heures à {zone}', { zone: zoneCity(tz2) }) },
+				Array.from({ length: 24 }, (x, hr) => h('div', { class: 'wm-week-hour', style: 'height:' + HOUR_PX + 'px' },
+					hr ? zoneTime(new Date(days[0].getFullYear(), days[0].getMonth(), days[0].getDate(), hr), tz2) : ''))) : null,
+			hours)
 
 		days.forEach((d) => {
 			const col = h('div', {
@@ -802,7 +812,65 @@
 
 		const scroll = h('div', { class: 'wm-week-scroll' }, grid)
 		scroll.addEventListener('scroll', () => { cal.weekScroll = scroll.scrollTop })
-		return h('div', { class: 'wm-week' + (cal.view === 'day' ? ' wm-day-view' : '') }, head, allDay, scroll)
+		return h('div', { class: 'wm-week' + (cal.view === 'day' ? ' wm-day-view' : '') + (tz2 ? ' wm-with-tz2' : '') }, head, allDay, scroll)
+	}
+
+	// ------------------------------------------------------------------
+	// A second time zone in the week and day views
+	// ------------------------------------------------------------------
+
+	const TZ2_KEY = 'webmail.tz2'
+	/** the zones offered first (the others follow, from the browser's list) */
+	const COMMON_ZONES = ['Europe/London', 'Europe/Lisbon', 'Europe/Berlin', 'Europe/Athens', 'Europe/Moscow', 'Africa/Casablanca', 'Africa/Abidjan',
+		'America/New_York', 'America/Montreal', 'America/Chicago', 'America/Los_Angeles', 'America/Sao_Paulo', 'America/Martinique', 'America/Cayenne',
+		'Indian/Reunion', 'Asia/Dubai', 'Asia/Kolkata', 'Asia/Singapore', 'Asia/Shanghai', 'Asia/Tokyo', 'Australia/Sydney', 'Pacific/Noumea', 'Pacific/Tahiti', 'UTC']
+
+	function validZone(z) {
+		try { new Intl.DateTimeFormat('en', { timeZone: z }); return true } catch (e) { return false }
+	}
+	function secondZone() {
+		let z = ''
+		try { z = localStorage.getItem(TZ2_KEY) || '' } catch (e) { /* none */ }
+		return z && z !== core.TZ && validZone(z) ? z : ''
+	}
+	/** « Tokyo », « New York » */
+	function zoneCity(z) {
+		return z === 'UTC' ? 'UTC' : z.split('/').pop().replace(/_/g, ' ')
+	}
+	/** 14:30 in that zone, at the time given */
+	function zoneTime(d, z) {
+		return d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: z })
+	}
+	/** The column heading: the city, and the offset that day (« UTC+9 »). */
+	function zoneLabel(z, d) {
+		let off = ''
+		try {
+			off = new Intl.DateTimeFormat('en-GB', { timeZone: z, timeZoneName: 'shortOffset' }).formatToParts(d).find((p) => p.type === 'timeZoneName').value
+		} catch (e) { /* older browsers: the city alone */ }
+		return [zoneCity(z), off.replace('GMT', 'UTC').replace(/^UTC$/, 'UTC±0')].filter(Boolean).join(' ')
+	}
+
+	/** In the side bar: the second zone, or none. */
+	function secondZonePicker() {
+		const h = core.h
+		const current = secondZone()
+		let all = []
+		try { all = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : [] } catch (e) { all = [] }
+		const others = all.filter((z) => !COMMON_ZONES.includes(z) && z !== core.TZ)
+		const opt = (z) => h('option', { value: z, selected: z === current }, zoneCity(z) + (z.includes('/') ? ' — ' + z.split('/')[0] : ''))
+		const select = h('select', {
+			name: 'tz2',
+			'aria-label': _('Deuxième fuseau horaire'),
+			onchange: () => {
+				try { select.value ? localStorage.setItem(TZ2_KEY, select.value) : localStorage.removeItem(TZ2_KEY) } catch (e) { /* this time only */ }
+				refreshAll()
+			},
+		},
+		h('option', { value: '' }, _('Aucun')),
+		h('optgroup', { label: _('Fréquents') }, COMMON_ZONES.filter((z) => z !== core.TZ && validZone(z)).map(opt)),
+		others.length ? h('optgroup', { label: _('Tous les fuseaux') }, others.map(opt)) : null)
+		return h('label', { class: 'wm-cal-tz2', title: _('Les heures d\'un autre fuseau à côté des vôtres, dans les vues Semaine et Jour') },
+			h('span', {}, _('Deuxième fuseau horaire')), select)
 	}
 
 	function restoreWeekScroll(scroll) {
@@ -1401,7 +1469,51 @@
 					: _('Votre réponse : {answer}', { answer: responses[ev.response] || _('aucune') })),
 				h('button', { class: 'primary', onclick: () => answer('accept', _('accepté')) }, '✓ ' + _('Accepter')),
 				h('button', { onclick: () => answer('tentative', _('provisoire')) }, '? ' + _('Provisoire')),
-				h('button', { class: 'wm-danger', onclick: () => answer('decline', _('refusé')) }, '✗ ' + _('Refuser')))
+				h('button', { class: 'wm-danger', onclick: () => answer('decline', _('refusé')) }, '✗ ' + _('Refuser')),
+				principal ? null : h('button', { class: 'wm-propose-btn', title: _('Répondre « Provisoire » ou « Refuser » en proposant un autre horaire à l\'organisateur'), onclick: () => proposeForm() }, '🕑 ' + _('Proposer un nouvel horaire')))
+			// « Proposer un nouvel horaire »: the organizer gets the proposal, to accept in Outlook (or here)
+			const proposeForm = () => {
+				if (body.querySelector('.wm-propose')) return
+				const s0 = new Date(ev.start)
+				const e0 = new Date(ev.end)
+				const pad2 = (n) => String(n).padStart(2, '0')
+				const ymdLocal = (d) => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate())
+				const hm = (d) => pad2(d.getHours()) + ':' + pad2(d.getMinutes())
+				const date = h('input', { type: 'date', name: 'proposeDate', value: ymdLocal(s0), required: true })
+				const from = h('input', { type: 'time', name: 'proposeStart', value: hm(s0), required: true })
+				const to = h('input', { type: 'time', name: 'proposeEnd', value: hm(e0), required: true })
+				const kind = h('select', { name: 'proposeResponse' },
+					h('option', { value: 'tentative' }, _('Provisoire, avec cette proposition')),
+					h('option', { value: 'decline' }, _('Refuser, avec cette proposition')))
+				const note = h('textarea', { name: 'proposeMessage', rows: '2', placeholder: _('Un mot pour l\'organisateur (facultatif)') })
+				const form = h('form', {
+					class: 'wm-propose wm-event-form',
+					onsubmit: async (e) => {
+						e.preventDefault()
+						const sendBtn = form.querySelector('button[type=submit]')
+						sendBtn.disabled = true
+						try {
+							await api('/accounts/' + core.accountId + '/calendar/respond', {
+								method: 'POST',
+								body: { eventId: ev.id, response: kind.value, message: note.value, calendar: summary.calendar || 'calendar', proposedStart: date.value + 'T' + from.value, proposedEnd: date.value + 'T' + to.value, tz: core.TZ },
+							})
+							const when = new Date(date.value + 'T' + from.value).toLocaleString(locale(), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+							core.toast(_('Nouvel horaire proposé à l\'organisateur : {when}', { when }))
+							close()
+							load()
+						} catch (err) { sendBtn.disabled = false; core.toast(err.message, true) }
+					},
+				},
+				h('div', { class: 'wm-field-row' },
+					h('label', { class: 'wm-field' }, h('span', {}, _('Date')), date),
+					h('label', { class: 'wm-field' }, h('span', {}, _('De')), from),
+					h('label', { class: 'wm-field' }, h('span', {}, _('À')), to)),
+				h('label', { class: 'wm-field' }, h('span', {}, _('Votre réponse')), kind),
+				note,
+				h('div', { class: 'wm-compose-actions' }, h('button', { type: 'submit', class: 'primary' }, _('Envoyer la proposition'))))
+				body.appendChild(form)
+				date.focus()
+			}
 		}
 		const isOccurrence = ev.type === 'Occurrence' || ev.type === 'Exception'
 		if (canEdit) {

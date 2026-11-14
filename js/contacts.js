@@ -497,6 +497,76 @@
 		}
 	}
 
+	/**
+	 * « Doublons »: the contacts that look like the same person (an address in
+	 * common, or the same name), merged into the card chosen; nothing is lost
+	 * (what does not fit goes into its notes).
+	 */
+	async function openDuplicates(book) {
+		const h = core.h
+		const name = book.folderName || book.name
+		const title = _('Doublons dans « {name} »', { name })
+		const body = h('div', { class: 'wm-dup-body' }, h('span', { class: 'icon-loading' }))
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		const overlay = h('div', { class: 'wm-overlay', onmousedown: (e) => { if (e.target === overlay) close() } },
+			h('div', { class: 'wm-modal wm-dup-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+				h('div', { class: 'wm-modal-header' }, h('h2', {}, title), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+				body))
+		document.addEventListener('keydown', onKey)
+		document.body.appendChild(overlay)
+		let groups
+		try {
+			groups = (await api('/accounts/' + core.accountId + '/contacts/duplicates', { query: { book: book.key } })).groups
+		} catch (e) { close(); core.toast(e.message, true); return }
+		const render = () => {
+			core.clear(body)
+			if (!groups.length) {
+				body.appendChild(h('p', { class: 'wm-empty' }, _('Aucun doublon trouvé : chaque personne n\'a qu\'une fiche.')))
+				return
+			}
+			body.appendChild(h('p', { class: 'wm-muted' }, _('Pour chaque groupe, choisissez la fiche à garder : elle est complétée par les autres (adresses, numéros, société…), qui sont ensuite supprimées. Ce qui ne trouve pas de place va dans ses notes.')))
+			groups.forEach((g, gi) => {
+				// the fullest card is kept by default
+				const score = (c) => c.emails.length * 2 + (c.company ? 1 : 0) + (c.phone ? 1 : 0)
+				const best = g.reduce((a, c) => (score(c) > score(a) ? c : a), g[0])
+				const radios = []
+				const ticks = []
+				const box = h('div', { class: 'wm-dup-group', dataset: { group: String(gi) } },
+					h('ul', {}, g.map((c) => {
+						const radio = h('input', { type: 'radio', name: 'keep' + gi, value: c.id, checked: c === best, 'aria-label': _('Garder la fiche de {name}', { name: c.displayName || c.emails[0] || '' }) })
+						const tick = h('input', { type: 'checkbox', value: c.id, checked: true, 'aria-label': _('Fusionner {name}', { name: c.displayName || c.emails[0] || '' }) })
+						radios.push(radio)
+						ticks.push(tick)
+						return h('li', { class: 'wm-dup-item' },
+							h('label', { class: 'wm-dup-keep', title: _('La fiche gardée') }, radio, ' ', _('garder')),
+							tick,
+							h('span', { class: 'wm-dup-name' }, c.displayName || _('(sans nom)')),
+							h('span', { class: 'wm-muted' }, [c.emails.join(', '), c.company, c.phone].filter(Boolean).join(' · ')))
+					})),
+					h('button', {
+						type: 'button',
+						class: 'primary wm-dup-merge',
+						onclick: async (e) => {
+							const keepId = radios.find((r) => r.checked).value
+							const ids = ticks.filter((t) => t.checked && t.value !== keepId).map((t) => t.value)
+							if (!ids.length) { core.toast(_('Cochez au moins une autre fiche à fusionner'), true); return }
+							e.currentTarget.disabled = true
+							try {
+								await api('/accounts/' + core.accountId + '/contacts/duplicates/merge', { method: 'POST', body: { book: book.key, keepId, ids } })
+								core.toast(_('{count} fiches fusionnées', { count: ids.length + 1 }))
+								groups = groups.filter((x) => x !== g)
+								render()
+								load(true)
+							} catch (err) { core.toast(err.message, true); e.currentTarget.disabled = false }
+						},
+					}, _('Fusionner')))
+				body.appendChild(box)
+			})
+		}
+		render()
+	}
+
 	/** Add the cards of a .vcf file to the book shown. */
 	function importVcf(book) {
 		const input = document.createElement('input')
@@ -592,6 +662,7 @@
 			'aria-label': _('Exporter ce carnet'),
 		}, '⬇\uFE0E'),
 		book.key === 'contacts' ? h('button', { type: 'button', class: 'wm-icon-btn wm-nc-copy', title: _('Copier ces contacts dans Nextcloud Contacts (téléphones, autres applications)'), 'aria-label': _('Copier dans Nextcloud Contacts'), onclick: () => openCopy() }, '☁\uFE0E') : null,
+		book.kind === 'own' && !isDirectory ? h('button', { type: 'button', class: 'wm-icon-btn wm-dup-btn', title: _('Chercher les doublons de ce carnet et les fusionner'), 'aria-label': _('Doublons'), onclick: () => openDuplicates(book) }, '👥\uFE0E') : null,
 		book.canEdit && !isDirectory ? h('button', { type: 'button', class: 'wm-icon-btn wm-vcf-import', title: _('Importer des contacts (fichier vCard .vcf)'), 'aria-label': _('Importer des contacts'), onclick: () => importVcf(book) }, '⬆\uFE0E') : null,
 		h('button', { type: 'button', class: 'wm-icon-btn primary wm-mobile-only', 'aria-label': _('Nouveau contact'), onclick: () => openForm(null) }, '＋')))
 
