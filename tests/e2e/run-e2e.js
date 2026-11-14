@@ -3935,9 +3935,30 @@ async function main() {
 			assert.strictEqual(last.room, '!notes:fake.test')
 			await page.click('.wm-segmented button:has-text("Mois")')
 
-			// disconnected: the button asks to connect
+			// alerts of new messages in the default room, sent by the background job
 			await page.click('.wm-tab[data-module="mail"]')
 			await page.click('text=Comptes et signature')
+			// (the account loaded: the alerts are offered once it is connected)
+			await page.waitForSelector('.wm-matrix-status:has-text("Compte Matrix enregistré")')
+			await page.selectOption('select[name=matrixAlerts]', 'all')
+			await page.waitForSelector('.wm-toast:has-text("Les nouveaux messages seront signalés dans votre salon Matrix")')
+			// (a first check of the account only notes where it stands: messages from now on are new)
+			const newMailJob = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\NewMailJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+			occ('background-job:execute ' + newMailJob + ' --force-execute')
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'user@societe-a.fr')
+			await page.fill('input[name=subject]', 'Livraison des fenêtres')
+			await page.fill('.wm-editor', 'Les fenêtres arrivent jeudi matin.')
+			await submitCompose()
+			occ('background-job:execute ' + newMailJob + ' --force-execute')
+			last = (await sent()).pop()
+			assert.strictEqual(last.room, '!equipe:fake.test')
+			assert.ok(last.content.body.startsWith('📬 ') && last.content.body.includes('« Livraison des fenêtres »'), last.content.body)
+			await page.click('text=Comptes et signature')
+			await page.selectOption('select[name=matrixAlerts]', 'off')
+			await page.waitForSelector('.wm-toast:has-text("Plus d\'alertes sur Matrix")')
+
+			// disconnected: the button asks to connect
 			await page.click('.wm-matrix-form button:has-text("Déconnecter")')
 			await page.waitForSelector('.wm-toast:has-text("Compte Matrix déconnecté")')
 			await page.click('.wm-folder >> nth=0')
@@ -4253,6 +4274,8 @@ async function main() {
 		assert(await page.isVisible('.wm-list'))
 		await page.click('.wm-list-header .wm-back')
 		await page.click('.wm-tab[data-module="calendar"]')
+		// the view chosen last is kept: the list, the one for phones
+		await page.click('.wm-segmented button:has-text("Liste")')
 		await page.waitForSelector('.wm-agenda-item')
 		assert(await page.isVisible('.wm-detail'))
 		await shot('15-mobile-calendar')

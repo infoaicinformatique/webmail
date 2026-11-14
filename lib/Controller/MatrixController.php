@@ -43,6 +43,11 @@ class MatrixController extends Controller {
 	}
 
 	#[NoAdminRequired]
+	public function alerts(string $alerts): Response {
+		return $this->handle(fn () => $this->matrix->setAlerts((string)$this->userId, $alerts));
+	}
+
+	#[NoAdminRequired]
 	public function forget(): Response {
 		return $this->handle(function () {
 			$this->matrix->forget((string)$this->userId);

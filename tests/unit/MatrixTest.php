@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Webmail\Tests\unit;
 
 use OCA\Webmail\Exception\MailException;
+use OCA\Webmail\Service\MailNotificationService;
 use OCA\Webmail\Service\Matrix;
 use PHPUnit\Framework\TestCase;
 
@@ -54,5 +55,15 @@ class MatrixTest extends TestCase {
 		$this->assertSame($a, Matrix::txnId('alice', '!r:x', 'Bonjour', 100));
 		$this->assertNotSame($a, Matrix::txnId('alice', '!r:x', 'Bonjour', 101));
 		$this->assertMatchesRegularExpression('/^webmail-[0-9a-f]{24}$/', $a);
+	}
+
+	public function testAlertsWanted(): void {
+		$high = ['importance' => 'High'];
+		$normal = ['importance' => 'Normal'];
+		$this->assertTrue(MailNotificationService::matrixWanted('all', $normal));
+		$this->assertTrue(MailNotificationService::matrixWanted('important', $high));
+		$this->assertFalse(MailNotificationService::matrixWanted('important', $normal));
+		$this->assertFalse(MailNotificationService::matrixWanted('important', []));
+		$this->assertFalse(MailNotificationService::matrixWanted('off', $high));
 	}
 }
