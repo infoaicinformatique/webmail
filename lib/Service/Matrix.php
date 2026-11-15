@@ -125,7 +125,8 @@ class Matrix {
 	 * Element Web (« …/#/room/%21abc%3Aserver?via=… ») or its id written as is.
 	 */
 	public static function roomIdIn(string $text): ?string {
-		if (preg_match('~/#/room/(%21[^\s?"\'<>#]+)~i', $text, $m)) {
+		// (« %21 » as the webmail writes it, « ! » as Element copies it)
+		if (preg_match('~/#/room/((?:%21|!)[^\s?"\'<>#]+)~i', $text, $m)) {
 			$id = rawurldecode($m[1]);
 		} elseif (preg_match('~(?<![\w#])(![A-Za-z0-9._=\-]+:[a-z0-9.\-]+)~i', $text, $m)) {
 			$id = $m[1];
