@@ -5226,6 +5226,8 @@ async function main() {
 				assert.ok(again.includes('a expiré'), again)
 				await page.click('.wm-modal .wm-modal-close')
 				// the participants with an account (of Nextcloud, so of the chat) invited in the room; the others keep the link
+				// (left by a run stopped midway)
+				try { occ('user:delete marie-e2e') } catch (e) { /* none */ }
 				occ('user:add --generate-password --display-name="Marie Martin" marie-e2e')
 				try {
 					occ('user:setting marie-e2e settings email marie.martin@societe-a.fr')
