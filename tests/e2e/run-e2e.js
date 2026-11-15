@@ -1758,7 +1758,8 @@ async function main() {
 	await step('calendar: resize an event from its bottom edge', async () => {
 		const ev = '.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")'
 		page.once('dialog', (d) => d.accept())
-		const handle = await (await page.$(ev + ' .wm-resize')).boundingBox()
+		// (the week may be drawn again after the move before: the edge taken once it is there)
+		const handle = await page.locator(ev + ' .wm-resize').boundingBox()
 		await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
 		await page.mouse.down()
 		for (let i = 1; i <= 6; i++) await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2 + 24 * i / 6)
@@ -3184,6 +3185,38 @@ async function main() {
 		await page.waitForSelector('.wm-toast:has-text("Tâche supprimée")')
 		await page.locator(devis).waitFor({ state: 'detached' })
 		await page.click('.wm-task-filter[data-filter="todo"]')
+		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
+	})
+
+	await step('tasks: every task list of Exchange (made in Outlook), its tasks, a task added to it', async () => {
+		await page.click('.wm-tab[data-module="tasks"]')
+		await page.waitForSelector('.wm-task-list[data-list="tasks"].active')
+		const lists = await page.$$eval('.wm-task-list .wm-folder-name', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(lists, ['Tâches', 'Chantier Nice'])
+		await page.click('.wm-task-list:has-text("Chantier Nice")')
+		await page.waitForSelector('.wm-task:has-text("Commander les menuiseries")')
+		assert.strictEqual(await page.locator('.wm-task:has-text("Renouveler le nom de domaine")').count(), 0, 'only the tasks of this list')
+		// a task added here goes to this list
+		await page.fill('input[name=quickTask]', 'Valider les plans')
+		await page.press('input[name=quickTask]', 'Enter')
+		await page.waitForSelector('.wm-toast:has-text("Tâche ajoutée")')
+		await page.waitForSelector('.wm-task:has-text("Valider les plans")')
+		await shot('59-task-lists')
+		// the form: the list can be chosen
+		await page.click('.wm-compose-btn:has-text("Nouvelle tâche")')
+		assert.strictEqual(await page.inputValue('.wm-task-form select[name=list]'), 'F-TASKS2')
+		await page.click('.wm-task-form button:has-text("Annuler")')
+		// the list shown is kept for the next time
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-tab[data-module="tasks"]')
+		await page.waitForSelector('.wm-task-list[data-list="F-TASKS2"].active')
+		await page.waitForSelector('.wm-task:has-text("Valider les plans")')
+		// clean: deleted, back to « Tâches »
+		await page.click('.wm-task:has-text("Valider les plans") .wm-task-subject')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-task-form button:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Tâche supprimée")')
+		await page.click('.wm-task-list[data-list="tasks"]')
 		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
 	})
 

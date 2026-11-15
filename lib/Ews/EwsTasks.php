@@ -25,11 +25,51 @@ class EwsTasks {
 	}
 
 	/**
-	 * The tasks, those to do first (by due date, then those without one),
+	 * The task lists of the mailbox (the folders of tasks of Outlook): « Tâches » first, then
+	 * the others by name. The key of « Tâches » is « tasks », the others their folder id.
+	 * @return list<array{key: string, name: string, default: bool}>
+	 */
+	public function lists(): array {
+		$defaultId = $this->client->distinguishedFolderIds(['tasks'])['tasks'] ?? null;
+		$xp = $this->client->request(
+			'<m:FindFolder Traversal="Deep">'
+			. '<m:FolderShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:FieldURI FieldURI="folder:DisplayName"/><t:FieldURI FieldURI="folder:FolderClass"/>'
+			. '</t:AdditionalProperties></m:FolderShape>'
+			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="msgfolderroot"/></m:ParentFolderIds>'
+			. '</m:FindFolder>'
+		);
+		$default = ['key' => 'tasks', 'name' => 'Tâches', 'default' => true];
+		$others = [];
+		foreach ($xp->query('//t:Folders/*') as $node) {
+			if (!str_starts_with((string)$this->client->text($xp, 't:FolderClass', $node), 'IPF.Task')) {
+				continue;
+			}
+			$id = (string)$this->client->attr($xp, 't:FolderId', 'Id', $node);
+			$name = (string)$this->client->text($xp, 't:DisplayName', $node);
+			if ($id === $defaultId) {
+				$default['name'] = $name !== '' ? $name : $default['name'];
+				continue;
+			}
+			$others[] = ['key' => $id, 'name' => $name !== '' ? $name : $id, 'default' => false];
+		}
+		usort($others, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+		return array_merge([$default], $others);
+	}
+
+	/** The folder of a list in a request: « tasks » (Outlook's « Tâches ») or a folder id. */
+	private function folderXml(string $list): string {
+		return $list === '' || $list === 'tasks'
+			? '<t:DistinguishedFolderId Id="tasks"/>'
+			: '<t:FolderId Id="' . $this->client->esc($list) . '"/>';
+	}
+
+	/**
+	 * The tasks of a list, those to do first (by due date, then those without one),
 	 * then, if asked, the completed ones (latest first).
 	 * @return list<array<string, mixed>>
 	 */
-	public function list(bool $withCompleted = false): array {
+	public function list(bool $withCompleted = false, string $list = 'tasks'): array {
 		// no Restriction on task:Status: OVH Hosted Exchange refuses it
 		// (ErrorInvalidValueForProperty); the completed ones are left out here
 		$tasks = [];
@@ -38,7 +78,7 @@ class EwsTasks {
 				'<m:FindItem Traversal="Shallow">'
 				. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . self::fields(self::FIELDS) . '</t:AdditionalProperties></m:ItemShape>'
 				. '<m:IndexedPageItemView MaxEntriesReturned="' . self::PAGE . '" Offset="' . $offset . '" BasePoint="Beginning"/>'
-				. '<m:ParentFolderIds><t:DistinguishedFolderId Id="tasks"/></m:ParentFolderIds>'
+				. '<m:ParentFolderIds>' . $this->folderXml($list) . '</m:ParentFolderIds>'
 				. '</m:FindItem>'
 			);
 			foreach ($xp->query('//m:RootFolder/t:Items/t:Task') as $node) {
@@ -72,10 +112,10 @@ class EwsTasks {
 	}
 
 	/** @param array<string, mixed> $data subject, notes, due (Y-m-d or ''), status, importance */
-	public function create(array $data): string {
+	public function create(array $data, string $list = 'tasks'): string {
 		$t = self::normalize($data);
 		$xp = $this->client->request(
-			'<m:CreateItem MessageDisposition="SaveOnly"><m:SavedItemFolderId><t:DistinguishedFolderId Id="tasks"/></m:SavedItemFolderId>'
+			'<m:CreateItem MessageDisposition="SaveOnly"><m:SavedItemFolderId>' . $this->folderXml($list) . '</m:SavedItemFolderId>'
 			. '<m:Items><t:Task>'
 			. '<t:Subject>' . $this->client->esc($t['subject']) . '</t:Subject>'
 			. '<t:Body BodyType="Text">' . $this->client->esc($t['notes']) . '</t:Body>'
