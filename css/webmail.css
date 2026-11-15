@@ -1178,3 +1178,20 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 
 /* a result of the search in every address book: its book */
 .wm-contact-book { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* the buttons above a message: by use (answer · put away · follow up), the rest in « ⋯ Plus » */
+.wm-message-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 4px; }
+/* (the groups flow on together: a little more space between two of them) */
+.wm-tb-group { display: contents; }
+.wm-message-toolbar .wm-tb-group > :last-child { margin-right: 10px !important; }
+.wm-message-toolbar button, .wm-message-toolbar select { margin: 0 !important; }
+.wm-message-toolbar .wm-unread-btn, .wm-message-toolbar .wm-snooze-btn, .wm-message-toolbar .wm-cat-btn, .wm-message-toolbar .wm-pin-btn { padding-left: 9px; padding-right: 9px; }
+.wm-message-toolbar select.wm-move { width: auto; max-width: 150px; }
+.wm-message-toolbar .wm-tb-break { flex-basis: 100%; height: 0; margin-top: -6px; }
+.wm-message-toolbar .wm-more-btn { margin-left: auto !important; }
+.wm-more-menu { width: 280px; padding: 8px; }
+.wm-more-menu .wm-cat-title { margin: 8px 6px 2px; font-size: 12px; font-weight: normal; color: var(--color-text-maxcontrast); }
+.wm-more-menu .wm-cat-title:first-child { margin-top: 0; }
+.wm-more-menu .wm-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; margin: 0; padding: 6px 8px; border: 0; border-radius: var(--border-radius, 6px); background: none; text-align: left; font-weight: normal; min-height: 34px; color: var(--color-main-text); }
+.wm-more-menu .wm-menu-item:hover, .wm-more-menu .wm-menu-item:focus-visible { background: var(--color-background-hover); }
+.wm-more-menu .wm-menu-icon { width: 20px; text-align: center; flex: none; }
