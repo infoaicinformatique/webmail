@@ -1615,5 +1615,8 @@
 	"Résultats pour « {query} » dans tous les carnets": "Results for “{query}” in every address book",
 	"seulement dans {name}": "only in {name}",
 	"chercher dans tous les carnets": "search in every address book",
-	"Non consultés : {books}": "Not searched: {books}"
+	"Non consultés : {books}": "Not searched: {books}",
+	"{count} participants invités dans le salon du chat": "{count} participants invited to the chat room",
+	"1 participant invité dans le salon du chat": "1 participant invited to the chat room",
+	"Aucun salon visio du chat dans cet événement": "No chat video room in this event"
 }

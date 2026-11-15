@@ -90,6 +90,20 @@ class MatrixController extends Controller {
 	}
 
 	/**
+	 * The participants with an account of the chat invited in the room of the meeting
+	 * (found in its place or description).
+	 * @param string[] $emails
+	 */
+	#[NoAdminRequired]
+	#[\OCP\AppFramework\Http\Attribute\UserRateLimit(limit: 30, period: 300)]
+	public function invite(string $text = '', array $emails = []): Response {
+		return $this->handle(function () use ($text, $emails) {
+			$roomId = Matrix::roomIdIn($text) ?? throw new MailException('Aucun salon visio du chat dans cet événement');
+			return $this->matrix->inviteToRoom((string)$this->userId, $roomId, array_slice($emails, 0, 100));
+		});
+	}
+
+	/**
 	 * « Se connecter avec Nextcloud »: to the Matrix server, which signs the user in through
 	 * Nextcloud (the same account) and sends them back to ssoCallback.
 	 */

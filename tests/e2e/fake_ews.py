@@ -112,6 +112,9 @@ MATRIX_ALIASES = {'#equipe:fake.test': '!equipe:fake.test'}
 MATRIX_SENT = []
 # rooms made by createRoom (« Visio Element » with Element Web): their request
 MATRIX_SSO = []
+# the accounts of the chat (for the invitations of a meeting room), and those invited
+MATRIX_PEOPLE = {'@user:fake.test', '@marie.martin:fake.test'}
+MATRIX_INVITED = []
 # the session ended on the server (closed in Element, Nextcloud signed out…) until a new sign-in
 MATRIX_REVOKED = [False]
 MATRIX_CREATED = []
@@ -1100,6 +1103,8 @@ class Handler(BaseHTTPRequestHandler):
             return reply(403, {'errcode': 'M_FORBIDDEN', 'error': 'Invalid login token'})
         if path == '/_matrix/test/sso':
             return reply(200, MATRIX_SSO)
+        if path == '/_matrix/test/invited':
+            return reply(200, MATRIX_INVITED)
         if path == '/_matrix/test/revoke':
             MATRIX_REVOKED[0] = True
             return reply(200, {})
@@ -1127,6 +1132,17 @@ class Handler(BaseHTTPRequestHandler):
             if not any(x['txn'] == txn for x in MATRIX_SENT):
                 MATRIX_SENT.append({'room': room, 'txn': txn, 'content': body})
             return reply(200, {'event_id': '$%s' % txn})
+        m = re.match(re.escape(api) + r'/profile/([^/]+)$', path)
+        if method == 'GET' and m:
+            who = unquote(m.group(1))
+            return reply(200, {'displayname': who}) if who in MATRIX_PEOPLE else reply(404, {'errcode': 'M_NOT_FOUND', 'error': 'Profile was not found'})
+        m = re.match(re.escape(api) + r'/rooms/([^/]+)/invite$', path)
+        if method == 'POST' and m:
+            body = json.loads(raw or b'{}')
+            if body.get('user_id') not in MATRIX_PEOPLE:
+                return reply(404, {'errcode': 'M_NOT_FOUND', 'error': 'Unknown user'})
+            MATRIX_INVITED.append({'room': unquote(m.group(1)), 'user_id': body.get('user_id')})
+            return reply(200, {})
         if method == 'POST' and path == api + '/createRoom':
             body = json.loads(raw or b'{}')
             room = '!meet%d:fake.test' % (len(MATRIX_CREATED) + 1)

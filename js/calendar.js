@@ -2047,6 +2047,15 @@
 					} else {
 						await api('/accounts/' + core.accountId + '/calendar/update', { method: 'POST', body: { eventId: ev.id, event: data, tz: core.TZ, series: isSeries, calendar: ev.calendar || '' } })
 					}
+					// the participants with an account of the chat: invited in the room of the meeting as well
+					// (it shows in their chat, with a notification on their phone); the others keep the link
+					const roomText = location.value + ' ' + description.value
+					const people = (attendees.value + ',' + optional.value).split(/[,;\s]+/).map((x) => x.replace(/^.*<|>.*$/g, '').trim()).filter((x) => x.includes('@'))
+					if (visioRooms() && !isNextcloudTarget() && people.length && /\/#\/room\/%21/i.test(roomText)) {
+						api('/matrix/invite', { method: 'POST', body: { text: roomText, emails: people } }).then((r) => {
+							if (r.invited.length) core.toast(r.invited.length > 1 ? _('{count} participants invités dans le salon du chat', { count: r.invited.length }) : _('1 participant invité dans le salon du chat'))
+						}).catch((e) => core.toast(e.message, true))
+					}
 					const invited = !isNextcloudTarget() && (attendees.value + optional.value).trim() !== ''
 					core.toast(isNew ? (invited ? _('Événement créé, invitations envoyées') : _('Événement créé'))
 						: isSeries ? (invited ? _('Série modifiée, participants prévenus') : _('Série modifiée'))

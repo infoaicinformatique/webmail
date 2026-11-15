@@ -108,6 +108,44 @@ class Matrix {
 	}
 
 	/**
+	 * The room of a meeting in a text (its place, its description): from its link in
+	 * Element Web (« …/#/room/%21abc%3Aserver?via=… ») or its id written as is.
+	 */
+	public static function roomIdIn(string $text): ?string {
+		if (preg_match('~/#/room/(%21[^\s?"\'<>#]+)~i', $text, $m)) {
+			$id = rawurldecode($m[1]);
+		} elseif (preg_match('~(?<![\w#])(![A-Za-z0-9._=\-]+:[a-z0-9.\-]+)~i', $text, $m)) {
+			$id = $m[1];
+		} else {
+			return null;
+		}
+		return preg_match('~^![^\s:/]+:[a-z0-9.\-\[\]:]+$~i', $id) ? $id : null;
+	}
+
+	/**
+	 * The Matrix ids a Nextcloud account may have on the chat of the organisation, the
+	 * likeliest first: its Nextcloud user id (« preferred_username » of the sign-in), then
+	 * the part of its address before « @ » (accounts named « First Last (f.last@…) »).
+	 * Each one is checked on the server before an invitation.
+	 *
+	 * @return list<string> « @f.last:server »
+	 */
+	public static function candidates(string $uid, string $email, string $serverName): array {
+		$out = [];
+		foreach ([$uid, explode('@', $email)[0]] as $local) {
+			$local = strtolower(trim($local));
+			// the characters of a Matrix user id (lower case, digits, . _ = - /)
+			if ($local !== '' && preg_match('~^[a-z0-9._=\-/]+$~', $local)) {
+				$id = '@' . $local . ':' . $serverName;
+				if (!in_array($id, $out, true)) {
+					$out[] = $id;
+				}
+			}
+		}
+		return $out;
+	}
+
+	/**
 	 * The Element Web sites among the « Sites externes » of Nextcloud (app external):
 	 * their https addresses, the first ones first.
 	 *
