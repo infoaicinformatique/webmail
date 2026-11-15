@@ -225,7 +225,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Tâches](docs/capture-taches.png)
 
-L'onglet **✅ Tâches** affiche le dossier « Tâches » de la boîte Exchange, le même que dans Outlook et Outlook sur le web.
+L'onglet **✅ Tâches** affiche le dossier « Tâches » de la boîte Exchange, le même que dans Outlook et Outlook sur le web. Les **autres listes de tâches** de la boîte (créées dans Outlook) apparaissent sous « Listes de tâches » dans la barre latérale : un clic affiche les tâches de la liste, et une tâche ajoutée va dans la liste affichée (ou celle choisie dans le formulaire). La liste affichée est retenue.
 
 | | |
 |---|---|
@@ -282,7 +282,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.134.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.135.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -347,7 +347,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.134 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.135 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
