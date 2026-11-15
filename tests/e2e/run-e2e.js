@@ -242,7 +242,7 @@ async function main() {
 		await page.click('.wm-toolbar .wm-flag-btn')
 		await page.waitForSelector('.wm-message.selected .wm-flag.on')
 		const id = await page.getAttribute('.wm-message.selected', 'data-id')
-		await page.click('.wm-toolbar button:has-text("Non lu")')
+		await page.click('.wm-message-toolbar .wm-unread-btn')
 		await page.waitForSelector(`.wm-message.unread[data-id="${id}"]`)
 	})
 
