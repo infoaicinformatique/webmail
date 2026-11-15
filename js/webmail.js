@@ -5346,6 +5346,33 @@
 		return matrix.settings
 	}
 
+	/**
+	 * « Se connecter avec Nextcloud »: the chat (Matrix) signs the user in with their Nextcloud
+	 * account, in a small window; resolved once the account is kept by the webmail.
+	 */
+	function connectMatrix() {
+		const url = OC.generateUrl('/apps/webmail/matrix/sso')
+		const popup = window.open(url, 'webmail-matrix-sso', 'width=560,height=720')
+		if (!popup) {
+			// windows blocked: in this one (back here afterwards)
+			window.location.href = url
+			return new Promise(() => {})
+		}
+		return new Promise((resolve, reject) => {
+			let done = false
+			const finish = (fn, arg) => { if (done) return; done = true; window.removeEventListener('message', onMessage); clearInterval(watch); fn(arg) }
+			const onMessage = (e) => {
+				if (e.origin !== window.location.origin || !e.data || e.data.webmail !== 'matrix-sso') return
+				matrix.settings = null
+				if (e.data.ok) finish(resolve)
+				else finish(reject, new Error(e.data.message || _('La connexion au chat a échoué')))
+			}
+			window.addEventListener('message', onMessage)
+			// closed without an answer (its message may still be on its way)
+			const watch = setInterval(() => { if (popup.closed) setTimeout(() => finish(reject, new Error(_('Connexion au chat annulée'))), 1000) }, 700)
+		})
+	}
+
 	/** The card of « Comptes et signature »: homeserver, access token (kept encrypted), default room. */
 	function matrixSettings() {
 		const card = h('fieldset', { class: 'wm-account-card wm-matrix-settings' }, h('legend', {}, '💬 ' + _('Matrix (Element)')))
@@ -5387,6 +5414,9 @@
 			if (!initial) typed.clear()
 			token.placeholder = st.hasToken ? _('Enregistré (laisser vide pour le garder)') : _('Jeton d\'accès')
 			forget.hidden = !st.hasToken
+			sso.hidden = !st.chat
+			sso.textContent = '🔑 ' + (st.hasToken ? _('Se reconnecter avec Nextcloud') : _('Se connecter avec Nextcloud'))
+			sso.title = st.chat ? _('Votre compte du chat {name} (le même que Nextcloud) relié au webmail, sans jeton à copier', { name: st.chat.name }) : ''
 			status.textContent = st.user ? _('Connecté en tant que {user}', { user: st.user }) : (st.hasToken ? _('Compte Matrix enregistré') : '')
 		}
 		const fillRooms = async () => {
@@ -5396,6 +5426,22 @@
 				matrix.rooms.forEach((r) => roomList.appendChild(h('option', { value: r.id }, r.name)))
 			} catch (e) { /* the list is a help only */ }
 		}
+		// the chat of the organisation: the same account as Nextcloud, nothing to copy
+		const sso = h('button', {
+			type: 'button',
+			class: 'primary wm-matrix-sso',
+			hidden: true,
+			onclick: async () => {
+				sso.disabled = true
+				try {
+					await connectMatrix()
+					const st = await matrixSettingsLoad(true)
+					show(st)
+					toast(_('Compte du chat relié au webmail'))
+					fillRooms()
+				} catch (ex) { toast(ex.message, true) } finally { sso.disabled = false }
+			},
+		})
 		const save = h('button', { type: 'submit', class: 'primary' }, _('Connecter'))
 		const form = h('form', {
 			class: 'wm-matrix-form',
@@ -5411,6 +5457,7 @@
 				} catch (ex) { toast(ex.message, true) } finally { save.disabled = false }
 			},
 		},
+		h('div', { class: 'wm-compose-actions wm-matrix-sso-row' }, sso),
 		h('label', { class: 'wm-field' }, h('span', {}, _('Serveur')), homeserver),
 		h('label', { class: 'wm-field' }, h('span', {}, _('Jeton d\'accès')), token),
 		h('label', { class: 'wm-field' }, h('span', {}, _('Salon par défaut')), room, roomList),
@@ -5773,6 +5820,8 @@
 		TZ,
 		api,
 		sendToMatrix,
+		connectMatrix,
+		matrixSettings: (force) => matrixSettingsLoad(force),
 		h,
 		clear,
 		toast,
@@ -5856,6 +5905,14 @@
 	async function init() {
 		root = document.getElementById('webmail-app')
 		if (!root) return
+		// back from « Se connecter avec Nextcloud » (the chat): in its window, the webmail that opened it is told
+		const ssoReturn = new URLSearchParams(window.location.search)
+		const sso = ssoReturn.get('matrix') ? { webmail: 'matrix-sso', ok: ssoReturn.get('matrix') === 'connected', message: ssoReturn.get('matrixMessage') || '' } : null
+		if (sso && window.opener && window.opener !== window) {
+			try { window.opener.postMessage(sso, window.location.origin) } catch (e) { /* the page will see it at its next opening */ }
+			window.close()
+			return
+		}
 		keepFocusInDialogs()
 		try { state.domains = JSON.parse(root.dataset.domains || '[]') } catch (e) { state.domains = [] }
 		state.autodiscover = root.dataset.autodiscover === '1'
@@ -5925,6 +5982,7 @@
 		if (linkEvent && state.module === 'calendar' && window.WebmailModules.calendar.openLinked) window.WebmailModules.calendar.openLinked(core, linkEvent)
 		if (linkTask && state.module === 'tasks' && window.WebmailModules.tasks.openLinked) window.WebmailModules.tasks.openLinked(core, linkTask)
 		startBackground()
+		if (sso) toast(sso.ok ? _('Compte du chat relié au webmail') : (sso.message || _('La connexion au chat a échoué')), !sso.ok)
 	}
 
 	let backgroundStarted = false
