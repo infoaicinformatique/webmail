@@ -61,7 +61,7 @@ et sur les téléphones, et inversement.
 | Agendas Nextcloud dans le webmail | Section « Agendas Nextcloud » de la barre latérale de l'agenda : vos agendas de l'application Agenda de Nextcloud (personnels et partagés avec vous, avec leur couleur) s'affichent à côté des agendas Exchange. Leurs événements se lisent, se créent, se modifient (une occurrence ou toute la série), se déplacent et se suppriment depuis le webmail — les mêmes que dans l'application Agenda et sur les téléphones (CalDAV), sans rien perdre de ce que le webmail ne montre pas. Un agenda partagé en lecture le reste ; les anniversaires des contacts sont listés, à cocher pour les voir. Les invitations et les salles passent par Exchange : elles ne sont pas proposées dans un agenda Nextcloud |
 | Envoyer depuis Fichiers | Dans l'application Fichiers, l'action « Envoyer par e-mail » d'un fichier (ou de plusieurs, sélectionnés) ouvre un nouveau message du webmail avec les fichiers en pièces jointes et le nom du fichier en objet |
 | Copie dans Nextcloud Contacts | « ☁ » dans le carnet Contacts : les contacts Exchange copiés dans un carnet « Exchange — adresse » de Nextcloud Contacts, visible par l'application Contacts, les téléphones synchronisés avec Nextcloud (CardDAV) et les autres applications. Exchange reste la référence : la copie est remise à jour toutes les 6 heures (ou à la demande), sans toucher aux cartes ajoutées à la main ; « Arrêter » retire le carnet |
-| Carnets Nextcloud dans le webmail | Section « Carnets Nextcloud » des contacts : vos carnets de l'application Contacts de Nextcloud (personnels et partagés avec vous) à côté des carnets Exchange — liste, recherche, fiche, photo, création, modification, suppression, import et export vCard, pastille de présence. Une carte modifiée garde ce que le formulaire ne montre pas (catégories, autres champs des téléphones…). La copie « Exchange — adresse » n'y figure pas : ses contacts s'affichent depuis Exchange |
+| Carnets Nextcloud dans le webmail | Section « Carnets Nextcloud » des contacts : vos carnets de l'application Contacts de Nextcloud (personnels et partagés avec vous) à côté des carnets Exchange — liste, recherche, fiche, photo, création, modification, suppression, import et export vCard, pastille de présence. Une carte modifiée garde ce que le formulaire ne montre pas (catégories, autres champs des téléphones…). La copie « Exchange — adresse » n'y figure pas : ses contacts s'affichent depuis Exchange. « Comptes Nextcloud » (lecture seule) : vos collègues qui ont un compte Nextcloud, avec leur avatar, dans les limites de ce que l'administrateur laisse voir des autres comptes |
 | Classement dans Fichiers | « 📂 Pièces jointes → Fichiers » (carte du compte) ou « Ranger celles de cet expéditeur… » sous les pièces jointes d'un message : les pièces jointes des messages qui **arrivent** d'un expéditeur (adresse, ou « @domaine » pour toute une société) sont rangées par Nextcloud dans le dossier choisi — factures dans « Documents/Factures »… —, toutes les 10 minutes, webmail fermé ou non. Les messages déjà reçus ne sont pas concernés ; une pièce jointe n'est rangée qu'une fois |
 | Ouvrir dans Nextcloud | « ↗ Ouvrir dans Nextcloud » sur une pièce jointe : une copie dans Fichiers (« Pièces jointes »), ouverte avec ce que votre Nextcloud a pour ce type — **Nextcloud Office** (Collabora, OnlyOffice) pour les documents, Text, le lecteur PDF, les images —, pour la lire, l'annoter ou la modifier |
 | Toutes les boîtes de réception | Avec plusieurs comptes, « 📥 Toutes les boîtes de réception » sous le choix du compte : les derniers messages de chaque boîte de réception dans une seule liste, par date, avec le domaine du compte ; un clic ouvre le message dans son compte |
@@ -282,7 +282,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.133.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.133.1.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -347,7 +347,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.133 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.133.1 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
