@@ -365,6 +365,10 @@ class MeetingReminderService {
 				return $l;
 			}
 		}
+		// « Rejoindre la visio : https://… », « Join the meeting: https://… »
+		if (preg_match('~(?:visio|rejoindre|join|réunion en ligne|online meeting)[^\n]{0,40}?(https?://[^\s<>"\']+)~iu', $body, $m)) {
+			return rtrim($m[1], '.,;)');
+		}
 		return preg_match('~https?://[^\s<>"\']+~', $location, $m) ? rtrim($m[0], '.,;)') : null;
 	}
 
