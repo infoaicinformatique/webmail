@@ -111,6 +111,7 @@ MATRIX_ROOMS = {'!equipe:fake.test': 'Équipe chantier', '!notes:fake.test': 'Me
 MATRIX_ALIASES = {'#equipe:fake.test': '!equipe:fake.test'}
 MATRIX_SENT = []
 # rooms made by createRoom (« Visio Element » with Element Web): their request
+MATRIX_SSO = []
 MATRIX_CREATED = []
 # conversations ignored (« Ignorer la conversation »)
 IGNORED = set()
@@ -1080,6 +1081,22 @@ class Handler(BaseHTTPRequestHandler):
             return reply(200, MATRIX_SENT)
         if path == '/_matrix/test/created':
             return reply(200, MATRIX_CREATED)
+        # single sign-on (by Nextcloud in the real chat): straight back with a login token
+        if method == 'GET' and path == '/_matrix/client/v3/login/sso/redirect':
+            from urllib.parse import parse_qs, urlparse
+            back = parse_qs(urlparse(self.path).query).get('redirectUrl', [''])[0]
+            if not back:
+                return reply(400, {'errcode': 'M_MISSING_PARAM', 'error': 'redirectUrl'})
+            MATRIX_SSO.append(back)
+            self.send(302, '', {'Location': back + ('&' if '?' in back else '?') + 'loginToken=fake-login-token'})
+            return
+        if method == 'POST' and path == '/_matrix/client/v3/login':
+            body = json.loads(raw or b'{}')
+            if body.get('type') == 'm.login.token' and body.get('token') == 'fake-login-token':
+                return reply(200, {'access_token': 'syt_test_token', 'user_id': '@user:fake.test', 'device_id': 'WEBMAIL'})
+            return reply(403, {'errcode': 'M_FORBIDDEN', 'error': 'Invalid login token'})
+        if path == '/_matrix/test/sso':
+            return reply(200, MATRIX_SSO)
         if self.headers.get('Authorization', '') != 'Bearer syt_test_token':
             return reply(401, {'errcode': 'M_UNKNOWN_TOKEN', 'error': 'Invalid access token'})
         api = '/_matrix/client/v3'

@@ -1792,7 +1792,7 @@
 			type: 'button',
 			class: 'wm-visio-btn',
 			title: visioRooms()
-				? _('Créer un salon visio Element (Matrix) pour cet événement, avec votre compte Matrix : son lien va dans le lieu et dans l\'invitation')
+				? _('Créer un salon visio dans le chat (Element) pour cet événement, avec votre compte Nextcloud : son lien va dans le lieu et dans l\'invitation')
 				: visioBase().includes('{room}')
 					? _('Ajouter une salle de visio pour cet événement : son lien va dans le lieu et dans l\'invitation')
 					: _('Ajouter une salle Element (Matrix) chiffrée pour cet événement : son lien va dans le lieu et dans l\'invitation'),
@@ -1800,7 +1800,18 @@
 			onclick: async () => {
 				let url
 				if (visioRooms()) {
-					// a room made on the Matrix server, with the organiser's account
+					// a room made on the Matrix server, with the organiser's account: linked first if need be
+					let st = null
+					try { st = await core.matrixSettings() } catch (e) { /* asked again by the server */ }
+					if (st && !st.hasToken && st.chat) {
+						if (!window.confirm(_('Pour créer le salon visio, reliez votre compte du chat {name} au webmail : la connexion se fait avec votre compte Nextcloud. Continuer ?', { name: st.chat.name }))) return
+						try {
+							await core.connectMatrix()
+						} catch (e) {
+							core.toast(e.message, true)
+							return
+						}
+					}
 					visioBtn.disabled = true
 					try {
 						const at = startDate.value ? new Date(startDate.value + 'T' + (startTime.value || '00:00')) : null
@@ -1821,6 +1832,8 @@
 				core.toast(_('Salle de visio ajoutée : son lien est dans le lieu et la description'))
 			},
 		}, '🎥 ' + (visioBase().includes('{room}') ? _('Visio') : _('Visio Element'))) : null
+		// (the account of the chat known before the click: its window may then open at once)
+		if (visioBtn && visioRooms()) core.matrixSettings().catch(() => {})
 		// else Nextcloud Talk, if it is installed
 		const talkBtn = !visioBtn && talkEnabled() ? h('button', {
 			type: 'button',

@@ -7,7 +7,9 @@ namespace OCA\Webmail\Service;
 use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Exception\MailException;
 use OCP\Http\Client\IClientService;
+use OCP\ICacheFactory;
 use OCP\IConfig;
+use OCP\Security\ISecureRandom;
 use OCP\Security\ICrypto;
 use Psr\Log\LoggerInterface;
 
@@ -24,7 +26,104 @@ class MatrixService {
 		private ICrypto $crypto,
 		private IClientService $http,
 		private LoggerInterface $logger,
+		private ServerConfigService $servers,
+		private ICacheFactory $cacheFactory,
+		private ISecureRandom $random,
 	) {
+	}
+
+	/** how long a connection by Nextcloud (SSO) may take, from the click to the return */
+	private const SSO_TTL = 600;
+
+	/**
+	 * The video meetings: those chosen by the administrator; else, when the organisation has
+	 * its chat (an Element Web among the « Sites externes » of Nextcloud), a room of that chat
+	 * made for each meeting — before Nextcloud Talk.
+	 *
+	 * @return array{visio: string, mode: string, auto: bool}
+	 */
+	public function effectiveVisio(): array {
+		if ($this->servers->isVisioSet()) {
+			return ['visio' => $this->servers->getVisio(), 'mode' => $this->servers->getVisioMode(), 'auto' => false];
+		}
+		$element = $this->element();
+		return $element !== null
+			? ['visio' => rtrim($element['url'], '/'), 'mode' => ServerConfigService::VISIO_ELEMENT_ROOM, 'auto' => true]
+			: ['visio' => '', 'mode' => '', 'auto' => false];
+	}
+
+	/**
+	 * The chat of the organisation (detectElement()), remembered an hour: asked for each page.
+	 * @return ?array{name: string, url: string, homeserver: string, serverName: string}
+	 */
+	public function element(): ?array {
+		$sites = $this->config->getAppValue('external', 'sites', '');
+		if ($sites === '') {
+			return null;
+		}
+		$cache = $this->cacheFactory->createDistributed('webmail-element');
+		$key = md5($sites);
+		$known = $cache->get($key);
+		if (is_array($known)) {
+			return $known['element'] ?? null;
+		}
+		$element = $this->detectElement();
+		$cache->set($key, ['element' => $element], $element !== null ? 3600 : 600);
+		return $element;
+	}
+
+	/**
+	 * « Se connecter avec Nextcloud »: the address where the Matrix server signs the user in
+	 * (by Nextcloud, its identity provider), then sends them back to $callback with a login token.
+	 *
+	 * @throws MailException
+	 */
+	public function ssoStart(string $userId, string $callback): string {
+		$hs = $this->ssoHomeserver($userId);
+		$state = $this->random->generate(32, ISecureRandom::CHAR_ALPHANUMERIC);
+		$this->config->setUserValue($userId, Application::APP_ID, 'matrix_sso', json_encode(['state' => $state, 'hs' => $hs, 'at' => time()]));
+		$back = $callback . (str_contains($callback, '?') ? '&' : '?') . 'state=' . $state;
+		return $hs . self::API . '/login/sso/redirect?redirectUrl=' . rawurlencode($back);
+	}
+
+	/**
+	 * The return of the Matrix server: its login token exchanged for an access token, kept as
+	 * for an account entered by hand.
+	 *
+	 * @return array{homeserver: string, hasToken: bool, room: string, alerts: string, user: string}
+	 * @throws MailException
+	 */
+	public function ssoFinish(string $userId, string $state, string $loginToken): array {
+		$pending = json_decode($this->config->getUserValue($userId, Application::APP_ID, 'matrix_sso', ''), true);
+		$this->config->deleteUserValue($userId, Application::APP_ID, 'matrix_sso');
+		if (!is_array($pending) || !is_string($pending['state'] ?? null) || !hash_equals($pending['state'], $state)
+			|| time() - (int)($pending['at'] ?? 0) > self::SSO_TTL || trim($loginToken) === '') {
+			throw new MailException('La connexion au chat a expiré : recommencez');
+		}
+		$hs = (string)$pending['hs'];
+		$r = $this->call('POST', $hs, '/login', '', [
+			'type' => 'm.login.token',
+			'token' => trim($loginToken),
+			'initial_device_display_name' => 'Webmail Nextcloud',
+		]);
+		$token = (string)($r['access_token'] ?? '');
+		if ($token === '') {
+			throw new MailException('Le serveur Matrix n\'a pas ouvert la session');
+		}
+		return $this->save($userId, $hs, $token, $this->config->getUserValue($userId, Application::APP_ID, 'matrix_room', ''));
+	}
+
+	/** The Matrix server to sign in to: the user's, else the one of the chat of the organisation. */
+	public function ssoHomeserver(string $userId): string {
+		$saved = $this->config->getUserValue($userId, Application::APP_ID, 'matrix_homeserver', '');
+		if ($saved !== '') {
+			return $saved;
+		}
+		$element = $this->element();
+		if ($element === null) {
+			throw new MailException('Aucun chat Matrix (Element) n\'est déclaré dans les « Sites externes » de Nextcloud : indiquez le serveur et le jeton');
+		}
+		return Matrix::homeserver($element['homeserver']);
 	}
 
 	/** @return array{homeserver: string, hasToken: bool, room: string, alerts: string} */
@@ -34,6 +133,8 @@ class MatrixService {
 			'hasToken' => $this->config->getUserValue($userId, Application::APP_ID, 'matrix_token', '') !== '',
 			'room' => $this->config->getUserValue($userId, Application::APP_ID, 'matrix_room', ''),
 			'alerts' => $this->config->getUserValue($userId, Application::APP_ID, 'matrix_alerts', 'off'),
+			// the chat of the organisation: connection by Nextcloud offered
+			'chat' => ($e = $this->element()) !== null ? ['name' => $e['name'], 'homeserver' => $e['homeserver']] : null,
 		];
 	}
 
@@ -81,7 +182,7 @@ class MatrixService {
 	}
 
 	public function forget(string $userId): void {
-		foreach (['matrix_homeserver', 'matrix_token', 'matrix_room', 'matrix_alerts', 'matrix_alerts_seen'] as $k) {
+		foreach (['matrix_homeserver', 'matrix_token', 'matrix_room', 'matrix_alerts', 'matrix_alerts_seen', 'matrix_sso'] as $k) {
 			$this->config->deleteUserValue($userId, Application::APP_ID, $k);
 		}
 	}
@@ -216,7 +317,7 @@ class MatrixService {
 	 */
 	private function call(string $method, string $hs, string $path, string $token, ?array $body = null): array {
 		$options = [
-			'headers' => ['Authorization' => 'Bearer ' . $token, 'Accept' => 'application/json'],
+			'headers' => $token !== '' ? ['Authorization' => 'Bearer ' . $token, 'Accept' => 'application/json'] : ['Accept' => 'application/json'],
 			'timeout' => 15,
 			'http_errors' => false,
 			// (the same choice as for Exchange: an internal server with its own certificate)
