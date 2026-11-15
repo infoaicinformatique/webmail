@@ -827,8 +827,7 @@ async function main() {
 		// print a message: its own page with the headers
 		await page.click('.wm-message:has-text("Test depuis Nextcloud")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Test depuis Nextcloud")')
-		await openMore()
-		const [popup] = await Promise.all([page.context().waitForEvent('page'), page.click('.wm-more-menu .wm-print-btn')])
+		const [popup] = await Promise.all([page.context().waitForEvent('page'), page.click('.wm-message-toolbar .wm-print-btn')])
 		await popup.waitForLoadState()
 		assert.strictEqual(await popup.title(), 'Test depuis Nextcloud')
 		const printed = await popup.textContent('body')
@@ -1527,7 +1526,11 @@ async function main() {
 	})
 
 	await step('compose: address autocompletion from contacts and directory', async () => {
-		await page.click('.wm-compose-btn')
+		// (a click while the list is drawn again may be lost: clicked again until the window is there)
+		for (let i = 0; i < 5 && !(await page.$('.wm-compose input[name=to]')); i++) {
+			await page.click('.wm-compose-btn')
+			await page.waitForSelector('.wm-compose input[name=to]', { timeout: 3000 }).catch(() => {})
+		}
 		// (the window of the message may be drawn again just after opening: typed in the field that stays)
 		await page.waitForSelector('.wm-compose input[name=to]')
 		await page.locator('.wm-compose input[name=to]').pressSequentially('dup')

@@ -3180,8 +3180,7 @@
 		section(_('Envoyer, garder'),
 			item('wm-matrix-send-btn', '💬', _('Envoyer sur Matrix'), () => sendToMatrix(mailSummaryForMatrix(m)), _('Envoyer sur Matrix (Element) : un résumé du message dans un salon')),
 			item('wm-eml-save-btn', '☁️', _('Enregistrer dans Fichiers'), () => saveMessageToFiles(m), _('Enregistrer le message dans Fichiers (.eml)')),
-			eml,
-			item('wm-print-btn', '🖨', _('Imprimer'), () => printMessage(m)))
+			eml)
 		section(_('Expéditeur et conversation'),
 			m.from && m.from.email && !m.from.email.startsWith('/')
 				? item('wm-sender-btn', '👤', _('Tous ses messages…'), () => senderMessages(m), _('Les messages de cet expéditeur dans ce dossier : les afficher, les marquer comme lus, les déplacer ou les supprimer d\'un coup'))
@@ -3224,7 +3223,8 @@
 				h('button', { class: 'primary wm-reply-btn', onclick: () => openCompose('reply', m) }, '↩ ' + _('Répondre')),
 				h('button', { class: 'wm-reply-all-btn', onclick: () => openCompose('replyAll', m) }, '↩↩ ' + _('Répondre à tous')),
 				h('button', { class: 'wm-forward-btn', onclick: () => openCompose('forward', m) }, '↪ ' + _('Transférer'))),
-			h('button', { class: 'wm-more-btn', title: _('Plus d\'actions : créer une note, une tâche, un événement, une règle ; envoyer, enregistrer, imprimer…'), 'aria-haspopup': 'menu', onclick: (e) => messageMoreMenu(e.currentTarget, m, role) }, '⋯ ' + _('Plus')),
+			h('button', { class: 'wm-print-btn', onclick: () => printMessage(m) }, '🖨 ' + _('Imprimer')),
+			h('button', { class: 'wm-more-btn', title: _('Plus d\'actions : créer une note, une tâche, un événement, une règle ; envoyer, enregistrer…'), 'aria-haspopup': 'menu', onclick: (e) => messageMoreMenu(e.currentTarget, m, role) }, '⋯ ' + _('Plus')),
 			h('div', { class: 'wm-tb-break', 'aria-hidden': 'true' }),
 			group(_('Ranger'),
 				moveSelect,

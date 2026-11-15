@@ -57,7 +57,14 @@ jobs:
           sudo -u www-data php /var/www/nextcloud/occ upgrade
           \`\`\`
 
-          Nextcloud AIO (as root on the host):
+          Nextcloud AIO, in one command (as root on the host; download, SHA-256 check, backup, occ upgrade):
+
+          \`\`\`bash
+          wget -O maj-webmail-aio.sh https://github.com/${{ github.repository }}/releases/latest/download/maj-webmail-aio.sh && chmod +x maj-webmail-aio.sh
+          sudo ./maj-webmail-aio.sh
+          \`\`\`
+
+          Or by hand:
 
           \`\`\`bash
           docker cp webmail-$VERSION.tar.gz nextcloud-aio-nextcloud:/tmp/
@@ -69,5 +76,5 @@ jobs:
           SHA-256: $(cut -d' ' -f1 "build/webmail-$VERSION.tar.gz.sha256")
           NOTES
           # the tag v<version> is created on this commit when it does not exist yet
-          gh release create "v$VERSION" "build/webmail-$VERSION.tar.gz" "build/webmail-$VERSION.tar.gz.sha256" \
+          gh release create "v$VERSION" "build/webmail-$VERSION.tar.gz" "build/webmail-$VERSION.tar.gz.sha256" scripts/maj-webmail-aio.sh \
             --target "$GITHUB_SHA" --title "Webmail Exchange $VERSION" --notes-file notes.md

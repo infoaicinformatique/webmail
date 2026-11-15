@@ -283,7 +283,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.141.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.142.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -297,7 +297,35 @@ sudo -u www-data php /var/www/nextcloud/occ app:enable webmail
 ### Nextcloud AIO (All-in-One)
 
 Nextcloud tourne dans le conteneur `nextcloud-aio-nextcloud`, et les apps vont dans `/var/www/html/custom_apps`.
-Ce dossier est sur un volume, donc l'app reste en place après les mises à jour d'AIO. Commandes à lancer en root sur l'hôte :
+Ce dossier est sur un volume, donc l'app reste en place après les mises à jour d'AIO.
+
+#### Installation et mise à jour en une commande
+
+Le script `scripts/maj-webmail-aio.sh` (joint à chaque release) télécharge la version,
+vérifie son empreinte SHA-256, sauvegarde la version en place dans `/var/backups/webmail`
+(les 5 dernières), remplace `custom_apps/webmail` et lance `occ upgrade`. À récupérer une fois :
+
+```bash
+wget -O /usr/local/bin/maj-webmail https://github.com/infoaicinformatique/webmail/releases/latest/download/maj-webmail-aio.sh && chmod +x /usr/local/bin/maj-webmail
+```
+
+Puis, à chaque nouvelle version :
+
+```bash
+sudo maj-webmail
+```
+
+| Commande | Effet |
+|---|---|
+| `sudo maj-webmail` | installe la dernière version publiée (rien à faire si elle est déjà en place) |
+| `sudo maj-webmail 1.142.0` | installe une version précise |
+| `sudo maj-webmail --retour` | remet la version d'avant (dernière sauvegarde) |
+| `sudo maj-webmail -y` | sans demander de confirmation (pour une tâche planifiée) |
+| `sudo maj-webmail -c autre-conteneur` | autre nom de conteneur Nextcloud |
+
+#### À la main
+
+Commandes à lancer en root sur l'hôte :
 
 ```bash
 docker cp webmail-<version>.tar.gz nextcloud-aio-nextcloud:/tmp/
@@ -348,7 +376,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.141 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.142 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
