@@ -142,8 +142,9 @@
 			},
 		},
 		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Menu'), onclick: () => core.setView('nav') }, '☰'),
-		tk.filter === 'todo' ? quick : h('div', { class: 'wm-muted wm-task-title' }, tk.lists.length > 1 ? _('Terminées · {list}', { list: currentList().name }) : _('Tâches terminées'))))
-		if (tk.filter === 'todo') quick.placeholder = tk.lists.length > 1 ? _('Ajouter une tâche à « {list} » (Entrée)', { list: currentList().name }) : _('Ajouter une tâche (Entrée)')
+		tk.filter === 'todo' ? quick : h('div', { class: 'wm-muted wm-task-title' }, !currentList().default ? _('Terminées · {list}', { list: currentList().name }) : _('Tâches terminées'))))
+		// (the list named when it is not « Tâches »)
+		if (tk.filter === 'todo') quick.placeholder = !currentList().default ? _('Ajouter une tâche à « {list} » (Entrée)', { list: currentList().name }) : _('Ajouter une tâche (Entrée)')
 		if (typing && tk.filter === 'todo') {
 			quick.focus()
 			try { quick.setSelectionRange(caret[0], caret[1]) } catch (e) { /* not a text field */ }
