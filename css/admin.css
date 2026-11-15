@@ -19,3 +19,5 @@
 .wm-health li { padding: 3px 0; }
 .wm-health-error { color: var(--color-error-text, #c9190b); }
 .wm-health-warning { color: var(--color-warning-text, #a37200); }
+
+#webmail-org-signature-preview:not(:empty) { margin: 8px 0; padding: 8px; border-left: 3px solid var(--color-primary-element); max-width: 640px; }

@@ -25,6 +25,8 @@ class SignatureController extends Controller {
 		private AccountService $accounts,
 		private IConfig $config,
 		private LoggerInterface $logger,
+		private \OCA\Webmail\Service\OrgSignatureService $org,
+		private \OCP\IUserSession $session,
 		private ?string $userId,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -37,8 +39,13 @@ class SignatureController extends Controller {
 	#[NoAdminRequired]
 	public function index(int $id): Response {
 		return $this->handle(function () use ($id) {
-			$this->accounts->find((string)$this->userId, $id);
-			return new JSONResponse(SignatureSet::decode($this->config->getUserValue((string)$this->userId, Application::APP_ID, 'signatures_' . $id, '')));
+			$account = $this->accounts->find((string)$this->userId, $id);
+			$set = SignatureSet::decode($this->config->getUserValue((string)$this->userId, Application::APP_ID, 'signatures_' . $id, ''));
+			// the signature of the organisation, filled in with the profile of the user
+			$mode = $this->org->mode();
+			$user = $this->session->getUser();
+			$set['org'] = $mode !== 'off' && $user !== null ? ['mode' => $mode, 'html' => $this->org->forUser($user, $account->getEmail())] : null;
+			return new JSONResponse($set);
 		});
 	}
 
@@ -54,6 +61,19 @@ class SignatureController extends Controller {
 				$this->config->setUserValue((string)$this->userId, Application::APP_ID, 'signatures_' . $id, json_encode($set));
 			}
 			return new JSONResponse($set);
+		});
+	}
+
+	/** The signature of the organisation: its model and how it is used (administrators only). */
+	public function saveOrg(string $template = '', string $mode = 'off'): Response {
+		return $this->handle(function () use ($template, $mode) {
+			$this->org->save($template, $mode);
+			$user = $this->session->getUser();
+			return new JSONResponse([
+				'template' => $this->org->template(),
+				'mode' => $this->org->mode(),
+				'preview' => $user !== null ? $this->org->forUser($user, (string)$user->getEMailAddress()) : '',
+			]);
 		});
 	}
 }

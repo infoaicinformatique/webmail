@@ -1719,5 +1719,14 @@
 	"Les décliner, en donnant les dates de l'absence": "Decline them, giving the dates of the absence",
 	"Y répondre « provisoire »": "Answer them “tentative”",
 	"Ne rien faire": "Do nothing",
-	"Invitations à des réunions pendant l'absence": "Invitations to meetings during the absence"
+	"Invitations à des réunions pendant l'absence": "Invitations to meetings during the absence",
+	"Organisation": "Organisation",
+	"Votre organisation impose sa signature, remplie avec votre profil Nextcloud : elle termine tous vos messages, à la place de celles-ci.": "Your organisation imposes its signature, filled in with your Nextcloud profile: it ends all your messages, instead of these ones.",
+	"Sans signature principale ici, celle de votre organisation est utilisée, remplie avec votre profil Nextcloud (nom, fonction, téléphone…).": "Without a main signature here, the one of your organisation is used, filled in with your Nextcloud profile (name, role, phone…).",
+	"Signature de l'organisation": "Signature of the organisation",
+	"Un modèle commun (HTML : logo, mise en forme, mentions légales), rempli avec le profil Nextcloud de chacun : {nom}, {fonction}, {titre}, {organisation}, {telephone}, {adresse}, {site}, {email}. Une ligne dont le champ est vide disparaît (« Tél. : {telephone} » pour quelqu'un sans téléphone).": "A common model (HTML: logo, layout, legal notice), filled in with each person's Nextcloud profile: {nom}, {fonction}, {titre}, {organisation}, {telephone}, {adresse}, {site}, {email}. A line whose field is empty goes away (“Tel.: {telephone}” for someone without a phone).",
+	"Non utilisée": "Not used",
+	"Pour ceux qui n'ont pas de signature à eux": "For those without a signature of their own",
+	"Imposée à tous (leurs signatures mises de côté)": "Imposed on everybody (their signatures put aside)",
+	"Enregistrer la signature": "Save the signature"
 }

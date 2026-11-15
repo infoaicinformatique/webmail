@@ -75,6 +75,25 @@ $code = fn (string $text): string => '<code>' . \OCP\Util::sanitizeHTML($text) .
 		<?php p($l->t('Préconfiguré avec votre Element des Sites externes de Nextcloud : « %1$s » (%2$s, serveur Matrix %3$s). Vérifiez puis enregistrez.', [$element['name'] !== '' ? $element['name'] : 'Element', $element['url'], $element['homeserver']])); ?>
 	</p>
 	<?php endif; ?>
+	<h3><?php p($l->t('Signature de l\'organisation')); ?></h3>
+	<p class="settings-hint">
+		<?php p($l->t('Un modèle commun (HTML : logo, mise en forme, mentions légales), rempli avec le profil Nextcloud de chacun : {nom}, {fonction}, {titre}, {organisation}, {telephone}, {adresse}, {site}, {email}. Une ligne dont le champ est vide disparaît (« Tél. : {telephone} » pour quelqu\'un sans téléphone).')); ?>
+	</p>
+	<p>
+		<select id="webmail-org-signature-mode">
+			<option value="off" <?php if ($_['orgSignatureMode'] === 'off') { print_unescaped('selected'); } ?>><?php p($l->t('Non utilisée')); ?></option>
+			<option value="default" <?php if ($_['orgSignatureMode'] === 'default') { print_unescaped('selected'); } ?>><?php p($l->t('Pour ceux qui n\'ont pas de signature à eux')); ?></option>
+			<option value="forced" <?php if ($_['orgSignatureMode'] === 'forced') { print_unescaped('selected'); } ?>><?php p($l->t('Imposée à tous (leurs signatures mises de côté)')); ?></option>
+		</select>
+	</p>
+	<p>
+		<textarea id="webmail-org-signature" rows="8" cols="70" placeholder="<p><b>{nom}</b><br>{fonction} — {organisation}<br>Tél. : {telephone}<br><a href=&quot;https://{site}&quot;>{site}</a></p>"><?php p($_['orgSignature']); ?></textarea>
+	</p>
+	<p>
+		<button type="button" id="webmail-org-signature-save"><?php p($l->t('Enregistrer la signature')); ?></button>
+		<span id="webmail-org-signature-msg" class="msg"></span>
+	</p>
+	<div id="webmail-org-signature-preview" class="wm-org-signature-preview"></div>
 	<h3><?php p($l->t('Réponse automatique pendant les absences')); ?></h3>
 	<p class="settings-hint">
 		<?php p($l->t('Une absence saisie dans Nextcloud (Paramètres personnels › Disponibilité › Absence) programme la réponse automatique Exchange de la personne sur les mêmes dates. Ce modèle remplace alors le message de l\'absence, sauf si la personne a écrit le sien ; y sont remplis : {debut}, {fin}, {retour}, {nom}, {message} (celui de l\'absence), {remplacement}. Laissez vide pour envoyer le message de l\'absence tel quel.')); ?>
