@@ -35,6 +35,8 @@
 		today: false, // « Aujourd'hui » shown in the reading pane
 		unifiedItems: [],
 		pinned: new Map(), // id -> summary (with its folder): kept at the top of their folder
+		savedSearches: [], // « Recherches enregistrées » of the account
+		searchCounts: {}, // saved search id -> its unread messages
 		showFilters: false,
 		// the list grouped by conversation (one row each), remembered
 		grouped: (() => { try { return localStorage.getItem('webmail.grouped') === '1' } catch (e) { return false } })(),
@@ -1171,8 +1173,36 @@
 			})
 			navEl.appendChild(h('div', { class: 'wm-nav-section' }, _('Favoris')))
 			navEl.appendChild(favUl)
-			navEl.appendChild(h('div', { class: 'wm-nav-section' }, _('Dossiers')))
 		}
+		// the saved searches, with the unread messages each one finds
+		if (state.savedSearches.length) {
+			const now = isSearching() && !state.unified && !state.today ? currentSearch() : null
+			const sUl = h('ul', { class: 'wm-folders wm-saved-searches', 'aria-label': _('Recherches enregistrées') })
+			state.savedSearches.forEach((s) => {
+				const n = state.searchCounts[s.id] || 0
+				const link = h('a', {
+					href: '#',
+					class: 'wm-folder wm-saved-search' + (now && sameSearch(s, now) ? ' active' : '') + (n ? ' has-unread' : ''),
+					title: s.q || s.name,
+					onclick: (e) => { e.preventDefault(); openSavedSearch(s) },
+					dataset: { searchId: s.id },
+				},
+				h('span', { class: 'wm-folder-icon', 'aria-hidden': 'true' }, '🔍'),
+				h('span', { class: 'wm-folder-name' }, s.name),
+				n ? h('span', { class: 'wm-badge', title: _('Non lus') }, String(n)) : null)
+				sUl.appendChild(h('li', { class: 'wm-folder-row' }, link,
+					h('button', {
+						type: 'button',
+						class: 'wm-folder-menu-btn wm-unsave-search',
+						title: _('Supprimer la recherche'),
+						'aria-label': _('Supprimer la recherche {name}', { name: s.name }),
+						onclick: (e) => { e.stopPropagation(); deleteSavedSearch(s) },
+					}, '✕')))
+			})
+			navEl.appendChild(h('div', { class: 'wm-nav-section' }, _('Recherches')))
+			navEl.appendChild(sUl)
+		}
+		if (favs.length || state.savedSearches.length) navEl.appendChild(h('div', { class: 'wm-nav-section' }, _('Dossiers')))
 
 		const ul = h('ul', { class: 'wm-folders' })
 		const byParent = {}
@@ -1467,6 +1497,74 @@
 		} catch (e) { /* the list without its pinned messages on top */ }
 	}
 
+	/** « Recherches enregistrées »: kept on the server (the same on every device), with their unread counts. */
+	async function loadSavedSearches() {
+		const account = state.accountId
+		try {
+			const r = await api('/accounts/' + account + '/saved-searches')
+			if (account !== state.accountId) return
+			state.savedSearches = r.searches
+			if (state.module === 'mail') renderNav()
+			countSavedSearches()
+		} catch (e) { /* the pane without them */ }
+	}
+	async function countSavedSearches() {
+		const account = state.accountId
+		if (!state.savedSearches.length) { state.searchCounts = {}; return }
+		try {
+			const r = await api('/accounts/' + account + '/saved-searches/counts')
+			if (account !== state.accountId) return
+			state.searchCounts = r.counts || {}
+			if (state.module === 'mail') renderNav()
+		} catch (e) { /* no counters */ }
+	}
+	/** The search of the list as it is now, to keep. */
+	function currentSearch() {
+		const f = currentFolder()
+		return Object.assign({ q: state.query, folder: (f && f.role) || state.folderId }, state.filters)
+	}
+	const sameSearch = (s, c) => s.q === c.q && ['unread', 'attachments', 'flagged', 'all'].every((k) => !!s[k] === !!c[k])
+		&& (s.since || '') === (c.since || '') && (s.all || s.folder === c.folder)
+	async function saveSearch() {
+		const c = currentSearch()
+		const name = (window.prompt(_('Nom de la recherche'), c.q || '') || '').trim()
+		if (!name) return
+		try {
+			const r = await api('/accounts/' + state.accountId + '/saved-searches', { method: 'POST', body: Object.assign({ name }, c) })
+			state.savedSearches = r.searches
+			toast(_('Recherche « {name} » enregistrée', { name }))
+			renderNav()
+			renderList(false)
+			countSavedSearches()
+		} catch (e) { toast(e.message, true) }
+	}
+	async function deleteSavedSearch(s) {
+		try {
+			const r = await api('/accounts/' + state.accountId + '/saved-searches/' + encodeURIComponent(s.id), { method: 'DELETE' })
+			state.savedSearches = r.searches
+			toast(_('Recherche « {name} » supprimée', { name: s.name }))
+			renderNav()
+			if (state.module === 'mail' && listEl) renderList(state.loadingList && !state.messages.length)
+		} catch (e) { toast(e.message, true) }
+	}
+	/** A saved search opened: its folder, words and filters, as when it was kept. */
+	function openSavedSearch(s) {
+		state.unified = false
+		state.today = false
+		saveListCache()
+		const folder = state.folders.find((f) => f.role === s.folder || f.id === s.folder)
+		state.folderId = folder ? folder.id : s.folder
+		state.query = s.q
+		state.filters = { unread: !!s.unread, attachments: !!s.attachments, flagged: !!s.flagged, since: s.since || '', all: !!s.all }
+		state.showFilters = filtersOn() > 0 || !!s.all
+		state.checked.clear()
+		state.selectedId = null
+		renderNav()
+		renderEmptyDetail()
+		setView('list')
+		loadMessages(true)
+	}
+
 	/** « Épingler » / « Désépingler »: at the top of its folder, whatever the order. */
 	async function togglePin(m) {
 		const pinned = !state.pinned.has(m.id)
@@ -1484,6 +1582,7 @@
 		loadSnoozes()
 		if (!signatureSets.has(state.accountId)) loadSignatures(state.accountId)
 		loadPinned()
+		loadSavedSearches()
 		try {
 			const data = await api('/accounts/' + state.accountId + '/folders')
 			state.folders = data.folders
@@ -2202,7 +2301,13 @@
 					: (all ? _('Messages filtrés dans tous les dossiers') : _('Messages filtrés dans {folder}', { folder }))
 			listEl.appendChild(h('div', { class: 'wm-search-info' },
 				what + (state.loadingList ? '' : ' (' + state.total + ') '),
-				h('a', { href: '#', onclick: (e) => { e.preventDefault(); resetSearch(); loadMessages(true) } }, _('effacer'))))
+				h('a', { href: '#', onclick: (e) => { e.preventDefault(); resetSearch(); renderNav(); loadMessages(true) } }, _('effacer')),
+				state.unified || state.savedSearches.some((s) => sameSearch(s, currentSearch())) ? null : h('button', {
+					type: 'button',
+					class: 'wm-save-search',
+					title: _('Retrouver cette recherche dans le volet de gauche'),
+					onclick: () => saveSearch(),
+				}, '☆ ' + _('Enregistrer'))))
 		}
 
 		if (loading) {

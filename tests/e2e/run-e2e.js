@@ -995,6 +995,49 @@ async function main() {
 		}
 	})
 
+	await step('saved searches: kept under a name, in the side pane with their unread messages, opened again, deleted', async () => {
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		const sent = await fake('/_test/deliver', { subject: 'Rapport Zorglub trimestriel', sender: ['Paul Durand', 'paul.durand@societe-a.fr'], body: '<p>Le rapport.</p>', isRead: false })
+		try {
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('.wm-folder:has-text("Boîte de réception")')
+			await page.fill('.wm-search', 'zorglub')
+			await page.press('.wm-search', 'Enter')
+			await page.waitForSelector('.wm-message:has-text("Rapport Zorglub trimestriel")')
+			page.once('dialog', (d) => d.accept('Rapports Zorglub'))
+			await page.click('.wm-search-info .wm-save-search')
+			const entry = '.wm-saved-searches .wm-saved-search:has-text("Rapports Zorglub")'
+			await page.waitForSelector(entry + ' .wm-badge:has-text("1")')
+			// the search shown is the one saved: no second « Enregistrer »
+			await page.waitForSelector(entry + '.active')
+			assert.ok(!(await page.$('.wm-search-info .wm-save-search')), 'already saved')
+			await shot('108-saved-search')
+			// back to the whole folder, then the search again in one click
+			await page.click('.wm-search-info a:has-text("effacer")')
+			await page.waitForFunction(() => !document.querySelector('.wm-search-info'))
+			await page.click(entry)
+			await page.waitForSelector('.wm-search-info:has-text("zorglub")')
+			assert.strictEqual(await page.inputValue('.wm-search'), 'zorglub')
+			await page.waitForSelector('.wm-message:has-text("Rapport Zorglub trimestriel")')
+			// kept on the server: there after a reload
+			await page.reload()
+			await page.waitForSelector(entry)
+			await page.click('.wm-saved-searches .wm-folder-row:has-text("Rapports Zorglub") .wm-unsave-search')
+			await page.waitForFunction(() => !document.querySelector('.wm-saved-searches'))
+		} finally {
+			await fake('/_test/remove', { id: sent.id })
+		}
+	})
+
 	await step('absence of Nextcloud: the automatic reply scheduled on its dates (the model, then its own message), taken away with it', async () => {
 		const ymd = (days) => { const d = new Date(Date.now() + days * 86400000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
 		const absence = (method, body) => page.evaluate(async ({ method, body }) => {

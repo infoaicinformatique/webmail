@@ -11,6 +11,7 @@ use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\AttachmentZip;
 use OCA\Webmail\Service\FollowUpService;
 use OCA\Webmail\Service\HtmlSanitizer;
+use OCA\Webmail\Service\SavedSearches;
 use OCA\Webmail\Service\MailNotificationService;
 use OCA\Webmail\Service\SecurityCheck;
 use OCA\Webmail\Service\ServerConfigService;
@@ -55,6 +56,7 @@ class MailController extends Controller {
 		private ICacheFactory $cacheFactory,
 		private ServerConfigService $serverConfig,
 		private \OCP\IUserManager $userManager,
+		private \OCP\IConfig $config,
 		private ?string $userId,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -167,6 +169,88 @@ class MailController extends Controller {
 				return $client->searchFolders($ids, max(0, $offset), $limit, $query, $sort, $desc);
 			}
 			return $client->findItems($folder, max(0, $offset), $limit, $query, $sort, $desc);
+		});
+	}
+
+	private function searchesKey(int $id): string {
+		return 'searches_' . $id;
+	}
+
+	/** @return list<array<string, mixed>> */
+	private function savedSearchList(int $id): array {
+		return SavedSearches::decode($this->config->getUserValue((string)$this->userId, Application::APP_ID, $this->searchesKey($id), '[]'));
+	}
+
+	/** @param list<array<string, mixed>> $list */
+	private function keepSearches(int $id, array $list): void {
+		if ($list === []) {
+			$this->config->deleteUserValue((string)$this->userId, Application::APP_ID, $this->searchesKey($id));
+		} else {
+			$this->config->setUserValue((string)$this->userId, Application::APP_ID, $this->searchesKey($id), json_encode($list));
+		}
+	}
+
+	/** « Recherches enregistrées » of an account. */
+	#[NoAdminRequired]
+	public function savedSearches(int $id): Response {
+		return $this->handle(function () use ($id) {
+			$this->accounts->find((string)$this->userId, $id);
+			return ['searches' => $this->savedSearchList($id)];
+		});
+	}
+
+	/** A search kept under a name (the same name: replaced). */
+	#[NoAdminRequired]
+	public function saveSearch(int $id, string $name = '', string $q = '', string $folder = 'inbox', bool $unread = false,
+		bool $attachments = false, bool $flagged = false, string $since = '', bool $all = false): Response {
+		return $this->handle(function () use ($id, $name, $q, $folder, $unread, $attachments, $flagged, $since, $all) {
+			$this->accounts->find((string)$this->userId, $id);
+			try {
+				$list = SavedSearches::add($this->savedSearchList($id),
+					compact('name', 'q', 'folder', 'unread', 'attachments', 'flagged', 'since', 'all'),
+					bin2hex(random_bytes(8)));
+			} catch (\InvalidArgumentException $e) {
+				if ($e->getMessage() === 'too many') {
+					throw new MailException('Trop de recherches enregistrées (%s au plus)', [SavedSearches::MAX]);
+				}
+				throw new MailException('Rien à enregistrer : saisissez des mots ou choisissez un filtre');
+			}
+			$this->keepSearches($id, $list);
+			return ['searches' => $list];
+		});
+	}
+
+	#[NoAdminRequired]
+	public function deleteSearch(int $id, string $searchId): Response {
+		return $this->handle(function () use ($id, $searchId) {
+			$this->accounts->find((string)$this->userId, $id);
+			$list = SavedSearches::remove($this->savedSearchList($id), $searchId);
+			$this->keepSearches($id, $list);
+			return ['searches' => $list];
+		});
+	}
+
+	/**
+	 * The unread messages each saved search finds (its counter in the side pane):
+	 * id => count, a search Exchange cannot answer left out.
+	 */
+	#[NoAdminRequired]
+	public function searchCounts(int $id): Response {
+		return $this->handle(function () use ($id) {
+			$client = $this->client($id);
+			$counts = [];
+			foreach ($this->savedSearchList($id) as $s) {
+				try {
+					$query = EwsClient::searchQuery((string)$s['q'], SavedSearches::filters($s, true));
+					$found = $s['all'] && $query !== null
+						? $client->searchFolders($this->folderIds($id, $client), 0, 1, $query)
+						: $client->findItems((string)$s['folder'], 0, 1, $query);
+					$counts[$s['id']] = (int)($found['total'] ?? 0);
+				} catch (\Throwable $e) {
+					$this->logger->debug('Webmail: saved search not counted', ['app' => Application::APP_ID, 'exception' => $e]);
+				}
+			}
+			return ['counts' => $counts];
 		});
 	}
 
