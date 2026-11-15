@@ -1644,5 +1644,15 @@
 	"Nouvel horaire de la réunion : %s": "New time of the meeting: %s",
 	"La réunion « %s » est annulée.": "The meeting “%s” is cancelled.",
 	"Annulée : %s": "Cancelled: %s",
-	"La réunion « %s » commence : rejoignez l'appel de ce salon.": "The meeting “%s” begins: join the call of this room."
+	"La réunion « %s » commence : rejoignez l'appel de ce salon.": "The meeting “%s” begins: join the call of this room.",
+	"Réunions": "Meetings",
+	"Tâches à faire": "Tasks to do",
+	"En retard ({date})": "Late ({date})",
+	"Aucune réunion aujourd'hui": "No meeting today",
+	"Aucune tâche pour aujourd'hui": "No task for today",
+	"Revient à {time}": "Back at {time}",
+	"Messages à suivre": "Messages to follow up",
+	"Messages reportés qui reviennent": "Snoozed messages coming back",
+	"Aucun suivi arrivé à échéance": "No follow-up due",
+	"Aucun message reporté ne revient aujourd'hui": "No snoozed message comes back today"
 }
