@@ -1248,3 +1248,7 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-slots-form { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
 .wm-slots-form .wm-field > span { width: 160px; }
 .wm-slots-form .wm-form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+
+/* « Absences de Nextcloud » */
+.wm-absence-settings fieldset { border: 0; padding: 0; margin: 0; }
+.wm-absence-settings textarea { width: 100%; min-height: 9em; }

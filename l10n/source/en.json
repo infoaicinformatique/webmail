@@ -1694,5 +1694,18 @@
 	"Créneau": "Slot",
 	"Votre nom": "Your name",
 	"Votre adresse e-mail": "Your e-mail address",
-	"Confirmer ce rendez-vous": "Confirm this meeting"
+	"Confirmer ce rendez-vous": "Confirm this meeting",
+	"Bonjour,\n\nJe suis absent du {debut} au {fin} inclus, sans accès à mes messages. Je vous répondrai dès mon retour, le {retour}.{remplacement}\n\n{message}\n\nCordialement,\n{nom}": "Hello,\n\nI am away from {debut} to {fin} included, without access to my messages. I will answer when I am back, on {retour}.{remplacement}\n\n{message}\n\nBest regards,\n{nom}",
+	"En mon absence, vous pouvez joindre %s.": "While I am away, you can reach %s.",
+	"Réponse automatique programmée du %1$s au %2$s": "Automatic reply scheduled from %1$s to %2$s",
+	"Pour votre absence de Nextcloud : %s": "For your absence in Nextcloud: %s",
+	"Saisir une absence dans Nextcloud": "Set an absence in Nextcloud",
+	"Vos absences de Nextcloud programmeront la réponse automatique": "Your absences in Nextcloud will schedule the automatic reply",
+	"Vos absences de Nextcloud ne changeront plus la réponse automatique": "Your absences in Nextcloud will no longer change the automatic reply",
+	"Absences de Nextcloud": "Absences in Nextcloud",
+	"Pendant mes absences saisies dans Nextcloud, programmer la réponse automatique de tous mes comptes (mêmes dates)": "During my absences set in Nextcloud, schedule the automatic reply of all my accounts (same dates)",
+	"Ce modèle remplace le message de vos absences, avec ces éléments remplis : {debut}, {fin}, {retour} (le lendemain), {nom}, {message} (celui de l'absence), {remplacement} (« En mon absence, vous pouvez joindre … »). Laissez vide pour envoyer le message de l'absence tel quel (ou le modèle de votre organisation, s'il y en a un).": "This model replaces the message of your absences, with these filled in: {debut}, {fin}, {retour} (the day after), {nom}, {message} (the one of the absence), {remplacement} (“While I am away, you can reach …”). Leave empty to send the message of the absence as it is (or the model of your organisation, if there is one).",
+	"Réponse automatique pendant les absences": "Automatic reply during absences",
+	"Une absence saisie dans Nextcloud (Paramètres personnels › Disponibilité › Absence) programme la réponse automatique Exchange de la personne sur les mêmes dates. Ce modèle remplace alors le message de l'absence, sauf si la personne a écrit le sien ; y sont remplis : {debut}, {fin}, {retour}, {nom}, {message} (celui de l'absence), {remplacement}. Laissez vide pour envoyer le message de l'absence tel quel.": "An absence set in Nextcloud (Personal settings › Availability › Absence) schedules the Exchange automatic reply of the person on the same dates. This model then replaces the message of the absence, unless the person wrote their own; filled in: {debut}, {fin}, {retour}, {nom}, {message} (the one of the absence), {remplacement}. Leave empty to send the message of the absence as it is.",
+	"Enregistrer le modèle": "Save the model"
 }
