@@ -1634,5 +1634,11 @@
 	"1 participant invité dans le salon du chat": "1 participant invited to the chat room",
 	"Aucun salon visio du chat dans cet événement": "No chat video room in this event",
 	"Chat trouvé à l'instant : rechargez la page": "Chat found just now: reload the page",
-	"Aucun des Sites externes n'est reconnu comme un Element (config.json lu à son adresse) : %s": "None of the External sites is recognised as an Element (config.json read at its address): %s"
+	"Aucun des Sites externes n'est reconnu comme un Element (config.json lu à son adresse) : %s": "None of the External sites is recognised as an Element (config.json read at its address): %s",
+	"Rejoindre": "Join",
+	"« {subject} » commence dans 1 minute": "“{subject}” starts in 1 minute",
+	"« {subject} » commence dans {minutes} minutes": "“{subject}” starts in {minutes} minutes",
+	"« {subject} » commence maintenant": "“{subject}” starts now",
+	"« {subject} » a commencé il y a {minutes} min": "“{subject}” started {minutes} min ago",
+	"Masquer pour cette réunion": "Hide for this meeting"
 }

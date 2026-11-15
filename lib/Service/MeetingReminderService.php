@@ -33,8 +33,12 @@ class MeetingReminderService {
 		private IUserManager $users,
 		private LoggerInterface $logger,
 		private ICacheFactory $cacheFactory,
+		private MatrixService $matrix,
 	) {
 	}
+
+	/** the link to join a meeting is looked for in its description for the meetings of the next hours only */
+	public const JOIN_HOURS = 3;
 
 	/**
 	 * The job runs every minute; the coming events are asked to Exchange
@@ -60,9 +64,70 @@ class MeetingReminderService {
 		}
 		$from = $now->modify('-10 minutes');
 		$until = $now->modify('+' . self::HORIZON_HOURS . ' hours')->modify('+' . self::EVENTS_TTL . ' seconds');
-		$events = (new EwsCalendar($this->accounts->getClient($account, AccountService::BACKGROUND_TIMEOUT)))->withReminders($from, $until);
+		$calendar = new EwsCalendar($this->accounts->getClient($account, AccountService::BACKGROUND_TIMEOUT));
+		$events = $calendar->withReminders($from, $until);
+		$events = $this->withJoinLinks($calendar, $events, $now);
 		$cache->set($key, ['from' => $from->getTimestamp(), 'until' => $until->getTimestamp(), 'events' => $events], self::EVENTS_TTL);
 		return $events;
+	}
+
+	/**
+	 * The link to join each coming meeting (« join »): in its place, else in its description
+	 * (read for the meetings of the next hours: « Rejoindre la visio : https://… »).
+	 * @param array<int, array<string, mixed>> $events
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function withJoinLinks(EwsCalendar $calendar, array $events, \DateTimeImmutable $now): array {
+		try {
+			$visio = (string)($this->matrix->effectiveVisio()['visio'] ?? '');
+		} catch (\Throwable) {
+			$visio = '';
+		}
+		$soon = $now->getTimestamp() + self::JOIN_HOURS * 3600;
+		foreach ($events as $i => $ev) {
+			$join = self::joinLink((string)($ev['location'] ?? ''), '', $visio);
+			if ($join === null && empty($ev['allDay']) && empty($ev['isCancelled']) && !empty($ev['start'])
+				&& (new \DateTimeImmutable((string)$ev['start']))->getTimestamp() <= $soon
+				&& (new \DateTimeImmutable((string)($ev['end'] ?: $ev['start'])))->getTimestamp() >= $now->getTimestamp()) {
+				try {
+					$join = self::joinLink((string)($ev['location'] ?? ''), (string)($calendar->getEvent((string)$ev['id'])['body'] ?? ''), $visio);
+				} catch (\Throwable) {
+					// (gone in between: no link)
+				}
+			}
+			$events[$i]['join'] = $join;
+		}
+		return $events;
+	}
+
+	/**
+	 * The meetings of the user's accounts that begin within $ahead minutes, or began and are
+	 * not over (for the banner « Réunion dans 5 min · Rejoindre »). From the events the
+	 * reminders keep (asked to Exchange every 5 minutes at most).
+	 * @return list<array{account: int, email: string, eventId: string, subject: string, start: string, end: string, join: ?string}>
+	 */
+	public function upcoming(string $userId, \DateTimeImmutable $now, int $ahead = 15): array {
+		$out = [];
+		foreach ($this->mapper->findAllForUser($userId) as $account) {
+			try {
+				$events = $this->events($account, $now);
+			} catch (\Throwable $e) {
+				continue;
+			}
+			foreach (self::soon($events, $now, $ahead) as $ev) {
+				$out[] = [
+					'account' => $account->getId(),
+					'email' => $account->getEmail(),
+					'eventId' => (string)$ev['id'],
+					'subject' => (string)($ev['subject'] ?? ''),
+					'start' => (string)$ev['start'],
+					'end' => (string)$ev['end'],
+					'join' => $ev['join'] ?? null,
+				];
+			}
+		}
+		usort($out, fn ($a, $b) => strcmp($a['start'], $b['start']));
+		return $out;
 	}
 
 	/** The tasks to do with a reminder, asked to Exchange every 5 minutes at most (and again when changed here). */
@@ -201,6 +266,7 @@ class MeetingReminderService {
 					'start' => (string)$ev['start'],
 					'allDay' => (bool)($ev['allDay'] ?? false),
 					'location' => mb_substr((string)($ev['location'] ?? ''), 0, 200),
+					'join' => (string)($ev['join'] ?? ''),
 				]);
 			$this->notifications->notify($n);
 			$seen[$objectId] = (string)$ev['end'];
@@ -244,6 +310,56 @@ class MeetingReminderService {
 	 */
 	public static function over(array $seen, \DateTimeImmutable $now): array {
 		return array_keys(array_filter($seen, fn ($end) => $end === '' || (new \DateTimeImmutable($end)) <= $now));
+	}
+
+	/**
+	 * The meetings beginning within $ahead minutes, or begun and not over: not all-day, not cancelled.
+	 * @param array<int, array<string, mixed>> $events
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function soon(array $events, \DateTimeImmutable $now, int $ahead): array {
+		$t = $now->getTimestamp();
+		return array_values(array_filter($events, function (array $ev) use ($t, $ahead): bool {
+			if (!empty($ev['allDay']) || !empty($ev['isCancelled']) || empty($ev['start'])) {
+				return false;
+			}
+			$start = (new \DateTimeImmutable((string)$ev['start']))->getTimestamp();
+			$end = (new \DateTimeImmutable((string)($ev['end'] ?: $ev['start'])))->getTimestamp();
+			return $start <= $t + 60 * $ahead && $end > $t;
+		}));
+	}
+
+	/**
+	 * The link to join a meeting: a room of Nextcloud Talk, a link of the visio of the
+	 * organisation ($visio: Element, Element Call, « https://meet…/{room} »), a known meeting
+	 * service (Teams, Zoom, Meet, Webex, Jitsi), else a link given as its place.
+	 */
+	public static function joinLink(string $location, string $body, string $visio = ''): ?string {
+		$text = $location . ' ' . $body;
+		if (preg_match('~https?://[^\s<>"\']+/call/[A-Za-z0-9]+~', $text, $m)) {
+			return $m[0];
+		}
+		preg_match_all('~https?://[^\s<>"\']+~', $text, $all);
+		$links = array_map(fn ($l) => rtrim($l, '.,;)'), $all[0]);
+		if ($visio !== '') {
+			$start = str_contains($visio, '{room}') ? substr($visio, 0, (int)strpos($visio, '{room}')) : rtrim($visio, '/') . '/';
+			foreach ($links as $l) {
+				if (str_starts_with($l, $start)) {
+					return $l;
+				}
+			}
+		}
+		foreach ($links as $l) {
+			if (preg_match('~^https://([a-z0-9-]+\.)*(teams\.microsoft\.com|teams\.live\.com|zoom\.us|meet\.google\.com|webex\.com|whereby\.com|meet\.jit\.si)/~i', $l)
+				|| str_contains($l, '/#/room/')) {
+				return $l;
+			}
+		}
+		// « Rejoindre la visio : https://… », « Join the meeting: https://… »
+		if (preg_match('~(?:visio|rejoindre|join|réunion en ligne|online meeting)[^\n]{0,40}?(https?://[^\s<>"\']+)~iu', $body, $m)) {
+			return rtrim($m[1], '.,;)');
+		}
+		return preg_match('~https?://[^\s<>"\']+~', $location, $m) ? rtrim($m[0], '.,;)') : null;
 	}
 
 	/** One notification per occurrence: a weekly meeting reminds every week. */

@@ -6055,6 +6055,74 @@
 		checkNewMessages()
 		document.addEventListener('keydown', onShortcut)
 		window.addEventListener('keydown', onPaletteKey, true)
+		watchMeetings()
+	}
+
+	/**
+	 * « Réunion dans 5 min · Rejoindre »: the meetings with a visio (the chat, Talk, Teams…)
+	 * of all the accounts, from 10 minutes before their start until their end.
+	 */
+	const meetings = { list: [], banner: null, dismissed: new Set(), at: 0 }
+	const MEETING_AHEAD_MIN = 10
+	function watchMeetings() {
+		try { JSON.parse(sessionStorage.getItem('webmail.meetings.dismissed') || '[]').forEach((k) => meetings.dismissed.add(k)) } catch (e) { /* ignore */ }
+		const load = async () => {
+			if (document.hidden || offline.on) return
+			try {
+				meetings.list = (await api('/meetings/upcoming')).meetings || []
+				meetings.at = Date.now()
+			} catch (e) {
+				return
+			}
+			renderMeetingBanner()
+		}
+		load()
+		setInterval(load, 60000)
+		// (the minutes counted down between two requests)
+		setInterval(renderMeetingBanner, 20000)
+		document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - meetings.at > 30000) load() })
+	}
+	function renderMeetingBanner() {
+		const now = Date.now()
+		const m = meetings.list.find((x) => x.join && /^https:\/\//i.test(x.join)
+			&& Date.parse(x.start) - now <= MEETING_AHEAD_MIN * 60000 && Date.parse(x.end) > now
+			&& !meetings.dismissed.has(x.eventId + '|' + x.start))
+		if (!m) {
+			if (meetings.banner) { meetings.banner.remove(); meetings.banner = null }
+			return
+		}
+		const key = m.eventId + '|' + m.start
+		const minutes = Math.round((Date.parse(m.start) - now) / 60000)
+		const subject = m.subject || _('(sans titre)')
+		const text = minutes > 0
+			? (minutes === 1 ? _('« {subject} » commence dans 1 minute', { subject }) : _('« {subject} » commence dans {minutes} minutes', { subject, minutes }))
+			: minutes === 0 ? _('« {subject} » commence maintenant', { subject })
+				: _('« {subject} » a commencé il y a {minutes} min', { subject, minutes: -minutes })
+		if (!meetings.banner || meetings.banner.dataset.key !== key) {
+			if (meetings.banner) meetings.banner.remove()
+			meetings.banner = h('div', { class: 'wm-meeting-banner', role: 'status', 'aria-live': 'polite', dataset: { key } },
+				h('span', { class: 'wm-meeting-icon', 'aria-hidden': 'true' }, '🎥'),
+				h('span', { class: 'wm-meeting-text' }),
+				h('a', {
+					class: 'button primary wm-meeting-join',
+					href: m.join,
+					target: '_blank',
+					rel: 'noopener noreferrer',
+				}, _('Rejoindre')),
+				h('button', {
+					type: 'button',
+					class: 'wm-icon-btn wm-meeting-close',
+					title: _('Masquer pour cette réunion'),
+					'aria-label': _('Masquer pour cette réunion'),
+					onclick: () => {
+						meetings.dismissed.add(key)
+						try { sessionStorage.setItem('webmail.meetings.dismissed', JSON.stringify([...meetings.dismissed].slice(-50))) } catch (e) { /* ignore */ }
+						renderMeetingBanner()
+					},
+				}, '✕'))
+			document.body.appendChild(meetings.banner)
+		}
+		meetings.banner.querySelector('.wm-meeting-text').textContent = text
 	}
 
 	if (document.readyState === 'loading') {

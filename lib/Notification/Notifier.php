@@ -113,6 +113,16 @@ class Notifier implements INotifier {
 			->setParsedMessage(implode(' · ', $parts))
 			->setLink($this->url->linkToRouteAbsolute('webmail.page.index') . '?' . http_build_query(['account' => $p['account'] ?? '', 'module' => 'calendar', 'event' => $p['eventId'] ?? '']))
 			->setIcon($this->url->getAbsoluteURL($this->url->imagePath('core', 'places/calendar.svg')));
+		// a meeting with a visio (the chat, Talk, Teams…): joined from the bell
+		$join = (string)($p['join'] ?? '');
+		if (preg_match('~^https://~i', $join)) {
+			$action = $notification->createAction();
+			$action->setLabel('join')
+				->setParsedLabel($l->t('Rejoindre'))
+				->setLink($join, 'WEB')
+				->setPrimary(true);
+			$notification->addParsedAction($action);
+		}
 		return $notification;
 	}
 }

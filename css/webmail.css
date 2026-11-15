@@ -1195,3 +1195,27 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-more-menu .wm-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; margin: 0; padding: 6px 8px; border: 0; border-radius: var(--border-radius, 6px); background: none; text-align: left; font-weight: normal; min-height: 34px; color: var(--color-main-text); }
 .wm-more-menu .wm-menu-item:hover, .wm-more-menu .wm-menu-item:focus-visible { background: var(--color-background-hover); }
 .wm-more-menu .wm-menu-icon { width: 20px; text-align: center; flex: none; }
+
+/* « Réunion dans 5 min · Rejoindre »: in the corner, above the panes */
+.wm-meeting-banner {
+	position: fixed;
+	right: 20px;
+	bottom: 24px;
+	z-index: 2001;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	max-width: min(460px, calc(100vw - 32px));
+	padding: 8px 8px 8px 14px;
+	border-radius: var(--border-radius-large, 10px);
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	border: 1px solid var(--color-border);
+	box-shadow: 0 4px 16px var(--color-box-shadow, rgba(0, 0, 0, .25));
+}
+.wm-meeting-banner .wm-meeting-text { flex: 1; min-width: 0; font-weight: bold; }
+.wm-meeting-banner .button, .wm-meeting-banner button { margin: 0; flex: none; }
+.wm-meeting-banner .wm-meeting-icon { font-size: 20px; }
+@media (max-width: 1024px) {
+	.wm-meeting-banner { right: 16px; left: 16px; bottom: 16px; max-width: none; }
+}
