@@ -1016,6 +1016,27 @@ async function main() {
 		await page.waitForSelector('.wm-absence-settings:not([hidden]) input[name=absenceReplies]:checked')
 		assert.ok((await page.getAttribute('.wm-absence-settings textarea', 'placeholder')).includes('{debut}'))
 		await shot('105-absence-settings')
+		// an invitation of a colleague on one of the days, not answered yet
+		const invite = (body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path: '/_test/invite', method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		const inviteDay = new Date(Date.now() + 9 * 86400000).toISOString().slice(0, 10)
+		await invite({ subject: 'Point annuel fournisseurs', start: inviteDay + 'T09:00:00Z', end: inviteDay + 'T10:00:00Z', organizer: ['Paul Durand', 'paul.durand@societe-a.fr'] })
+		const invited = () => page.evaluate(async (day) => {
+			const headers = { requesttoken: OC.requestToken }
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const q = new URLSearchParams({ start: day + 'T00:00:00Z', end: day + 'T23:59:00Z', tz: 'UTC' })
+			return (await (await fetch('/apps/webmail/api/accounts/' + id + '/calendar/events?' + q, { headers })).json()).events.filter((e) => e.subject === 'Point annuel fournisseurs')
+		}, inviteDay)
+		assert.strictEqual((await invited()).length, 1, 'the invitation is there')
 		// no model: the message of the absence as it is, on its dates
 		const first = ymd(7)
 		const last = ymd(14)
@@ -1026,6 +1047,9 @@ async function main() {
 		assert.strictEqual(o.audience, 'All')
 		assert.strictEqual(o.internal, 'En congés, je lirai vos messages à mon retour.')
 		assert.ok(new Date(o.start).getTime() <= new Date(first + 'T00:00:00').getTime() + 86400000 && new Date(o.end) > new Date(last + 'T12:00:00'), o.start + ' ' + o.end)
+		// the invitation of those days declined (the organiser told), by default
+		assert.strictEqual((await invited()).length, 0, 'declined: gone from the calendar')
+		assert.strictEqual(await page.inputValue('.wm-absence-settings select[name=absenceInvites]'), 'decline')
 		const bell = await page.evaluate(async () => (await (await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })).json()).ocs.data.filter((n) => n.app === 'webmail' && n.subject.startsWith('Réponse automatique programmée')))
 		assert.ok(bell.length === 1 && bell[0].message.includes('user@societe-a.fr'), JSON.stringify(bell))
 		// a model of one's own: the dates and the message of the absence filled in

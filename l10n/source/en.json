@@ -1714,5 +1714,10 @@
 	"Ce message se présente comme venant de {name}, mais il est envoyé depuis une adresse extérieure ({email}). Ne répondez pas à une demande de paiement, de mot de passe ou de document sans vérifier auprès de la personne par un autre moyen.": "This message presents itself as coming from {name}, but it is sent from an outside address ({email}). Do not answer a request for a payment, a password or a document without checking with the person by another means.",
 	"{count} liens trompeurs": "{count} deceptive links",
 	"Lien trompeur": "Deceptive link",
-	"Le texte affiche une adresse, mais le lien mène vers un autre site :": "The text shows an address, but the link leads to another site:"
+	"Le texte affiche une adresse, mais le lien mène vers un autre site :": "The text shows an address, but the link leads to another site:",
+	"Je suis absent du %1$s au %2$s : je ne pourrai pas participer à cette réunion.": "I am away from %1$s to %2$s: I will not be able to attend this meeting.",
+	"Les décliner, en donnant les dates de l'absence": "Decline them, giving the dates of the absence",
+	"Y répondre « provisoire »": "Answer them “tentative”",
+	"Ne rien faire": "Do nothing",
+	"Invitations à des réunions pendant l'absence": "Invitations to meetings during the absence"
 }

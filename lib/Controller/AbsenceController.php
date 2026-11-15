@@ -38,6 +38,7 @@ class AbsenceController extends Controller {
 		$admin = $this->absences->adminTemplate();
 		return [
 			'enabled' => $this->absences->isEnabled($user),
+			'invites' => $this->absences->invitesMode($user),
 			'template' => $this->absences->userTemplate($user),
 			// the model of the organisation, used when the user has none ('' : the message of the absence as it is)
 			'defaultTemplate' => $admin,
@@ -53,9 +54,12 @@ class AbsenceController extends Controller {
 	}
 
 	#[NoAdminRequired]
-	public function update(bool $enabled = true, string $template = ''): Response {
-		return $this->handle(function () use ($enabled, $template) {
+	public function update(bool $enabled = true, string $template = '', string $invites = ''): Response {
+		return $this->handle(function () use ($enabled, $template, $invites) {
 			$this->absences->setEnabled((string)$this->userId, $enabled);
+			if ($invites !== '') {
+				$this->absences->setInvitesMode((string)$this->userId, $invites);
+			}
 			$this->absences->setUserTemplate((string)$this->userId, $template);
 			return $this->settings();
 		});

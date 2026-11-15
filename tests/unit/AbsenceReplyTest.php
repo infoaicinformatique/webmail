@@ -28,4 +28,13 @@ class AbsenceReplyTest extends TestCase {
 	public function testUnknownBracesStayAsTheyAre(): void {
 		$this->assertSame('Retour le 3 janvier 2027 {heure}', AbsenceReplyService::render('Retour le {retour} {heure}', self::VALUES));
 	}
+
+	public function testTheInvitationsToAnswer(): void {
+		$invite = ['isMeeting' => true, 'isOrganizer' => false, 'isCancelled' => false, 'response' => 'NoResponseReceived'];
+		$this->assertTrue(AbsenceReplyService::toAnswer($invite));
+		$this->assertFalse(AbsenceReplyService::toAnswer(['response' => 'Accept'] + $invite), 'already answered');
+		$this->assertFalse(AbsenceReplyService::toAnswer(['isOrganizer' => true] + $invite), 'one\'s own meeting');
+		$this->assertFalse(AbsenceReplyService::toAnswer(['isCancelled' => true] + $invite));
+		$this->assertFalse(AbsenceReplyService::toAnswer(['isMeeting' => false] + $invite), 'an appointment');
+	}
 }
