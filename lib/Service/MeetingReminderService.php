@@ -34,6 +34,7 @@ class MeetingReminderService {
 		private LoggerInterface $logger,
 		private ICacheFactory $cacheFactory,
 		private MatrixService $matrix,
+		private MeetingRoomService $rooms,
 	) {
 	}
 
@@ -273,6 +274,15 @@ class MeetingReminderService {
 			$sent++;
 		}
 		$this->config->setUserValue($userId, Application::APP_ID, $key, json_encode($seen));
+		// the meetings beginning now: told in their room of the chat
+		$toldKey = 'room_told_' . $account->getId();
+		$told = json_decode($this->config->getUserValue($userId, Application::APP_ID, $toldKey, '{}'), true);
+		$told = $this->rooms->tellStarts($userId, $events, $now, is_array($told) ? $told : []);
+		if ($told !== []) {
+			$this->config->setUserValue($userId, Application::APP_ID, $toldKey, json_encode($told));
+		} else {
+			$this->config->deleteUserValue($userId, Application::APP_ID, $toldKey);
+		}
 		try {
 			$sent += $this->checkTasks($account, $now);
 		} catch (MailException $e) {

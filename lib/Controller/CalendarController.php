@@ -11,7 +11,9 @@ use OCA\Webmail\Ews\TimeZones;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\IcsImport;
+use OCA\Webmail\Service\Matrix;
 use OCA\Webmail\Service\MeetingReminderService;
+use OCA\Webmail\Service\MeetingRoomService;
 use OCA\Webmail\Service\NcCalendarRules;
 use OCA\Webmail\Service\NextcloudCalendarService;
 use OCA\Webmail\Service\SharedFolderService;
@@ -33,6 +35,7 @@ class CalendarController extends Controller {
 		private AccountService $accounts,
 		private SharedFolderService $shared,
 		private MeetingReminderService $reminders,
+		private MeetingRoomService $rooms,
 		private NextcloudCalendarService $nextcloud,
 		private LoggerInterface $logger,
 		private ?string $userId,
@@ -76,6 +79,15 @@ class CalendarController extends Controller {
 		}
 		$this->accounts->find((string)$this->userId, $id);
 		return true;
+	}
+
+	/** @return ?array<string, mixed> the event, or null when it cannot be read */
+	private function eventOrNull(EwsCalendar $ews, string $eventId): ?array {
+		try {
+			return $ews->getEvent($eventId);
+		} catch (\Throwable) {
+			return null;
+		}
 	}
 
 	private static function date(string $value): \DateTimeImmutable {
@@ -379,8 +391,16 @@ class CalendarController extends Controller {
 				$this->nextcloud->update((string)$this->userId, $calendar, $eventId, $event, $tz, $series);
 				return ['status' => 'ok'];
 			}
-			$this->calendar($id, $tz, $calendar, true)->updateEvent($eventId, $event, $series);
+			$ews = $this->calendar($id, $tz, $calendar, true);
+			// (a meeting with a room of the chat: its room follows a new time)
+			$before = Matrix::roomIdIn(($event['location'] ?? '') . ' ' . ($event['body'] ?? '')) !== null ? $this->eventOrNull($ews, $eventId) : null;
+			$ews->updateEvent($eventId, $event, $series);
 			$this->reminders->changed($id);
+			// (read again: its times as Exchange keeps them, whatever the time zone of the form)
+			$after = $before !== null && !$series ? $this->eventOrNull($ews, $eventId) : null;
+			if ($after !== null && MeetingRoomService::moved($before, (string)$after['start'], (string)$after['end'])) {
+				$this->rooms->rescheduled((string)$this->userId, $after);
+			}
 			return ['status' => 'ok'];
 		});
 	}
@@ -395,8 +415,13 @@ class CalendarController extends Controller {
 				$this->nextcloud->move((string)$this->userId, $calendar, $eventId, $start, $end, $allDay, $tz);
 				return ['status' => 'ok'];
 			}
-			$this->calendar($id, $tz, $calendar, true)->moveEvent($eventId, $start, $end, $allDay, $notify);
+			$ews = $this->calendar($id, $tz, $calendar, true);
+			$ews->moveEvent($eventId, $start, $end, $allDay, $notify);
 			$this->reminders->changed($id);
+			$after = $this->eventOrNull($ews, $eventId);
+			if ($after !== null && MeetingRoomService::roomOf($after) !== null) {
+				$this->rooms->rescheduled((string)$this->userId, $after);
+			}
 			return ['status' => 'ok'];
 		});
 	}
@@ -408,8 +433,14 @@ class CalendarController extends Controller {
 				$this->nextcloud->delete((string)$this->userId, $calendar, $eventId, $series);
 				return ['status' => 'ok'];
 			}
-			$this->calendar($id, 'UTC', $calendar, true)->deleteEvent($eventId, $series, str_starts_with($calendar, 'public:'));
+			$ews = $this->calendar($id, 'UTC', $calendar, true);
+			// (the meeting's room of the chat closed with it: read before it is gone)
+			$before = $series ? null : $this->eventOrNull($ews, $eventId);
+			$ews->deleteEvent($eventId, $series, str_starts_with($calendar, 'public:'));
 			$this->reminders->changed($id);
+			if ($before !== null) {
+				$this->rooms->cancelled((string)$this->userId, $before);
+			}
 			return ['status' => 'ok'];
 		});
 	}

@@ -243,6 +243,21 @@ class MatrixService {
 		return ['room' => $roomId, 'eventId' => (string)($r['event_id'] ?? '')];
 	}
 
+	/** A notice (an automatic message) in a room, with the user's account of the chat. */
+	public function roomNotice(string $userId, string $roomId, string $text): void {
+		[$hs, $token] = $this->account($userId);
+		$message = Matrix::message($text);
+		$message['msgtype'] = 'm.notice';
+		$txn = Matrix::txnId($userId, $roomId, $message['body'], intdiv(time(), 60));
+		$this->userCall($userId, 'PUT', $hs, '/rooms/' . rawurlencode($roomId) . '/send/m.room.message/' . $txn, $token, $message);
+	}
+
+	/** A state of a room (its name, its topic, who may join), with the user's account of the chat. */
+	public function roomState(string $userId, string $roomId, string $type, array $content): void {
+		[$hs, $token] = $this->account($userId);
+		$this->userCall($userId, 'PUT', $hs, '/rooms/' . rawurlencode($roomId) . '/state/' . rawurlencode($type) . '/', $token, $content);
+	}
+
 	/**
 	 * A video room for a meeting, made with the user's Matrix account.
 	 *

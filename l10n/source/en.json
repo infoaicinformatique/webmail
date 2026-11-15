@@ -1640,5 +1640,9 @@
 	"« {subject} » commence dans {minutes} minutes": "“{subject}” starts in {minutes} minutes",
 	"« {subject} » commence maintenant": "“{subject}” starts now",
 	"« {subject} » a commencé il y a {minutes} min": "“{subject}” started {minutes} min ago",
-	"Masquer pour cette réunion": "Hide for this meeting"
+	"Masquer pour cette réunion": "Hide for this meeting",
+	"Nouvel horaire de la réunion : %s": "New time of the meeting: %s",
+	"La réunion « %s » est annulée.": "The meeting “%s” is cancelled.",
+	"Annulée : %s": "Cancelled: %s",
+	"La réunion « %s » commence : rejoignez l'appel de ce salon.": "The meeting “%s” begins: join the call of this room."
 }

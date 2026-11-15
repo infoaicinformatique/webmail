@@ -5105,6 +5105,51 @@ async function main() {
 					}).on('error', reject))
 					const last = invited[invited.length - 1]
 					assert.ok(last && last.user_id === '@marie.martin:fake.test' && last.room.startsWith('!meet'), JSON.stringify(invited))
+
+					// the room follows the meeting: a new time said in it (and as its topic), the start told, the cancellation closes it
+					const fake = (what) => new Promise((resolve, reject) => require('https').get('https://localhost:8443/_matrix/test/' + what, { rejectUnauthorized: false }, (res) => {
+						let data = ''
+						res.on('data', (c) => { data += c })
+						res.on('end', () => resolve(JSON.parse(data)))
+					}).on('error', reject))
+					const room = last.room
+					const notices = async () => (await fake('sent')).filter((x) => x.room === room && x.content.msgtype === 'm.notice').map((x) => x.content.body)
+					const states = async () => (await fake('state')).filter((x) => x.room === room)
+					const cal = await page.evaluate(async () => {
+						const accounts = await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()
+						const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+						const q = new URLSearchParams({ start: new Date(Date.now() - 86400000 * 40).toISOString(), end: new Date(Date.now() + 86400000 * 40).toISOString(), tz: 'UTC' })
+						const r = await (await fetch('/apps/webmail/api/accounts/' + id + '/calendar/events?' + q, { headers: { requesttoken: OC.requestToken } })).json()
+						const ev = r.events.find((e) => e.subject === 'Revue avec Marie')
+						return { id, ev }
+					})
+					assert.ok(cal.ev, 'the meeting saved')
+					const call = (path, body) => page.evaluate(async ({ path, body }) => {
+						const r = await fetch('/apps/webmail/api' + path, { method: 'POST', headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+						if (!r.ok) throw new Error(path + ' ' + r.status + ' ' + await r.text())
+						return r.json()
+					}, { path, body })
+					// moved to the next day, 9:00 – 10:00 (UTC)
+					const day = new Date(Date.parse(cal.ev.start) + 86400000).toISOString().slice(0, 10)
+					await call('/accounts/' + cal.id + '/calendar/move', { eventId: cal.ev.id, start: day + 'T09:00', end: day + 'T10:00', tz: 'UTC' })
+					assert.ok((await notices()).some((t) => t.startsWith('Nouvel horaire de la réunion : ')), JSON.stringify(await notices()))
+					const topic = (await states()).filter((x) => x.type === 'm.room.topic').pop()
+					assert.ok(topic && /10:00/.test(topic.content.topic), JSON.stringify(await states()))
+					// a meeting with its room beginning: told by the reminder job, once
+					const started = await call('/accounts/' + cal.id + '/calendar/events?tz=UTC', {
+						event: { subject: 'Point qui commence', start: new Date(Date.now() - 60000).toISOString().slice(0, 16), end: new Date(Date.now() + 1800000).toISOString().slice(0, 16), location: 'https://ex3.fake.test:8443/element/#/room/' + encodeURIComponent(room) + '?via=fake.test', reminder: -1 },
+					})
+					const reminderJob = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\ReminderJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+					occ('background-job:execute ' + reminderJob + ' --force-execute')
+					occ('background-job:execute ' + reminderJob + ' --force-execute')
+					assert.strictEqual((await notices()).filter((t) => t.includes('« Point qui commence » commence')).length, 1, JSON.stringify(await notices()))
+					await call('/accounts/' + cal.id + '/calendar/delete', { eventId: started.id })
+					// cancelled: said, renamed, closed to new comers
+					await call('/accounts/' + cal.id + '/calendar/delete', { eventId: cal.ev.id })
+					assert.ok((await notices()).includes('La réunion « Revue avec Marie » est annulée.'), JSON.stringify(await notices()))
+					const after = await states()
+					assert.ok(after.some((x) => x.type === 'm.room.name' && x.content.name === 'Annulée : Revue avec Marie'), JSON.stringify(after))
+					assert.ok(after.some((x) => x.type === 'm.room.join_rules' && x.content.join_rule === 'invite'), JSON.stringify(after))
 				} finally {
 					occ('user:delete marie-e2e')
 				}
