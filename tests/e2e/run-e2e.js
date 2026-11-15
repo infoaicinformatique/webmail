@@ -1245,7 +1245,8 @@ async function main() {
 			const r = await fetch('/apps/webmail/api/accounts/' + id + '/calendar/events?tz=UTC', {
 				method: 'POST',
 				headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' },
-				body: JSON.stringify({ event: { subject: 'Appel fournisseur', start: iso(10), end: iso(40), location: 'Bureau 2', reminder: 15 } }),
+				// (the visio in the description only: found there for the meetings of the next hours)
+				body: JSON.stringify({ event: { subject: 'Appel fournisseur', start: iso(10), end: iso(40), location: 'Bureau 2', reminder: 15, body: 'Ordre du jour : tarifs.\n\nRejoindre la visio : https://visio.example.org/r/e2e-fournisseur' } }),
 			})
 			if (!r.ok) throw new Error('event not created: ' + r.status)
 			return { account: id, event: (await r.json()).id }
@@ -1255,13 +1256,30 @@ async function main() {
 		assert.strictEqual(mine.length, 1, JSON.stringify(await reminders()))
 		// (« Demain » when the test runs just before midnight)
 		assert(/^(Aujourd'hui|Demain) \d\d:\d\d · Bureau 2 · user@societe-a\.fr$/.test(mine[0].message), mine[0].message)
+		// joined from the bell
+		const join = (mine[0].actions || []).find((a) => a.label === 'Rejoindre')
+		assert(join && join.link === 'https://visio.example.org/r/e2e-fournisseur' && join.type === 'WEB' && join.primary, JSON.stringify(mine[0].actions))
 		// once only
 		runJob()
 		assert.strictEqual((await reminders()).filter((n) => n.subject === 'Rappel : Appel fournisseur').length, 1)
 		await page.reload()
+		// « Réunion dans 10 min · Rejoindre », in the corner of the webmail
+		const banner = '.wm-meeting-banner:has-text("Appel fournisseur")'
+		await page.waitForSelector(banner)
+		assert(/« Appel fournisseur » commence (dans \d+ minutes?|maintenant)/.test(await page.textContent(banner + ' .wm-meeting-text')), await page.textContent(banner))
+		assert.strictEqual(await page.getAttribute(banner + ' a.wm-meeting-join', 'href'), 'https://visio.example.org/r/e2e-fournisseur')
+		await shot('49-meeting-banner')
 		await page.click('.notifications-button')
 		await page.waitForSelector('.notification:has-text("Appel fournisseur")')
 		await shot('49-reminder')
+		await page.keyboard.press('Escape')
+		// hidden for this meeting, until the page is opened again in another tab
+		await page.click(banner + ' .wm-meeting-close')
+		await page.waitForSelector(banner, { state: 'detached' })
+		await page.reload()
+		await page.waitForSelector('.wm-message')
+		await page.waitForTimeout(1500)
+		assert(!(await page.$(banner)), 'hidden after a reload')
 		// its link: the calendar, the appointment open
 		await page.goto(mine[0].link)
 		await page.waitForSelector('.wm-modal h2:has-text("Appel fournisseur")')

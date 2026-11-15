@@ -87,6 +87,15 @@ class CalendarController extends Controller {
 	}
 
 	/**
+	 * The meetings of all the user's accounts beginning within 15 minutes, or begun and not
+	 * over, with the link to join them (the banner « Réunion dans 5 min · Rejoindre »).
+	 */
+	#[NoAdminRequired]
+	public function upcoming(): Response {
+		return $this->handle(fn () => ['meetings' => $this->reminders->upcoming((string)$this->userId, new \DateTimeImmutable('now', new \DateTimeZone('UTC')))]);
+	}
+
+	/**
 	 * The account's own calendars and the shared calendars added to it.
 	 */
 	#[NoAdminRequired]
