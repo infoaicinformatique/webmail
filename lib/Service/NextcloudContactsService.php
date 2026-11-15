@@ -6,6 +6,10 @@ namespace OCA\Webmail\Service;
 
 use OCA\Webmail\Ews\EwsContacts;
 use OCA\Webmail\Exception\MailException;
+use OCP\Contacts\IManager;
+use OCP\IL10N;
+use OCP\IUserManager;
+use Psr\Log\LoggerInterface;
 
 /**
  * The address books of Nextcloud Contacts (own and shared with the user) in
@@ -16,6 +20,17 @@ use OCA\Webmail\Exception\MailException;
  */
 class NextcloudContactsService {
 	private const READ_ONLY = '{http://owncloud.org/ns}read-only';
+	/** the accounts of this Nextcloud (its system address book), read only */
+	public const ACCOUNTS = 'nc:accounts';
+	private const ACCOUNTS_MAX = 2000;
+
+	public function __construct(
+		private IManager $contactsManager,
+		private IUserManager $users,
+		private IL10N $l10n,
+		private LoggerInterface $logger,
+	) {
+	}
 
 	public function available(): bool {
 		return class_exists(\OCA\DAV\CardDAV\CardDavBackend::class);
@@ -48,6 +63,10 @@ class NextcloudContactsService {
 				'shared' => isset($b['{http://owncloud.org/ns}owner-principal']) && $b['{http://owncloud.org/ns}owner-principal'] !== 'principals/users/' . $userId,
 			];
 		}
+		if ($this->contactsManager->isEnabled()) {
+			// the colleagues who have a Nextcloud account (« Comptes » of the Contacts app)
+			$out[] = ['key' => self::ACCOUNTS, 'name' => $this->l10n->t('Comptes Nextcloud'), 'kind' => 'nextcloud', 'canEdit' => false, 'shared' => false, 'accounts' => true];
+		}
 		return $out;
 	}
 
@@ -75,8 +94,10 @@ class NextcloudContactsService {
 	public function list(string $userId, string $key, int $offset, int $limit, string $query = ''): array {
 		$book = $this->book($userId, $key);
 		$items = [];
-		foreach ($this->backend()->getCards($book['id']) as $card) {
-			$c = self::contact($card);
+		$contacts = $key === self::ACCOUNTS
+			? $this->accounts($userId)
+			: array_map(fn ($card) => self::contact($card), $this->backend()->getCards($book['id']));
+		foreach ($contacts as $c) {
 			if ($c === null) {
 				continue;
 			}
@@ -93,6 +114,7 @@ class NextcloudContactsService {
 				'isGroup' => false,
 				'hasPhoto' => $c['hasPhoto'],
 				'birthday' => $c['birthday'],
+				'avatarUser' => $c['avatarUser'] ?? null,
 			];
 		}
 		$collator = class_exists(\Collator::class) ? new \Collator('fr_FR') : null;
@@ -104,12 +126,23 @@ class NextcloudContactsService {
 	/** @return list<array<string, mixed>> every contact of a book, as the form has them */
 	public function all(string $userId, string $key): array {
 		$book = $this->book($userId, $key);
+		if ($key === self::ACCOUNTS) {
+			return $this->accounts($userId);
+		}
 		return array_values(array_filter(array_map(fn ($card) => self::contact($card), $this->backend()->getCards($book['id']))));
 	}
 
 	/** @return array<string, mixed> */
 	public function get(string $userId, string $key, string $id): array {
 		$book = $this->book($userId, $key);
+		if ($key === self::ACCOUNTS) {
+			foreach ($this->accounts($userId) as $c) {
+				if ($c['id'] === $id) {
+					return $c;
+				}
+			}
+			throw new MailException('Contact introuvable');
+		}
 		$c = self::contact($this->card($book['id'], $id));
 		if ($c === null) {
 			throw new MailException('Contact introuvable');
@@ -144,6 +177,9 @@ class NextcloudContactsService {
 	/** @return ?array{mime: string, data: string} */
 	public function photo(string $userId, string $key, string $id): ?array {
 		$book = $this->book($userId, $key);
+		if ($key === self::ACCOUNTS) {
+			return null; // their avatar of Nextcloud is shown
+		}
 		return VCard::photo(self::data($this->card($book['id'], $id)));
 	}
 
@@ -155,6 +191,36 @@ class NextcloudContactsService {
 	}
 
 	// ------------------------------------------------------------------
+
+	/**
+	 * The accounts of this Nextcloud, as the Contacts app shows them to the user: through
+	 * the Contacts API, so within what the administrator lets users see of each other.
+	 * @return list<array<string, mixed>>
+	 */
+	private function accounts(string $userId): array {
+		try {
+			$found = $this->contactsManager->search('', ['FN', 'EMAIL'], ['enumeration' => true, 'fullmatch' => false, 'limit' => self::ACCOUNTS_MAX]);
+		} catch (\Throwable $e) {
+			$this->logger->warning('Webmail: Nextcloud accounts not listed: ' . $e->getMessage(), ['app' => 'webmail']);
+			return [];
+		}
+		$out = [];
+		foreach (is_array($found) ? $found : [] as $entry) {
+			if (empty($entry['isLocalSystemBook'])) {
+				continue;
+			}
+			$uid = (string)($entry['UID'] ?? '');
+			$user = $uid !== '' ? $this->users->get($uid) : null;
+			if ($user === null || !$user->isEnabled() || $uid === $userId) {
+				continue;
+			}
+			$c = NextcloudAccounts::contact($entry);
+			if ($c !== null) {
+				$out[] = $c;
+			}
+		}
+		return $out;
+	}
 
 	/** @return array<string, mixed> */
 	private function card(int $bookId, string $id): array {

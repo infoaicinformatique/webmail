@@ -316,6 +316,7 @@ OC.L10N.register(
     "Compte mis à jour": "Account updated",
     "Comptes": "Accounts",
     "Comptes Exchange": "Exchange accounts",
+    "Comptes Nextcloud": "Nextcloud accounts",
     "Comptes et signature": "Accounts and signature",
     "Concerne les invitations que vous recevez : les délégués qui « reçoivent une copie » peuvent y répondre en votre nom.": "About the meeting requests you receive: the delegates who « receive copies » can answer them on your behalf.",
     "Configurer les serveurs (administration)": "Configure the servers (administration)",

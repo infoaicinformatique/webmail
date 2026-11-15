@@ -133,6 +133,8 @@
 		const base = OC.generateUrl('/apps/webmail/api/accounts/' + core.accountId + '/contacts/')
 		const email = c.email || (c.emails && c.emails[0])
 		if (String(c.id).startsWith('directory:')) return email ? base + 'userphoto?email=' + encodeURIComponent(email) : null
+		// an account of this Nextcloud: its avatar
+		if (c.avatarUser) return OC.generateUrl('/avatar/{user}/64', { user: c.avatarUser })
 		if (!c.hasPhoto) return null
 		return base + 'photo?contactId=' + encodeURIComponent(c.id) + '&book=' + encodeURIComponent(ct.book) + (ct.photoV[c.id] ? '&v=' + ct.photoV[c.id] : '')
 	}
@@ -228,7 +230,7 @@
 				title: b.kind === 'public' ? _('Dossiers publics') + ' › ' + (b.path || b.name) : (b.email || b.name),
 				onclick: (e) => { e.preventDefault(); selectBook(b.key) },
 			},
-			h('span', { class: 'wm-book-icon', 'aria-hidden': 'true' }, { directory: '🏢', shared: '👥', public: '🗂️', nextcloud: '☁️' }[b.kind] || '📇'),
+			h('span', { class: 'wm-book-icon', 'aria-hidden': 'true' }, b.accounts ? '👤' : ({ directory: '🏢', shared: '👥', public: '🗂️', nextcloud: '☁️' }[b.kind] || '📇')),
 			h('span', { class: 'wm-cal-name' }, b.kind === 'shared' && b.folderName ? b.folderName + ' (' + b.name + ')' : b.name)),
 			b.kind === 'shared' || b.kind === 'public' || (b.kind === 'nextcloud' && (b.shared || !b.canEdit)) ? h('span', { class: 'wm-cal-mode' + (b.canEdit ? ' wm-cal-mode-edit' : '') }, b.canEdit ? _('modification') : _('lecture')) : null,
 			b.kind === 'own' ? h('button', {

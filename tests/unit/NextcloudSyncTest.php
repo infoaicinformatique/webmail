@@ -6,6 +6,7 @@ namespace OCA\Webmail\Tests\unit;
 
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\NcCalendarRules;
+use OCA\Webmail\Service\NextcloudAccounts;
 use OCA\Webmail\Service\VCard;
 use PHPUnit\Framework\TestCase;
 
@@ -137,5 +138,20 @@ class NextcloudSyncTest extends TestCase {
 		$this->assertFalse(VCard::hasPhoto(VCard::withPhoto($with, '')));
 		$v4 = VCard::withPhoto("BEGIN:VCARD\r\nVERSION:4.0\r\nFN:A\r\nEND:VCARD\r\n", $png);
 		$this->assertStringContainsString('PHOTO:data:image/png;base64,', str_replace("\r\n ", '', $v4));
+	}
+
+	public function testAccountOfNextcloud(): void {
+		// as the Contacts API gives an entry of the system address book
+		$c = NextcloudAccounts::contact([
+			'UID' => 'bob', 'FN' => 'Bob Martin', 'N' => 'Martin;Bob;;;', 'EMAIL' => ['bob.martin@aic.fr', 'pas une adresse'],
+			'TEL' => [['type' => 'WORK', 'value' => '04 93 00 00 00']], 'ORG' => 'AIC', 'TITLE' => 'Technicien',
+			'ADR' => [';;12 rue de France;Nice;;06000;France'], 'isLocalSystemBook' => true,
+		]);
+		$this->assertSame(['bob', 'bob', 'Bob Martin', 'Bob', 'Martin', ['bob.martin@aic.fr']], [$c['id'], $c['avatarUser'], $c['displayName'], $c['givenName'], $c['surname'], $c['emails']]);
+		$this->assertSame(['AIC', 'Technicien', '04 93 00 00 00', 'Nice', '06000', '12 rue de France'], [$c['company'], $c['jobTitle'], $c['mobilePhone'], $c['city'], $c['postalCode'], $c['street']]);
+		$this->assertFalse($c['hasPhoto']);
+		// an account without a name: its address
+		$this->assertSame('x@aic.fr', NextcloudAccounts::contact(['UID' => 'x', 'EMAIL' => 'x@aic.fr'])['displayName']);
+		$this->assertNull(NextcloudAccounts::contact(['UID' => 'y']));
 	}
 }
