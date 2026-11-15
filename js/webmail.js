@@ -1382,6 +1382,64 @@
 		if (first) first.focus()
 	}
 
+	/**
+	 * « Proposer des créneaux »: a few free slots of the calendar, each a link; the person who
+	 * receives the message picks one on a page of Nextcloud, without an account, and the meeting
+	 * is then made with their invitation.
+	 */
+	function proposeSlots(subject, insert) {
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const options = (name, list, chosen) => h('select', { name }, list.map(([v, l]) => h('option', { value: String(v), selected: v === chosen }, l)))
+		const title = h('input', { type: 'text', name: 'subject', maxlength: '200', value: subject || _('Rendez-vous') })
+		const minutes = options('minutes', [[15, _('15 minutes')], [30, _('30 minutes')], [45, _('45 minutes')], [60, _('1 heure')], [90, _('1 h 30')], [120, _('2 heures')]], 30)
+		const days = options('days', [[3, _('Les 3 prochains jours')], [7, _('La semaine qui vient')], [14, _('Les 2 prochaines semaines')]], 7)
+		const count = options('count', [[3, '3'], [4, '4'], [5, '5'], [6, '6']], 4)
+		const field = (label, input) => h('label', { class: 'wm-field' }, h('span', {}, label), input)
+		const submit = h('button', { type: 'submit', class: 'primary' }, _('Insérer les créneaux'))
+		const form = h('form', {
+			class: 'wm-slots-form',
+			onsubmit: async (e) => {
+				e.preventDefault()
+				submit.disabled = true
+				try {
+					const r = await api('/accounts/' + state.accountId + '/booking', {
+						method: 'POST',
+						body: { subject: title.value, minutes: Number(minutes.value), days: Number(days.value), count: Number(count.value), tz: TZ },
+					})
+					const label = (s) => {
+						const a = new Date(s.start)
+						const b = new Date(s.end)
+						return a.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' }) + ', '
+							+ a.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) + ' – ' + b.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })
+					}
+					insert('<p>' + escapeHtml(_('Voici mes disponibilités : cliquez sur le créneau qui vous convient, l\'invitation vous arrive aussitôt.')) + '</p>'
+						+ '<ul class="wm-slots">' + r.slots.map((s) => '<li><a href="' + escapeHtml(s.url) + '">' + escapeHtml(label(s)) + '</a></li>').join('') + '</ul>'
+						+ '<p><a href="' + escapeHtml(r.url) + '">' + escapeHtml(_('Voir tous les créneaux proposés')) + '</a></p>')
+					close()
+					toast(_('{count} créneaux insérés : ils restent proposés 14 jours, jusqu\'à ce que l\'un soit choisi', { count: r.slots.length }))
+				} catch (err) {
+					toast(err.message, true)
+					submit.disabled = false
+				}
+			},
+		},
+		h('p', { class: 'wm-muted' }, _('Les créneaux libres de votre agenda, en semaine de 9 h à 18 h, à partir de dans 2 heures. Le destinataire en choisit un sans compte Nextcloud : le rendez-vous se crée dans votre agenda et l\'invitation lui est envoyée.')),
+		field(_('Objet du rendez-vous'), title),
+		field(_('Durée'), minutes),
+		field(_('Période'), days),
+		field(_('Nombre de créneaux'), count),
+		h('div', { class: 'wm-form-actions' }, submit, h('button', { type: 'button', onclick: close }, _('Annuler'))))
+		overlay.appendChild(h('div', { class: 'wm-modal wm-slots-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': _('Proposer des créneaux') },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, '📅 ' + _('Proposer des créneaux')), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			form))
+		document.body.appendChild(overlay)
+		title.focus()
+	}
+
 	const warnedFull = new Set()
 	function warnIfFull() {
 		const u = state.usage
@@ -4903,6 +4961,16 @@
 			}),
 			tool('⌫', _('Effacer la mise en forme'), () => { exec('removeFormat'); exec('unlink') }),
 			tool('📄', _('Modèles de réponse'), (e) => openTemplateMenu(e.currentTarget)),
+			tool('📅', _('Proposer des créneaux de rendez-vous (vos disponibilités ; le destinataire choisit, l\'invitation part toute seule)'), () => {
+				const sel = window.getSelection()
+				const range = sel && sel.rangeCount && body.contains(sel.anchorNode) ? sel.getRangeAt(0) : null
+				proposeSlots(subject.value.trim(), (html) => {
+					body.focus()
+					if (range) { const s2 = window.getSelection(); s2.removeAllRanges(); s2.addRange(range) }
+					document.execCommand('insertHTML', false, html)
+					changed()
+				})
+			}),
 			imagePicker)
 
 		// ---- reply templates: insert one where the cursor is, or keep this text as one
