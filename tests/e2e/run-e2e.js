@@ -3523,8 +3523,9 @@ async function main() {
 	})
 
 	await step('instant tabs: the calendar, the tasks and the contacts are loaded while the mail is idle, then show at once', async () => {
-		const ahead = ['/calendar/events', '/tasks?', '/contacts?'].map((part) => page.waitForResponse((r) => r.url().includes(part) && r.status() === 200, { timeout: 30000 }))
+		// (the answers of the page loaded now: those of the page before, still loading ahead, do not count)
 		await page.goto(NC + '/apps/webmail/?module=mail')
+		const ahead = ['/calendar/events', '/tasks?', '/contacts?'].map((part) => page.waitForResponse((r) => r.url().includes(part) && r.status() === 200, { timeout: 30000 }))
 		await page.waitForSelector('.wm-message')
 		await Promise.all(ahead)
 		// from now on, Exchange is slow: what shows at once was loaded ahead
@@ -5471,9 +5472,11 @@ async function main() {
 		// searched there too
 		await page.fill('.wm-list .wm-search', 'archi')
 		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForSelector('.wm-search-info:has-text("archi")')
 		await page.waitForFunction(() => document.querySelectorAll('.wm-contact').length === 0 || [...document.querySelectorAll('.wm-contact')].every((e) => e.textContent.includes('Claire')))
 		await page.fill('.wm-list .wm-search', 'claire')
 		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForSelector('.wm-search-info:has-text("claire")')
 		await page.waitForFunction(() => document.querySelectorAll('.wm-contact').length === 1)
 		await page.click('.wm-search-info a')
 
