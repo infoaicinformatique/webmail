@@ -1502,7 +1502,9 @@ async function main() {
 
 	await step('compose: address autocompletion from contacts and directory', async () => {
 		await page.click('.wm-compose-btn')
-		await page.type('input[name=to]', 'dup')
+		// (the window of the message may be drawn again just after opening: typed in the field that stays)
+		await page.waitForSelector('.wm-compose input[name=to]')
+		await page.locator('.wm-compose input[name=to]').pressSequentially('dup')
 		await page.waitForSelector('.wm-ac-item:has-text("Jean Dupont")')
 		await page.keyboard.press('Enter')
 		assert.strictEqual(await page.inputValue('input[name=to]'), 'Jean Dupont <jean.dupont@client-exemple.fr>, ')
