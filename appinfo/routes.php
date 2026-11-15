@@ -21,6 +21,7 @@ return [
 		['name' => 'matrix#rooms', 'url' => '/api/matrix/rooms', 'verb' => 'GET'],
 		['name' => 'matrix#send', 'url' => '/api/matrix/send', 'verb' => 'POST'],
 		['name' => 'matrix#meeting', 'url' => '/api/matrix/meeting', 'verb' => 'POST'],
+		['name' => 'matrix#invite', 'url' => '/api/matrix/invite', 'verb' => 'POST'],
 		// « Se connecter avec Nextcloud »: the Matrix account by the chat's single sign-on
 		['name' => 'matrix#ssoStart', 'url' => '/matrix/sso', 'verb' => 'GET'],
 		['name' => 'matrix#ssoCallback', 'url' => '/matrix/sso/callback', 'verb' => 'GET'],
@@ -156,6 +157,7 @@ return [
 		['name' => 'delegate#meetingRequests', 'url' => '/api/accounts/{id}/delegates/meeting-requests', 'verb' => 'POST'],
 
 		['name' => 'admin#get', 'url' => '/api/admin/servers', 'verb' => 'GET'],
+		['name' => 'admin#health', 'url' => '/api/admin/health', 'verb' => 'GET'],
 		['name' => 'admin#save', 'url' => '/api/admin/servers', 'verb' => 'PUT'],
 		['name' => 'admin#forgetDiscovered', 'url' => '/api/admin/discovered/delete', 'verb' => 'POST'],
 	],

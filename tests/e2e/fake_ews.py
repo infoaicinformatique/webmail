@@ -112,6 +112,11 @@ MATRIX_ALIASES = {'#equipe:fake.test': '!equipe:fake.test'}
 MATRIX_SENT = []
 # rooms made by createRoom (« Visio Element » with Element Web): their request
 MATRIX_SSO = []
+# the accounts of the chat (for the invitations of a meeting room), and those invited
+MATRIX_PEOPLE = {'@user:fake.test', '@marie.martin:fake.test'}
+MATRIX_INVITED = []
+# the session ended on the server (closed in Element, Nextcloud signed out…) until a new sign-in
+MATRIX_REVOKED = [False]
 MATRIX_CREATED = []
 # conversations ignored (« Ignorer la conversation »)
 IGNORED = set()
@@ -1093,11 +1098,17 @@ class Handler(BaseHTTPRequestHandler):
         if method == 'POST' and path == '/_matrix/client/v3/login':
             body = json.loads(raw or b'{}')
             if body.get('type') == 'm.login.token' and body.get('token') == 'fake-login-token':
+                MATRIX_REVOKED[0] = False
                 return reply(200, {'access_token': 'syt_test_token', 'user_id': '@user:fake.test', 'device_id': 'WEBMAIL'})
             return reply(403, {'errcode': 'M_FORBIDDEN', 'error': 'Invalid login token'})
         if path == '/_matrix/test/sso':
             return reply(200, MATRIX_SSO)
-        if self.headers.get('Authorization', '') != 'Bearer syt_test_token':
+        if path == '/_matrix/test/invited':
+            return reply(200, MATRIX_INVITED)
+        if path == '/_matrix/test/revoke':
+            MATRIX_REVOKED[0] = True
+            return reply(200, {})
+        if self.headers.get('Authorization', '') != 'Bearer syt_test_token' or MATRIX_REVOKED[0]:
             return reply(401, {'errcode': 'M_UNKNOWN_TOKEN', 'error': 'Invalid access token'})
         api = '/_matrix/client/v3'
         if method == 'GET' and path == api + '/account/whoami':
@@ -1121,6 +1132,17 @@ class Handler(BaseHTTPRequestHandler):
             if not any(x['txn'] == txn for x in MATRIX_SENT):
                 MATRIX_SENT.append({'room': room, 'txn': txn, 'content': body})
             return reply(200, {'event_id': '$%s' % txn})
+        m = re.match(re.escape(api) + r'/profile/([^/]+)$', path)
+        if method == 'GET' and m:
+            who = unquote(m.group(1))
+            return reply(200, {'displayname': who}) if who in MATRIX_PEOPLE else reply(404, {'errcode': 'M_NOT_FOUND', 'error': 'Profile was not found'})
+        m = re.match(re.escape(api) + r'/rooms/([^/]+)/invite$', path)
+        if method == 'POST' and m:
+            body = json.loads(raw or b'{}')
+            if body.get('user_id') not in MATRIX_PEOPLE:
+                return reply(404, {'errcode': 'M_NOT_FOUND', 'error': 'Unknown user'})
+            MATRIX_INVITED.append({'room': unquote(m.group(1)), 'user_id': body.get('user_id')})
+            return reply(200, {})
         if method == 'POST' and path == api + '/createRoom':
             body = json.loads(raw or b'{}')
             room = '!meet%d:fake.test' % (len(MATRIX_CREATED) + 1)

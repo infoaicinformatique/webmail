@@ -103,4 +103,23 @@ class MatrixTest extends TestCase {
 		$this->assertNull(Matrix::elementHomeserver(['brand' => 'x']));
 		$this->assertNull(Matrix::elementHomeserver(['default_server_config' => ['m.homeserver' => ['base_url' => 'http://matrix.example.org']]]));
 	}
+
+	public function testRoomOfAMeeting(): void {
+		$link = 'https://chat.pbcannes.org/#/room/%21meet42%3Amatrix.pbcannes.org?via=matrix.pbcannes.org';
+		$this->assertSame('!meet42:matrix.pbcannes.org', Matrix::roomIdIn('Salle B ' . $link));
+		$this->assertSame('!meet42:matrix.pbcannes.org', Matrix::roomIdIn("Rejoindre la visio : " . $link . "\n"));
+		$this->assertSame('!abc:fake.test', Matrix::roomIdIn('salon !abc:fake.test'));
+		$this->assertNull(Matrix::roomIdIn('https://meet.example.org/reunion-k3x9'));
+		$this->assertNull(Matrix::roomIdIn('Bonjour ! à demain'));
+		$this->assertNull(Matrix::roomIdIn('https://chat.example/#/room/%23general%3Aserver'));
+	}
+
+	public function testMatrixIdsOfAnAccount(): void {
+		$this->assertSame(['@nicolas:matrix.pbcannes.org', '@n.martin:matrix.pbcannes.org'], Matrix::candidates('Nicolas', 'n.martin@pbcannes.org', 'matrix.pbcannes.org'));
+		// the same: once
+		$this->assertSame(['@p.nom:srv'], Matrix::candidates('p.nom', 'P.Nom@pbcannes.org', 'srv'));
+		// an LDAP id (UUID) is a valid Matrix localpart too; what is not, is left out
+		$this->assertSame(['@3f2a-11:srv', '@marie:srv'], Matrix::candidates('3F2A-11', 'marie@x.fr', 'srv'));
+		$this->assertSame(['@marie:srv'], Matrix::candidates('Marie Curie', 'marie@x.fr', 'srv'));
+	}
 }

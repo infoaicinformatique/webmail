@@ -9,6 +9,7 @@ use OCA\Webmail\Exception\MailException;
 use OCP\Http\Client\IClientService;
 use OCP\ICacheFactory;
 use OCP\IConfig;
+use OCP\IUserManager;
 use OCP\Security\ISecureRandom;
 use OCP\Security\ICrypto;
 use Psr\Log\LoggerInterface;
@@ -29,6 +30,7 @@ class MatrixService {
 		private ServerConfigService $servers,
 		private ICacheFactory $cacheFactory,
 		private ISecureRandom $random,
+		private IUserManager $users,
 	) {
 	}
 
@@ -133,6 +135,8 @@ class MatrixService {
 			'hasToken' => $this->config->getUserValue($userId, Application::APP_ID, 'matrix_token', '') !== '',
 			'room' => $this->config->getUserValue($userId, Application::APP_ID, 'matrix_room', ''),
 			'alerts' => $this->config->getUserValue($userId, Application::APP_ID, 'matrix_alerts', 'off'),
+			// the session is no longer known to the server: to open again
+			'expired' => $this->config->getUserValue($userId, Application::APP_ID, 'matrix_expired', '') === '1',
 			// the chat of the organisation: connection by Nextcloud offered
 			'chat' => ($e = $this->element()) !== null ? ['name' => $e['name'], 'homeserver' => $e['homeserver']] : null,
 		];
@@ -161,6 +165,7 @@ class MatrixService {
 		$user = $this->whoami($homeserver, $token);
 		$this->config->setUserValue($userId, Application::APP_ID, 'matrix_homeserver', $homeserver);
 		$this->config->setUserValue($userId, Application::APP_ID, 'matrix_token', $this->crypto->encrypt($token));
+		$this->config->deleteUserValue($userId, Application::APP_ID, 'matrix_expired');
 		$this->config->setUserValue($userId, Application::APP_ID, 'matrix_room', $room);
 		return $this->settings($userId) + ['user' => $user];
 	}
@@ -182,7 +187,7 @@ class MatrixService {
 	}
 
 	public function forget(string $userId): void {
-		foreach (['matrix_homeserver', 'matrix_token', 'matrix_room', 'matrix_alerts', 'matrix_alerts_seen', 'matrix_sso'] as $k) {
+		foreach (['matrix_homeserver', 'matrix_token', 'matrix_room', 'matrix_alerts', 'matrix_alerts_seen', 'matrix_sso', 'matrix_expired'] as $k) {
 			$this->config->deleteUserValue($userId, Application::APP_ID, $k);
 		}
 	}
@@ -195,7 +200,7 @@ class MatrixService {
 	 */
 	public function rooms(string $userId): array {
 		[$hs, $token] = $this->account($userId);
-		$ids = $this->call('GET', $hs, '/joined_rooms', $token)['joined_rooms'] ?? [];
+		$ids = $this->userCall($userId, 'GET', $hs, '/joined_rooms', $token)['joined_rooms'] ?? [];
 		$rooms = [];
 		foreach (array_slice(is_array($ids) ? $ids : [], 0, 50) as $id) {
 			if (!is_string($id)) {
@@ -227,13 +232,13 @@ class MatrixService {
 		}
 		$ref = Matrix::room($room);
 		$roomId = $ref['type'] === 'id' ? $ref['value']
-			: (string)($this->call('GET', $hs, '/directory/room/' . rawurlencode($ref['value']), $token)['room_id'] ?? '');
+			: (string)($this->userCall($userId, 'GET', $hs, '/directory/room/' . rawurlencode($ref['value']), $token)['room_id'] ?? '');
 		if ($roomId === '') {
 			throw new MailException('Salon Matrix introuvable : %s', [$ref['value']]);
 		}
 		$message = Matrix::message($text);
 		$txn = Matrix::txnId($userId, $roomId, $message['body'], intdiv(time(), 60));
-		$r = $this->call('PUT', $hs, '/rooms/' . rawurlencode($roomId) . '/send/m.room.message/' . $txn, $token, $message);
+		$r = $this->userCall($userId, 'PUT', $hs, '/rooms/' . rawurlencode($roomId) . '/send/m.room.message/' . $txn, $token, $message);
 		return ['room' => $roomId, 'eventId' => (string)($r['event_id'] ?? '')];
 	}
 
@@ -245,12 +250,67 @@ class MatrixService {
 	 */
 	public function createMeetingRoom(string $userId, string $subject, string $when): string {
 		[$hs, $token] = $this->account($userId);
-		$r = $this->call('POST', $hs, '/createRoom', $token, Matrix::meetingRoom($subject, $when));
+		$r = $this->userCall($userId, 'POST', $hs, '/createRoom', $token, Matrix::meetingRoom($subject, $when));
 		$id = (string)($r['room_id'] ?? '');
 		if ($id === '') {
 			throw new MailException('Le serveur Matrix n\'a pas créé le salon');
 		}
 		return $id;
+	}
+
+	/**
+	 * The participants of a meeting invited in its room of the chat: those with a Nextcloud
+	 * account (so an account of the chat, by its single sign-on). Their Matrix id is checked
+	 * on the server first; the others (outside guests) keep the link of the invitation.
+	 *
+	 * @param string[] $emails
+	 * @return array{invited: list<string>, notFound: list<string>}
+	 * @throws MailException
+	 */
+	public function inviteToRoom(string $userId, string $roomId, array $emails): array {
+		[$hs, $token] = $this->account($userId);
+		if (!preg_match('~^![^\s:/]+:[a-z0-9.\-\[\]:]+$~i', $roomId)) {
+			throw new MailException('Salon Matrix introuvable : %s', [$roomId]);
+		}
+		$me = (string)($this->userCall($userId, 'GET', $hs, '/account/whoami', $token)['user_id'] ?? '');
+		$serverName = substr($me, (int)strpos($me, ':') + 1);
+		$invited = $notFound = [];
+		foreach (PresenceService::addresses($emails) as $email) {
+			$matrixId = null;
+			foreach ($this->users->getByEmail($email) as $user) {
+				if (!$user->isEnabled() || $user->getUID() === $userId) {
+					continue 2; // (oneself: already in the room)
+				}
+				foreach (Matrix::candidates($user->getUID(), $email, $serverName) as $candidate) {
+					try {
+						// (the session was checked just above: an answer « unknown » is the account's)
+						$this->call('GET', $hs, '/profile/' . rawurlencode($candidate), $token);
+						$matrixId = $candidate;
+						break 2;
+					} catch (MatrixTokenException) {
+						throw new MailException('Votre session du chat a expiré : reconnectez-vous avec « Se connecter avec Nextcloud » (Comptes et signature)');
+					} catch (MailException) {
+						// no such account on the chat: the next one
+					}
+				}
+			}
+			if ($matrixId === null) {
+				$notFound[] = $email;
+				continue;
+			}
+			try {
+				$this->userCall($userId, 'POST', $hs, '/rooms/' . rawurlencode($roomId) . '/invite', $token, ['user_id' => $matrixId]);
+				$invited[] = $email;
+			} catch (MailException $e) {
+				// already invited or in the room: as good as invited
+				if (str_contains($e->getMessage(), 'already') || str_contains($e->getMessage(), 'déjà')) {
+					$invited[] = $email;
+				} else {
+					$notFound[] = $email;
+				}
+			}
+		}
+		return ['invited' => $invited, 'notFound' => $notFound];
 	}
 
 	/**
@@ -277,6 +337,25 @@ class MatrixService {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * A request with the user's session: when the server no longer knows it (closed in
+	 * Element, ended with the Nextcloud session…), it is marked so, to be opened again.
+	 *
+	 * @param array<string, mixed>|null $body
+	 * @return array<string, mixed>
+	 */
+	private function userCall(string $userId, string $method, string $hs, string $path, string $token, ?array $body = null): array {
+		try {
+			return $this->call($method, $hs, $path, $token, $body);
+		} catch (MatrixTokenException) {
+			$this->config->setUserValue($userId, Application::APP_ID, 'matrix_expired', '1');
+			if ($this->element() !== null) {
+				throw new MailException('Votre session du chat a expiré : reconnectez-vous avec « Se connecter avec Nextcloud » (Comptes et signature)');
+			}
+			throw new MailException('Votre session Matrix a expiré : indiquez un nouveau jeton (Comptes et signature)');
+		}
 	}
 
 	/** @return array{0: string, 1: string} homeserver, token */
@@ -342,7 +421,7 @@ class MatrixService {
 		}
 		$data = is_array($data) ? $data : [];
 		if ($status === 401 || ($status === 403 && ($data['errcode'] ?? '') === 'M_UNKNOWN_TOKEN')) {
-			throw new MailException('Le serveur Matrix n\'a pas reconnu ce jeton');
+			throw new MatrixTokenException('Le serveur Matrix n\'a pas reconnu ce jeton');
 		}
 		if ($status === 403) {
 			throw new MailException('Matrix refuse : %s', [(string)($data['error'] ?? 'M_FORBIDDEN')]);

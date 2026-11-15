@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Webmail\Controller;
 
 use OCA\Webmail\AppInfo\Application;
+use OCA\Webmail\Service\HealthService;
 use OCA\Webmail\Service\ServerConfigService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Response;
@@ -20,6 +21,7 @@ class AdminController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private ServerConfigService $servers,
+		private HealthService $health,
 		private LoggerInterface $logger,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -31,6 +33,11 @@ class AdminController extends Controller {
 
 	public function get(): Response {
 		return $this->handle(fn () => $this->state());
+	}
+
+	/** « État des services »: checked now. */
+	public function health(): Response {
+		return $this->handle(fn () => ['checks' => $this->health->checks()]);
 	}
 
 	/**

@@ -103,6 +103,22 @@ async function main() {
 		await shot('01-admin')
 	})
 
+	await step('admin settings: « État des services » checks the Exchange servers, the chat, the background jobs', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		// (the fake servers are on the local network: allowed here only)
+		occ('config:system:set allow_local_remote_servers --value=true --type=boolean')
+		try {
+			await page.click('#webmail-health-check')
+			await page.waitForSelector('#webmail-health li.wm-health-ok:has-text("Exchange — societe-a.fr")')
+			await page.waitForSelector('#webmail-health li:has-text("Exchange — societe-b.fr")')
+			await page.waitForSelector('#webmail-health li:has-text("Tâches de fond de Nextcloud")')
+			await page.waitForSelector('#webmail-health li:has-text("Chat (Matrix / Element)")')
+			await shot('01b-admin-health')
+		} finally {
+			occ('config:system:delete allow_local_remote_servers')
+		}
+	})
+
 	await step('admin settings: certificates and size of the attachments', async () => {
 		// this test Nextcloud talks to the fake server without checking its certificate (occ verify_tls=no)
 		assert(await page.isChecked('#webmail-no-verify-tls'))
@@ -3517,8 +3533,9 @@ async function main() {
 	})
 
 	await step('instant tabs: the calendar, the tasks and the contacts are loaded while the mail is idle, then show at once', async () => {
-		const ahead = ['/calendar/events', '/tasks?', '/contacts?'].map((part) => page.waitForResponse((r) => r.url().includes(part) && r.status() === 200, { timeout: 30000 }))
+		// (the answers of the page loaded now: those of the page before, still loading ahead, do not count)
 		await page.goto(NC + '/apps/webmail/?module=mail')
+		const ahead = ['/calendar/events', '/tasks?', '/contacts?'].map((part) => page.waitForResponse((r) => r.url().includes(part) && r.status() === 200, { timeout: 30000 }))
 		await page.waitForSelector('.wm-message')
 		await Promise.all(ahead)
 		// from now on, Exchange is slow: what shows at once was loaded ahead
@@ -5024,6 +5041,48 @@ async function main() {
 				assert.ok((await ssoSeen()).some((u) => u.includes('/apps/webmail/matrix/sso/callback?state=')), 'back to the webmail')
 				await shot('95-visio-chat-sso')
 				await page.click('.wm-modal .wm-modal-close')
+				// the session ends on the chat's side: the next visio asks to sign in again, then makes the room
+				await new Promise((resolve, reject) => require('https').get('https://localhost:8443/_matrix/test/revoke', { rejectUnauthorized: false }, (res) => { res.resume(); res.on('end', resolve) }).on('error', reject))
+				for (let i = 0; i < 5 && !(await page.$('.wm-modal input[name=subject]')); i++) {
+					await page.click('.wm-compose-btn')
+					await page.waitForSelector('.wm-modal input[name=subject]', { timeout: 3000 }).catch(() => {})
+				}
+				await page.fill('.wm-modal input[name=subject]', 'Réunion après la fin de session')
+				let again = ''
+				page.once('dialog', (d) => { again = d.message(); d.accept() })
+				const popup2 = page.waitForEvent('popup')
+				await page.click('.wm-visio-btn')
+				const win2 = await popup2
+				await win2.waitForEvent('close', { timeout: 30000 }).catch(() => {})
+				await page.waitForSelector('.wm-toast:has-text("Salle de visio ajoutée")')
+				assert.ok(again.includes('a expiré'), again)
+				await page.click('.wm-modal .wm-modal-close')
+				// the participants with an account (of Nextcloud, so of the chat) invited in the room; the others keep the link
+				occ('user:add --generate-password --display-name="Marie Martin" marie-e2e')
+				try {
+					occ('user:setting marie-e2e settings email marie.martin@societe-a.fr')
+					for (let i = 0; i < 5 && !(await page.$('.wm-modal input[name=subject]')); i++) {
+						await page.click('.wm-compose-btn')
+						await page.waitForSelector('.wm-modal input[name=subject]', { timeout: 3000 }).catch(() => {})
+					}
+					await page.fill('.wm-modal input[name=subject]', 'Revue avec Marie')
+					await page.click('.wm-visio-btn')
+					await page.waitForSelector('.wm-toast:has-text("Salle de visio ajoutée")')
+					await page.fill('.wm-modal input[name=attendees]', 'marie.martin@societe-a.fr, client@exterieur-e2e.fr')
+					// (the suggestions of the completion closed by a click elsewhere)
+					await page.click('.wm-modal input[name=subject]')
+					await page.click('.wm-modal button[type=submit]')
+					await page.waitForSelector('.wm-toast:has-text("1 participant invité dans le salon du chat")')
+					const invited = await new Promise((resolve, reject) => require('https').get('https://localhost:8443/_matrix/test/invited', { rejectUnauthorized: false }, (res) => {
+						let data = ''
+						res.on('data', (c) => { data += c })
+						res.on('end', () => resolve(JSON.parse(data)))
+					}).on('error', reject))
+					const last = invited[invited.length - 1]
+					assert.ok(last && last.user_id === '@marie.martin:fake.test' && last.room.startsWith('!meet'), JSON.stringify(invited))
+				} finally {
+					occ('user:delete marie-e2e')
+				}
 				// the card of the account: linked, to link again by Nextcloud if need be
 				await page.click('.wm-tab[data-module="mail"]')
 				await page.click('text=Comptes et signature')
@@ -5426,9 +5485,11 @@ async function main() {
 		// searched there too
 		await page.fill('.wm-list .wm-search', 'archi')
 		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForSelector('.wm-search-info:has-text("archi")')
 		await page.waitForFunction(() => document.querySelectorAll('.wm-contact').length === 0 || [...document.querySelectorAll('.wm-contact')].every((e) => e.textContent.includes('Claire')))
 		await page.fill('.wm-list .wm-search', 'claire')
 		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForSelector('.wm-search-info:has-text("claire")')
 		await page.waitForFunction(() => document.querySelectorAll('.wm-contact').length === 1)
 		await page.click('.wm-search-info a')
 
