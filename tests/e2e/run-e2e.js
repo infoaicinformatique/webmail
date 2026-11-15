@@ -827,8 +827,7 @@ async function main() {
 		// print a message: its own page with the headers
 		await page.click('.wm-message:has-text("Test depuis Nextcloud")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Test depuis Nextcloud")')
-		await openMore()
-		const [popup] = await Promise.all([page.context().waitForEvent('page'), page.click('.wm-more-menu .wm-print-btn')])
+		const [popup] = await Promise.all([page.context().waitForEvent('page'), page.click('.wm-message-toolbar .wm-print-btn')])
 		await popup.waitForLoadState()
 		assert.strictEqual(await popup.title(), 'Test depuis Nextcloud')
 		const printed = await popup.textContent('body')

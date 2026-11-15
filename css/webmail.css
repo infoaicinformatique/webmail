@@ -1188,7 +1188,7 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-message-toolbar .wm-unread-btn, .wm-message-toolbar .wm-snooze-btn, .wm-message-toolbar .wm-cat-btn, .wm-message-toolbar .wm-pin-btn { padding-left: 9px; padding-right: 9px; }
 .wm-message-toolbar select.wm-move { width: auto; max-width: 150px; }
 .wm-message-toolbar .wm-tb-break { flex-basis: 100%; height: 0; margin-top: -6px; }
-.wm-message-toolbar .wm-more-btn { margin-left: auto !important; }
+.wm-message-toolbar .wm-print-btn { margin-left: auto !important; }
 .wm-more-menu { width: 280px; padding: 8px; }
 .wm-more-menu .wm-cat-title { margin: 8px 6px 2px; font-size: 12px; font-weight: normal; color: var(--color-text-maxcontrast); }
 .wm-more-menu .wm-cat-title:first-child { margin-top: 0; }
