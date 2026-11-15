@@ -1088,6 +1088,7 @@ async function main() {
 			return r.status
 		}, { key, value })
 		assert.strictEqual(await profile('role', 'Responsable achats'), 200)
+		// (Nextcloud may keep it as +33493000000)
 		assert.strictEqual(await profile('phone', '+33 4 93 00 00 00'), 200)
 		const admin = async (template, mode) => {
 			await page.goto(NC + '/settings/admin/webmail')
@@ -1100,7 +1101,7 @@ async function main() {
 			// a line whose field is empty (no address in the profile) goes away
 			await admin('<p><b>{nom}</b><br>{fonction}<br>Tél. : {telephone}<br>Adresse : {adresse}</p><p><i>Société A — mentions légales</i></p>', 'forced')
 			const preview = await page.textContent('#webmail-org-signature-preview')
-			assert.ok(preview.includes('Responsable achats') && preview.includes('Tél. : +33 4 93 00 00 00') && !preview.includes('Adresse') && preview.includes('mentions légales'), preview)
+			assert.ok(preview.includes('Responsable achats') && /Tél\. : \+33 ?4 ?93 ?00 ?00 ?00/.test(preview) && !preview.includes('Adresse') && preview.includes('mentions légales'), preview)
 			await shot('107-org-signature-admin')
 			// imposed: every new message ends with it
 			await page.goto(NC + '/apps/webmail/')
@@ -1111,7 +1112,7 @@ async function main() {
 			}
 			await page.waitForSelector('.wm-editor .wm-signature:has-text("Responsable achats")')
 			const sig = await page.textContent('.wm-editor .wm-signature')
-			assert.ok(sig.includes('Tél. : +33 4 93 00 00 00') && sig.includes('mentions légales'), sig)
+			assert.ok(/Tél\. : \+33 ?4 ?93 ?00 ?00 ?00/.test(sig) && sig.includes('mentions légales'), sig)
 			// (the message left unwritten: nothing kept)
 			await page.goto(NC + '/apps/webmail/')
 			await page.waitForSelector('.wm-message')
