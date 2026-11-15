@@ -38,9 +38,15 @@ class TaskController extends Controller {
 		return new EwsTasks($this->accounts->getClient($this->accounts->find((string)$this->userId, $id)));
 	}
 
+	/** The task lists of the mailbox (« Tâches » and the other folders of tasks). */
 	#[NoAdminRequired]
-	public function index(int $id, bool $completed = false): Response {
-		return $this->handle(fn () => ['tasks' => $this->tasks($id)->list($completed)]);
+	public function lists(int $id): Response {
+		return $this->handle(fn () => ['lists' => $this->tasks($id)->lists()]);
+	}
+
+	#[NoAdminRequired]
+	public function index(int $id, bool $completed = false, string $list = 'tasks'): Response {
+		return $this->handle(fn () => ['tasks' => $this->tasks($id)->list($completed, $list)]);
 	}
 
 	#[NoAdminRequired]
@@ -50,9 +56,9 @@ class TaskController extends Controller {
 
 	/** @param array<string, mixed> $task */
 	#[NoAdminRequired]
-	public function create(int $id, array $task): Response {
-		return $this->handle(function () use ($id, $task) {
-			$taskId = $this->tasks($id)->create($task);
+	public function create(int $id, array $task, string $list = 'tasks'): Response {
+		return $this->handle(function () use ($id, $task, $list) {
+			$taskId = $this->tasks($id)->create($task, $list);
 			$this->reminders->tasksChanged($id);
 			return ['id' => $taskId];
 		});

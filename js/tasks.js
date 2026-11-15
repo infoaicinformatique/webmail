@@ -9,7 +9,26 @@
 	const IMPORTANCE = [['Normal', _('Normale')], ['High', _('Haute')], ['Low', _('Basse')]]
 
 	let core = null
-	const tk = { accountId: null, filter: 'todo', tasks: [], loading: false, selectedId: null, seq: 0 }
+	const tk = { accountId: null, filter: 'todo', tasks: [], loading: false, selectedId: null, seq: 0,
+		// the task lists of the mailbox (folders of tasks of Outlook), and the one shown
+		lists: [], listsFor: null, list: 'tasks' }
+
+	const listKey = () => 'webmail.tasklist.' + core.accountId
+	function currentList() { return tk.lists.find((l) => l.key === tk.list) || { key: 'tasks', name: _('Tâches'), default: true } }
+
+	/** The lists of the account, once; the one chosen before is shown again. */
+	async function loadLists() {
+		if (tk.listsFor === core.accountId) return
+		const accountId = core.accountId
+		let lists = [{ key: 'tasks', name: _('Tâches'), default: true }]
+		try { lists = (await api(base() + '/tasks/lists')).lists } catch (e) { /* « Tâches » alone */ }
+		if (accountId !== core.accountId) return
+		tk.lists = lists
+		tk.listsFor = accountId
+		let saved = 'tasks'
+		try { saved = localStorage.getItem(listKey()) || 'tasks' } catch (e) { /* ignore */ }
+		tk.list = lists.some((l) => l.key === saved) ? saved : 'tasks'
+	}
 
 	function api(path, opts) { return core.api(path, opts) }
 	const base = () => '/accounts/' + core.accountId
@@ -32,21 +51,23 @@
 	/** "account|filter" -> tasks: a list seen before (or loaded ahead) shows at once, then is refreshed */
 	const listCache = new Map()
 
-	async function fetchTasks(filter) {
-		const r = await api(base() + '/tasks', { query: { completed: filter === 'done' ? 1 : 0 } })
+	async function fetchTasks(filter, list) {
+		const r = await api(base() + '/tasks', { query: { completed: filter === 'done' ? 1 : 0, list: list || 'tasks' } })
 		return filter === 'done' ? r.tasks.filter((t) => t.done) : r.tasks
 	}
 
 	async function load() {
 		const mine = ++tk.seq
-		const key = core.accountId + '|' + tk.filter
+		await loadLists()
+		if (mine !== tk.seq) return
+		const key = core.accountId + '|' + tk.list + '|' + tk.filter
 		const cached = listCache.get(key)
 		// shown at once while it is refreshed (not « loading »: the list is there)
 		if (cached) { tk.tasks = cached; tk.accountId = core.accountId }
 		tk.loading = !cached
 		renderList()
 		try {
-			const tasks = await fetchTasks(tk.filter)
+			const tasks = await fetchTasks(tk.filter, tk.list)
 			if (mine !== tk.seq) return
 			tk.tasks = tasks
 			listCache.set(key, tasks)
@@ -71,6 +92,24 @@
 		}, h('span', { class: 'wm-folder-icon', 'aria-hidden': 'true' }, icon), h('span', { class: 'wm-folder-name' }, label),
 		key === 'todo' && tk.filter === 'todo' && tk.tasks.length ? h('span', { class: 'wm-badge' }, String(tk.tasks.length)) : null))
 		navEl.appendChild(h('ul', { class: 'wm-folders' }, item('todo', '☐', _('À faire')), item('done', '☑', _('Terminées'))))
+		// every task list of the mailbox (« Tâches » and those made in Outlook)
+		if (tk.lists.length > 1) {
+			navEl.appendChild(h('div', { class: 'wm-cal-section' }, _('Listes de tâches')))
+			navEl.appendChild(h('ul', { class: 'wm-folders wm-task-lists' }, tk.lists.map((l) => h('li', {}, h('a', {
+				href: '#',
+				class: 'wm-folder wm-task-list' + (tk.list === l.key ? ' active' : ''),
+				dataset: { list: l.key },
+				onclick: (e) => {
+					e.preventDefault()
+					tk.list = l.key
+					try { localStorage.setItem(listKey(), l.key) } catch (ex) { /* ignore */ }
+					tk.selectedId = null
+					core.renderNav()
+					renderEmpty()
+					load()
+				},
+			}, h('span', { class: 'wm-folder-icon', 'aria-hidden': 'true' }, l.default ? '📋' : '🗒️'), h('span', { class: 'wm-folder-name' }, l.name))))))
+		}
 		navEl.appendChild(h('div', { style: 'flex:1' }))
 		navEl.appendChild(core.navFooter())
 	}
@@ -94,7 +133,7 @@
 				if (!subject) return
 				quick.disabled = true
 				try {
-					await api(base() + '/tasks', { method: 'POST', body: { task: { subject } } })
+					await api(base() + '/tasks', { method: 'POST', body: { task: { subject }, list: tk.list } })
 					quick.value = ''
 					core.toast(_('Tâche ajoutée'))
 					if (tk.filter !== 'todo') tk.filter = 'todo'
@@ -103,7 +142,9 @@
 			},
 		},
 		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Menu'), onclick: () => core.setView('nav') }, '☰'),
-		tk.filter === 'todo' ? quick : h('div', { class: 'wm-muted wm-task-title' }, _('Tâches terminées'))))
+		tk.filter === 'todo' ? quick : h('div', { class: 'wm-muted wm-task-title' }, !currentList().default ? _('Terminées · {list}', { list: currentList().name }) : _('Tâches terminées'))))
+		// (the list named when it is not « Tâches »)
+		if (tk.filter === 'todo') quick.placeholder = !currentList().default ? _('Ajouter une tâche à « {list} » (Entrée)', { list: currentList().name }) : _('Ajouter une tâche (Entrée)')
 		if (typing && tk.filter === 'todo') {
 			quick.focus()
 			try { quick.setSelectionRange(caret[0], caret[1]) } catch (e) { /* not a text field */ }
@@ -212,6 +253,10 @@
 		const err = h('div', { class: 'wm-form-error', role: 'alert' })
 		const save = h('button', { type: 'submit', class: 'primary' }, isNew ? _('Créer') : _('Enregistrer'))
 		const field = (label, ...inputs) => h('label', { class: 'wm-field' }, h('span', {}, label), ...inputs)
+		// a new task: in the list shown, or another one
+		const listSelect = isNew && tk.lists.length > 1
+			? h('select', { name: 'list' }, tk.lists.map((l) => h('option', { value: l.key, selected: l.key === tk.list }, l.name)))
+			: null
 		const quickDue = (days, label) => h('button', {
 			type: 'button',
 			class: 'wm-small',
@@ -229,7 +274,8 @@
 					reminder: remindAt && !isNaN(remindAt) ? remindAt.toISOString() : '' }
 				try {
 					if (isNew) {
-						const r = await api(base() + '/tasks', { method: 'POST', body: { task } })
+						const r = await api(base() + '/tasks', { method: 'POST', body: { task, list: listSelect ? listSelect.value : tk.list } })
+						if (listSelect && listSelect.value !== tk.list) { tk.list = listSelect.value; core.renderNav() }
 						tk.selectedId = r.id
 						core.toast(_('Tâche créée'))
 					} else {
@@ -248,6 +294,7 @@
 			h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Retour'), onclick: () => core.setView('list') }, '←'),
 			h('h2', {}, isNew ? _('Nouvelle tâche') : _('Tâche'))),
 		field(_('Titre'), subject),
+		listSelect ? field(_('Liste'), listSelect) : null,
 		field(_('Échéance'), due, quickDue(0, _('Aujourd\'hui')), quickDue(1, _('Demain')), quickDue(7, _('Dans une semaine')),
 			h('button', { type: 'button', class: 'wm-small', onclick: () => { due.value = '' } }, _('Aucune'))),
 		field(_('Rappel'), reminder,
@@ -287,10 +334,11 @@
 		/** Loaded ahead, while the mail is shown and the browser is idle: the tasks to do. */
 		async prefetch(c) {
 			core = c
-			const key = core.accountId + '|todo'
-			if (listCache.has(key)) return
 			const accountId = core.accountId
-			const tasks = await fetchTasks('todo')
+			await loadLists()
+			const key = core.accountId + '|' + tk.list + '|todo'
+			if (listCache.has(key) || accountId !== core.accountId) return
+			const tasks = await fetchTasks('todo', tk.list)
 			if (accountId === core.accountId) listCache.set(key, tasks)
 		},
 		activate(c) {
