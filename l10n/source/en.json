@@ -1750,5 +1750,8 @@
 	"Version installée : {installed}. Les nouvelles versions n'ont pas pu être lues ({error}).": "Installed version: {installed}. The new versions could not be read ({error}).",
 	"Version installée : {installed} — à jour.": "Installed version: {installed} — up to date.",
 	"Webmail Exchange %s est disponible": "Webmail Exchange %s is available",
-	"Version installée : %s. Nouveautés et commande de mise à jour dans les paramètres d'administration.": "Installed version: %s. What's new and the update command in the administration settings."
+	"Version installée : %s. Nouveautés et commande de mise à jour dans les paramètres d'administration.": "Installed version: %s. What's new and the update command in the administration settings.",
+	"Supprimer définitivement les {count} éléments supprimés et les {folders} dossiers qu'ils contiennent ? Ils ne pourront pas être récupérés ici.": "Permanently delete the {count} deleted items and the {folders} folders they contain? They cannot be recovered here.",
+	"Supprimer définitivement le dossier « {name} » et tout son contenu ? Il ne pourra pas être récupéré ici.": "Permanently delete the folder “{name}” and all its content? It cannot be recovered here.",
+	"Dossier « {name} » supprimé définitivement": "Folder “{name}” permanently deleted"
 }

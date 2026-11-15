@@ -452,10 +452,11 @@ class EwsClient {
 	}
 
 	/** Delete a folder and what it contains: to « Éléments supprimés », like Outlook. */
-	public function deleteFolder(string $folderId): void {
+	/** @param bool $permanent for good (a folder already in « Éléments supprimés »), else moved there */
+	public function deleteFolder(string $folderId, bool $permanent = false): void {
 		$this->assertEditable($folderId);
 		$this->request(
-			'<m:DeleteFolder DeleteType="MoveToDeletedItems"><m:FolderIds>' . $this->folderIdXml($folderId) . '</m:FolderIds></m:DeleteFolder>'
+			'<m:DeleteFolder DeleteType="' . ($permanent ? 'HardDelete' : 'MoveToDeletedItems') . '"><m:FolderIds>' . $this->folderIdXml($folderId) . '</m:FolderIds></m:DeleteFolder>'
 		);
 	}
 
@@ -1596,7 +1597,8 @@ class EwsClient {
 	 */
 	public function emptyFolder(string $folderId, bool $permanent): void {
 		$this->request(
-			'<m:EmptyFolder DeleteType="' . ($permanent ? 'HardDelete' : 'MoveToDeletedItems') . '" DeleteSubFolders="false">'
+			// emptied for good: its sub-folders too (the folders deleted earlier land there)
+			'<m:EmptyFolder DeleteType="' . ($permanent ? 'HardDelete' : 'MoveToDeletedItems') . '" DeleteSubFolders="' . ($permanent ? 'true' : 'false') . '">'
 			. '<m:FolderIds>' . $this->folderIdXml($folderId) . '</m:FolderIds></m:EmptyFolder>'
 		);
 	}

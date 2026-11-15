@@ -4980,6 +4980,26 @@ async function main() {
 		await page.waitForSelector('.wm-toast:has-text("éléments supprimés")')
 		await page.click('.wm-search-info a:has-text("effacer")')
 		const trash = '.wm-folder:has(.wm-folder-name:text-is("Éléments supprimés"))'
+		// folders deleted earlier are in it too: « Vieux projets » (with « 2019 » inside) and « Brouillons perso »
+		await page.evaluate(async () => {
+			const headers = { requesttoken: OC.requestToken, 'Content-Type': 'application/json' }
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers })).json()
+			const base = '/apps/webmail/api/accounts/' + accounts.find((a) => a.email === 'user@societe-a.fr').id + '/folders'
+			const post = async (path, body) => (await fetch(base + path, { method: 'POST', headers, body: JSON.stringify(body) })).json()
+			const old = await post('', { name: 'Vieux projets', parentId: '' })
+			await post('', { name: '2019', parentId: old.id })
+			const perso = await post('', { name: 'Brouillons perso', parentId: '' })
+			await post('/delete', { folderId: old.id })
+			await post('/delete', { folderId: perso.id })
+		})
+		await page.click('.wm-list button[title="Actualiser"]')
+		await page.waitForSelector('.wm-folder-name:text-is("Vieux projets")')
+		// a folder already in « Éléments supprimés »: deleted for good
+		await page.click('.wm-folder:has(.wm-folder-name:text-is("Brouillons perso"))', { button: 'right' })
+		page.once('dialog', (d) => { assert.ok(d.message().includes('Supprimer définitivement le dossier « Brouillons perso »'), d.message()); d.accept() })
+		await page.click('.wm-folder-menu-item:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("supprimé définitivement")')
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-folder-name')].some((e) => e.textContent === 'Brouillons perso'))
 		// the menu of the folder, from a right-click (no such entry for another folder)
 		await page.click('.wm-folder:has(.wm-folder-name:text-is("Clients"))', { button: 'right' })
 		await page.waitForSelector('.wm-folder-menu')
@@ -4988,9 +5008,11 @@ async function main() {
 		await page.click(trash, { button: 'right' })
 		await page.waitForSelector('.wm-folder-menu .wm-folder-menu-item:has-text("Vider les éléments supprimés")')
 		await shot('90-empty-deleted-items')
-		page.once('dialog', (d) => { assert.ok(d.message().includes('Supprimer définitivement')); d.accept() })
+		page.once('dialog', (d) => { assert.ok(d.message().includes('Supprimer définitivement') && d.message().includes('les 2 dossiers'), d.message()); d.accept() })
 		await page.click('.wm-folder-menu-item:has-text("Vider les éléments supprimés")')
 		await page.waitForSelector('.wm-toast:has-text("Éléments supprimés vidés")')
+		// its folders gone with it
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-folder-name')].some((e) => e.textContent === 'Vieux projets' || e.textContent === '2019'))
 		await page.click(trash)
 		await page.waitForSelector('.wm-empty:has-text("Aucun message")')
 		// nothing left: no such entry any more
