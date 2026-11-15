@@ -54,6 +54,7 @@
 		<job>OCA\Webmail\BackgroundJob\AutoFileJob</job>
 		<job>OCA\Webmail\BackgroundJob\ContactCopyJob</job>
 		<job>OCA\Webmail\BackgroundJob\AbsenceInvitationsJob</job>
+		<job>OCA\Webmail\BackgroundJob\UpdateCheckJob</job>
 	</background-jobs>
 	<settings>
 		<admin>OCA\Webmail\Settings\Admin</admin>

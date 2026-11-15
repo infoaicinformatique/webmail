@@ -1167,6 +1167,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith('/_matrix/'):
             return self.matrix('GET')
+        if self.path.split('?')[0] == '/_test/releases':
+            # (for the test: the releases of the app, as GitHub lists them)
+            import json
+            rel = lambda tag, body, **kw: dict({'tag_name': tag, 'html_url': 'https://github.com/infoaicinformatique/webmail/releases/tag/' + tag,
+                                               'published_at': '2026-11-20T10:00:00Z', 'body': body, 'draft': False, 'prerelease': False}, **kw)
+            return self.send(200, json.dumps([
+                rel('v100.0.0', 'brouillon', draft=True),
+                rel('v99.0.0', '## Nouveautés\n- **Recherches** enregistrées dans le volet\n- Corrections\n\nVoir [le détail](https://example.org).'),
+                rel('v98.0.0', '- Alertes de sécurité'),
+                rel('v1.0.0', 'ancienne'),
+            ]), {'Content-Type': 'application/json'})
         if self.path.split('?')[0] == '/element/config.json':
             # an Element Web (its configuration names its homeserver), for « Sites externes »
             import json

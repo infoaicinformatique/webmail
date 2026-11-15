@@ -21,3 +21,12 @@
 .wm-health-warning { color: var(--color-warning-text, #a37200); }
 
 #webmail-org-signature-preview:not(:empty) { margin: 8px 0; padding: 8px; border-left: 3px solid var(--color-primary-element); max-width: 640px; }
+
+/* « Mises à jour » */
+.wm-update.available .wm-update-status { font-weight: bold; color: var(--color-primary-element-text-dark, var(--color-primary-element)); }
+.wm-update-release { margin: 6px 0; padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 8px); max-width: 780px; }
+.wm-update-release summary { cursor: pointer; font-weight: bold; }
+.wm-update-release-notes { margin: 6px 0; }
+.wm-update-release-notes ul { list-style: disc; padding-inline-start: 22px; }
+.wm-update-release-notes .wm-update-heading { display: block; margin-top: 6px; }
+.wm-update-release a.external { display: inline-block; margin-top: 4px; }

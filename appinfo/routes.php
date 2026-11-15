@@ -171,6 +171,8 @@ return [
 
 		['name' => 'admin#get', 'url' => '/api/admin/servers', 'verb' => 'GET'],
 		['name' => 'admin#health', 'url' => '/api/admin/health', 'verb' => 'GET'],
+		['name' => 'admin#update', 'url' => '/api/admin/update', 'verb' => 'GET'],
+		['name' => 'admin#updateNotify', 'url' => '/api/admin/update', 'verb' => 'POST'],
 		['name' => 'admin#save', 'url' => '/api/admin/servers', 'verb' => 'PUT'],
 		['name' => 'admin#forgetDiscovered', 'url' => '/api/admin/discovered/delete', 'verb' => 'POST'],
 	],

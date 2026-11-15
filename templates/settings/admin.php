@@ -105,6 +105,20 @@ $code = fn (string $text): string => '<code>' . \OCP\Util::sanitizeHTML($text) .
 		<button type="button" id="webmail-absence-save"><?php p($l->t('Enregistrer le modèle')); ?></button>
 		<span id="webmail-absence-msg" class="msg"></span>
 	</p>
+	<h3><?php p($l->t('Mises à jour')); ?></h3>
+	<div id="webmail-update" class="wm-update" data-installed="<?php p($_['version']); ?>">
+		<p class="wm-update-status"><?php p($l->t('Version installée : %s', [$_['version']])); ?></p>
+		<div class="wm-update-notes"></div>
+		<p class="settings-hint">
+			<?php print_unescaped($l->t('Sur le serveur, la commande %1$s installe la dernière version (empreinte vérifiée, sauvegarde, retour possible par %2$s). Avec %3$s, elle s\'installe aussi en tâche planifiée qui fait la mise à jour chaque nuit, à 3 h ; %4$s la retire.',
+				[$code('sudo maj-webmail'), $code('sudo maj-webmail --retour'), $code('sudo maj-webmail --auto'), $code('sudo maj-webmail --auto-retrait')])); ?>
+		</p>
+		<p>
+			<button type="button" id="webmail-update-check"><?php p($l->t('Rechercher une nouvelle version')); ?></button>
+			<input type="checkbox" class="checkbox" id="webmail-update-notify" <?php if ($_['updateNotify']) { print_unescaped('checked'); } ?>>
+			<label for="webmail-update-notify"><?php p($l->t('Prévenir les administrateurs dans leurs notifications')); ?></label>
+		</p>
+	</div>
 	<h3><?php p($l->t('État des services')); ?></h3>
 	<p class="settings-hint">
 		<?php p($l->t('Vérifie maintenant ce dont le webmail a besoin : les serveurs Exchange, le chat de l\'organisation et sa connexion avec Nextcloud, les tâches de fond de Nextcloud.')); ?>

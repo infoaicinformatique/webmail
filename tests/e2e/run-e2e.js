@@ -124,6 +124,41 @@ async function main() {
 		}
 	})
 
+	await step('admin settings: « Mises à jour » tells the versions published since the one installed, with their notes', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		occ('config:system:set allow_local_remote_servers --value=true --type=boolean')
+		occ('config:app:set webmail update_url --value=https://ex3.fake.test:8443/_test/releases')
+		try {
+			// (at first, with no network to GitHub: the version installed is said all the same)
+			await page.waitForSelector('#webmail-update .wm-update-status')
+			await page.click('#webmail-update-check')
+			await page.waitForSelector('#webmail-update.available .wm-update-status:has-text("99.0.0")')
+			const versions = await page.$$eval('#webmail-update .wm-update-release summary', (els) => els.map((e) => e.textContent))
+			assert.strictEqual(versions.length, 2, versions.join(' | ')) // not the draft, nor the older one
+			assert.ok(versions[0].includes('99.0.0') && versions[1].includes('98.0.0'), versions.join(' | '))
+			// the notes of the newest, open: a heading and a list, as text
+			await page.waitForSelector('#webmail-update details[open] .wm-update-heading:has-text("Nouveautés")')
+			await page.waitForSelector('#webmail-update details[open] li:has-text("Recherches enregistrées dans le volet")')
+			assert.ok((await page.textContent('#webmail-update')).includes('sudo maj-webmail --auto'))
+			await page.locator('#webmail-update').scrollIntoViewIfNeeded()
+			await shot('01c-admin-update')
+			// told to the administrators: on by default, kept when unticked
+			assert(await page.isChecked('#webmail-update-notify'))
+			await page.click('label[for=webmail-update-notify]')
+			await page.waitForFunction(async () => {
+				const r = await fetch(OC.generateUrl('/apps/webmail/api/admin/update'), { headers: { requesttoken: OC.requestToken } })
+				return (await r.json()).notify === false
+			})
+			await page.click('label[for=webmail-update-notify]')
+		} finally {
+			occ('config:app:delete webmail update_url')
+			// (the list kept by the check forgotten)
+			await page.click('#webmail-update-check')
+			await page.waitForFunction(() => !document.querySelector('#webmail-update.available'))
+			occ('config:system:delete allow_local_remote_servers')
+		}
+	})
+
 	await step('admin settings: certificates and size of the attachments', async () => {
 		// this test Nextcloud talks to the fake server without checking its certificate (occ verify_tls=no)
 		assert(await page.isChecked('#webmail-no-verify-tls'))

@@ -51,6 +51,9 @@ class Notifier implements INotifier {
 		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'booking_taken') {
 			return $this->prepareBooking($notification, $l);
 		}
+		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'update_available') {
+			return $this->prepareUpdate($notification, $l);
+		}
 		if ($notification->getApp() !== Application::APP_ID || $notification->getSubject() !== 'new_message') {
 			// Nextcloud 30+ expects this exception, older versions an InvalidArgumentException
 			throw class_exists(UnknownNotificationException::class) ? new UnknownNotificationException() : new \InvalidArgumentException();
@@ -85,6 +88,17 @@ class Notifier implements INotifier {
 	}
 
 	/** "Rendez-vous pris : Point projet" — "Jean Dupont (jean@…) · mardi 18 nov. 10:00" */
+	/** « Webmail Exchange 1.154.0 est disponible » — « Version installée : 1.153.0 » */
+	private function prepareUpdate(INotification $notification, IL10N $l): INotification {
+		$p = $notification->getSubjectParameters();
+		$version = (string)($p['version'] ?? '');
+		$notification->setParsedSubject($l->t('Webmail Exchange %s est disponible', [$version]))
+			->setParsedMessage($l->t('Version installée : %s. Nouveautés et commande de mise à jour dans les paramètres d\'administration.', [(string)($p['installed'] ?? '')]))
+			->setLink($this->url->linkToRouteAbsolute('settings.AdminSettings.index', ['section' => 'webmail']))
+			->setIcon($this->url->getAbsoluteURL($this->url->imagePath('core', 'actions/download.svg')));
+		return $notification;
+	}
+
 	private function prepareBooking(INotification $notification, IL10N $l): INotification {
 		$p = $notification->getSubjectParameters();
 		$tz = $this->config->getUserValue($notification->getUser(), 'core', 'timezone', '') ?: date_default_timezone_get();
