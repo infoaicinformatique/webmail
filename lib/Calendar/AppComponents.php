@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Webmail\Calendar;
 
 use Sabre\VObject\Component;
+use Sabre\VObject\Document;
 
 /**
  * The events and tasks handed to the CalDAV wrapper of Nextcloud (AppCalendar): it reads their
@@ -16,12 +17,12 @@ final class AppComponents {
 	 * @param iterable<Component> $components VEVENT or VTODO
 	 * @return list<Component>
 	 */
-	public static function wrap(iterable $components): array {
+	public static function wrap(Document $root, iterable $components): array {
 		$out = [];
 		foreach ($components as $c) {
 			$copy = match ($c->name) {
-				'VEVENT' => new AppVEvent($c->root, 'VEVENT', [], false),
-				'VTODO' => new AppVTodo($c->root, 'VTODO', [], false),
+				'VEVENT' => new AppVEvent($root, 'VEVENT', [], false),
+				'VTODO' => new AppVTodo($root, 'VTODO', [], false),
 				default => null,
 			};
 			if ($copy === null) {

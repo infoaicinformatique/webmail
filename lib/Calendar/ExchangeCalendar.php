@@ -115,6 +115,6 @@ class ExchangeCalendar implements ICalendar {
 			}
 		}
 		$vcal = \Sabre\VObject\Reader::read($ics);
-		return $this->events = AppComponents::wrap($vcal->select('VEVENT'));
+		return $this->events = AppComponents::wrap($vcal, $vcal->select('VEVENT'));
 	}
 }
