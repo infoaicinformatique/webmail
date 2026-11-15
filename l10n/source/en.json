@@ -1728,5 +1728,15 @@
 	"Non utilisée": "Not used",
 	"Pour ceux qui n'ont pas de signature à eux": "For those without a signature of their own",
 	"Imposée à tous (leurs signatures mises de côté)": "Imposed on everybody (their signatures put aside)",
-	"Enregistrer la signature": "Save the signature"
+	"Enregistrer la signature": "Save the signature",
+	"Nom de la recherche": "Search name",
+	"Recherche « {name} » enregistrée": "Search “{name}” saved",
+	"Recherche « {name} » supprimée": "Search “{name}” deleted",
+	"Recherches enregistrées": "Saved searches",
+	"Recherches": "Searches",
+	"Supprimer la recherche": "Delete the search",
+	"Supprimer la recherche {name}": "Delete the search {name}",
+	"Retrouver cette recherche dans le volet de gauche": "Keep this search in the left pane",
+	"Trop de recherches enregistrées (%s au plus)": "Too many saved searches (%s at most)",
+	"Rien à enregistrer : saisissez des mots ou choisissez un filtre": "Nothing to save: type some words or choose a filter"
 }

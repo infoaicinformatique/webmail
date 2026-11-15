@@ -92,6 +92,12 @@
 .wm-sort { margin: 0; max-width: 112px; min-width: 0; flex: 0 1 auto; font-size: 13px; padding: 0 4px; }
 .wm-sort.active { border-color: var(--color-primary-element); }
 .wm-search-info { padding: 6px 12px; font-size: 13px; color: var(--color-text-maxcontrast); }
+.wm-search-info .wm-save-search {
+	margin-inline-start: 8px; padding: 2px 8px; min-height: 0; font-size: 12px;
+	border: 1px solid var(--color-border-dark); border-radius: var(--border-radius-pill, 12px);
+	background: var(--color-main-background); color: var(--color-main-text); cursor: pointer;
+}
+.wm-search-info .wm-save-search:hover { border-color: var(--color-primary-element); }
 .wm-messages { list-style: none; margin: 0; padding: 0; }
 .wm-message {
 	padding: 10px 12px 10px 14px;
