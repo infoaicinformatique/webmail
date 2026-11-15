@@ -2801,6 +2801,29 @@ async function main() {
 		assert(!(await page.$('.wm-contact:has-text("Garage Central")')))
 	})
 
+	await step('contacts: a search in every address book at once, each result in its book', async () => {
+		await page.click(book('Contacts'))
+		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
+		await page.fill('.wm-list .wm-search', 'azur')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForSelector('.wm-empty:has-text("Aucun contact trouvé")')
+		await page.click('.wm-search-everywhere')
+		await page.waitForSelector('.wm-search-info:has-text("dans tous les carnets")')
+		const found = '.wm-contact:has-text("Électricité Azur")'
+		await page.waitForSelector(found + ' .wm-contact-book:has-text("Fournisseurs")')
+		await shot('31-contacts-everywhere')
+		// opened in its own book
+		await page.click(found)
+		await page.waitForSelector('.wm-contact-card:has-text("Électricité Azur")')
+		await page.waitForSelector('.wm-book-row.active:has-text("Fournisseurs")')
+		// back to one book
+		await page.click('.wm-search-everywhere')
+		await page.waitForSelector('.wm-search-info:not(:has-text("dans tous les carnets"))')
+		await page.click('.wm-search-info a:has-text("effacer")')
+		await page.click(book('Contacts'))
+		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
+	})
+
 	await step('contacts: add a colleague\'s contacts (edit and read access)', async () => {
 		const add = async (email) => {
 			await page.click('.wm-cal-add:has-text("Ajouter les contacts")')

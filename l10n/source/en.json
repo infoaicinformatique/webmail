@@ -1566,5 +1566,9 @@
 	"Créer un salon visio dans le chat (Element) pour cet événement, avec votre compte Nextcloud : son lien va dans le lieu et dans l'invitation": "Create a video room in the chat (Element) for this event, with your Nextcloud account: its link goes into the location and the invitation",
 	"La connexion au chat a expiré : recommencez": "Signing in to the chat expired: try again",
 	"Le serveur Matrix n'a pas ouvert la session": "The Matrix server did not open the session",
-	"Aucun chat Matrix (Element) n'est déclaré dans les « Sites externes » de Nextcloud : indiquez le serveur et le jeton": "No Matrix chat (Element) is declared in the “External sites” of Nextcloud: enter the server and the token"
+	"Aucun chat Matrix (Element) n'est déclaré dans les « Sites externes » de Nextcloud : indiquez le serveur et le jeton": "No Matrix chat (Element) is declared in the “External sites” of Nextcloud: enter the server and the token",
+	"Résultats pour « {query} » dans tous les carnets": "Results for “{query}” in every address book",
+	"seulement dans {name}": "only in {name}",
+	"chercher dans tous les carnets": "search in every address book",
+	"Non consultés : {books}": "Not searched: {books}"
 }

@@ -105,6 +105,7 @@ return [
 		['name' => 'contact#publicFolders', 'url' => '/api/accounts/{id}/contacts/public', 'verb' => 'GET'],
 		['name' => 'contact#addPublic', 'url' => '/api/accounts/{id}/contacts/public', 'verb' => 'POST'],
 		['name' => 'contact#removePublic', 'url' => '/api/accounts/{id}/contacts/public/delete', 'verb' => 'POST'],
+		['name' => 'contact#searchAll', 'url' => '/api/accounts/{id}/contacts/search', 'verb' => 'GET'],
 		['name' => 'contact#index', 'url' => '/api/accounts/{id}/contacts', 'verb' => 'GET'],
 		['name' => 'contact#show', 'url' => '/api/accounts/{id}/contact', 'verb' => 'GET'],
 		['name' => 'contact#create', 'url' => '/api/accounts/{id}/contacts', 'verb' => 'POST'],
