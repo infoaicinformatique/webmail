@@ -2278,7 +2278,8 @@ async function main() {
 	await step('calendar: create an event in a shared calendar', async () => {
 		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
 		const options = await page.$$eval('.wm-modal select[name=calendar] option', (els) => els.map((e) => e.textContent))
-		assert.deepStrictEqual(options, ['Calendrier', 'Congés équipe', 'Agenda de Marie Martin'], 'read-only calendars are not offered')
+		// (and the Nextcloud calendar of the user; not the birthdays, read only)
+		assert.deepStrictEqual(options, ['Calendrier', 'Congés équipe', 'Agenda de Marie Martin', 'Personal (Nextcloud)'], 'read-only calendars are not offered')
 		await page.selectOption('.wm-modal select[name=calendar]', { label: 'Agenda de Marie Martin' })
 		await page.fill('.wm-modal input[name=subject]', 'Préparer le salon (pour Marie)')
 		await page.click('.wm-modal button[type=submit]')
