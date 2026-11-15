@@ -1758,7 +1758,8 @@ async function main() {
 	await step('calendar: resize an event from its bottom edge', async () => {
 		const ev = '.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")'
 		page.once('dialog', (d) => d.accept())
-		const handle = await (await page.$(ev + ' .wm-resize')).boundingBox()
+		// (the week may be drawn again after the move before: the edge taken once it is there)
+		const handle = await page.locator(ev + ' .wm-resize').boundingBox()
 		await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
 		await page.mouse.down()
 		for (let i = 1; i <= 6; i++) await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2 + 24 * i / 6)
