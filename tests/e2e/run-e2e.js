@@ -5194,8 +5194,10 @@ async function main() {
 		await page.click('.wm-modal button:has-text("Supprimer la série")')
 		await page.waitForSelector('.wm-toast:has-text("Événement supprimé")')
 		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-agenda-item')].some((e) => e.textContent.includes('Point Nextcloud') || e.textContent.includes('Créé dans le webmail')))
-		got = await dav('GET', 'calendars/{user}/personal/e2e-nc-weekly.ics')
-		assert.strictEqual(got.status, 404)
+		// (the list of the calendar: a GET of a missing event would be an error in the console)
+		const left = await dav('PROPFIND', 'calendars/{user}/personal/', null, { Depth: '1' })
+		assert.strictEqual(left.status, 207)
+		assert(!left.text.includes('e2e-nc-weekly.ics'), 'the series is deleted in Nextcloud')
 	})
 
 	await step('Nextcloud address books in Contacts: a card of the Contacts app read, changed (its other fields kept), created, deleted', async () => {
@@ -5253,8 +5255,9 @@ async function main() {
 			await page.waitForSelector('.wm-toast:has-text("Contact supprimé")')
 			await page.waitForFunction((n) => ![...document.querySelectorAll('.wm-contact')].some((e) => e.textContent.includes(n)), name)
 		}
-		got = await dav('GET', 'addressbooks/users/{user}/contacts/e2e-nc-claire.vcf')
-		assert.strictEqual(got.status, 404)
+		const left = await dav('PROPFIND', 'addressbooks/users/{user}/contacts/', null, { Depth: '1' })
+		assert.strictEqual(left.status, 207)
+		assert(!left.text.includes('e2e-nc-claire.vcf') && !left.text.includes('Bruno'), 'the cards are deleted in Nextcloud')
 		await page.click(book('Contacts'))
 		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
 	})
