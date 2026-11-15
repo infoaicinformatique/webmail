@@ -378,7 +378,8 @@ async function main() {
 
 	await step('list headings: « Aujourd\'hui », « Hier », « Cette semaine »… where the period changes', async () => {
 		const periods = await page.$$eval('.wm-messages > .wm-list-period', (els) => els.map((e) => e.textContent))
-		assert.strictEqual(periods[0], 'Aujourd\'hui', periods.join(' | '))
+		// (the newest messages of the fake server are from its start: « Hier » once midnight passed in Paris)
+		assert.ok(['Aujourd\'hui', 'Hier'].includes(periods[0]), periods.join(' | '))
 		assert.strictEqual(new Set(periods).size, periods.length, 'each period once: ' + periods.join(' | '))
 		// the order of the periods, newest first; then months (« Octobre 2026 »)
 		const order = ['Aujourd\'hui', 'Hier', 'Cette semaine', 'La semaine dernière', 'Ce mois-ci']
