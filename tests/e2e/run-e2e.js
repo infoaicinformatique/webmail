@@ -5249,12 +5249,16 @@ async function main() {
 		page.once('dialog', (d) => d.accept())
 		await page.click('.wm-modal button.wm-danger:has-text("Supprimer")')
 		await page.waitForSelector('.wm-toast:has-text("Événement supprimé")')
+		// (the list drawn again without it, before the next click)
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-agenda-item')].some((e) => e.textContent.includes('Créé dans le webmail')))
+		await page.waitForSelector('.wm-modal', { state: 'detached' })
 
 		// the whole series, from one occurrence
 		await page.click('.wm-agenda-item:has-text("Point Nextcloud") >> nth=1')
+		await page.waitForSelector('.wm-modal button:has-text("Supprimer la série")')
 		page.once('dialog', (d) => d.accept())
 		await page.click('.wm-modal button:has-text("Supprimer la série")')
-		await page.waitForSelector('.wm-toast:has-text("Événement supprimé")')
+		await page.waitForSelector('.wm-modal', { state: 'detached' })
 		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-agenda-item')].some((e) => e.textContent.includes('Point Nextcloud') || e.textContent.includes('Créé dans le webmail')))
 		// (the list of the calendar: a GET of a missing event would be an error in the console)
 		const left = await dav('PROPFIND', 'calendars/{user}/personal/', null, { Depth: '1' })
