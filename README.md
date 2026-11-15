@@ -41,7 +41,7 @@ et sur les téléphones, et inversement.
 | En-têtes Internet | « 🧾 » dans la barre d'un message : les contrôles du serveur de réception (**SPF**, **DKIM**, **DMARC** : réussi, échoué…) avec un **avertissement** si l'expéditeur n'a pas pu être authentifié (usurpation possible), le **trajet** du message de serveur en serveur avec le temps de chaque étape, puis tous les en-têtes et « Copier les en-têtes » pour le support ; comme « Propriétés du message » d'Outlook |
 | Plusieurs messages | Case à cocher devant chaque message (au survol), **Ctrl+clic** pour en ajouter, **Maj+clic** pour une plage, `x` au clavier ; une barre propose alors Tout sélectionner, Lu, Non lu, Suivi, Déplacer vers… et Supprimer, pour tous d'un coup. Échap annule la sélection. **Glisser-déposer** un message (ou la sélection) sur un dossier le déplace |
 | Envoi | Nouveau message, Répondre, Répondre à tous, Transférer (Exchange cite le message d'origine et garde ses pièces jointes), Cc/Cci, importance, signature ; `Ctrl+Entrée` envoie **Réponse rapide** : sous chaque message, « Répondre à … » : quelques lignes, `Ctrl+Entrée` ou « Envoyer » (signature, délai d'annulation et alerte de pièce jointe oubliée compris), « Répondre à tous » s'il y a d'autres destinataires, et « Plus d'options… » pour continuer dans le formulaire complet avec le texte déjà tapé |
-| Envoyer sur Matrix | Avec **votre compte Matrix** (Element) : dans « Comptes et signature », « 🔑 Se connecter avec Nextcloud » relie le compte du chat de l'organisation (le même que Nextcloud : connexion unique du chat, un clic, aucun jeton à copier) ; sinon le serveur et le jeton d'accès (gardé **chiffré**). Puis un salon par défaut. Puis « 💬 » dans un message poste son résumé (objet, expéditeur, date, début du texte, modifiable) dans le salon choisi parmi les vôtres ; « 💬 Matrix » fait de même pour un rendez-vous (quand, où, lien de visio). Le texte est envoyé tel quel, sans HTML |
+| Envoyer sur Matrix | Avec **votre compte Matrix** (Element) : dans « Comptes et signature », « 🔑 Se connecter avec Nextcloud » relie le compte du chat de l'organisation (le même que Nextcloud : connexion unique du chat, un clic, aucun jeton à copier) ; sinon le serveur et le jeton d'accès (gardé **chiffré**). Puis un salon par défaut. Si la session du chat se termine (fermée dans Element, déconnexion de Nextcloud…), le webmail le voit : la carte l'indique, et la visio propose de se reconnecter d'un clic puis crée le salon. Puis « 💬 » dans un message poste son résumé (objet, expéditeur, date, début du texte, modifiable) dans le salon choisi parmi les vôtres ; « 💬 Matrix » fait de même pour un rendez-vous (quand, où, lien de visio). Le texte est envoyé tel quel, sans HTML |
 | Alertes sur Matrix | Dans la carte Matrix : « Alertes des nouveaux messages » — **tous** ou **les importants seulement** — postées par Nextcloud dans votre salon par défaut (« 📬 Nouveau message de … »), même sans webmail ouvert, en même temps que la cloche ; un serveur Matrix injoignable n'empêche pas les notifications Nextcloud |
 | Transférer en pièce jointe | « 📎 » à côté de « Transférer » joint le message entier (fichier .eml, avec ses propres pièces jointes) à un nouveau message ; « ↪ Transférer » dans la barre de sélection fait de même pour plusieurs messages (20 au plus) : un seul envoi, chaque message en pièce jointe, que Outlook ou Thunderbird ouvrent comme un message |
 | Note depuis un message | « 📝 » garde le message comme **note Nextcloud Notes** : un fichier Markdown dans votre dossier de notes (celui réglé dans Notes, « Notes » sinon), avec l'objet en titre, l'expéditeur, la date, le texte et le lien « Ouvrir dans le webmail ». « Ouvrir dans Notes » (ou dans Fichiers sans l'application Notes) |
@@ -283,7 +283,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.138.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.139.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -348,7 +348,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.138 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.139 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
@@ -363,6 +363,8 @@ Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.138 ne mod
   (champ « Serveur »). Il suffit de saisir le nom d'hôte : l'URL complète
   `https://exN.mail.ovh.net/EWS/Exchange.asmx` est ajoutée à l'enregistrement.
 - Le domaine `*` sert de serveur par défaut pour tous les autres domaines.
+
+**État des services** (Paramètres d'administration → Webmail Exchange) : « Vérifier » contrôle sur le moment les serveurs Exchange de chaque domaine, le chat de l'organisation et sa connexion avec Nextcloud (SSO), les tâches de fond de Nextcloud (mode Cron et dernier passage), l'application « dav », et signale les utilisateurs dont la session du chat a expiré.
 
 ### Découverte automatique (Autodiscover)
 

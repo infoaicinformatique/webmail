@@ -5419,7 +5419,10 @@
 			sso.hidden = !st.chat
 			sso.textContent = '🔑 ' + (st.hasToken ? _('Se reconnecter avec Nextcloud') : _('Se connecter avec Nextcloud'))
 			sso.title = st.chat ? _('Votre compte du chat {name} (le même que Nextcloud) relié au webmail, sans jeton à copier', { name: st.chat.name }) : ''
-			status.textContent = st.user ? _('Connecté en tant que {user}', { user: st.user }) : (st.hasToken ? _('Compte Matrix enregistré') : '')
+			status.textContent = st.expired
+				? '⚠️ ' + (st.chat ? _('Votre session du chat a expiré : reconnectez-vous avec Nextcloud') : _('Votre session Matrix a expiré : indiquez un nouveau jeton'))
+				: st.user ? _('Connecté en tant que {user}', { user: st.user }) : (st.hasToken ? _('Compte Matrix enregistré') : '')
+			status.classList.toggle('wm-warning-text', !!st.expired)
 		}
 		const fillRooms = async () => {
 			try {

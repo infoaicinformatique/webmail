@@ -1801,22 +1801,38 @@
 				let url
 				if (visioRooms()) {
 					// a room made on the Matrix server, with the organiser's account: linked first if need be
+					// the session of the chat: opened first if there is none, or again if it expired
+					const connect = async (st) => {
+						const question = st.expired
+							? _('Votre session du chat {name} a expiré. Se reconnecter avec votre compte Nextcloud pour créer le salon visio ?', { name: st.chat.name })
+							: _('Pour créer le salon visio, reliez votre compte du chat {name} au webmail : la connexion se fait avec votre compte Nextcloud. Continuer ?', { name: st.chat.name })
+						if (!window.confirm(question)) return false
+						await core.connectMatrix()
+						return true
+					}
+					const make = async () => {
+						const at = startDate.value ? new Date(startDate.value + 'T' + (startTime.value || '00:00')) : null
+						const when = at && !isNaN(at) ? at.toLocaleString(locale(), { dateStyle: 'full', timeStyle: 'short' }) : ''
+						return (await api('/matrix/meeting', { method: 'POST', body: { subject: subject.value.trim(), when } })).url
+					}
 					let st = null
 					try { st = await core.matrixSettings() } catch (e) { /* asked again by the server */ }
-					if (st && !st.hasToken && st.chat) {
-						if (!window.confirm(_('Pour créer le salon visio, reliez votre compte du chat {name} au webmail : la connexion se fait avec votre compte Nextcloud. Continuer ?', { name: st.chat.name }))) return
-						try {
-							await core.connectMatrix()
-						} catch (e) {
-							core.toast(e.message, true)
-							return
-						}
+					try {
+						if (st && (!st.hasToken || st.expired) && st.chat && !(await connect(st))) return
+					} catch (e) {
+						core.toast(e.message, true)
+						return
 					}
 					visioBtn.disabled = true
 					try {
-						const at = startDate.value ? new Date(startDate.value + 'T' + (startTime.value || '00:00')) : null
-						const when = at && !isNaN(at) ? at.toLocaleString(locale(), { dateStyle: 'full', timeStyle: 'short' }) : ''
-						url = (await api('/matrix/meeting', { method: 'POST', body: { subject: subject.value.trim(), when } })).url
+						try {
+							url = await make()
+						} catch (e) {
+							// the session ended meanwhile (closed in Element…): opened again, then once more
+							const now = await core.matrixSettings(true).catch(() => null)
+							if (!now || !now.expired || !now.chat || !(await connect(now))) throw e
+							url = await make()
+						}
 					} catch (e) {
 						core.toast(e.message, true)
 						return
