@@ -249,14 +249,22 @@ class MatrixService {
 	 * @return string its id (« !abc:server »)
 	 * @throws MailException
 	 */
-	public function createMeetingRoom(string $userId, string $subject, string $when): string {
+	/** @return array{id: string, via: string} the room, and the server to join it by */
+	public function createMeetingRoom(string $userId, string $subject, string $when): array {
 		[$hs, $token] = $this->account($userId);
 		$r = $this->userCall($userId, 'POST', $hs, '/createRoom', $token, Matrix::meetingRoom($subject, $when));
 		$id = (string)($r['room_id'] ?? '');
-		if ($id === '') {
+		if (!Matrix::isRoomId($id)) {
+			$this->logger->warning('Webmail: unexpected answer of createRoom on ' . $hs . ': ' . mb_substr((string)json_encode($r), 0, 300), ['app' => Application::APP_ID]);
 			throw new MailException('Le serveur Matrix n\'a pas créé le salon');
 		}
-		return $id;
+		// (a room of version 12 names no server: the one of the account)
+		$via = '';
+		if (!str_contains($id, ':')) {
+			$me = (string)($this->userCall($userId, 'GET', $hs, '/account/whoami', $token)['user_id'] ?? '');
+			$via = str_contains($me, ':') ? substr($me, strpos($me, ':') + 1) : '';
+		}
+		return ['id' => $id, 'via' => $via];
 	}
 
 	/**
@@ -270,7 +278,7 @@ class MatrixService {
 	 */
 	public function inviteToRoom(string $userId, string $roomId, array $emails): array {
 		[$hs, $token] = $this->account($userId);
-		if (!preg_match('~^![^\s:/]+:[a-z0-9.\-\[\]:]+$~i', $roomId)) {
+		if (!Matrix::isRoomId($roomId)) {
 			throw new MailException('Salon Matrix introuvable : %s', [$roomId]);
 		}
 		$me = (string)($this->userCall($userId, 'GET', $hs, '/account/whoami', $token)['user_id'] ?? '');

@@ -84,8 +84,8 @@ class MatrixController extends Controller {
 			if ($visio['mode'] !== ServerConfigService::VISIO_ELEMENT_ROOM || $visio['visio'] === '') {
 				throw new MailException('La visio Element n\'est pas configurée par l\'administrateur');
 			}
-			$roomId = $this->matrix->createMeetingRoom((string)$this->userId, $subject, $when);
-			return ['roomId' => $roomId, 'url' => Matrix::roomLink($visio['visio'], $roomId)];
+			$room = $this->matrix->createMeetingRoom((string)$this->userId, $subject, $when);
+			return ['roomId' => $room['id'], 'url' => Matrix::roomLink($visio['visio'], $room['id'], $room['via'])];
 		});
 	}
 

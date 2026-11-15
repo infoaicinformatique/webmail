@@ -1145,7 +1145,8 @@ class Handler(BaseHTTPRequestHandler):
             return reply(200, {})
         if method == 'POST' and path == api + '/createRoom':
             body = json.loads(raw or b'{}')
-            room = '!meet%d:fake.test' % (len(MATRIX_CREATED) + 1)
+            # (room version 12, as the recent Synapse servers make them: no server in the id)
+            room = '!meet%dZk3xQ9dHf2Lp8wVb5nRt7yMc1sGa4eJo6uKi0' % (len(MATRIX_CREATED) + 1)
             MATRIX_CREATED.append(body)
             MATRIX_ROOMS[room] = body.get('name', '')
             return reply(200, {'room_id': room})
