@@ -3523,6 +3523,10 @@ async function main() {
 	})
 
 	await step('instant tabs: the calendar, the tasks and the contacts are loaded while the mail is idle, then show at once', async () => {
+		// (what the contacts asked, told when the step fails)
+		const seen = []
+		const watch = (r) => { if (/\/contacts/.test(r.url())) seen.push((Date.now() % 100000) + ' ' + r.status() + ' ' + r.request().method() + ' ' + r.url().replace(/^.*\/api/, '')) }
+		page.on('response', watch)
 		const ahead = ['/calendar/events', '/tasks?', '/contacts?'].map((part) => page.waitForResponse((r) => r.url().includes(part) && r.status() === 200, { timeout: 30000 }))
 		await page.goto(NC + '/apps/webmail/?module=mail')
 		await page.waitForSelector('.wm-message')
@@ -3541,9 +3545,14 @@ async function main() {
 			const times = {
 				calendar: await shown('calendar', '.wm-event, .wm-agenda-item'),
 				tasks: await shown('tasks', '.wm-task:has-text("Renouveler le nom de domaine")'),
-				contacts: await shown('contacts', '.wm-contact'),
+				contacts: await shown('contacts', '.wm-contact').catch(async (e) => {
+					seen.failed = true
+					process.stdout.write('    contacts requests:\n      ' + seen.join('\n      ') + '\n    nav: ' + (await page.textContent('#app-navigation, .wm-nav').catch(() => '')).replace(/\s+/g, ' ').slice(0, 300) + '\n')
+					throw e
+				}),
 			}
 			process.stdout.write('    shown in ' + JSON.stringify(times) + ' ms (Exchange answering in 4 s)\n')
+			page.off('response', watch)
 		} finally {
 			await page.unroute(/\/calendar\/(events|calendars)/)
 			await page.unroute(/\/apps\/webmail\/api\/accounts\/\d+\/(tasks|contacts)(\?|\/books|$)/)
