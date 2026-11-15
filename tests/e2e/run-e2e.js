@@ -5446,9 +5446,11 @@ async function main() {
 		// searched there too
 		await page.fill('.wm-list .wm-search', 'archi')
 		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForSelector('.wm-search-info:has-text("archi")')
 		await page.waitForFunction(() => document.querySelectorAll('.wm-contact').length === 0 || [...document.querySelectorAll('.wm-contact')].every((e) => e.textContent.includes('Claire')))
 		await page.fill('.wm-list .wm-search', 'claire')
 		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForSelector('.wm-search-info:has-text("claire")')
 		await page.waitForFunction(() => document.querySelectorAll('.wm-contact').length === 1)
 		await page.click('.wm-search-info a')
 
