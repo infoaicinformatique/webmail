@@ -1824,6 +1824,8 @@
 						return
 					}
 					visioBtn.disabled = true
+					// (the event is not saved before its room is made: its link would be missing)
+					save.disabled = true
 					try {
 						try {
 							url = await make()
@@ -1837,6 +1839,7 @@
 						core.toast(e.message, true)
 						return
 					} finally {
+						save.disabled = false
 						visioBtn.disabled = false
 					}
 				} else {
@@ -1858,6 +1861,7 @@
 			hidden: TALK_LINK.test(location.value + ' ' + ((ev && ev.body) || '')),
 			onclick: async () => {
 				talkBtn.disabled = true
+				save.disabled = true
 				try {
 					const url = await createTalkRoom(subject.value.trim())
 					if (!location.value.trim()) location.value = url
@@ -1867,6 +1871,7 @@
 				} catch (e) {
 					core.toast(e.message, true)
 				} finally {
+					save.disabled = false
 					talkBtn.disabled = false
 				}
 			},
