@@ -28,6 +28,10 @@ class Application extends App implements IBootstrap {
 
 	public function register(IRegistrationContext $context): void {
 		$context->registerEventListener(UserDeletedEvent::class, UserDeletedListener::class);
+		// the absences of Nextcloud as the automatic replies of Exchange (the class names only: Nextcloud 28 and later)
+		foreach (['OutOfOfficeScheduledEvent', 'OutOfOfficeChangedEvent', 'OutOfOfficeClearedEvent'] as $absence) {
+			$context->registerEventListener('OCP\\User\\Events\\' . $absence, \OCA\Webmail\Listener\AbsenceListener::class);
+		}
 		// the class name only: the Files app may be disabled
 		$context->registerEventListener('OCA\\Files\\Event\\LoadAdditionalScriptsEvent', FilesScriptsListener::class);
 		$context->registerDashboardWidget(UnreadWidget::class);

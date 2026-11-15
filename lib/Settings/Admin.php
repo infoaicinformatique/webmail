@@ -15,6 +15,8 @@ class Admin implements ISettings {
 	public function __construct(
 		private ServerConfigService $servers,
 		private MatrixService $matrix,
+		private \OCA\Webmail\Service\AbsenceReplyService $absences,
+		private \OCP\IL10N $l,
 	) {
 	}
 
@@ -32,6 +34,8 @@ class Admin implements ISettings {
 			'verifyTls' => $this->servers->getVerifyTls(),
 			'maxAttachmentsMb' => $this->servers->getMaxAttachmentsMb(),
 			'maxAttachmentsLimit' => ServerConfigService::MAX_ATTACHMENTS_MB_LIMIT,
+			'absenceTemplate' => $this->absences->adminTemplate(),
+			'absenceDefault' => \OCA\Webmail\Service\AbsenceReplyService::defaultTemplate($this->l),
 		], '');
 	}
 

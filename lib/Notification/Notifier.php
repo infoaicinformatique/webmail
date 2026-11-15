@@ -45,6 +45,9 @@ class Notifier implements INotifier {
 		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'task_reminder') {
 			return $this->prepareTaskReminder($notification, $l);
 		}
+		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'oof_scheduled') {
+			return $this->prepareAbsence($notification, $l);
+		}
 		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'booking_taken') {
 			return $this->prepareBooking($notification, $l);
 		}
@@ -61,6 +64,23 @@ class Notifier implements INotifier {
 			->setParsedMessage($message)
 			->setLink($this->url->linkToRouteAbsolute('webmail.page.index') . '?' . http_build_query(['account' => $p['account'] ?? '', 'message' => $p['itemId'] ?? '']))
 			->setIcon($this->url->getAbsoluteURL($this->url->imagePath(Application::APP_ID, 'app-dark.svg')));
+		return $notification;
+	}
+
+	/** "Réponse automatique programmée du 22 décembre au 2 janvier" — "user@… · compta@…" */
+	private function prepareAbsence(INotification $notification, IL10N $l): INotification {
+		$p = $notification->getSubjectParameters();
+		$tz = $this->config->getUserValue($notification->getUser(), 'core', 'timezone', '') ?: date_default_timezone_get();
+		try {
+			$zone = new \DateTimeZone($tz);
+		} catch (\Exception) {
+			$zone = new \DateTimeZone('UTC');
+		}
+		$day = fn ($ts) => (string)$l->l('date', (new \DateTime('@' . (int)$ts))->setTimezone($zone), ['width' => 'long']);
+		$notification->setParsedSubject($l->t('Réponse automatique programmée du %1$s au %2$s', [$day($p['start'] ?? 0), $day($p['end'] ?? 0)]))
+			->setParsedMessage($l->t('Pour votre absence de Nextcloud : %s', [(string)($p['accounts'] ?? '')]))
+			->setLink($this->url->linkToRouteAbsolute('webmail.page.index'))
+			->setIcon($this->url->getAbsoluteURL($this->url->imagePath('core', 'actions/calendar.svg')));
 		return $notification;
 	}
 

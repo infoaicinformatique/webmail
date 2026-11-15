@@ -75,6 +75,17 @@ $code = fn (string $text): string => '<code>' . \OCP\Util::sanitizeHTML($text) .
 		<?php p($l->t('Préconfiguré avec votre Element des Sites externes de Nextcloud : « %1$s » (%2$s, serveur Matrix %3$s). Vérifiez puis enregistrez.', [$element['name'] !== '' ? $element['name'] : 'Element', $element['url'], $element['homeserver']])); ?>
 	</p>
 	<?php endif; ?>
+	<h3><?php p($l->t('Réponse automatique pendant les absences')); ?></h3>
+	<p class="settings-hint">
+		<?php p($l->t('Une absence saisie dans Nextcloud (Paramètres personnels › Disponibilité › Absence) programme la réponse automatique Exchange de la personne sur les mêmes dates. Si l\'absence n\'a pas de message, ce modèle sert, sauf si la personne a écrit le sien. Les dates sont remplies : {debut}, {fin}, {retour}, {nom}, {remplacement}. Laissez vide pour le modèle du webmail.')); ?>
+	</p>
+	<p>
+		<textarea id="webmail-absence-template" rows="8" cols="70" placeholder="<?php p($_['absenceDefault']); ?>"><?php p($_['absenceTemplate']); ?></textarea>
+	</p>
+	<p>
+		<button type="button" id="webmail-absence-save"><?php p($l->t('Enregistrer le modèle')); ?></button>
+		<span id="webmail-absence-msg" class="msg"></span>
+	</p>
 	<h3><?php p($l->t('État des services')); ?></h3>
 	<p class="settings-hint">
 		<?php p($l->t('Vérifie maintenant ce dont le webmail a besoin : les serveurs Exchange, le chat de l\'organisation et sa connexion avec Nextcloud, les tâches de fond de Nextcloud.')); ?>

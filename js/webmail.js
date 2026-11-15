@@ -5591,6 +5591,45 @@
 	}
 
 	/** The card of « Comptes et signature »: homeserver, access token (kept encrypted), default room. */
+	/**
+	 * « Absences de Nextcloud »: an absence saved in Nextcloud (Disponibilité › Absence) schedules
+	 * the automatic reply of every account on its dates; the message is the one of the absence,
+	 * or else this model (the dates filled in).
+	 */
+	function absenceSettings() {
+		const enabled = h('input', { type: 'checkbox', name: 'absenceReplies' })
+		const template = h('textarea', { name: 'absenceTemplate', rows: '8' })
+		const link = h('a', { href: '#', target: '_blank', rel: 'noopener' }, _('Saisir une absence dans Nextcloud'))
+		const save = h('button', { type: 'submit', class: 'primary' }, _('Enregistrer'))
+		const card = h('form', {
+			class: 'wm-account-card wm-absence-settings',
+			onsubmit: async (e) => {
+				e.preventDefault()
+				save.disabled = true
+				try {
+					show(await api('/absence', { method: 'POST', body: { enabled: enabled.checked, template: template.value } }))
+					toast(enabled.checked ? _('Vos absences de Nextcloud programmeront la réponse automatique') : _('Vos absences de Nextcloud ne changeront plus la réponse automatique'))
+				} catch (ex) { toast(ex.message, true) } finally { save.disabled = false }
+			},
+		},
+		h('fieldset', {},
+			h('legend', {}, '🌴 ' + _('Absences de Nextcloud')),
+			h('label', { class: 'wm-radio' }, enabled, ' ' + _('Pendant mes absences saisies dans Nextcloud, programmer la réponse automatique de tous mes comptes (mêmes dates)')),
+			h('p', { class: 'wm-muted' }, _('Le message de l\'absence est envoyé tel quel ; s\'il est vide, ce modèle sert, avec les dates remplies : {debut}, {fin}, {retour} (le lendemain), {nom}, {remplacement} (« En mon absence, vous pouvez joindre … »). Laissez vide pour le modèle de votre organisation.'), ' ', link),
+			template,
+			h('div', { class: 'wm-compose-actions' }, save)))
+		const show = (st) => {
+			enabled.checked = st.enabled
+			template.value = st.template
+			template.placeholder = st.defaultTemplate
+			link.href = st.settingsUrl
+			card.hidden = !st.available
+		}
+		card.hidden = true
+		api('/absence').then(show, () => {})
+		return card
+	}
+
 	function matrixSettings() {
 		const card = h('fieldset', { class: 'wm-account-card wm-matrix-settings' }, h('legend', {}, '💬 ' + _('Matrix (Element)')))
 		// (text: « matrix.example.org » alone is accepted, https is added by the server)
@@ -5833,6 +5872,7 @@
 			h('legend', {}, _('Modèles de réponse')), templateList))
 		loadTemplates(true).then(showTemplates, (e) => toast(e.message, true))
 		// (last: the account cards stay first)
+		wrap.appendChild(absenceSettings())
 		wrap.appendChild(matrixSettings())
 
 		// senders whose remote images show at once

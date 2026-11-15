@@ -49,6 +49,31 @@
 		})
 
 		// « État des services »: checked on demand
+		// the model of the automatic replies during the absences of Nextcloud
+		const absenceSave = document.getElementById('webmail-absence-save')
+		if (absenceSave) {
+			absenceSave.addEventListener('click', async () => {
+				const out = document.getElementById('webmail-absence-msg')
+				absenceSave.disabled = true
+				try {
+					const res = await fetch(OC.generateUrl('/apps/webmail/api/admin/absence-template'), {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json', requesttoken: OC.requestToken },
+						body: JSON.stringify({ template: document.getElementById('webmail-absence-template').value }),
+					})
+					const data = await res.json()
+					if (!res.ok) throw new Error(data.message || _('Erreur'))
+					document.getElementById('webmail-absence-template').value = data.template
+					out.textContent = _('Enregistré')
+					out.className = 'msg success'
+				} catch (e) {
+					out.textContent = e.message
+					out.className = 'msg error'
+				} finally {
+					absenceSave.disabled = false
+				}
+			})
+		}
 		const healthBtn = document.getElementById('webmail-health-check')
 		const healthList = document.getElementById('webmail-health')
 		if (healthBtn && healthList) {

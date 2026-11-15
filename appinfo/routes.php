@@ -78,6 +78,9 @@ return [
 
 		['name' => 'calendar#upcoming', 'url' => '/api/meetings/upcoming', 'verb' => 'GET'],
 		['name' => 'today#index', 'url' => '/api/today', 'verb' => 'GET'],
+		['name' => 'absence#show', 'url' => '/api/absence', 'verb' => 'GET'],
+		['name' => 'absence#update', 'url' => '/api/absence', 'verb' => 'POST'],
+		['name' => 'absence#adminTemplate', 'url' => '/api/admin/absence-template', 'verb' => 'POST'],
 		['name' => 'booking#propose', 'url' => '/api/accounts/{id}/booking', 'verb' => 'POST'],
 		['name' => 'booking#show', 'url' => '/rdv/{token}', 'verb' => 'GET'],
 		['name' => 'booking#choose', 'url' => '/rdv/{token}', 'verb' => 'POST'],
