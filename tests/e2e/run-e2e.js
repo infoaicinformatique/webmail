@@ -2809,7 +2809,7 @@ async function main() {
 		await page.press('.wm-list .wm-search', 'Enter')
 		await page.waitForSelector('.wm-empty:has-text("Aucun contact trouvé")')
 		await page.click('.wm-search-everywhere')
-		await page.waitForSelector('.wm-search-info:has-text("dans tous les carnets")')
+		await page.waitForSelector('.wm-search-info:has-text("» dans tous les carnets")')
 		const found = '.wm-contact:has-text("Électricité Azur")'
 		await page.waitForSelector(found + ' .wm-contact-book:has-text("Fournisseurs")')
 		await shot('31-contacts-everywhere')
@@ -2819,7 +2819,7 @@ async function main() {
 		await page.waitForSelector('.wm-book-row.active:has-text("Fournisseurs")')
 		// back to one book
 		await page.click('.wm-search-everywhere')
-		await page.waitForSelector('.wm-search-info:not(:has-text("dans tous les carnets"))')
+		await page.waitForSelector('.wm-search-everywhere:has-text("chercher dans tous les carnets")')
 		await page.click('.wm-search-info a:has-text("effacer")')
 		await page.click(book('Contacts'))
 		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
