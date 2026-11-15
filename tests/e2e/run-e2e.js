@@ -1787,6 +1787,7 @@ async function main() {
 		const ev = '.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")'
 		page.once('dialog', (d) => d.accept())
 		// (the week may be drawn again after the move before: the edge taken once it is there)
+		await page.locator(ev + ' .wm-resize').waitFor()
 		const handle = await page.locator(ev + ' .wm-resize').boundingBox()
 		await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
 		await page.mouse.down()
