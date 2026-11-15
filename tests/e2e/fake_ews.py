@@ -112,6 +112,8 @@ MATRIX_ALIASES = {'#equipe:fake.test': '!equipe:fake.test'}
 MATRIX_SENT = []
 # rooms made by createRoom (« Visio Element » with Element Web): their request
 MATRIX_SSO = []
+# the session ended on the server (closed in Element, Nextcloud signed out…) until a new sign-in
+MATRIX_REVOKED = [False]
 MATRIX_CREATED = []
 # conversations ignored (« Ignorer la conversation »)
 IGNORED = set()
@@ -1087,11 +1089,15 @@ class Handler(BaseHTTPRequestHandler):
         if method == 'POST' and path == '/_matrix/client/v3/login':
             body = json.loads(raw or b'{}')
             if body.get('type') == 'm.login.token' and body.get('token') == 'fake-login-token':
+                MATRIX_REVOKED[0] = False
                 return reply(200, {'access_token': 'syt_test_token', 'user_id': '@user:fake.test', 'device_id': 'WEBMAIL'})
             return reply(403, {'errcode': 'M_FORBIDDEN', 'error': 'Invalid login token'})
         if path == '/_matrix/test/sso':
             return reply(200, MATRIX_SSO)
-        if self.headers.get('Authorization', '') != 'Bearer syt_test_token':
+        if path == '/_matrix/test/revoke':
+            MATRIX_REVOKED[0] = True
+            return reply(200, {})
+        if self.headers.get('Authorization', '') != 'Bearer syt_test_token' or MATRIX_REVOKED[0]:
             return reply(401, {'errcode': 'M_UNKNOWN_TOKEN', 'error': 'Invalid access token'})
         api = '/_matrix/client/v3'
         if method == 'GET' and path == api + '/account/whoami':

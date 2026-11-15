@@ -48,6 +48,42 @@
 			}
 		})
 
+		// « État des services »: checked on demand
+		const healthBtn = document.getElementById('webmail-health-check')
+		const healthList = document.getElementById('webmail-health')
+		if (healthBtn && healthList) {
+			healthBtn.addEventListener('click', async () => {
+				healthBtn.disabled = true
+				healthList.innerHTML = ''
+				const loading = document.createElement('li')
+				loading.textContent = _('Vérification…')
+				healthList.appendChild(loading)
+				try {
+					const res = await fetch(OC.generateUrl('/apps/webmail/api/admin/health'), { headers: { requesttoken: OC.requestToken, Accept: 'application/json' } })
+					const data = await res.json()
+					if (!res.ok) throw new Error(data.message || ('HTTP ' + res.status))
+					healthList.innerHTML = ''
+					data.checks.forEach((c) => {
+						const li = document.createElement('li')
+						li.className = 'wm-health-' + c.state
+						const icon = { ok: '✅', warning: '⚠️', error: '❌' }[c.state] || '•'
+						const strong = document.createElement('strong')
+						strong.textContent = c.check
+						li.append(icon + ' ', strong, ' — ' + c.detail)
+						healthList.appendChild(li)
+					})
+				} catch (e) {
+					healthList.innerHTML = ''
+					const li = document.createElement('li')
+					li.className = 'wm-health-error'
+					li.textContent = '❌ ' + e.message
+					healthList.appendChild(li)
+				} finally {
+					healthBtn.disabled = false
+				}
+			})
+		}
+
 		const discovered = document.getElementById('webmail-discovered')
 		const showDiscovered = (map) => {
 			discovered.innerHTML = ''

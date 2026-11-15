@@ -94,6 +94,22 @@ async function main() {
 		await shot('01-admin')
 	})
 
+	await step('admin settings: « État des services » checks the Exchange servers, the chat, the background jobs', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		// (the fake servers are on the local network: allowed here only)
+		occ('config:system:set allow_local_remote_servers --value=true --type=boolean')
+		try {
+			await page.click('#webmail-health-check')
+			await page.waitForSelector('#webmail-health li.wm-health-ok:has-text("Exchange — societe-a.fr")')
+			await page.waitForSelector('#webmail-health li:has-text("Exchange — societe-b.fr")')
+			await page.waitForSelector('#webmail-health li:has-text("Tâches de fond de Nextcloud")')
+			await page.waitForSelector('#webmail-health li:has-text("Chat (Matrix / Element)")')
+			await shot('01b-admin-health')
+		} finally {
+			occ('config:system:delete allow_local_remote_servers')
+		}
+	})
+
 	await step('admin settings: certificates and size of the attachments', async () => {
 		// this test Nextcloud talks to the fake server without checking its certificate (occ verify_tls=no)
 		assert(await page.isChecked('#webmail-no-verify-tls'))
@@ -4893,6 +4909,22 @@ async function main() {
 				assert.ok(place.startsWith('https://ex3.fake.test:8443/element/#/room/%21meet'), place)
 				assert.ok((await ssoSeen()).some((u) => u.includes('/apps/webmail/matrix/sso/callback?state=')), 'back to the webmail')
 				await shot('95-visio-chat-sso')
+				await page.click('.wm-modal .wm-modal-close')
+				// the session ends on the chat's side: the next visio asks to sign in again, then makes the room
+				await new Promise((resolve, reject) => require('https').get('https://localhost:8443/_matrix/test/revoke', { rejectUnauthorized: false }, (res) => { res.resume(); res.on('end', resolve) }).on('error', reject))
+				for (let i = 0; i < 5 && !(await page.$('.wm-modal input[name=subject]')); i++) {
+					await page.click('.wm-compose-btn')
+					await page.waitForSelector('.wm-modal input[name=subject]', { timeout: 3000 }).catch(() => {})
+				}
+				await page.fill('.wm-modal input[name=subject]', 'Réunion après la fin de session')
+				let again = ''
+				page.once('dialog', (d) => { again = d.message(); d.accept() })
+				const popup2 = page.waitForEvent('popup')
+				await page.click('.wm-visio-btn')
+				const win2 = await popup2
+				await win2.waitForEvent('close', { timeout: 30000 }).catch(() => {})
+				await page.waitForSelector('.wm-toast:has-text("Salle de visio ajoutée")')
+				assert.ok(again.includes('a expiré'), again)
 				await page.click('.wm-modal .wm-modal-close')
 				// the card of the account: linked, to link again by Nextcloud if need be
 				await page.click('.wm-tab[data-module="mail"]')

@@ -75,6 +75,14 @@ $code = fn (string $text): string => '<code>' . \OCP\Util::sanitizeHTML($text) .
 		<?php p($l->t('Préconfiguré avec votre Element des Sites externes de Nextcloud : « %1$s » (%2$s, serveur Matrix %3$s). Vérifiez puis enregistrez.', [$element['name'] !== '' ? $element['name'] : 'Element', $element['url'], $element['homeserver']])); ?>
 	</p>
 	<?php endif; ?>
+	<h3><?php p($l->t('État des services')); ?></h3>
+	<p class="settings-hint">
+		<?php p($l->t('Vérifie maintenant ce dont le webmail a besoin : les serveurs Exchange, le chat de l\'organisation et sa connexion avec Nextcloud, les tâches de fond de Nextcloud.')); ?>
+	</p>
+	<p>
+		<button type="button" id="webmail-health-check"><?php p($l->t('Vérifier')); ?></button>
+	</p>
+	<ul id="webmail-health" class="wm-health"></ul>
 	<h3><?php p($l->t('Sécurité et limites')); ?></h3>
 	<p class="settings-hint">
 		<?php p($l->t('Taille totale des pièces jointes d\'un message, pour tous les comptes. Exchange applique aussi sa propre limite (25 Mo par défaut chez OVH Hosted Exchange) : ne la dépassez pas, sinon il refusera les messages. Au-delà, les utilisateurs envoient leurs fichiers en lien Nextcloud.')); ?>
