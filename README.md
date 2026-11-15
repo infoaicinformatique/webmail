@@ -225,7 +225,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Tâches](docs/capture-taches.png)
 
-L'onglet **✅ Tâches** affiche le dossier « Tâches » de la boîte Exchange, le même que dans Outlook et Outlook sur le web. Les **autres listes de tâches** de la boîte (créées dans Outlook) apparaissent sous « Listes de tâches » dans la barre latérale : un clic affiche les tâches de la liste, et une tâche ajoutée va dans la liste affichée (ou celle choisie dans le formulaire). La liste affichée est retenue.
+L'onglet **✅ Tâches** affiche le dossier « Tâches » de la boîte Exchange, le même que dans Outlook et Outlook sur le web. Les **autres listes de tâches** de la boîte (créées dans Outlook) apparaissent sous « Listes de tâches » dans la barre latérale : un clic affiche les tâches de la liste, et une tâche ajoutée va dans la liste affichée (ou celle choisie dans le formulaire). La liste affichée est retenue. Les **listes de l'application Tâches de Nextcloud** (personnelles et partagées) apparaissent aussi, sous « Listes Nextcloud » : leurs tâches se lisent, se créent, se terminent, se modifient et se suppriment ici, en gardant ce que le formulaire ne montre pas (étiquettes, sous-tâches…) ; une liste partagée en lecture le reste. Dans l'autre sens, « Visible dans Tâches de Nextcloud » montre vos listes Exchange (en lecture seule) dans l'application Tâches et sur les téléphones synchronisés ; chaque tâche y renvoie au webmail.
 
 | | |
 |---|---|

@@ -3196,6 +3196,65 @@ async function main() {
 		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
 	})
 
+	await step('tasks: the lists of the Tasks app of Nextcloud here, and the Exchange lists there (CalDAV)', async () => {
+		const dav = (method, path, body = null, extra = {}) => page.evaluate(async ({ method, path, body, extra }) => {
+			const r = await fetch('/remote.php/dav/' + path.replace('{user}', OC.getCurrentUser().uid), {
+				method, body, headers: Object.assign({ requesttoken: OC.requestToken }, extra),
+			})
+			return { status: r.status, text: (await r.text()).replace(/\r?\n[ \t]/g, '') }
+		}, { method, path, body, extra })
+		// a list of the Tasks app, with a task
+		const uri = 'e2e-courses-' + Date.now()
+		const made = await dav('MKCALENDAR', 'calendars/{user}/' + uri + '/', '<c:mkcalendar xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:set><d:prop>'
+			+ '<d:displayname>Courses</d:displayname><c:supported-calendar-component-set><c:comp name="VTODO"/></c:supported-calendar-component-set></d:prop></d:set></c:mkcalendar>', { 'Content-Type': 'application/xml' })
+		assert.strictEqual(made.status, 201, made.text)
+		try {
+			const put = await dav('PUT', 'calendars/{user}/' + uri + '/pain.ics', 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//e2e//FR\r\nBEGIN:VTODO\r\nUID:e2e-pain\r\nDTSTAMP:20260101T000000Z\r\n'
+				+ 'SUMMARY:Acheter du pain\r\nPRIORITY:1\r\nCATEGORIES:Maison\r\nX-E2E-KEPT:oui\r\nEND:VTODO\r\nEND:VCALENDAR\r\n', { 'Content-Type': 'text/calendar' })
+			assert([201, 204].includes(put.status), 'PUT ' + put.status)
+			await page.reload()
+			await page.click('.wm-tab[data-module="tasks"]')
+			await page.click('.wm-nc-task-lists .wm-task-list:has-text("Courses")')
+			await page.waitForSelector('.wm-task:has-text("Acheter du pain") .wm-important')
+			// added here, in that list
+			await page.fill('input[name=quickTask]', 'Acheter du lait')
+			await page.press('input[name=quickTask]', 'Enter')
+			await page.waitForSelector('.wm-toast:has-text("Tâche ajoutée")')
+			await page.waitForSelector('.wm-task:has-text("Acheter du lait")')
+			// done here, done there; the rest of the task kept
+			await page.check('.wm-task:has-text("Acheter du pain") .wm-task-done')
+			await page.waitForSelector('.wm-toast:has-text("Tâche terminée")')
+			const pain = await dav('GET', 'calendars/{user}/' + uri + '/pain.ics')
+			assert(pain.text.includes('STATUS:COMPLETED') && pain.text.includes('X-E2E-KEPT:oui') && pain.text.includes('CATEGORIES:Maison'), pain.text)
+			const all = await dav('REPORT', 'calendars/{user}/' + uri + '/', '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><c:calendar-data/></d:prop>'
+				+ '<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VTODO"/></c:comp-filter></c:filter></c:calendar-query>', { Depth: '1', 'Content-Type': 'application/xml' })
+			assert(all.text.includes('SUMMARY:Acheter du lait'), all.text.slice(0, 1200))
+			await shot('60-nextcloud-tasks')
+			// and deleted
+			await page.click('.wm-task:has-text("Acheter du lait") .wm-task-subject')
+			page.once('dialog', (d) => d.accept())
+			await page.click('.wm-task-form button:has-text("Supprimer")')
+			await page.waitForSelector('.wm-toast:has-text("Tâche supprimée")')
+
+			// the Exchange lists in the Tasks app of Nextcloud (read only)
+			await page.click('.wm-task-list[data-list="tasks"]')
+			await page.waitForSelector('.wm-tasks-nc input:not([disabled])')
+			await page.check('.wm-tasks-nc input')
+			await page.waitForSelector('.wm-toast:has-text("Listes Exchange visibles dans Tâches de Nextcloud")')
+			const home = await dav('PROPFIND', 'calendars/{user}/', '<d:propfind xmlns:d="DAV:"><d:prop><d:displayname/></d:prop></d:propfind>', { Depth: '1', 'Content-Type': 'application/xml' })
+			const m = /calendars\/[^/]+\/(app-generated--[a-z-]+--webmail-exchange-tasks-\d+)\//.exec(home.text)
+			assert(m, 'the list « Tâches » of Exchange in Nextcloud: ' + home.text.slice(0, 800))
+			assert(/webmail-exchange-tasks-\d+-[0-9a-f]{8}/.test(home.text), 'the other lists too')
+			const todos = await dav('REPORT', 'calendars/{user}/' + m[1] + '/', '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><c:calendar-data/></d:prop>'
+				+ '<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VTODO"/></c:comp-filter></c:filter></c:calendar-query>', { Depth: '1', 'Content-Type': 'application/xml' })
+			assert(todos.text.includes('SUMMARY:Renouveler le nom de domaine') && todos.text.includes('PRIORITY:1'), todos.text.slice(0, 1200))
+			await page.uncheck('.wm-tasks-nc input')
+			await page.waitForSelector('.wm-toast:has-text("Listes Exchange retirées de Tâches de Nextcloud")')
+		} finally {
+			await dav('DELETE', 'calendars/{user}/' + uri + '/')
+		}
+	})
+
 	await step('task reminder: set in the form, rings in the bell of Nextcloud, its link opens the task, gone when removed', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\ReminderJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
