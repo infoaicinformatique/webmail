@@ -1748,6 +1748,8 @@
 		if (seq !== listSeq || state.module !== 'mail') return
 		if (firstPage && state.hasMore && state.messages.length < PAGE_SIZE) {
 			await loadMessages(false, PAGE_SIZE - state.messages.length)
+			// (the page completed: the rest is loaded ahead as after a full one)
+			if (reset && state.module === 'mail') { prefetchUnreadWhenIdle(); prefetchModulesWhenIdle() }
 			return
 		}
 		if (reset) { prefetchUnreadWhenIdle(); prefetchModulesWhenIdle() }
