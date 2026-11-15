@@ -1305,6 +1305,70 @@ async function main() {
 		}, created)
 	})
 
+	await step('« Aujourd\'hui »: the meetings, tasks, follow-ups and snoozed messages of the day, all accounts', async () => {
+		const ctx = await page.evaluate(async () => {
+			const headers = { requesttoken: OC.requestToken, 'Content-Type': 'application/json' }
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const post = async (path, body) => {
+				const r = await fetch('/apps/webmail/api/accounts/' + id + path, { method: 'POST', headers, body: JSON.stringify(body) })
+				if (!r.ok) throw new Error(path + ' ' + r.status + ' ' + await r.text())
+				return r.json()
+			}
+			const iso = (min) => new Date(Date.now() + min * 60000).toISOString().slice(0, 16)
+			const local = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+			const today = local(new Date())
+			// a meeting under way, with its visio (always « today », whatever the hour)
+			const ev = await post('/calendar/events?tz=UTC', { event: { subject: 'Point du jour', start: iso(-20), end: iso(40), location: 'https://visio.example.org/r/point-du-jour', reminder: -1 } })
+			const task = await post('/tasks', { task: { subject: 'Rappeler le notaire', due: today, importance: 'Normal' } })
+			const late = await post('/tasks', { task: { subject: 'Envoyer le bilan', due: local(new Date(Date.now() - 3 * 86400000)), importance: 'Normal' } })
+			const inbox = await (await fetch('/apps/webmail/api/accounts/' + id + '/messages?folder=inbox&offset=0&limit=50&q=', { headers })).json()
+			const news1 = inbox.items.find((m) => m.subject === 'Newsletter n°1')
+			const news2 = inbox.items.find((m) => m.subject === 'Newsletter n°2')
+			await post('/flags', { itemIds: [news1.id], flag: 'flagged', value: true, due: today })
+			// back in two hours: only while that is still today
+			const back = new Date(Date.now() + 2 * 3600000)
+			let snoozed = null
+			if (local(back) === today) snoozed = (await post('/snooze', { itemIds: [news2.id], until: back.toISOString() })).ids[0]
+			return { id, ev: ev.id, task: task.id, late: late.id, news1: news1.id, snoozed }
+		})
+		try {
+			await page.click('.wm-tab[data-module="mail"]')
+			// (the banner of the meeting under way, out of the way)
+			await page.waitForSelector('.wm-meeting-banner:has-text("Point du jour")', { timeout: 70000 }).catch(() => {})
+			if (await page.$('.wm-meeting-close')) await page.click('.wm-meeting-close')
+			await page.click('.wm-today-link')
+			await page.waitForSelector('.wm-today-section.wm-today-meetings li:has-text("Point du jour")')
+			const meeting = '.wm-today-meetings li:has-text("Point du jour")'
+			assert.strictEqual(await page.getAttribute(meeting + ' a.wm-today-join', 'href'), 'https://visio.example.org/r/point-du-jour')
+			assert.ok(await page.$(meeting + '.now'), 'under way')
+			await page.waitForSelector('.wm-today-tasks li:has-text("Rappeler le notaire")')
+			await page.waitForSelector('.wm-today-tasks li.late:has-text("Envoyer le bilan") .wm-today-when:has-text("En retard")')
+			await page.waitForSelector('.wm-today-flagged li:has-text("Newsletter n°1")')
+			if (ctx.snoozed) await page.waitForSelector('.wm-today-snoozed li:has-text("Newsletter n°2") .wm-today-when:has-text("Revient à")')
+			await shot('102-today')
+			// one click: the message followed up opens
+			await page.click('.wm-today-flagged li:has-text("Newsletter n°1") .wm-today-open')
+			await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°1")')
+			assert.ok(!(await page.$('.wm-today')), 'the message instead')
+			// and a task in its module
+			await page.click('.wm-today-link')
+			await page.click('.wm-today-tasks li:has-text("Rappeler le notaire") .wm-today-open')
+			await page.waitForFunction(() => { const i = document.querySelector('.wm-detail input[name=subject]'); return i && i.value === 'Rappeler le notaire' })
+			await page.click('.wm-tab[data-module="mail"]')
+		} finally {
+			await page.evaluate(async (c) => {
+				const headers = { requesttoken: OC.requestToken, 'Content-Type': 'application/json' }
+				const post = (path, body) => fetch('/apps/webmail/api/accounts/' + c.id + path, { method: 'POST', headers, body: JSON.stringify(body) })
+				await post('/calendar/delete', { eventId: c.ev })
+				await post('/tasks/delete', { taskId: c.task })
+				await post('/tasks/delete', { taskId: c.late })
+				await post('/flags', { itemIds: [c.news1], flag: 'flagged', value: false })
+				if (c.snoozed) await post('/snooze/back', { itemId: c.snoozed })
+			}, ctx)
+		}
+	})
+
 	await step('rich text editor and drafts', async () => {
 		// a new message with formatting, saved as a draft while writing
 		await page.click('.wm-compose-btn')

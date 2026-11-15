@@ -32,6 +32,7 @@
 		// messages put aside (« Reporter »): id in « Reportés » → when it comes back (UTC)
 		snoozes: new Map(),
 		unified: false, // « Toutes les boîtes de réception »: the inboxes of every account in one list
+		today: false, // « Aujourd'hui » shown in the reading pane
 		unifiedItems: [],
 		pinned: new Map(), // id -> summary (with its folder): kept at the top of their folder
 		showFilters: false,
@@ -1130,6 +1131,11 @@
 		if (away) navEl.appendChild(away)
 		const sel = accountSelector()
 		if (sel) navEl.appendChild(sel)
+		navEl.appendChild(h('ul', { class: 'wm-folders wm-today-nav' }, h('li', {}, h('a', {
+			href: '#',
+			class: 'wm-today-link' + (state.today ? ' active' : ''),
+			onclick: (e) => { e.preventDefault(); openToday() },
+		}, h('span', { class: 'wm-folder-name' }, '☀️ ' + _('Aujourd\'hui'))))))
 		if (state.accounts.length > 1) {
 			navEl.appendChild(h('ul', { class: 'wm-folders wm-unified' }, h('li', {}, h('a', {
 				href: '#',
@@ -1673,6 +1679,7 @@
 
 	function selectFolder(id) {
 		state.unified = false
+		state.today = false
 		saveListCache()
 		state.folderId = id
 		resetSearch()
@@ -1835,6 +1842,7 @@
 	function openUnified() {
 		saveListCache()
 		state.unified = true
+		state.today = false
 		state.selectedId = null
 		state.checked.clear()
 		resetSearch()
@@ -1855,6 +1863,100 @@
 		if (mine !== unifiedSeq || !state.unified) return
 		state.unifiedItems = lists.flat().sort((x, y) => String(y.date).localeCompare(String(x.date)))
 		renderList(false)
+	}
+
+	/**
+	 * « Aujourd'hui »: the meetings of the day (joined in one click), the tasks due or late,
+	 * the messages followed up whose date has come, those put aside that come back today:
+	 * all the accounts together, in the reading pane.
+	 */
+	let todaySeq = 0
+	async function openToday() {
+		const mine = ++todaySeq
+		state.today = true
+		renderNav()
+		setView('detail')
+		clear(detailEl)
+		detailEl.appendChild(h('div', { class: 'wm-today' },
+			h('h2', {}, '☀️ ' + _('Aujourd\'hui')),
+			h('div', { class: 'wm-loading' }, _('Chargement…'))))
+		let data
+		try {
+			data = await api('/today', { query: { tz: TZ } })
+		} catch (e) {
+			if (mine === todaySeq) { clear(detailEl); detailEl.appendChild(h('div', { class: 'wm-empty' }, e.message)) }
+			return
+		}
+		if (mine !== todaySeq || !state.today) return
+		renderToday(data)
+	}
+
+	function renderToday(data) {
+		const time = (iso) => new Date(iso).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })
+		const day = (ymd) => new Date(ymd + 'T12:00:00').toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' })
+		const many = state.accounts.length > 1
+		const who = (x) => many ? h('span', { class: 'wm-today-account' }, x.account) : null
+		const sender = (from) => from ? (from.name || from.email || '') : ''
+		const go = async (accountId, then) => {
+			state.today = false
+			if (accountId !== state.accountId) await selectAccount(accountId)
+			then()
+		}
+		const section = (cls, title, items, row, empty) => h('section', { class: 'wm-today-section ' + cls },
+			h('h3', {}, title, items.length ? h('span', { class: 'wm-today-count' }, String(items.length)) : null),
+			items.length ? h('ul', {}, items.map(row)) : h('p', { class: 'wm-muted' }, empty))
+		const now = Date.now()
+		const meetings = section('wm-today-meetings', '📅 ' + _('Réunions'), data.meetings, (m) => h('li', { class: 'wm-today-item' + (m.over ? ' over' : '') + (!m.allDay && Date.parse(m.start) <= now && !m.over ? ' now' : '') },
+			h('button', {
+				type: 'button',
+				class: 'wm-today-open',
+				onclick: () => go(m.accountId, () => {
+					selectModule('calendar')
+					const cal = window.WebmailModules.calendar
+					if (cal && cal.openLinked) cal.openLinked(core, m.id)
+				}),
+			},
+			h('span', { class: 'wm-today-when' }, m.allDay ? _('Journée') : time(m.start) + ' – ' + time(m.end)),
+			h('span', { class: 'wm-today-subject' }, m.subject || _('(sans titre)')),
+			m.location && !/^https?:\/\//i.test(m.location) ? h('span', { class: 'wm-muted' }, m.location) : null,
+			who(m)),
+			m.join && !m.over ? h('a', { class: 'button primary wm-today-join', href: m.join, target: '_blank', rel: 'noopener noreferrer' }, '🎥 ' + _('Rejoindre')) : null),
+		_('Aucune réunion aujourd\'hui'))
+		const tasks = section('wm-today-tasks', '✅ ' + _('Tâches à faire'), data.tasks, (t) => h('li', { class: 'wm-today-item' + (t.late ? ' late' : '') },
+			h('button', {
+				type: 'button',
+				class: 'wm-today-open',
+				onclick: () => go(t.accountId, () => {
+					selectModule('tasks')
+					const tk = window.WebmailModules.tasks
+					if (tk && tk.openLinked) tk.openLinked(core, t.id)
+				}),
+			},
+			h('span', { class: 'wm-today-when' }, t.late ? _('En retard ({date})', { date: day(t.due) }) : _('Aujourd\'hui')),
+			h('span', { class: 'wm-today-subject' }, t.subject || _('(sans titre)')),
+			who(t))),
+		_('Aucune tâche pour aujourd\'hui'))
+		const message = (kind) => (m) => h('li', { class: 'wm-today-item' + (m.late ? ' late' : '') },
+			h('button', {
+				type: 'button',
+				class: 'wm-today-open',
+				onclick: () => go(m.accountId, () => openMessage(m.id)),
+			},
+			h('span', { class: 'wm-today-when' }, kind === 'snoozed' ? _('Revient à {time}', { time: time(m.until) }) : m.late ? _('En retard ({date})', { date: day(m.due) }) : _('Aujourd\'hui')),
+			h('span', { class: 'wm-today-subject' }, m.subject || _('(sans objet)')),
+			h('span', { class: 'wm-muted' }, sender(m.from)),
+			who(m)))
+		const flagged = section('wm-today-flagged', '🚩 ' + _('Messages à suivre'), data.flagged, message('flagged'), _('Aucun suivi arrivé à échéance'))
+		const snoozed = section('wm-today-snoozed', '⏰ ' + _('Messages reportés qui reviennent'), data.snoozed, message('snoozed'), _('Aucun message reporté ne revient aujourd\'hui'))
+		const date = new Date(data.date + 'T12:00:00').toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' })
+		clear(detailEl)
+		detailEl.appendChild(h('div', { class: 'wm-today' },
+			h('div', { class: 'wm-today-head' },
+				h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Retour'), onclick: () => { state.today = false; renderNav(); setView('list') } }, '←'),
+				h('h2', {}, '☀️ ' + _('Aujourd\'hui'), h('span', { class: 'wm-today-date' }, date)),
+				h('button', { type: 'button', class: 'wm-icon-btn wm-today-refresh', title: _('Actualiser'), 'aria-label': _('Actualiser'), onclick: () => openToday() }, '⟳')),
+			data.failed && data.failed.length ? h('p', { class: 'wm-search-info wm-muted' }, _('Non consultés : {books}', { books: data.failed.join(', ') })) : null,
+			h('div', { class: 'wm-today-grid' }, meetings, tasks, flagged, snoozed)))
 	}
 
 	/** A message of the unified list: its account and inbox, the message open. */
@@ -3023,6 +3125,7 @@
 	}
 
 	async function openMessage(id, remote) {
+		if (state.today) { state.today = false; todaySeq++; renderNav() }
 		// a result opened: the search was useful, kept among the recent ones
 		if (state.query) rememberSearch(state.query)
 		state.selectedId = id

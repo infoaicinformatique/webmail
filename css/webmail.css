@@ -1219,3 +1219,26 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 @media (max-width: 1024px) {
 	.wm-meeting-banner { right: 16px; left: 16px; bottom: 16px; max-width: none; }
 }
+
+/* « Aujourd'hui »: the day, all the accounts together */
+.wm-today { padding: 4px 4px 24px; max-width: 1100px; }
+.wm-today-head { display: flex; align-items: center; gap: 8px; }
+.wm-today-head h2 { flex: 1; margin: 0; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.wm-today-date { font-size: 15px; font-weight: normal; color: var(--color-text-maxcontrast); }
+.wm-today-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
+.wm-today-section { border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); padding: 12px; min-width: 0; }
+.wm-today-section h3 { margin: 0 0 8px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.wm-today-count { font-size: 12px; font-weight: bold; padding: 0 7px; border-radius: 10px; background: var(--color-primary-element-light, var(--color-background-dark)); color: var(--color-primary-element-light-text, var(--color-main-text)); }
+.wm-today-section ul { list-style: none; margin: 0; padding: 0; }
+.wm-today-item { display: flex; align-items: center; gap: 8px; border-radius: var(--border-radius, 6px); }
+.wm-today-item + .wm-today-item { margin-top: 2px; }
+.wm-today-open { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; margin: 0; padding: 6px 8px; border: 0; background: none; text-align: left; font-weight: normal; min-height: 0; }
+.wm-today-open:hover, .wm-today-open:focus-visible { background: var(--color-background-hover); }
+.wm-today-open > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-today-when { font-size: 12px; color: var(--color-text-maxcontrast); }
+.wm-today-subject { font-weight: bold; }
+.wm-today-account { font-size: 12px; color: var(--color-text-maxcontrast); }
+.wm-today-item.late .wm-today-when { color: var(--color-error-text, var(--color-error)); font-weight: bold; }
+.wm-today-item.now .wm-today-when { color: var(--color-success-text, var(--color-success)); font-weight: bold; }
+.wm-today-item.over { opacity: .6; }
+.wm-today-join { margin: 0 4px 0 0; flex: none; }

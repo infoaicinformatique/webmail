@@ -77,6 +77,7 @@ return [
 		['name' => 'mail#send', 'url' => '/api/accounts/{id}/send', 'verb' => 'POST'],
 
 		['name' => 'calendar#upcoming', 'url' => '/api/meetings/upcoming', 'verb' => 'GET'],
+		['name' => 'today#index', 'url' => '/api/today', 'verb' => 'GET'],
 		['name' => 'calendar#calendars', 'url' => '/api/accounts/{id}/calendar/calendars', 'verb' => 'GET'],
 		['name' => 'calendar#permissions', 'url' => '/api/accounts/{id}/calendar/permissions', 'verb' => 'GET'],
 		['name' => 'calendar#setPermissions', 'url' => '/api/accounts/{id}/calendar/permissions', 'verb' => 'POST'],
