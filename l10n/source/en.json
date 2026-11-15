@@ -1579,5 +1579,9 @@
 	"Liste en lecture seule": "Read-only list",
 	"Cette liste de tâches Nextcloud est en lecture seule pour vous": "This Nextcloud task list is read-only for you",
 	"Liste de tâches Nextcloud inconnue": "Unknown Nextcloud task list",
-	"Tâche illisible": "Unreadable task"
+	"Tâche illisible": "Unreadable task",
+	"Résultats pour « {query} » dans tous les carnets": "Results for “{query}” in every address book",
+	"seulement dans {name}": "only in {name}",
+	"chercher dans tous les carnets": "search in every address book",
+	"Non consultés : {books}": "Not searched: {books}"
 }

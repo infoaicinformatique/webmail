@@ -18,6 +18,8 @@
 		photoV: {}, // contact id -> version of its photo (changed here: not the cached one)
 		detailSeq: 0, // what the right pane shows: a card still loading does not replace a form opened since
 		presence: {}, // address (lower case) -> online | away | dnd | offline: the contacts with a Nextcloud account
+		everywhere: false, // the search is made in every address book (each result says its book)
+		failed: [], // the books not searched (unreachable)
 	}
 
 	/** "account|book" -> { items, total, hasMore }: a book seen before shows at once, then is refreshed */
@@ -55,6 +57,7 @@
 	function selectBook(key) {
 		ct.book = key
 		ct.query = ''
+		ct.everywhere = false
 		ct.selectedId = null
 		try { localStorage.setItem('webmail.book.' + core.accountId, key) } catch (e) { /* ignore */ }
 		core.renderNav()
@@ -136,7 +139,7 @@
 		// an account of this Nextcloud: its avatar
 		if (c.avatarUser) return OC.generateUrl('/avatar/{user}/64', { user: c.avatarUser })
 		if (!c.hasPhoto) return null
-		return base + 'photo?contactId=' + encodeURIComponent(c.id) + '&book=' + encodeURIComponent(ct.book) + (ct.photoV[c.id] ? '&v=' + ct.photoV[c.id] : '')
+		return base + 'photo?contactId=' + encodeURIComponent(c.id) + '&book=' + encodeURIComponent(c.book || ct.book) + (ct.photoV[c.id] ? '&v=' + ct.photoV[c.id] : '')
 	}
 
 	/** An image file as a small JPEG (256 pixels at most), as a data: URL. */
@@ -176,6 +179,17 @@
 		try {
 			await loadBooks(false)
 			if (mine !== ct.seq) return
+			if (ct.everywhere && ct.query.length >= 2) {
+				// every address book at once
+				const data = await api('/accounts/' + core.accountId + '/contacts/search', { query: { q: ct.query } })
+				if (mine !== ct.seq) return
+				ct.items = data.items
+				ct.total = data.items.length
+				ct.hasMore = false
+				ct.failed = data.failed || []
+				return
+			}
+			ct.everywhere = false
 			if (ct.book === 'directory' && ct.query.length < 2) {
 				// the directory can only be searched, not listed
 				ct.items = []
@@ -707,7 +721,7 @@
 		})
 		el.appendChild(h('form', {
 			class: 'wm-list-header',
-			onsubmit: (e) => { e.preventDefault(); ct.query = search.value.trim(); load(true) },
+			onsubmit: (e) => { e.preventDefault(); ct.query = search.value.trim(); if (!ct.query) ct.everywhere = false; load(true) },
 		},
 		h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Menu'), onclick: () => core.setView('nav') }, '☰'),
 		search,
@@ -724,8 +738,17 @@
 		h('button', { type: 'button', class: 'wm-icon-btn primary wm-mobile-only', 'aria-label': _('Nouveau contact'), onclick: () => openForm(null) }, '＋')))
 
 		if (ct.query) {
-			el.appendChild(h('div', { class: 'wm-search-info' }, _('Résultats pour « {query} »', { query: ct.query }) + ' ',
-				h('a', { href: '#', onclick: (e) => { e.preventDefault(); ct.query = ''; load(true) } }, _('effacer'))))
+			const everywhere = (on) => (e) => { e.preventDefault(); ct.everywhere = on; load(true) }
+			el.appendChild(h('div', { class: 'wm-search-info' },
+				ct.everywhere ? _('Résultats pour « {query} » dans tous les carnets', { query: ct.query }) : _('Résultats pour « {query} »', { query: ct.query }),
+				' ',
+				h('a', { href: '#', onclick: (e) => { e.preventDefault(); ct.query = ''; ct.everywhere = false; load(true) } }, _('effacer')),
+				ct.query.length >= 2 ? ' · ' : null,
+				ct.query.length >= 2 ? h('a', { href: '#', class: 'wm-search-everywhere', onclick: everywhere(!ct.everywhere) },
+					ct.everywhere ? _('seulement dans {name}', { name: bookTitle(book) }) : '🔎 ' + _('chercher dans tous les carnets')) : null))
+			if (ct.everywhere && ct.failed.length) {
+				el.appendChild(h('div', { class: 'wm-search-info wm-muted' }, _('Non consultés : {books}', { books: ct.failed.join(', ') })))
+			}
 		}
 		if (ct.loading && ct.items.length === 0) {
 			el.appendChild(h('div', { class: 'wm-center' }, h('span', { class: 'icon-loading' })))
@@ -762,17 +785,27 @@
 				letter = l
 				ul.appendChild(h('li', { class: 'wm-letter', 'aria-hidden': 'true' }, l))
 			}
+			// a result of the search in every book: opened in its own book
+			const open = () => {
+				if (ct.everywhere && c.book && c.book !== ct.book) {
+					ct.book = c.book
+					core.renderNav()
+				}
+				openContact(c.id)
+			}
+			const from = ct.everywhere && c.book ? ct.books.find((b) => b.key === c.book) : null
 			ul.appendChild(h('li', {
 				class: 'wm-contact' + (c.id === ct.selectedId ? ' selected' : ''),
 				tabindex: '0',
-				dataset: { id: c.id },
-				onclick: () => openContact(c.id),
-				onkeydown: (e) => { if (e.key === 'Enter') openContact(c.id) },
+				dataset: { id: c.id, book: c.book || '' },
+				onclick: open,
+				onkeydown: (e) => { if (e.key === 'Enter') open() },
 			},
 			avatarWithPresence(c),
 			h('div', { class: 'wm-contact-text' },
 				h('div', { class: 'wm-contact-name' }, c.displayName || _('(sans nom)'), c.isGroup ? h('span', { class: 'wm-muted' }, ' · ' + _('groupe')) : null),
-				h('div', { class: 'wm-message-preview' }, [c.email, c.company].filter(Boolean).join(' · ') || c.phone || ''))))
+				h('div', { class: 'wm-message-preview' }, [c.email, c.company].filter(Boolean).join(' · ') || c.phone || ''),
+				from || (ct.everywhere && c.bookName) ? h('div', { class: 'wm-contact-book wm-muted' }, '📇 ' + (from ? bookTitle(from) : c.bookName)) : null)))
 		})
 		el.appendChild(ul)
 		if (ct.hasMore) {

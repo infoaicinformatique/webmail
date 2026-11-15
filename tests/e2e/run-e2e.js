@@ -1502,7 +1502,9 @@ async function main() {
 
 	await step('compose: address autocompletion from contacts and directory', async () => {
 		await page.click('.wm-compose-btn')
-		await page.type('input[name=to]', 'dup')
+		// (the window of the message may be drawn again just after opening: typed in the field that stays)
+		await page.waitForSelector('.wm-compose input[name=to]')
+		await page.locator('.wm-compose input[name=to]').pressSequentially('dup')
 		await page.waitForSelector('.wm-ac-item:has-text("Jean Dupont")')
 		await page.keyboard.press('Enter')
 		assert.strictEqual(await page.inputValue('input[name=to]'), 'Jean Dupont <jean.dupont@client-exemple.fr>, ')
@@ -1758,7 +1760,8 @@ async function main() {
 	await step('calendar: resize an event from its bottom edge', async () => {
 		const ev = '.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")'
 		page.once('dialog', (d) => d.accept())
-		const handle = await (await page.$(ev + ' .wm-resize')).boundingBox()
+		// (the week may be drawn again after the move before: the edge taken once it is there)
+		const handle = await page.locator(ev + ' .wm-resize').boundingBox()
 		await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
 		await page.mouse.down()
 		for (let i = 1; i <= 6; i++) await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2 + 24 * i / 6)
@@ -2799,6 +2802,29 @@ async function main() {
 		await page.click(book('Contacts'))
 		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
 		assert(!(await page.$('.wm-contact:has-text("Garage Central")')))
+	})
+
+	await step('contacts: a search in every address book at once, each result in its book', async () => {
+		await page.click(book('Contacts'))
+		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
+		await page.fill('.wm-list .wm-search', 'azur')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForSelector('.wm-empty:has-text("Aucun contact trouvé")')
+		await page.click('.wm-search-everywhere')
+		await page.waitForSelector('.wm-search-info:has-text("» dans tous les carnets")')
+		const found = '.wm-contact:has-text("Électricité Azur")'
+		await page.waitForSelector(found + ' .wm-contact-book:has-text("Fournisseurs")')
+		await shot('31-contacts-everywhere')
+		// opened in its own book
+		await page.click(found)
+		await page.waitForSelector('.wm-contact-card:has-text("Électricité Azur")')
+		await page.waitForSelector('.wm-book-row.active:has-text("Fournisseurs")')
+		// back to one book
+		await page.click('.wm-search-everywhere')
+		await page.waitForSelector('.wm-search-everywhere:has-text("chercher dans tous les carnets")')
+		await page.click('.wm-search-info a:has-text("effacer")')
+		await page.click(book('Contacts'))
+		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
 	})
 
 	await step('contacts: add a colleague\'s contacts (edit and read access)', async () => {
