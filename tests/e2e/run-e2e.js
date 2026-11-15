@@ -5091,6 +5091,8 @@ async function main() {
 						await page.waitForSelector('.wm-modal input[name=subject]', { timeout: 3000 }).catch(() => {})
 					}
 					await page.fill('.wm-modal input[name=subject]', 'Revue avec Marie')
+					// (in the own calendar, whatever was chosen last)
+					if (await page.$('.wm-modal select[name=calendar]')) await page.selectOption('.wm-modal select[name=calendar]', 'calendar')
 					await page.click('.wm-visio-btn')
 					await page.waitForSelector('.wm-toast:has-text("Salle de visio ajoutée")')
 					await page.fill('.wm-modal input[name=attendees]', 'marie.martin@societe-a.fr, client@exterieur-e2e.fr')
