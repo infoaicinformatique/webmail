@@ -1518,7 +1518,9 @@ async function main() {
 
 	await step('compose: address autocompletion from contacts and directory', async () => {
 		await page.click('.wm-compose-btn')
-		await page.type('input[name=to]', 'dup')
+		// (the window of the message may be drawn again just after opening: typed in the field that stays)
+		await page.waitForSelector('.wm-compose input[name=to]')
+		await page.locator('.wm-compose input[name=to]').pressSequentially('dup')
 		await page.waitForSelector('.wm-ac-item:has-text("Jean Dupont")')
 		await page.keyboard.press('Enter')
 		assert.strictEqual(await page.inputValue('input[name=to]'), 'Jean Dupont <jean.dupont@client-exemple.fr>, ')
@@ -1774,7 +1776,8 @@ async function main() {
 	await step('calendar: resize an event from its bottom edge', async () => {
 		const ev = '.wm-week-col.today .wm-week-event:has-text("Point hebdo équipe")'
 		page.once('dialog', (d) => d.accept())
-		const handle = await (await page.$(ev + ' .wm-resize')).boundingBox()
+		// (the week may be drawn again after the move before: the edge taken once it is there)
+		const handle = await page.locator(ev + ' .wm-resize').boundingBox()
 		await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
 		await page.mouse.down()
 		for (let i = 1; i <= 6; i++) await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2 + 24 * i / 6)
@@ -2817,6 +2820,29 @@ async function main() {
 		assert(!(await page.$('.wm-contact:has-text("Garage Central")')))
 	})
 
+	await step('contacts: a search in every address book at once, each result in its book', async () => {
+		await page.click(book('Contacts'))
+		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
+		await page.fill('.wm-list .wm-search', 'azur')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForSelector('.wm-empty:has-text("Aucun contact trouvé")')
+		await page.click('.wm-search-everywhere')
+		await page.waitForSelector('.wm-search-info:has-text("» dans tous les carnets")')
+		const found = '.wm-contact:has-text("Électricité Azur")'
+		await page.waitForSelector(found + ' .wm-contact-book:has-text("Fournisseurs")')
+		await shot('31-contacts-everywhere')
+		// opened in its own book
+		await page.click(found)
+		await page.waitForSelector('.wm-contact-card:has-text("Électricité Azur")')
+		await page.waitForSelector('.wm-book-row.active:has-text("Fournisseurs")')
+		// back to one book
+		await page.click('.wm-search-everywhere')
+		await page.waitForSelector('.wm-search-everywhere:has-text("chercher dans tous les carnets")')
+		await page.click('.wm-search-info a:has-text("effacer")')
+		await page.click(book('Contacts'))
+		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
+	})
+
 	await step('contacts: add a colleague\'s contacts (edit and read access)', async () => {
 		const add = async (email) => {
 			await page.click('.wm-cal-add:has-text("Ajouter les contacts")')
@@ -3178,6 +3204,97 @@ async function main() {
 		await page.locator(devis).waitFor({ state: 'detached' })
 		await page.click('.wm-task-filter[data-filter="todo"]')
 		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
+	})
+
+	await step('tasks: every task list of Exchange (made in Outlook), its tasks, a task added to it', async () => {
+		await page.click('.wm-tab[data-module="tasks"]')
+		await page.waitForSelector('.wm-task-list[data-list="tasks"].active')
+		const lists = await page.$$eval('.wm-task-list .wm-folder-name', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(lists, ['Tâches', 'Chantier Nice'])
+		await page.click('.wm-task-list:has-text("Chantier Nice")')
+		await page.waitForSelector('.wm-task:has-text("Commander les menuiseries")')
+		assert.strictEqual(await page.locator('.wm-task:has-text("Renouveler le nom de domaine")').count(), 0, 'only the tasks of this list')
+		// a task added here goes to this list
+		await page.fill('input[name=quickTask]', 'Valider les plans')
+		await page.press('input[name=quickTask]', 'Enter')
+		await page.waitForSelector('.wm-toast:has-text("Tâche ajoutée")')
+		await page.waitForSelector('.wm-task:has-text("Valider les plans")')
+		await shot('59-task-lists')
+		// the form: the list can be chosen
+		await page.click('.wm-compose-btn:has-text("Nouvelle tâche")')
+		assert.strictEqual(await page.inputValue('.wm-task-form select[name=list]'), 'F-TASKS2')
+		await page.click('.wm-task-form button:has-text("Annuler")')
+		// the list shown is kept for the next time
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-tab[data-module="tasks"]')
+		await page.waitForSelector('.wm-task-list[data-list="F-TASKS2"].active')
+		await page.waitForSelector('.wm-task:has-text("Valider les plans")')
+		// clean: deleted, back to « Tâches »
+		await page.click('.wm-task:has-text("Valider les plans") .wm-task-subject')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-task-form button:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Tâche supprimée")')
+		await page.click('.wm-task-list[data-list="tasks"]')
+		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
+	})
+
+	await step('tasks: the lists of the Tasks app of Nextcloud here, and the Exchange lists there (CalDAV)', async () => {
+		const dav = (method, path, body = null, extra = {}) => page.evaluate(async ({ method, path, body, extra }) => {
+			const r = await fetch('/remote.php/dav/' + path.replace('{user}', OC.getCurrentUser().uid), {
+				method, body, headers: Object.assign({ requesttoken: OC.requestToken }, extra),
+			})
+			return { status: r.status, text: (await r.text()).replace(/\r?\n[ \t]/g, '') }
+		}, { method, path, body, extra })
+		// a list of the Tasks app, with a task
+		const uri = 'e2e-courses-' + Date.now()
+		const made = await dav('MKCALENDAR', 'calendars/{user}/' + uri + '/', '<c:mkcalendar xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:set><d:prop>'
+			+ '<d:displayname>Courses</d:displayname><c:supported-calendar-component-set><c:comp name="VTODO"/></c:supported-calendar-component-set></d:prop></d:set></c:mkcalendar>', { 'Content-Type': 'application/xml' })
+		assert.strictEqual(made.status, 201, made.text)
+		try {
+			const put = await dav('PUT', 'calendars/{user}/' + uri + '/pain.ics', 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//e2e//FR\r\nBEGIN:VTODO\r\nUID:e2e-pain\r\nDTSTAMP:20260101T000000Z\r\n'
+				+ 'SUMMARY:Acheter du pain\r\nPRIORITY:1\r\nCATEGORIES:Maison\r\nX-E2E-KEPT:oui\r\nEND:VTODO\r\nEND:VCALENDAR\r\n', { 'Content-Type': 'text/calendar' })
+			assert([201, 204].includes(put.status), 'PUT ' + put.status)
+			await page.reload()
+			await page.click('.wm-tab[data-module="tasks"]')
+			await page.click('.wm-nc-task-lists .wm-task-list:has-text("Courses")')
+			await page.waitForSelector('.wm-task:has-text("Acheter du pain") .wm-important')
+			// added here, in that list
+			await page.fill('input[name=quickTask]', 'Acheter du lait')
+			await page.press('input[name=quickTask]', 'Enter')
+			await page.waitForSelector('.wm-toast:has-text("Tâche ajoutée")')
+			await page.waitForSelector('.wm-task:has-text("Acheter du lait")')
+			// done here, done there; the rest of the task kept
+			await page.check('.wm-task:has-text("Acheter du pain") .wm-task-done')
+			await page.waitForSelector('.wm-toast:has-text("Tâche terminée")')
+			const pain = await dav('GET', 'calendars/{user}/' + uri + '/pain.ics')
+			assert(pain.text.includes('STATUS:COMPLETED') && pain.text.includes('X-E2E-KEPT:oui') && pain.text.includes('CATEGORIES:Maison'), pain.text)
+			const all = await dav('REPORT', 'calendars/{user}/' + uri + '/', '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><c:calendar-data/></d:prop>'
+				+ '<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VTODO"/></c:comp-filter></c:filter></c:calendar-query>', { Depth: '1', 'Content-Type': 'application/xml' })
+			assert(all.text.includes('SUMMARY:Acheter du lait'), all.text.slice(0, 1200))
+			await shot('60-nextcloud-tasks')
+			// and deleted
+			await page.click('.wm-task:has-text("Acheter du lait") .wm-task-subject')
+			page.once('dialog', (d) => d.accept())
+			await page.click('.wm-task-form button:has-text("Supprimer")')
+			await page.waitForSelector('.wm-toast:has-text("Tâche supprimée")')
+
+			// the Exchange lists in the Tasks app of Nextcloud (read only)
+			await page.click('.wm-task-list[data-list="tasks"]')
+			await page.waitForSelector('.wm-tasks-nc input:not([disabled])')
+			await page.check('.wm-tasks-nc input')
+			await page.waitForSelector('.wm-toast:has-text("Listes Exchange visibles dans Tâches de Nextcloud")')
+			const home = await dav('PROPFIND', 'calendars/{user}/', '<d:propfind xmlns:d="DAV:"><d:prop><d:displayname/></d:prop></d:propfind>', { Depth: '1', 'Content-Type': 'application/xml' })
+			const m = /calendars\/[^/]+\/(app-generated--[a-z-]+--webmail-exchange-tasks-\d+)\//.exec(home.text)
+			assert(m, 'the list « Tâches » of Exchange in Nextcloud: ' + home.text.slice(0, 800))
+			assert(/webmail-exchange-tasks-\d+-[0-9a-f]{8}/.test(home.text), 'the other lists too')
+			const todos = await dav('REPORT', 'calendars/{user}/' + m[1] + '/', '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><c:calendar-data/></d:prop>'
+				+ '<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VTODO"/></c:comp-filter></c:filter></c:calendar-query>', { Depth: '1', 'Content-Type': 'application/xml' })
+			assert(todos.text.includes('SUMMARY:Renouveler le nom de domaine') && todos.text.includes('PRIORITY:1'), todos.text.slice(0, 1200))
+			await page.uncheck('.wm-tasks-nc input')
+			await page.waitForSelector('.wm-toast:has-text("Listes Exchange retirées de Tâches de Nextcloud")')
+		} finally {
+			await dav('DELETE', 'calendars/{user}/' + uri + '/')
+		}
 	})
 
 	await step('task reminder: set in the form, rings in the bell of Nextcloud, its link opens the task, gone when removed', async () => {
