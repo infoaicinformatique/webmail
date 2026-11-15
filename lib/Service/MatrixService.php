@@ -70,7 +70,8 @@ class MatrixService {
 			return $known['element'] ?? null;
 		}
 		$element = $this->detectElement();
-		$cache->set($key, ['element' => $element], $element !== null ? 3600 : 600);
+		// (not found: asked again soon, the chat may only have been out of reach)
+		$cache->set($key, ['element' => $element], $element !== null ? 3600 : 120);
 		return $element;
 	}
 
@@ -315,25 +316,33 @@ class MatrixService {
 
 	/**
 	 * The Element Web of the organisation among the « Sites externes » of Nextcloud:
-	 * the first one whose config.json names a homeserver.
+	 * the first one whose config.json (or config.<its host>.json, as Element Web reads it)
+	 * names a homeserver.
 	 *
+	 * @param array<string, string> $why filled with the reason of each site left aside
 	 * @return ?array{name: string, url: string, homeserver: string, serverName: string}
 	 */
-	public function detectElement(): ?array {
+	public function detectElement(array &$why = []): ?array {
 		foreach (array_slice(Matrix::externalSites($this->config->getAppValue('external', 'sites', '')), 0, 5) as $site) {
-			try {
-				$response = $this->http->newClient()->get($site['url'] . '/config.json', [
-					'timeout' => 5,
-					'http_errors' => false,
-					'verify' => $this->config->getAppValue(Application::APP_ID, 'verify_tls', 'yes') !== 'no',
-				]);
-				$config = json_decode((string)$response->getBody(), true);
-			} catch (\Throwable $e) {
-				continue;
-			}
-			$hs = is_array($config) && $response->getStatusCode() === 200 ? Matrix::elementHomeserver($config) : null;
-			if ($hs !== null) {
-				return $site + $hs;
+			$label = $site['name'] !== '' ? $site['name'] : $site['url'];
+			$host = (string)parse_url($site['url'], PHP_URL_HOST);
+			foreach (['config.json', 'config.' . $host . '.json'] as $file) {
+				try {
+					$response = $this->http->newClient()->get($site['url'] . '/' . $file, [
+						'timeout' => 5,
+						'http_errors' => false,
+						'verify' => $this->config->getAppValue(Application::APP_ID, 'verify_tls', 'yes') !== 'no',
+					]);
+					$config = json_decode((string)$response->getBody(), true);
+				} catch (\Throwable $e) {
+					$why[$label] = mb_substr($e->getMessage(), 0, 160);
+					break;
+				}
+				$hs = is_array($config) && $response->getStatusCode() === 200 ? Matrix::elementHomeserver($config) : null;
+				if ($hs !== null) {
+					return $site + $hs;
+				}
+				$why[$label] = $response->getStatusCode() === 200 ? 'not an Element Web' : 'HTTP ' . $response->getStatusCode();
 			}
 		}
 		return null;

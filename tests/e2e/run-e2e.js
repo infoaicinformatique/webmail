@@ -5016,7 +5016,10 @@ async function main() {
 					res.on('end', () => resolve(JSON.parse(data)))
 				}).on('error', reject)
 			})
-			occ('config:app:set external sites --value=\'' + JSON.stringify({ 1: { id: 1, name: 'Chat PBCAN', url: 'https://ex3.fake.test:8443/element/', lang: '', type: 'link', device: '', icon: 'external.svg', groups: [], redirect: false } }) + '\'')
+			// (as on a real server: the admin page once saved with the visio field empty,
+			// and Element declared on one of its pages)
+			occ('config:app:set webmail visio --value=')
+			occ('config:app:set external sites --value=\'' + JSON.stringify({ 1: { id: 1, name: 'Chat PBCAN', url: 'https://ex3.fake.test:8443/element/#/home', lang: '', type: 'link', device: '', icon: 'external.svg', groups: [], redirect: false } }) + '\'')
 			// (Nextcloud 33 and later keep the app settings 3 s in each web process)
 			await page.waitForTimeout(3500)
 			try {
@@ -5097,6 +5100,7 @@ async function main() {
 				await page.waitForSelector('.wm-matrix-sso:has-text("Se connecter avec Nextcloud")')
 			} finally {
 				occ('config:app:delete external sites')
+				occ('config:app:delete webmail visio')
 				await page.waitForTimeout(3500)
 			}
 		} finally {

@@ -1176,7 +1176,7 @@
 	"Message remis dans la boîte de réception": "Message back in the inbox",
 	"Adresse de visio invalide : une adresse https://, par exemple %s": "Invalid visio address: an https:// address, for example %s",
 	"Visio des réunions (Matrix / Element)": "Video meetings (Matrix / Element)",
-	"Adresse de votre serveur Element Call (par ex. %1$s) : le formulaire d'un événement propose alors « Visio Element », qui met dans l'invitation le lien d'une salle chiffrée, propre à la réunion. Une autre visio (Jitsi…) : une adresse avec %2$s à la place du nom de la salle, par ex. %3$s. Laissez vide pour ne rien proposer.": "Address of your Element Call server (e.g. %1$s): the event form then offers “Element visio”, which puts in the invitation the link of an encrypted room of the meeting's own. Another visio (Jitsi…): an address with %2$s in place of the room name, e.g. %3$s. Leave empty to offer none.",
+	"Adresse de votre serveur Element Call (par ex. %1$s) : le formulaire d'un événement propose alors « Visio Element », qui met dans l'invitation le lien d'une salle chiffrée, propre à la réunion. Une autre visio (Jitsi…) : une adresse avec %2$s à la place du nom de la salle, par ex. %3$s. Laissez vide : le chat de l'organisation (Element, déclaré dans les Sites externes de Nextcloud) est utilisé s'il est trouvé, sinon Nextcloud Talk.": "Address of your Element Call server (e.g. %1$s): the event form then offers “Element visio”, which puts in the invitation the link of an encrypted room of the meeting's own. Another visio (Jitsi…): an address with %2$s in place of the room name, e.g. %3$s. Leave empty: the chat of the organisation (Element, declared in the External sites of Nextcloud) is used when found, otherwise Nextcloud Talk.",
 	"Adresse de la visio": "Visio address",
 	"Rejoindre la visio": "Join the visio",
 	"Ajouter une salle de visio pour cet événement : son lien va dans le lieu et dans l'invitation": "Add a visio room for this event: its link goes in the place and in the invitation",
@@ -1632,5 +1632,7 @@
 	"Vérifier": "Check",
 	"{count} participants invités dans le salon du chat": "{count} participants invited to the chat room",
 	"1 participant invité dans le salon du chat": "1 participant invited to the chat room",
-	"Aucun salon visio du chat dans cet événement": "No chat video room in this event"
+	"Aucun salon visio du chat dans cet événement": "No chat video room in this event",
+	"Chat trouvé à l'instant : rechargez la page": "Chat found just now: reload the page",
+	"Aucun des Sites externes n'est reconnu comme un Element (config.json lu à son adresse) : %s": "None of the External sites is recognised as an Element (config.json read at its address): %s"
 }

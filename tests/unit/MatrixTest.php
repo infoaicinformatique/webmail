@@ -96,6 +96,12 @@ class MatrixTest extends TestCase {
 			'3' => ['id' => 3, 'name' => 'Wiki', 'url' => 'javascript:alert(1)'],
 		]);
 		$this->assertSame([['name' => 'Chat', 'url' => 'https://chat.example.org']], Matrix::externalSites((string)$sites));
+		// Element Web declared on one of its pages
+		$this->assertSame([['name' => 'Chat', 'url' => 'https://chat.example.org'], ['name' => 'Element', 'url' => 'https://element.example.org/web']],
+			Matrix::externalSites((string)json_encode([
+				['name' => 'Chat', 'url' => 'https://chat.example.org/#/home'],
+				['name' => 'Element', 'url' => 'https://element.example.org/web/?lang=fr#/welcome'],
+			])));
 		$this->assertSame([], Matrix::externalSites(''));
 		$this->assertSame(['homeserver' => 'https://matrix.example.org', 'serverName' => 'matrix.example.org'],
 			Matrix::elementHomeserver(['default_server_config' => ['m.homeserver' => ['base_url' => 'https://matrix.example.org/', 'server_name' => 'matrix.example.org']]]));

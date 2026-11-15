@@ -156,6 +156,8 @@ class Matrix {
 		$out = [];
 		foreach (is_array($sites) ? $sites : [] as $site) {
 			$url = is_array($site) ? trim((string)($site['url'] ?? '')) : '';
+			// (Element Web opened on a page: « https://chat.example.org/#/home »)
+			$url = (string)preg_replace('~[?#].*$~s', '', $url);
 			if (preg_match('~^https://[^\s/?#]+(/[^\s?#]*)?$~i', $url)) {
 				$out[] = ['name' => trim((string)($site['name'] ?? '')), 'url' => rtrim($url, '/')];
 			}

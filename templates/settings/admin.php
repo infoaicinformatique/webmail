@@ -55,7 +55,7 @@ $code = fn (string $text): string => '<code>' . \OCP\Util::sanitizeHTML($text) .
 	</ul>
 	<h3><?php p($l->t('Visio des réunions (Matrix / Element)')); ?></h3>
 	<p class="settings-hint">
-		<?php print_unescaped($l->t('Adresse de votre serveur Element Call (par ex. %1$s) : le formulaire d\'un événement propose alors « Visio Element », qui met dans l\'invitation le lien d\'une salle chiffrée, propre à la réunion. Une autre visio (Jitsi…) : une adresse avec %2$s à la place du nom de la salle, par ex. %3$s. Laissez vide pour ne rien proposer.',
+		<?php print_unescaped($l->t('Adresse de votre serveur Element Call (par ex. %1$s) : le formulaire d\'un événement propose alors « Visio Element », qui met dans l\'invitation le lien d\'une salle chiffrée, propre à la réunion. Une autre visio (Jitsi…) : une adresse avec %2$s à la place du nom de la salle, par ex. %3$s. Laissez vide : le chat de l\'organisation (Element, déclaré dans les Sites externes de Nextcloud) est utilisé s\'il est trouvé, sinon Nextcloud Talk.',
 			[$code('https://call.element.io'), $code('{room}'), $code('https://meet.example.org/{room}')])); ?>
 	</p>
 	<?php $element = $_['element'] ?? null; $roomMode = $_['visioMode'] === 'element-room' || ($_['visio'] === '' && $element !== null); ?>
