@@ -240,9 +240,13 @@ class ServerConfigService {
 		return $mode;
 	}
 
-	/** The administrator chose the visio (even « none »): nothing is detected then. */
+	/**
+	 * The administrator chose an address for the visio: nothing is detected then. Left empty
+	 * (the admin page saved with nothing in the field), the chat of the organisation is
+	 * looked for among the « Sites externes », then Talk.
+	 */
 	public function isVisioSet(): bool {
-		return in_array('visio', $this->config->getAppKeys(Application::APP_ID), true);
+		return $this->getVisio() !== '';
 	}
 
 	/** The address of the video meetings, '' when none is set. */

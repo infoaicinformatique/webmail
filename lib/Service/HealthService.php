@@ -76,6 +76,14 @@ class HealthService {
 		$element = $this->matrix->element();
 		if ($element === null) {
 			$visio = $this->servers->getVisio();
+			$why = [];
+			if ($this->matrix->detectElement($why) !== null) {
+				return $this->row($name, self::OK, $this->l->t('Chat trouvé à l\'instant : rechargez la page'));
+			}
+			if ($why !== []) {
+				$reasons = implode(' ; ', array_map(fn ($site, $reason) => $site . ' : ' . $reason, array_keys($why), $why));
+				return $this->row($name, self::WARNING, $this->l->t('Aucun des Sites externes n\'est reconnu comme un Element (config.json lu à son adresse) : %s', [$reasons]));
+			}
 			return $this->row($name, self::OK, $visio !== '' ? $this->l->t('Pas de chat déclaré ; visio : %s', [$visio]) : $this->l->t('Aucun chat déclaré dans les Sites externes (facultatif)'));
 		}
 		try {
