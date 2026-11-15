@@ -173,7 +173,7 @@ async function main() {
 		await page.click('.wm-add-account button[type=submit]')
 		await page.waitForSelector('.wm-message')
 		await page.waitForSelector('.wm-folder.active')
-		const folders = await page.$$eval('.wm-folder-name', (els) => els.map((e) => e.textContent))
+		const folders = await page.$$eval('.wm-folder .wm-folder-name', (els) => els.map((e) => e.textContent))
 		assert.deepStrictEqual(folders.slice(0, 6), ['Boîte de réception', 'Clients', 'Brouillons', 'Éléments envoyés', 'Courrier indésirable', 'Éléments supprimés'])
 		assert(!folders.includes('Calendrier'), 'calendar folder must be hidden')
 		// the first 25 rows come first, the rest of the page right after (FIRST_PAGE)
