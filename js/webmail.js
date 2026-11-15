@@ -3141,6 +3141,64 @@
 		return banner
 	}
 
+	/**
+	 * « ⋯ Plus » of a message: the actions used less often, by kind, each one named.
+	 * (Their classes are those of the former buttons.)
+	 */
+	function messageMoreMenu(anchor, m, role) {
+		document.querySelectorAll('.wm-cat-menu').forEach((x) => x.remove())
+		const menu = h('div', { class: 'wm-cat-menu wm-more-menu', role: 'menu', 'aria-label': _('Plus d\'actions') })
+		const close = () => { menu.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', esc, true) }
+		const outside = (e) => { if (!menu.contains(e.target) && e.target !== anchor) close() }
+		const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); if (anchor.isConnected) anchor.focus() } }
+		document.addEventListener('mousedown', outside, true)
+		document.addEventListener('keydown', esc, true)
+		// (the focus back on « Plus » before the action: a dialog opened by it gives it back there)
+		const item = (cls, icon, label, action, title) => h('button', {
+			type: 'button', role: 'menuitem', class: 'wm-menu-item ' + cls, title: title || '',
+			onclick: () => { close(); if (anchor.isConnected) anchor.focus(); action() },
+		}, h('span', { class: 'wm-menu-icon', 'aria-hidden': 'true' }, icon), h('span', {}, label))
+		const section = (title, ...items) => {
+			const list = items.filter(Boolean)
+			if (list.length) menu.append(h('div', { class: 'wm-cat-title' }, title), ...list)
+		}
+		section(_('Transférer'),
+			item('wm-forward-attach', '📎', _('Transférer en pièce jointe'), () => forwardAsAttachment([m]), _('Transférer en pièce jointe (.eml)')))
+		section(_('Créer à partir du message'),
+			item('wm-note-btn', '📝', _('Une note'), () => messageToNote(m), _('Garder ce message comme note (Nextcloud Notes)')),
+			window.WebmailModules.tasks ? item('wm-task-from-msg', '✅', _('Une tâche'), () => taskFromMessage(m)) : null,
+			window.WebmailModules.calendar ? item('wm-event-from-msg', '📅', _('Un événement'), () => eventFromMessage(m)) : null,
+			item('wm-rule-from-msg', '📋', _('Une règle…'), () => ruleFromMessage(m), _('Créer une règle pour les messages de cet expéditeur')))
+		const eml = h('a', {
+			role: 'menuitem',
+			class: 'button wm-menu-item wm-eml-btn',
+			href: OC.generateUrl('/apps/webmail/api/accounts/' + state.accountId + '/message/eml') + '?' + new URLSearchParams({ itemId: m.id }),
+			download: '',
+			title: _('Télécharger le message (.eml, pour Outlook, Thunderbird…)'),
+			onclick: () => setTimeout(close, 0),
+		}, h('span', { class: 'wm-menu-icon', 'aria-hidden': 'true' }, '⬇\uFE0E'), h('span', {}, _('Télécharger (.eml)')))
+		section(_('Envoyer, garder'),
+			item('wm-matrix-send-btn', '💬', _('Envoyer sur Matrix'), () => sendToMatrix(mailSummaryForMatrix(m)), _('Envoyer sur Matrix (Element) : un résumé du message dans un salon')),
+			item('wm-eml-save-btn', '☁️', _('Enregistrer dans Fichiers'), () => saveMessageToFiles(m), _('Enregistrer le message dans Fichiers (.eml)')),
+			eml,
+			item('wm-print-btn', '🖨', _('Imprimer'), () => printMessage(m)))
+		section(_('Expéditeur et conversation'),
+			m.from && m.from.email && !m.from.email.startsWith('/')
+				? item('wm-sender-btn', '👤', _('Tous ses messages…'), () => senderMessages(m), _('Les messages de cet expéditeur dans ce dossier : les afficher, les marquer comme lus, les déplacer ou les supprimer d\'un coup'))
+				: null,
+			m.conversationId && role !== 'deleteditems' && role !== 'sentitems' && role !== 'drafts'
+				? item('wm-ignore-btn', '🔇', _('Ignorer la conversation'), () => ignoreConversation(m), _('Ignorer la conversation : ses messages, et ceux qui arriveront, vont dans les éléments supprimés'))
+				: null)
+		section(_('Détails'),
+			item('wm-headers-btn', '🧾', _('En-têtes Internet'), () => showHeaders(m), _('En-têtes Internet : expéditeur réel, serveurs traversés, contrôles SPF, DKIM et DMARC')))
+		document.body.appendChild(menu)
+		const r = anchor.getBoundingClientRect()
+		menu.style.top = Math.max(8, Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8)) + 'px'
+		menu.style.left = Math.max(8, Math.min(r.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8)) + 'px'
+		const first = menu.querySelector('[role=menuitem]')
+		if (first) first.focus()
+	}
+
 	function renderMessage() {
 		const m = state.current
 		// loaded after a switch to the calendar or the contacts: not shown over them
@@ -3157,52 +3215,38 @@
 		h('option', { value: '' }, _('Déplacer vers…')),
 		moveTargets().map((f) => h('option', { value: f.id }, f.name)))
 
-		const toolbar = h('div', { class: 'wm-toolbar' },
+		// the buttons above the message, by use: answer · put away · follow up · the rest in « Plus »
+		const group = (label, ...items) => h('div', { class: 'wm-tb-group', role: 'group', 'aria-label': label }, ...items)
+		const pinned = state.pinned.has(m.id)
+		const toolbar = h('div', { class: 'wm-toolbar wm-message-toolbar' },
 			h('button', { class: 'wm-back wm-mobile-only', onclick: () => setView('list'), 'aria-label': _('Retour') }, '←'),
-			h('button', { onclick: () => openCompose('reply', m) }, '↩ ' + _('Répondre')),
-			h('button', { onclick: () => openCompose('replyAll', m) }, '↩↩ ' + _('Répondre à tous')),
-			h('span', { class: 'wm-split' },
-				h('button', { onclick: () => openCompose('forward', m) }, '↪ ' + _('Transférer')),
-				h('button', { class: 'wm-forward-attach', title: _('Transférer en pièce jointe (.eml)'), 'aria-label': _('Transférer en pièce jointe'), onclick: () => forwardAsAttachment([m]) }, '📎')),
-			h('button', { onclick: () => markUnread(m) }, _('Non lu')),
-			h('span', { class: 'wm-split' },
-				h('button', { class: m.flagged ? 'wm-flag-btn on' : 'wm-flag-btn', onclick: () => toggleFlag(m) }, flagButtonText(m)),
-				h('button', { class: 'wm-flag-menu-btn', title: _('Échéance du suivi'), 'aria-label': _('Échéance du suivi'), 'aria-haspopup': 'menu', onclick: (e) => flagMenu(e.currentTarget, m) }, '▾')),
-			moveSelect,
-			h('button', { class: 'wm-danger', onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
-			junkButton([m.id], role),
-			m.conversationId && role !== 'deleteditems' && role !== 'sentitems' && role !== 'drafts'
-				? h('button', { class: 'wm-ignore-btn', title: _('Ignorer la conversation : ses messages, et ceux qui arriveront, vont dans les éléments supprimés'), 'aria-label': _('Ignorer la conversation'), onclick: () => ignoreConversation(m) }, '🔇')
-				: null,
-			// (the folder shown: a message back from « Reportés » may still be remembered there)
-			role === 'inbox' || folderRole() === 'inbox' || state.snoozes.has(m.id)
-				? h('button', { class: 'wm-snooze-btn', title: _('Ne plus voir ce message jusqu\'à l\'heure choisie : il revient alors dans la boîte de réception, non lu'), 'aria-haspopup': 'menu', onclick: (e) => snoozeMenu(e.currentTarget, m) }, '⏰ ' + _('Reporter'))
-				: null,
-			h('button', { class: 'wm-cat-btn', title: _('Catégoriser'), 'aria-label': _('Catégoriser'), onclick: (e) => categoryMenu(e.currentTarget, () => [m]) }, '🏷'),
-			h('button', { class: 'wm-print-btn', title: _('Imprimer'), 'aria-label': _('Imprimer'), onclick: () => printMessage(m) }, '🖨'),
-			h('button', { class: 'wm-note-btn', title: _('Garder ce message comme note (Nextcloud Notes)'), 'aria-label': _('Créer une note'), onclick: () => messageToNote(m) }, '📝'),
-			h('button', { class: 'wm-matrix-send-btn', title: _('Envoyer sur Matrix (Element) : un résumé du message dans un salon'), 'aria-label': _('Envoyer sur Matrix'), onclick: () => sendToMatrix(mailSummaryForMatrix(m)) }, '💬'),
-			h('button', { class: 'wm-headers-btn', title: _('En-têtes Internet : expéditeur réel, serveurs traversés, contrôles SPF, DKIM et DMARC'), 'aria-label': _('Afficher les en-têtes Internet'), onclick: () => showHeaders(m) }, '🧾'),
-			h('a', {
-				class: 'button wm-eml-btn',
-				href: OC.generateUrl('/apps/webmail/api/accounts/' + state.accountId + '/message/eml') + '?' + new URLSearchParams({ itemId: m.id }),
-				download: '',
-				title: _('Télécharger le message (.eml, pour Outlook, Thunderbird…)'),
-				'aria-label': _('Télécharger le message'),
-			}, '⬇\uFE0E'),
-			h('button', {
-				class: 'wm-pin-btn' + (state.pinned.has(m.id) ? ' on' : ''),
-				title: state.pinned.has(m.id) ? _('Désépingler : le message reprend sa place dans la liste') : _('Épingler en haut du dossier, quel que soit le tri'),
-				'aria-label': state.pinned.has(m.id) ? _('Désépingler') : _('Épingler'),
-				'aria-pressed': state.pinned.has(m.id) ? 'true' : 'false',
-				onclick: () => togglePin(m),
-			}, '📌'),
-			window.WebmailModules.tasks ? h('button', { class: 'wm-task-from-msg', title: _('Créer une tâche à partir de ce message'), 'aria-label': _('Créer une tâche à partir de ce message'), onclick: () => taskFromMessage(m) }, '✅') : null,
-			window.WebmailModules.calendar ? h('button', { class: 'wm-event-from-msg', title: _('Créer un événement à partir de ce message'), 'aria-label': _('Créer un événement à partir de ce message'), onclick: () => eventFromMessage(m) }, '📅') : null,
-			h('button', { class: 'wm-eml-save-btn', title: _('Enregistrer le message dans Fichiers (.eml)'), 'aria-label': _('Enregistrer le message dans Fichiers'), onclick: () => saveMessageToFiles(m) }, '☁️'),
-			m.from && m.from.email && !m.from.email.startsWith('/') ? h('button', { class: 'wm-sender-btn', title: _('Les messages de cet expéditeur dans ce dossier : les afficher, les marquer comme lus, les déplacer ou les supprimer d\'un coup'), onclick: () => senderMessages(m) }, '👤 ' + _('Tous ses messages…')) : null,
-			h('button', { class: 'wm-rule-from-msg', title: _('Créer une règle pour les messages de cet expéditeur'), onclick: () => ruleFromMessage(m) }, '📋 ' + _('Règle…')),
-		)
+			group(_('Répondre'),
+				h('button', { class: 'primary wm-reply-btn', onclick: () => openCompose('reply', m) }, '↩ ' + _('Répondre')),
+				h('button', { class: 'wm-reply-all-btn', onclick: () => openCompose('replyAll', m) }, '↩↩ ' + _('Répondre à tous')),
+				h('button', { class: 'wm-forward-btn', onclick: () => openCompose('forward', m) }, '↪ ' + _('Transférer'))),
+			h('button', { class: 'wm-more-btn', title: _('Plus d\'actions : créer une note, une tâche, un événement, une règle ; envoyer, enregistrer, imprimer…'), 'aria-haspopup': 'menu', onclick: (e) => messageMoreMenu(e.currentTarget, m, role) }, '⋯ ' + _('Plus')),
+			h('div', { class: 'wm-tb-break', 'aria-hidden': 'true' }),
+			group(_('Ranger'),
+				moveSelect,
+				h('button', { class: 'wm-danger wm-delete-btn', title: role === 'deleteditems' ? _('Supprimer définitivement') : _('Supprimer'), onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
+				junkButton([m.id], role)),
+			group(_('Suivre'),
+				h('button', { class: 'wm-unread-btn', title: _('Marquer comme non lu'), 'aria-label': _('Marquer comme non lu'), onclick: () => markUnread(m) }, '✉'),
+				h('span', { class: 'wm-split' },
+					h('button', { class: m.flagged ? 'wm-flag-btn on' : 'wm-flag-btn', onclick: () => toggleFlag(m) }, flagButtonText(m)),
+					h('button', { class: 'wm-flag-menu-btn', title: _('Échéance du suivi'), 'aria-label': _('Échéance du suivi'), 'aria-haspopup': 'menu', onclick: (e) => flagMenu(e.currentTarget, m) }, '▾')),
+				// (the folder shown: a message back from « Reportés » may still be remembered there)
+				role === 'inbox' || folderRole() === 'inbox' || state.snoozes.has(m.id)
+					? h('button', { class: 'wm-snooze-btn', title: _('Ne plus voir ce message jusqu\'à l\'heure choisie : il revient alors dans la boîte de réception, non lu'), 'aria-label': _('Reporter'), 'aria-haspopup': 'menu', onclick: (e) => snoozeMenu(e.currentTarget, m) }, '⏰')
+					: null,
+				h('button', { class: 'wm-cat-btn', title: _('Catégoriser'), 'aria-label': _('Catégoriser'), onclick: (e) => categoryMenu(e.currentTarget, () => [m]) }, '🏷'),
+				h('button', {
+					class: 'wm-pin-btn' + (pinned ? ' on' : ''),
+					title: pinned ? _('Désépingler : le message reprend sa place dans la liste') : _('Épingler en haut du dossier, quel que soit le tri'),
+					'aria-label': pinned ? _('Désépingler') : _('Épingler'),
+					'aria-pressed': pinned ? 'true' : 'false',
+					onclick: () => togglePin(m),
+				}, '📌')))
 		detailEl.appendChild(toolbar)
 
 		const recipients = (label, list) => list && list.length

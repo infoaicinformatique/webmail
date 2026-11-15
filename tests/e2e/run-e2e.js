@@ -56,6 +56,15 @@ async function main() {
 		console.log('ok')
 	}
 	const shot = (name) => page.screenshot({ path: path.join(SHOTS, name + '.png') })
+	// an action of « ⋯ Plus », above a message: the menu opened, then the action (its selector in the menu)
+	const openMore = async () => {
+		await page.click('.wm-toolbar .wm-more-btn')
+		await page.waitForSelector('.wm-more-menu')
+	}
+	const more = async (selector) => {
+		await openMore()
+		await page.click('.wm-more-menu ' + selector)
+	}
 	/**
 	 * Send the message being written and wait until Exchange has it. Not just the
 	 * "Message envoyé" toast: the one of a message sent a moment before may still
@@ -802,7 +811,8 @@ async function main() {
 		// print a message: its own page with the headers
 		await page.click('.wm-message:has-text("Test depuis Nextcloud")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Test depuis Nextcloud")')
-		const [popup] = await Promise.all([page.context().waitForEvent('page'), page.click('.wm-print-btn')])
+		await openMore()
+		const [popup] = await Promise.all([page.context().waitForEvent('page'), page.click('.wm-more-menu .wm-print-btn')])
 		await popup.waitForLoadState()
 		assert.strictEqual(await popup.title(), 'Test depuis Nextcloud')
 		const printed = await popup.textContent('body')
@@ -968,7 +978,7 @@ async function main() {
 		// a rule from a message: its sender is filled in
 		await page.click('.wm-message:has-text("Votre relevé de novembre")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Votre relevé de novembre")')
-		await page.click('.wm-rule-from-msg')
+		await more('.wm-rule-from-msg')
 		await page.waitForSelector('.wm-rule-form h3:has-text("Nouvelle règle")')
 		assert.strictEqual(await page.inputValue('input[name=ruleFrom]'), 'user@societe-a.fr')
 		// it must do something
@@ -3694,12 +3704,13 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 		await page.click('.wm-message:has-text("Votre facture OVH")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Votre facture OVH")')
-		const [download] = await Promise.all([page.waitForEvent('download'), page.click('.wm-eml-btn')])
+		await openMore()
+		const [download] = await Promise.all([page.waitForEvent('download'), page.click('.wm-more-menu .wm-eml-btn')])
 		assert.strictEqual(download.suggestedFilename(), 'Votre facture OVH.eml')
 		const eml = fs.readFileSync(await download.path(), 'utf8')
 		assert.ok(/^Subject: Votre facture OVH$/m.test(eml) && /^From: OVHcloud <noreply@ovh\.example>$/m.test(eml), eml.slice(0, 300))
 		await page.evaluate(() => { OC.dialogs.filepicker = (t, cb) => cb('/Documents') })
-		await page.click('.wm-eml-save-btn')
+		await more('.wm-eml-save-btn')
 		await page.waitForSelector('.wm-toast:has-text("Enregistré dans /Documents/Votre facture OVH.eml")')
 
 		// and back: the .eml imported into another folder, as a received message (not a draft)
@@ -3778,7 +3789,7 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
-		await page.click('.wm-event-from-msg')
+		await more('.wm-event-from-msg')
 		await page.waitForSelector('.wm-tab.active[data-module="calendar"]')
 		await page.waitForSelector('.wm-modal input[name=subject]')
 		assert.strictEqual(await page.inputValue('.wm-modal input[name=subject]'), 'Devis pour la maintenance annuelle')
@@ -3794,7 +3805,7 @@ async function main() {
 		await page.click('.wm-folder:has-text("Éléments envoyés")')
 		await page.click('.wm-message:has-text("Re: Planning")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Re: Planning")')
-		await page.click('.wm-event-from-msg')
+		await more('.wm-event-from-msg')
 		await page.waitForSelector('.wm-modal input[name=subject]')
 		assert.strictEqual(await page.inputValue('.wm-modal input[name=subject]'), 'Planning')
 		attendees = (await page.inputValue('.wm-modal input[name=attendees]')).split(/,\s*/)
@@ -3808,7 +3819,7 @@ async function main() {
 	await step('a task from a message: its subject as the title, its sender and text in the notes, saved in Exchange', async () => {
 		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
-		await page.click('.wm-task-from-msg')
+		await more('.wm-task-from-msg')
 		await page.waitForSelector('.wm-tab.active[data-module="tasks"]')
 		await page.waitForSelector('.wm-task-form input[name=subject]')
 		assert.strictEqual(await page.inputValue('.wm-task-form input[name=subject]'), 'Devis pour la maintenance annuelle')
@@ -3848,7 +3859,7 @@ async function main() {
 		await inbox()
 		await page.click(row('Point travaux Antibes'))
 		await page.waitForSelector('.wm-message-header h2:has-text("Point travaux Antibes")')
-		await page.click('.wm-ignore-btn')
+		await more('.wm-ignore-btn')
 		await page.waitForSelector('.wm-toast:has-text("Conversation ignorée")')
 		await page.locator(row('Point travaux Antibes')).waitFor({ state: 'detached' })
 		// changed one's mind: back in the inbox
@@ -3857,7 +3868,7 @@ async function main() {
 		await page.waitForSelector(row('Point travaux Antibes'))
 		// ignored for good: the answer goes straight to the deleted items
 		await page.click(row('Point travaux Antibes'))
-		await page.click('.wm-ignore-btn')
+		await more('.wm-ignore-btn')
 		await page.locator(row('Point travaux Antibes')).waitFor({ state: 'detached' })
 		await sendToSelf('RE: Point travaux Antibes')
 		await inbox()
@@ -3868,7 +3879,9 @@ async function main() {
 		// (in the deleted items: nothing to ignore)
 		await page.click(row('Point travaux Antibes'))
 		await page.waitForSelector('.wm-message-header h2:has-text("Point travaux Antibes")')
-		assert.strictEqual(await page.$('.wm-ignore-btn'), null)
+		await openMore()
+		assert.strictEqual(await page.$('.wm-more-menu .wm-ignore-btn'), null)
+		await page.keyboard.press('Escape')
 		await inbox()
 	})
 
@@ -3877,7 +3890,7 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 		await page.click(msg(25))
 		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°25")')
-		await page.click('.wm-toolbar .wm-forward-attach')
+		await more('.wm-forward-attach')
 		await page.waitForSelector('.wm-compose .wm-compose-attachments li:has-text("Newsletter n°25.eml")')
 		assert.strictEqual(await page.inputValue('.wm-compose input[name=subject]'), 'TR : Newsletter n°25')
 		await page.fill('input[name=to]', 'paul@societe-a.fr')
@@ -3988,7 +4001,7 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
-		await page.click('.wm-note-btn')
+		await more('.wm-note-btn')
 		await page.waitForSelector('.wm-toast:has-text("Note créée : /Notes/Devis pour la maintenance annuelle")')
 		await page.waitForSelector('.wm-toast .wm-toast-action:text-is("Ouvrir dans Fichiers")')
 		const path = (await page.textContent('.wm-toast:has-text("Note créée")')).match(/\/Notes\/[^]*?\.md/)[0]
@@ -4030,7 +4043,7 @@ async function main() {
 	await step('Internet headers: the SPF, DKIM and DMARC checks, the way of the message, every header', async () => {
 		await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
-		await page.click('.wm-headers-btn')
+		await more('.wm-headers-btn')
 		await page.waitForSelector('.wm-headers .wm-auth-checks')
 		for (const k of ['spf', 'dkim', 'dmarc']) await page.waitForSelector('.wm-headers .wm-auth-pass[data-check="' + k + '"]')
 		assert.ok((await page.textContent('.wm-auth[data-check="dkim"]')).includes('DKIM : réussi'))
@@ -4045,12 +4058,12 @@ async function main() {
 		await shot('74-internet-headers')
 		await page.keyboard.press('Escape')
 		await page.locator('.wm-overlay').waitFor({ state: 'detached' })
-		assert.ok(await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('wm-headers-btn')), 'the focus goes back to the button')
+		assert.ok(await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('wm-more-btn')), 'the focus goes back to the button')
 
 		// a forged-looking sender: a warning
 		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°1"))')
 		await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°1")')
-		await page.click('.wm-headers-btn')
+		await more('.wm-headers-btn')
 		await page.waitForSelector('.wm-headers .wm-auth-fail[data-check="dkim"]')
 		await page.waitForSelector('.wm-headers .wm-auth-fail[data-check="dmarc"]')
 		await page.waitForSelector('.wm-headers .wm-auth-pass[data-check="spf"]')
@@ -4062,7 +4075,7 @@ async function main() {
 		await page.click('.wm-folder:has-text("Éléments envoyés")')
 		await page.click('.wm-message:has-text("Re: Planning")')
 		await page.waitForSelector('.wm-message-header h2:has-text("Re: Planning")')
-		await page.click('.wm-headers-btn')
+		await more('.wm-headers-btn')
 		await page.waitForSelector('.wm-headers:has-text("Ce message n\'a pas d\'en-têtes Internet")')
 		await page.keyboard.press('Escape')
 		await page.locator('.wm-overlay').waitFor({ state: 'detached' })
@@ -4633,7 +4646,7 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector('.wm-list-period')
 		await openNewsletter()
-		await page.click('.wm-toolbar .wm-sender-btn')
+		await more('.wm-sender-btn')
 		const text = await (await page.waitForSelector('.wm-sender-dialog p:has-text("de cet expéditeur dans « Boîte de réception »")')).textContent()
 		const count = parseInt(text, 10)
 		assert.ok(count > 20, text)
@@ -4649,14 +4662,14 @@ async function main() {
 		await page.waitForSelector('.wm-list-period')
 		// all moved to « Clients », then all back
 		await openNewsletter()
-		await page.click('.wm-toolbar .wm-sender-btn')
+		await more('.wm-sender-btn')
 		await page.waitForSelector('.wm-sender-dialog .wm-sender-move select')
 		await page.selectOption('.wm-sender-dialog .wm-sender-move select', { label: 'Clients' })
 		await page.click('.wm-sender-move-btn')
 		await page.waitForSelector('.wm-toast:has-text("' + count + ' messages déplacés dans « Clients »")')
 		await page.click('.wm-folder:has-text("Clients")')
 		await page.click('.wm-message:has(.wm-message-subject:text-is("Newsletter n°36"))')
-		await page.click('.wm-toolbar .wm-sender-btn')
+		await more('.wm-sender-btn')
 		await page.waitForSelector('.wm-sender-dialog p:has-text("' + count + ' messages de cet expéditeur dans « Clients »")')
 		await page.selectOption('.wm-sender-dialog .wm-sender-move select', { label: 'Boîte de réception' })
 		await page.click('.wm-sender-move-btn')
@@ -4860,7 +4873,7 @@ async function main() {
 			await page.click('.wm-folder >> nth=0')
 			await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
 			await page.waitForSelector('.wm-message-header h2:has-text("Devis pour la maintenance annuelle")')
-			await page.click('.wm-matrix-send-btn')
+			await more('.wm-matrix-send-btn')
 			await page.waitForSelector('.wm-matrix-send select[name=matrixSendRoom] option:has-text("Équipe chantier")', { state: 'attached' })
 			const text = await page.inputValue('textarea[name=matrixText]')
 			assert.ok(text.startsWith('✉️ Devis pour la maintenance annuelle\nDe : Jean Dupont <jean.dupont@client-exemple.fr>'), text)
@@ -4969,7 +4982,7 @@ async function main() {
 			await page.waitForSelector('.wm-toast:has-text("Compte Matrix déconnecté")')
 			await page.click('.wm-folder >> nth=0')
 			await page.click('.wm-message:has-text("Devis pour la maintenance annuelle")')
-			await page.click('.wm-matrix-send-btn')
+			await more('.wm-matrix-send-btn')
 			await page.waitForSelector('.wm-matrix-send button:has-text("Connecter mon compte Matrix")')
 			await page.click('.wm-matrix-send .wm-modal-close')
 

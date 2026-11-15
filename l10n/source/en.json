@@ -1583,5 +1583,19 @@
 	"Résultats pour « {query} » dans tous les carnets": "Results for “{query}” in every address book",
 	"seulement dans {name}": "only in {name}",
 	"chercher dans tous les carnets": "search in every address book",
-	"Non consultés : {books}": "Not searched: {books}"
+	"Non consultés : {books}": "Not searched: {books}",
+	"Ranger": "Put away",
+	"Suivre": "Follow up",
+	"Plus d'actions : créer une note, une tâche, un événement, une règle ; envoyer, enregistrer, imprimer…": "More actions: create a note, a task, an event, a rule; send, save, print…",
+	"Plus": "More",
+	"Plus d'actions": "More actions",
+	"Créer à partir du message": "Create from the message",
+	"Une note": "A note",
+	"Une tâche": "A task",
+	"Un événement": "An event",
+	"Une règle…": "A rule…",
+	"Télécharger (.eml)": "Download (.eml)",
+	"Envoyer, garder": "Send, keep",
+	"Expéditeur et conversation": "Sender and conversation",
+	"Détails": "Details"
 }
