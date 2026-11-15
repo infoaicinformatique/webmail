@@ -4796,6 +4796,8 @@ async function main() {
 			occ('config:app:delete webmail visio')
 			occ('config:app:delete webmail visio_mode')
 			occ('config:app:set external sites --value=\'' + JSON.stringify({ 1: { id: 1, name: 'Chat PBCAN', url: 'https://ex3.fake.test:8443/element/', lang: '', type: 'link', device: '', icon: 'external.svg', groups: [], redirect: false } }) + '\'')
+			// (Nextcloud 33 and later keep the app settings 3 s in each web process: changed by occ, seen after)
+			await page.waitForTimeout(3500)
 			try {
 				await page.goto(NC + '/settings/admin/webmail')
 				await page.waitForSelector('#webmail-visio-detected')
