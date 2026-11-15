@@ -19,9 +19,9 @@ use Psr\Log\LoggerInterface;
 
 /**
  * The absences of Nextcloud (Paramètres personnels › Disponibilité › Absence) as the automatic
- * replies of Exchange: the same dates, the message of the absence, or else the user's model (or
- * the one of the administrator) with the dates filled in. An absence removed takes its reply
- * away, unless it was changed meanwhile (in Outlook, in the webmail).
+ * replies of Exchange: the same dates; the user's model (or else the one of the administrator)
+ * with the dates and the message of the absence filled in, or else that message as it is. An
+ * absence removed takes its reply away, unless it was changed meanwhile (in Outlook, the webmail).
  */
 class AbsenceReplyService {
 	/** the reply of each account made for an absence: its id and dates (a reply changed since is left alone) */
@@ -76,17 +76,18 @@ class AbsenceReplyService {
 
 	/** The model of the app, in the language given. */
 	public static function defaultTemplate(?IL10N $l): string {
-		return L10n::t($l, "Bonjour,\n\nJe suis absent du {debut} au {fin} inclus, sans accès à mes messages. Je vous répondrai dès mon retour, le {retour}.{remplacement}\n\nCordialement,\n{nom}");
+		return L10n::t($l, "Bonjour,\n\nJe suis absent du {debut} au {fin} inclus, sans accès à mes messages. Je vous répondrai dès mon retour, le {retour}.{remplacement}\n\n{message}\n\nCordialement,\n{nom}");
 	}
 
 	/**
-	 * The text of a model: {debut}, {fin}, {retour} (the day after), {nom}, {remplacement}
-	 * (« En mon absence, vous pouvez joindre … », or nothing).
-	 * @param array{debut: string, fin: string, retour: string, nom: string, remplacant: string} $values
+	 * The text of a model: {debut}, {fin}, {retour} (the day after), {nom}, {message} (the one
+	 * of the absence), {remplacement} (« En mon absence, vous pouvez joindre … », or nothing).
+	 * @param array{debut: string, fin: string, retour: string, nom: string, remplacant: string, message?: string} $values
 	 */
 	public static function render(string $template, array $values, ?IL10N $l = null): string {
 		$replacement = $values['remplacant'] !== '' ? "\n\n" . L10n::t($l, 'En mon absence, vous pouvez joindre %s.', [$values['remplacant']]) : '';
-		return strtr($template, [
+		$text = strtr($template, [
+			'{message}' => trim((string)($values['message'] ?? '')),
 			'{debut}' => $values['debut'],
 			'{fin}' => $values['fin'],
 			'{retour}' => $values['retour'],
@@ -94,6 +95,8 @@ class AbsenceReplyService {
 			'{remplacant}' => $values['remplacant'],
 			'{remplacement}' => $replacement,
 		]);
+		// (an empty {message} leaves no blank lines behind)
+		return trim((string)preg_replace("/\n{3,}/", "\n\n", $text));
 	}
 
 	/** An absence saved (new or changed): the replies of every account of its user scheduled. */
@@ -109,7 +112,7 @@ class AbsenceReplyService {
 		if ($end <= new \DateTimeImmutable('now')) {
 			return;
 		}
-		$message = trim($data->getMessage()) !== '' ? trim($data->getMessage()) : $this->message($user, $data);
+		$message = $this->message($user, $data);
 		$done = [];
 		foreach ($this->mapper->findAllForUser($userId) as $account) {
 			try {
@@ -183,7 +186,7 @@ class AbsenceReplyService {
 		return new EwsOof($this->accounts->getClient($account, AccountService::BACKGROUND_TIMEOUT), $account->getEmail());
 	}
 
-	/** The model of the user (or of the administrator, or of the app) with the dates of the absence. */
+	/** The model of the user (or of the administrator) with the dates and message of the absence; or else that message. */
 	private function message(IUser $user, IOutOfOfficeData $data): string {
 		$userId = $user->getUID();
 		$lang = $this->config->getUserValue($userId, 'core', 'lang', '');
@@ -199,7 +202,8 @@ class AbsenceReplyService {
 			$template = $this->adminTemplate();
 		}
 		if ($template === '') {
-			$template = self::defaultTemplate($l);
+			// no model: the message of the absence as it is (Nextcloud asks for one)
+			$template = trim($data->getMessage()) !== '' ? '{message}' : self::defaultTemplate($l);
 		}
 		$day = fn (int $ts) => $this->formatter->formatDate($ts, 'long', $zone, $l);
 		$replacement = method_exists($data, 'getReplacementUserDisplayName') ? (string)$data->getReplacementUserDisplayName() : '';
@@ -209,6 +213,7 @@ class AbsenceReplyService {
 			'retour' => $day($data->getEndDate() + 60),
 			'nom' => $user->getDisplayName(),
 			'remplacant' => $replacement,
+			'message' => $data->getMessage(),
 		], $l);
 	}
 }

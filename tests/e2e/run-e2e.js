@@ -970,29 +970,25 @@ async function main() {
 		await page.waitForSelector('.wm-absence-settings:not([hidden]) input[name=absenceReplies]:checked')
 		assert.ok((await page.getAttribute('.wm-absence-settings textarea', 'placeholder')).includes('{debut}'))
 		await shot('105-absence-settings')
-		// an absence without its own message: the model, with the dates
+		// no model: the message of the absence as it is, on its dates
 		const first = ymd(7)
 		const last = ymd(14)
-		const saved = await absence('POST', { firstDay: first, lastDay: last, status: 'Congés', message: '', replacementUserId: null })
+		const saved = await absence('POST', { firstDay: first, lastDay: last, status: 'Congés', message: 'En congés, je lirai vos messages à mon retour.', replacementUserId: null })
 		assert.strictEqual(saved.status, 200, saved.text)
 		let o = await oof()
 		assert.strictEqual(o.state, 'Scheduled', JSON.stringify(o))
 		assert.strictEqual(o.audience, 'All')
-		assert.ok(o.internal.startsWith('Bonjour,\n\nJe suis absent du ') && o.internal.includes(' inclus, sans accès à mes messages.'), o.internal)
+		assert.strictEqual(o.internal, 'En congés, je lirai vos messages à mon retour.')
 		assert.ok(new Date(o.start).getTime() <= new Date(first + 'T00:00:00').getTime() + 86400000 && new Date(o.end) > new Date(last + 'T12:00:00'), o.start + ' ' + o.end)
 		const bell = await page.evaluate(async () => (await (await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })).json()).ocs.data.filter((n) => n.app === 'webmail' && n.subject.startsWith('Réponse automatique programmée')))
 		assert.ok(bell.length === 1 && bell[0].message.includes('user@societe-a.fr'), JSON.stringify(bell))
-		// a model of one's own: used for the next absence without message
-		await page.fill('.wm-absence-settings textarea', 'Absent jusqu\'au {fin}, de retour le {retour}.{remplacement}\n{nom}')
+		// a model of one's own: the dates and the message of the absence filled in
+		await page.fill('.wm-absence-settings textarea', 'Absent jusqu\'au {fin}, de retour le {retour}.\n\n{message}{remplacement}\n\n{nom}')
 		await page.click('.wm-absence-settings button[type=submit]')
 		await page.waitForSelector('.wm-toast:has-text("programmeront la réponse automatique")')
-		assert.strictEqual((await absence('POST', { firstDay: first, lastDay: last, status: 'Congés', message: '', replacementUserId: null })).status, 200)
+		assert.strictEqual((await absence('POST', { firstDay: first, lastDay: last, status: 'Congés', message: 'Bonnes fêtes !', replacementUserId: null })).status, 200)
 		o = await oof()
-		assert.ok(o.internal.startsWith('Absent jusqu\'au ') && o.internal.includes(', de retour le '), o.internal)
-		// the message of the absence, as it is
-		assert.strictEqual((await absence('POST', { firstDay: first, lastDay: last, status: 'Congés', message: 'En congés, je lirai vos messages à mon retour.', replacementUserId: null })).status, 200)
-		o = await oof()
-		assert.strictEqual(o.internal, 'En congés, je lirai vos messages à mon retour.')
+		assert.ok(o.internal.startsWith('Absent jusqu\'au ') && o.internal.includes(', de retour le ') && o.internal.includes('Bonnes fêtes !'), o.internal)
 		// removed: the reply taken away
 		assert.strictEqual((await absence('DELETE')).status, 200)
 		o = await oof()

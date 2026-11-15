@@ -39,8 +39,9 @@ class AbsenceController extends Controller {
 		return [
 			'enabled' => $this->absences->isEnabled($user),
 			'template' => $this->absences->userTemplate($user),
-			// what is used when the user has no model of their own
-			'defaultTemplate' => $admin !== '' ? $admin : AbsenceReplyService::defaultTemplate($this->l),
+			// the model of the organisation, used when the user has none ('' : the message of the absence as it is)
+			'defaultTemplate' => $admin,
+			'example' => AbsenceReplyService::defaultTemplate($this->l),
 			'available' => interface_exists(\OCP\User\IAvailabilityCoordinator::class),
 			'settingsUrl' => $this->url->linkToRoute('settings.PersonalSettings.index', ['section' => 'availability']),
 		];

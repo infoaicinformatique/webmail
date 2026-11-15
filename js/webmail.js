@@ -5615,13 +5615,13 @@
 		h('fieldset', {},
 			h('legend', {}, '🌴 ' + _('Absences de Nextcloud')),
 			h('label', { class: 'wm-radio' }, enabled, ' ' + _('Pendant mes absences saisies dans Nextcloud, programmer la réponse automatique de tous mes comptes (mêmes dates)')),
-			h('p', { class: 'wm-muted' }, _('Le message de l\'absence est envoyé tel quel ; s\'il est vide, ce modèle sert, avec les dates remplies : {debut}, {fin}, {retour} (le lendemain), {nom}, {remplacement} (« En mon absence, vous pouvez joindre … »). Laissez vide pour le modèle de votre organisation.'), ' ', link),
+			h('p', { class: 'wm-muted' }, _('Ce modèle remplace le message de vos absences, avec ces éléments remplis : {debut}, {fin}, {retour} (le lendemain), {nom}, {message} (celui de l\'absence), {remplacement} (« En mon absence, vous pouvez joindre … »). Laissez vide pour envoyer le message de l\'absence tel quel (ou le modèle de votre organisation, s\'il y en a un).'), ' ', link),
 			template,
 			h('div', { class: 'wm-compose-actions' }, save)))
 		const show = (st) => {
 			enabled.checked = st.enabled
 			template.value = st.template
-			template.placeholder = st.defaultTemplate
+			template.placeholder = st.defaultTemplate || st.example
 			link.href = st.settingsUrl
 			card.hidden = !st.available
 		}

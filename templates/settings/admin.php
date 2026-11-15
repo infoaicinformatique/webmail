@@ -77,7 +77,7 @@ $code = fn (string $text): string => '<code>' . \OCP\Util::sanitizeHTML($text) .
 	<?php endif; ?>
 	<h3><?php p($l->t('Réponse automatique pendant les absences')); ?></h3>
 	<p class="settings-hint">
-		<?php p($l->t('Une absence saisie dans Nextcloud (Paramètres personnels › Disponibilité › Absence) programme la réponse automatique Exchange de la personne sur les mêmes dates. Si l\'absence n\'a pas de message, ce modèle sert, sauf si la personne a écrit le sien. Les dates sont remplies : {debut}, {fin}, {retour}, {nom}, {remplacement}. Laissez vide pour le modèle du webmail.')); ?>
+		<?php p($l->t('Une absence saisie dans Nextcloud (Paramètres personnels › Disponibilité › Absence) programme la réponse automatique Exchange de la personne sur les mêmes dates. Ce modèle remplace alors le message de l\'absence, sauf si la personne a écrit le sien ; y sont remplis : {debut}, {fin}, {retour}, {nom}, {message} (celui de l\'absence), {remplacement}. Laissez vide pour envoyer le message de l\'absence tel quel.')); ?>
 	</p>
 	<p>
 		<textarea id="webmail-absence-template" rows="8" cols="70" placeholder="<?php p($_['absenceDefault']); ?>"><?php p($_['absenceTemplate']); ?></textarea>

@@ -11,8 +11,11 @@ class AbsenceReplyTest extends TestCase {
 	private const VALUES = ['debut' => '22 décembre 2026', 'fin' => '2 janvier 2027', 'retour' => '3 janvier 2027', 'nom' => 'Nicolas Martin', 'remplacant' => ''];
 
 	public function testTheModelOfTheAppWithTheDates(): void {
-		$text = AbsenceReplyService::render(AbsenceReplyService::defaultTemplate(null), self::VALUES);
-		$this->assertSame("Bonjour,\n\nJe suis absent du 22 décembre 2026 au 2 janvier 2027 inclus, sans accès à mes messages. Je vous répondrai dès mon retour, le 3 janvier 2027.\n\nCordialement,\nNicolas Martin", $text);
+		$text = AbsenceReplyService::render(AbsenceReplyService::defaultTemplate(null), ['message' => 'Bonnes fêtes !'] + self::VALUES);
+		$this->assertSame("Bonjour,\n\nJe suis absent du 22 décembre 2026 au 2 janvier 2027 inclus, sans accès à mes messages. Je vous répondrai dès mon retour, le 3 janvier 2027.\n\nBonnes fêtes !\n\nCordialement,\nNicolas Martin", $text);
+		// no message: no blank lines left
+		$this->assertSame("Bonjour,\n\nJe suis absent du 22 décembre 2026 au 2 janvier 2027 inclus, sans accès à mes messages. Je vous répondrai dès mon retour, le 3 janvier 2027.\n\nCordialement,\nNicolas Martin",
+			AbsenceReplyService::render(AbsenceReplyService::defaultTemplate(null), self::VALUES));
 	}
 
 	public function testTheReplacementWhenThereIsOne(): void {
