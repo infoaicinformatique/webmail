@@ -3423,13 +3423,13 @@ async function main() {
 	})
 
 	await step('instant tabs: the calendar, the tasks and the contacts are loaded while the mail is idle, then show at once', async () => {
-		const ahead = ['/calendar/batch', '/tasks?', '/contacts?'].map((part) => page.waitForResponse((r) => r.url().includes(part) && r.status() === 200, { timeout: 30000 }))
+		const ahead = ['/calendar/events', '/tasks?', '/contacts?'].map((part) => page.waitForResponse((r) => r.url().includes(part) && r.status() === 200, { timeout: 30000 }))
 		await page.goto(NC + '/apps/webmail/?module=mail')
 		await page.waitForSelector('.wm-message')
 		await Promise.all(ahead)
 		// from now on, Exchange is slow: what shows at once was loaded ahead
 		const slow = async (route) => { await new Promise((r) => setTimeout(r, 4000)); await route.continue().catch(() => null) }
-		await page.route(/\/calendar\/(events|calendars|batch)/, slow)
+		await page.route(/\/calendar\/(events|calendars)/, slow)
 		await page.route(/\/apps\/webmail\/api\/accounts\/\d+\/(tasks|contacts)(\?|\/books|$)/, slow)
 		try {
 			const shown = async (tab, selector) => {

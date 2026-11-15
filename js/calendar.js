@@ -157,24 +157,9 @@
 	/** Events of all visible calendars between start and end; errors per calendar */
 	async function fetchRange(start, end) {
 		const visible = cal.calendars.filter((c) => !cal.hidden.has(c.key))
-		let results
-		try {
-			// all in one request: one connection to Exchange for them all (authenticated once)
-			const r = (await api('/accounts/' + core.accountId + '/calendar/batch', {
-				method: 'POST',
-				body: { start: start.toISOString(), end: end.toISOString(), tz: core.TZ, calendars: visible.map((c) => c.key) },
-			})).results || {}
-			results = visible.map((c) => {
-				const one = r[c.key]
-				if (!one) return { c, error: new Error(_('Agenda non chargé')) }
-				return one.error ? { c, error: new Error(one.error) } : { c, events: one.events || [] }
-			})
-		} catch (e) {
-			// (the server could not answer for all of them: one by one)
-			results = await Promise.all(visible.map((c) => api('/accounts/' + core.accountId + '/calendar/events', {
-				query: { start: start.toISOString(), end: end.toISOString(), tz: core.TZ, calendar: c.key },
-			}).then((data) => ({ c, events: data.events }), (err) => ({ c, error: err }))))
-		}
+		const results = await Promise.all(visible.map((c) => api('/accounts/' + core.accountId + '/calendar/events', {
+			query: { start: start.toISOString(), end: end.toISOString(), tz: core.TZ, calendar: c.key },
+		}).then((data) => ({ c, events: data.events }), (e) => ({ c, error: e }))))
 		const events = []
 		const errors = []
 		results.forEach(({ c, events: evs, error }) => {
