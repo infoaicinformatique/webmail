@@ -111,6 +111,6 @@ class ExchangeTasksCalendar implements ICalendar {
 				return $this->todos = [];
 			}
 		}
-		return $this->todos = array_values(\Sabre\VObject\Reader::read($ics)->select('VTODO'));
+		return $this->todos = AppComponents::wrap(\Sabre\VObject\Reader::read($ics)->select('VTODO'));
 	}
 }
