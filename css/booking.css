@@ -1,0 +1,11 @@
+/* « Proposer des créneaux »: the public page where the guest picks a slot */
+.wm-booking { max-width: 520px; text-align: left; }
+.wm-booking h2 { margin: 0 0 12px; }
+.wm-booking-slots { border: 0; padding: 0; margin: 0 0 12px; display: flex; flex-direction: column; gap: 6px; }
+.wm-booking-slots legend { font-weight: bold; margin-bottom: 6px; }
+.wm-booking-slot { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-border-dark, #ccc); border-radius: var(--border-radius-large, 10px); cursor: pointer; }
+.wm-booking-slot:has(input:checked) { border-color: var(--color-primary-element, #0082c9); background: var(--color-primary-element-light, #e6f3fa); }
+.wm-booking label[for] { display: block; font-weight: bold; margin-bottom: 4px; }
+.wm-booking input[type=text], .wm-booking input[type=email] { width: 100%; }
+.wm-booking-error { color: var(--color-error-text, #c00); font-weight: bold; }
+.wm-booking-when { font-size: 16px; }

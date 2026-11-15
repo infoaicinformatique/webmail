@@ -55,7 +55,7 @@ async function main() {
 		}
 		console.log('ok')
 	}
-	const shot = (name) => page.screenshot({ path: path.join(SHOTS, name + '.png') })
+	const shot = (name, p = page) => p.screenshot({ path: path.join(SHOTS, name + '.png') })
 	// an action of « ⋯ Plus », above a message: the menu opened, then the action (its selector in the menu)
 	const openMore = async () => {
 		await page.click('.wm-toolbar .wm-more-btn')
@@ -1367,6 +1367,80 @@ async function main() {
 				if (c.snoozed) await post('/snooze/back', { itemId: c.snoozed })
 			}, ctx)
 		}
+	})
+
+	await step('« Proposer des créneaux »: free slots in a message, the guest picks one on a public page, the meeting is made', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		for (let i = 0; i < 5 && !(await page.$('.wm-compose input[name=to]')); i++) {
+			await page.click('.wm-compose-btn')
+			await page.waitForSelector('.wm-compose input[name=to]', { timeout: 3000 }).catch(() => {})
+		}
+		await page.fill('.wm-compose input[name=subject]', 'Point devis toiture')
+		await page.click('.wm-editor')
+		await page.keyboard.type('Bonjour,')
+		await page.keyboard.press('Enter')
+		await page.click('.wm-editor-bar button[title^="Proposer des créneaux"]')
+		await page.waitForSelector('.wm-slots-dialog')
+		assert.strictEqual(await page.inputValue('.wm-slots-dialog input[name=subject]'), 'Point devis toiture')
+		await page.selectOption('.wm-slots-dialog select[name=minutes]', '60')
+		await page.selectOption('.wm-slots-dialog select[name=count]', '3')
+		await shot('103-slots-dialog')
+		await page.click('.wm-slots-dialog button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("3 créneaux insérés")')
+		const links = await page.$$eval('.wm-editor ul.wm-slots a', (els) => els.map((a) => ({ href: a.getAttribute('href'), text: a.textContent })))
+		assert.strictEqual(links.length, 3, JSON.stringify(links))
+		assert.ok(links.every((l) => /\/apps\/webmail\/rdv\/[A-Za-z0-9_-]+\.[A-Za-z0-9]{24}\?slot=\d$/.test(l.href)), JSON.stringify(links))
+		await shot('103-slots-inserted')
+		// the guest, without an account: the second slot of the message
+		const guest = await browser.newContext({ locale: 'fr-FR', timezoneId: 'Europe/Paris' })
+		const gp = await guest.newPage()
+		try {
+			await gp.goto(links[1].href)
+			await gp.waitForSelector('.wm-booking h2:has-text("Point devis toiture")')
+			assert.strictEqual(await gp.$$eval('.wm-booking-slot', (els) => els.length), 3)
+			assert.ok(await gp.isChecked('.wm-booking-slot input[value="1"]'), 'the slot clicked in the message')
+			await gp.fill('#wm-booking-name', 'Jean Client')
+			await gp.fill('#wm-booking-email', 'jean.client@exterieur-e2e.fr')
+			await shot('104-booking-page', gp)
+			await gp.click('.wm-booking button[type=submit]')
+			await gp.waitForSelector('.wm-booking h2:has-text("Rendez-vous confirmé")')
+			assert.ok((await gp.textContent('.wm-booking')).includes('jean.client@exterieur-e2e.fr'))
+			await shot('104-booking-done', gp)
+			// taken: the other slots are no longer offered
+			await gp.goto(links[0].href)
+			await gp.waitForSelector('.wm-booking:has-text("Un créneau a déjà été choisi")')
+			// an unknown link
+			const gone = await gp.goto(links[0].href.replace(/\.[A-Za-z0-9]{24}/, '.' + 'x'.repeat(24)))
+			assert.strictEqual(gone.status(), 404)
+		} finally {
+			await guest.close()
+		}
+		// the meeting in the organiser's calendar, the guest invited; the organiser told in the bell
+		const made = await page.evaluate(async () => {
+			const headers = { requesttoken: OC.requestToken }
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const q = new URLSearchParams({ start: new Date().toISOString(), end: new Date(Date.now() + 86400000 * 10).toISOString(), tz: 'UTC' })
+			const r = await (await fetch('/apps/webmail/api/accounts/' + id + '/calendar/events?' + q, { headers })).json()
+			const ev = r.events.find((e) => e.subject === 'Point devis toiture')
+			const detail = ev ? await (await fetch('/apps/webmail/api/accounts/' + id + '/calendar/event?' + new URLSearchParams({ eventId: ev.id, tz: 'UTC' }), { headers })).json() : null
+			const n = await (await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })).json()
+			return { id, ev, detail, bell: n.ocs.data.filter((x) => x.app === 'webmail' && x.subject.startsWith('Rendez-vous pris')) }
+		})
+		assert.ok(made.ev, 'the meeting made')
+		assert.strictEqual(Date.parse(made.ev.end) - Date.parse(made.ev.start), 3600000)
+		assert.ok(made.detail.attendees.some((a) => a.email === 'jean.client@exterieur-e2e.fr'), JSON.stringify(made.detail.attendees))
+		assert.ok(made.bell.some((x) => x.subject === 'Rendez-vous pris : Point devis toiture' && x.message.startsWith('Jean Client (jean.client@exterieur-e2e.fr) · ')), JSON.stringify(made.bell))
+		await page.evaluate(async (m) => {
+			const headers = { requesttoken: OC.requestToken, 'Content-Type': 'application/json' }
+			await fetch('/apps/webmail/api/accounts/' + m.id + '/calendar/delete', { method: 'POST', headers, body: JSON.stringify({ eventId: m.ev.id }) })
+			await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications', { method: 'DELETE', headers: { 'OCS-APIREQUEST': 'true', requesttoken: OC.requestToken } })
+		}, made)
+		// the message itself thrown away
+		await page.waitForSelector('.wm-draft-status:has-text("Brouillon enregistré à")')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-compose button:has-text("Supprimer le brouillon")')
+		await page.waitForSelector('.wm-toast:has-text("Brouillon supprimé")')
 	})
 
 	await step('rich text editor and drafts', async () => {

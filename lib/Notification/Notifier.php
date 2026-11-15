@@ -45,6 +45,9 @@ class Notifier implements INotifier {
 		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'task_reminder') {
 			return $this->prepareTaskReminder($notification, $l);
 		}
+		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'booking_taken') {
+			return $this->prepareBooking($notification, $l);
+		}
 		if ($notification->getApp() !== Application::APP_ID || $notification->getSubject() !== 'new_message') {
 			// Nextcloud 30+ expects this exception, older versions an InvalidArgumentException
 			throw class_exists(UnknownNotificationException::class) ? new UnknownNotificationException() : new \InvalidArgumentException();
@@ -58,6 +61,25 @@ class Notifier implements INotifier {
 			->setParsedMessage($message)
 			->setLink($this->url->linkToRouteAbsolute('webmail.page.index') . '?' . http_build_query(['account' => $p['account'] ?? '', 'message' => $p['itemId'] ?? '']))
 			->setIcon($this->url->getAbsoluteURL($this->url->imagePath(Application::APP_ID, 'app-dark.svg')));
+		return $notification;
+	}
+
+	/** "Rendez-vous pris : Point projet" — "Jean Dupont (jean@…) · mardi 18 nov. 10:00" */
+	private function prepareBooking(INotification $notification, IL10N $l): INotification {
+		$p = $notification->getSubjectParameters();
+		$tz = $this->config->getUserValue($notification->getUser(), 'core', 'timezone', '') ?: date_default_timezone_get();
+		try {
+			$zone = new \DateTimeZone($tz);
+		} catch (\Exception) {
+			$zone = new \DateTimeZone('UTC');
+		}
+		$subject = (string)($p['subject'] ?? '');
+		$when = DashboardService::label((string)($p['start'] ?? 'now'), false, $zone, null, $l);
+		$notification->setParsedSubject($l->t('Rendez-vous pris : %s', [$subject]))
+			->setRichSubject($l->t('Rendez-vous pris : %s', ['{event}']), ['event' => ['type' => 'highlight', 'id' => 'event', 'name' => $subject]])
+			->setParsedMessage((string)($p['name'] ?? '') . ' (' . (string)($p['email'] ?? '') . ') · ' . $when)
+			->setLink($this->url->linkToRouteAbsolute('webmail.page.index') . '?' . http_build_query(['account' => $p['account'] ?? '', 'module' => 'calendar']))
+			->setIcon($this->url->getAbsoluteURL($this->url->imagePath('core', 'places/calendar.svg')));
 		return $notification;
 	}
 

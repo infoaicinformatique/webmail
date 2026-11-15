@@ -1242,3 +1242,9 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-today-item.now .wm-today-when { color: var(--color-success-text, var(--color-success)); font-weight: bold; }
 .wm-today-item.over { opacity: .6; }
 .wm-today-join { margin: 0 4px 0 0; flex: none; }
+
+/* « Proposer des créneaux » */
+.wm-slots-dialog { width: min(520px, calc(100vw - 32px)); }
+.wm-slots-form { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+.wm-slots-form .wm-field > span { width: 160px; }
+.wm-slots-form .wm-form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
