@@ -122,6 +122,9 @@ class MatrixTest extends TestCase {
 		$this->assertSame('!meet42:matrix.pbcannes.org', Matrix::roomIdIn('Salle B ' . $link));
 		$this->assertSame('!meet42:matrix.pbcannes.org', Matrix::roomIdIn("Rejoindre la visio : " . $link . "\n"));
 		$this->assertSame('!abc:fake.test', Matrix::roomIdIn('salon !abc:fake.test'));
+		// a link copied from Element: the « ! » as is
+		$this->assertSame('!Zk3xQ9dHf2Lp8wVb5nRt7', Matrix::roomIdIn('https://chat.pbcannes.org/#/room/!Zk3xQ9dHf2Lp8wVb5nRt7?via=matrix.pbcannes.org'));
+		$this->assertSame('!abc:matrix.pbcannes.org', Matrix::roomIdIn('https://chat.pbcannes.org/#/room/!abc:matrix.pbcannes.org'));
 		$this->assertSame('!Zk3xQ9_dHf-2Lp8wVb5nRt7yMc1sGa4eJo6uKi0hXqE',
 			Matrix::roomIdIn('Visio : https://chat.pbcannes.org/#/room/%21Zk3xQ9_dHf-2Lp8wVb5nRt7yMc1sGa4eJo6uKi0hXqE?via=matrix.pbcannes.org'));
 		$this->assertNull(Matrix::roomIdIn('https://meet.example.org/reunion-k3x9'));

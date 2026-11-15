@@ -110,6 +110,8 @@ ATTACHMENTS = {}
 MATRIX_ROOMS = {'!equipe:fake.test': 'Équipe chantier', '!notes:fake.test': 'Mes notes', '!dm:fake.test': ''}
 MATRIX_ALIASES = {'#equipe:fake.test': '!equipe:fake.test'}
 MATRIX_SENT = []
+# the states of rooms set (name, topic, join rule): their room, type and content
+MATRIX_STATE = []
 # rooms made by createRoom (« Visio Element » with Element Web): their request
 MATRIX_SSO = []
 # the accounts of the chat (for the invitations of a meeting room), and those invited
@@ -1086,6 +1088,8 @@ class Handler(BaseHTTPRequestHandler):
             return reply(200, MATRIX_SENT)
         if path == '/_matrix/test/created':
             return reply(200, MATRIX_CREATED)
+        if path == '/_matrix/test/state':
+            return reply(200, MATRIX_STATE)
         # single sign-on (by Nextcloud in the real chat): straight back with a login token
         if method == 'GET' and path == '/_matrix/client/v3/login/sso/redirect':
             from urllib.parse import parse_qs, urlparse
@@ -1132,6 +1136,14 @@ class Handler(BaseHTTPRequestHandler):
             if not any(x['txn'] == txn for x in MATRIX_SENT):
                 MATRIX_SENT.append({'room': room, 'txn': txn, 'content': body})
             return reply(200, {'event_id': '$%s' % txn})
+        m = re.match(re.escape(api) + r'/rooms/([^/]+)/state/([^/]+)/?$', path)
+        if method == 'PUT' and m:
+            room = unquote(m.group(1))
+            if room not in MATRIX_ROOMS:
+                return reply(403, {'errcode': 'M_FORBIDDEN', 'error': 'not in the room'})
+            body = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))) or b'{}')
+            MATRIX_STATE.append({'room': room, 'type': unquote(m.group(2)), 'content': body})
+            return reply(200, {'event_id': '$state%d' % len(MATRIX_STATE)})
         m = re.match(re.escape(api) + r'/profile/([^/]+)$', path)
         if method == 'GET' and m:
             who = unquote(m.group(1))
