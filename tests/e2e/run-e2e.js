@@ -18,6 +18,11 @@ const { execSync } = require('child_process')
 const NC = process.env.NC_URL || 'http://localhost:8080'
 const SHOTS = process.env.SHOTS || '/tmp/webmail-shots'
 const OCC = process.env.OCC || 'docker exec -u www-data nc php occ'
+// the warnings « Undefined array key "UID" » in the log of Nextcloud (the CalDAV wrapper reading an event or a task)
+const uidWarnings = () => {
+	const container = (OCC.match(/docker exec(?: -u \S+)? (\S+)/) || [])[1] || 'nc'
+	return Number(require('child_process').execSync('docker exec ' + container + ' sh -c "grep -c \'Undefined array key .\\{1,2\\}UID\' /var/www/html/data/nextcloud.log || true"', { encoding: 'utf8' }).trim() || 0)
+}
 fs.mkdirSync(SHOTS, { recursive: true })
 
 async function main() {
@@ -3462,9 +3467,12 @@ async function main() {
 			const m = /calendars\/[^/]+\/(app-generated--[a-z-]+--webmail-exchange-tasks-\d+)\//.exec(home.text)
 			assert(m, 'the list « Tâches » of Exchange in Nextcloud: ' + home.text.slice(0, 800))
 			assert(/webmail-exchange-tasks-\d+-[0-9a-f]{8}/.test(home.text), 'the other lists too')
+			const warned = uidWarnings()
 			const todos = await dav('REPORT', 'calendars/{user}/' + m[1] + '/', '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><c:calendar-data/></d:prop>'
 				+ '<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VTODO"/></c:comp-filter></c:filter></c:calendar-query>', { Depth: '1', 'Content-Type': 'application/xml' })
 			assert(todos.text.includes('SUMMARY:Renouveler le nom de domaine') && todos.text.includes('PRIORITY:1'), todos.text.slice(0, 1200))
+			// (each task read by its UID: no warning of PHP)
+			assert.strictEqual(uidWarnings(), warned, 'warnings « Undefined array key UID » in the log')
 			await page.uncheck('.wm-tasks-nc input')
 			await page.waitForSelector('.wm-toast:has-text("Listes Exchange retirées de Tâches de Nextcloud")')
 		} finally {
@@ -5575,8 +5583,10 @@ async function main() {
 		}, { method, sub, body })
 		const query = '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:getetag/><c:calendar-data/></d:prop>'
 			+ '<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"/></c:comp-filter></c:filter></c:calendar-query>'
+		const warned = uidWarnings()
 		const r = await caldav('REPORT', '', query)
 		assert(r.found && r.name, 'calendar not found')
+		assert.strictEqual(uidWarnings(), warned, 'warnings « Undefined array key UID » in the log')
 		assert.strictEqual(r.status, 207, r.text.slice(0, 300))
 		assert(r.text.includes('SUMMARY:Comité de pilotage'), r.text.slice(0, 600))
 		assert(/UID:webmail-[0-9a-f]{32}/.test(r.text))
