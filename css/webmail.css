@@ -1174,3 +1174,6 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 
 /* the fields of a meeting (invitations, rooms): not for a calendar of Nextcloud */
 .wm-meeting-field[hidden] { display: none !important; }
+
+/* a result of the search in every address book: its book */
+.wm-contact-book { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

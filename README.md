@@ -216,6 +216,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | Fiche | Société, fonction, jusqu'à 3 e-mails, mobile, téléphone du bureau et du domicile, **adresse Matrix** (`@prenom.nom:serveur`, ou un lien matrix.to collé ; « 💬 Écrire sur Matrix » ouvre la discussion dans Element ou l'application Matrix de la personne ; gardée dans la 1re adresse de messagerie instantanée d'Exchange, donc aussi dans Outlook, et en `IMPP:matrix:` dans les vCard), adresse (lien vers la carte), notes |
 | Actions | Créer (dans le carnet choisi), modifier, supprimer, **écrire** (ouvre un nouveau message), appeler (lien `tel:`) |
 | Import / export | « ⬇ » au-dessus de la liste : tout le carnet affiché dans un fichier **vCard** (.vcf) pour Outlook, un téléphone, Nextcloud Contacts… « ⬆ » : les contacts d'un fichier vCard (2.1, 3.0 ou 4.0, celui d'Outlook ou d'un téléphone) sont ajoutés au carnet ; ceux déjà présents (même adresse e-mail) sont ignorés, et le bilan s'affiche |
+| Recherche partout | Après une recherche, « 🔎 chercher dans tous les carnets » cherche à la fois dans vos carnets Exchange, ceux de vos collègues et des dossiers publics, l'annuaire de l'entreprise, les carnets Nextcloud et les comptes Nextcloud ; chaque résultat indique son carnet et s'ouvre dans celui-ci (« seulement dans … » revient au carnet affiché) |
 | Anniversaires | Champ « Anniversaire » de la fiche (celui d'Outlook, aussi sans l'année), affiché avec l'âge ; les **anniversaires des 14 prochains jours** s'affichent au-dessus de la liste des contacts (« Anne Bernard · dans 3 jours · 46 ans »). Exporté et importé en vCard (`BDAY`) |
 | En ligne | Une **pastille** sur la photo des contacts qui ont un compte Nextcloud (même adresse e-mail) montre leur statut Nextcloud : **vert** en ligne, **orange** absent pour le moment, **rouge** ne pas déranger, **gris** hors ligne (aussi pour « Invisible »). Dans la liste et sur la fiche, mise à jour chaque minute ; rien pour les contacts sans compte Nextcloud |
 | Groupes | Les **groupes de contacts** d'Outlook (listes de distribution personnelles) : leurs membres s'affichent, « ✉️ Écrire au groupe » adresse le message à tous. « 👥 Nouveau groupe » en crée un, « ✏️ Modifier » ajoute des membres (complétion depuis les contacts et l'annuaire, ou adresse saisie) ou en retire. Les groupes sont enregistrés dans Exchange et retrouvés dans Outlook |
@@ -282,7 +283,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.136.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.137.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -347,7 +348,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.136 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.137 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

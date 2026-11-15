@@ -98,6 +98,68 @@ class ContactController extends Controller {
 	}
 
 	/**
+	 * A search in every address book at once: the own Exchange ones, those of colleagues
+	 * and of the public folders, the company directory, those of Nextcloud and its accounts.
+	 * Each result says its book; a book that cannot be read is left out (named in « failed »).
+	 */
+	#[NoAdminRequired]
+	#[UserRateLimit(limit: 60, period: 60)]
+	public function searchAll(int $id, string $q = ''): Response {
+		return $this->handle(function () use ($id, $q) {
+			$q = trim($q);
+			if (mb_strlen($q) < 2) {
+				throw new MailException('Tapez au moins 2 lettres');
+			}
+			$account = $this->accounts->find((string)$this->userId, $id);
+			// one connection to Exchange for the mailbox's books, another for the public folders
+			$own = new EwsContacts($this->accounts->getClient($account));
+			$public = null;
+			$books = [];
+			foreach ($own->listOwnBooks() as $b) {
+				$books[] = $b;
+			}
+			foreach ($this->shared->list(SharedFolderService::CONTACTS, (string)$this->userId, $id) as $c) {
+				$books[] = self::sharedBook($c);
+			}
+			foreach ($this->shared->list(SharedFolderService::PUBLIC_CONTACTS, (string)$this->userId, $id) as $c) {
+				$books[] = ['key' => 'public:' . $c['folder'], 'name' => $c['name'], 'kind' => 'public'];
+			}
+			$items = [];
+			$failed = [];
+			$add = function (array $book, array $found) use (&$items): void {
+				foreach (array_slice($found, 0, self::SEARCH_PER_BOOK) as $c) {
+					$items[] = $c + ['book' => $book['key'], 'bookName' => (string)$book['name']];
+				}
+			};
+			foreach ($books as $book) {
+				try {
+					$client = $book['kind'] === 'public' ? ($public ??= new EwsContacts($this->accounts->getPublicFolderClient($account))) : $own;
+					$add($book, $client->listContacts(0, self::SEARCH_PER_BOOK, $q, $book['key'])['items']);
+				} catch (MailException $e) {
+					$failed[] = (string)$book['name'];
+				}
+			}
+			try {
+				$add(['key' => 'directory', 'name' => $this->l10n()->t('Annuaire de l\'entreprise')], $own->searchDirectory($q));
+			} catch (MailException) {
+				$failed[] = $this->l10n()->t('Annuaire de l\'entreprise');
+			}
+			try {
+				foreach ($this->nextcloud->books((string)$this->userId) as $book) {
+					$add($book, $this->nextcloud->list((string)$this->userId, $book['key'], 0, self::SEARCH_PER_BOOK, $q)['items']);
+				}
+			} catch (\Throwable $e) {
+				$this->logger->warning('Webmail: Nextcloud address books not searched: ' . $e->getMessage(), ['app' => Application::APP_ID]);
+			}
+			return ['items' => array_slice($items, 0, self::SEARCH_MAX), 'failed' => $failed];
+		});
+	}
+
+	/** results of a search in all the books: per book, in all */
+	private const SEARCH_PER_BOOK = 50;
+	private const SEARCH_MAX = 300;
+
+	/**
 	 * Who one of my address books is shared with.
 	 */
 	#[NoAdminRequired]
