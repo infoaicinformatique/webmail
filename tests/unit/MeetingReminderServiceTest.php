@@ -64,6 +64,9 @@ class MeetingReminderServiceTest extends EwsTestCase {
 		$this->assertSame($teams, MeetingReminderService::joinLink('12 rue de la Paix', 'Lien : ' . $teams . '.', ''));
 		// a link given as the place
 		$this->assertSame('https://visio.example.org/r/42', MeetingReminderService::joinLink('https://visio.example.org/r/42', '', ''));
+		// a link said to be the visio, of any service
+		$this->assertSame('https://visio.example.org/r/42', MeetingReminderService::joinLink('Bureau 2', "Ordre du jour.\n\nRejoindre la visio : https://visio.example.org/r/42\n", ''));
+		$this->assertSame('https://meet.example.com/abc', MeetingReminderService::joinLink('', 'Join the meeting: https://meet.example.com/abc', ''));
 		// nothing to join: a link of the description is not taken for any page
 		$this->assertNull(MeetingReminderService::joinLink('Salle B', 'Le devis : https://example.org/devis.pdf', $chat));
 		$this->assertNull(MeetingReminderService::joinLink('', '', ''));
