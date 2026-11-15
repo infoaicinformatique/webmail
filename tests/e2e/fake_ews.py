@@ -1191,7 +1191,7 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(raw or b'{}')
             when = lambda v: dt.datetime.strptime(v, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=dt.timezone.utc)
             eid = pim.add_event(data['subject'], when(data['start']), when(data['end']), organizer=tuple(data['organizer']),
-                                response='NoResponseReceived', attendees=[pim.ME])
+                                response='NoResponseReceived', attendees=[(pim.ME[0], pim.ME[1], 'NoResponseReceived')])
             return self.send(200, json.dumps({'id': eid}), {'Content-Type': 'application/json'})
         if self.path in ('/_test/deliver', '/_test/remove'):
             import json
