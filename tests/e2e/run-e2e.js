@@ -5248,6 +5248,32 @@ async function main() {
 		const query = await dav('REPORT', 'addressbooks/users/{user}/contacts/', '<c:addressbook-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:carddav"><d:prop><c:address-data/></d:prop></c:addressbook-query>', { Depth: '1', 'Content-Type': 'application/xml' })
 		assert(query.text.includes('EMAIL;TYPE=INTERNET,PREF:bruno@nextcloud-e2e.fr') && /UID:[0-9a-f-]{36}/.test(query.text), query.text.slice(0, 1500))
 
+		// the accounts of this Nextcloud (« Comptes » of the Contacts app): the colleagues, read only, with their avatar
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		occ('user:add --generate-password --display-name="Denise Collègue" denise-e2e')
+		try {
+			occ('user:setting denise-e2e settings email denise@nextcloud-e2e.fr')
+			occ('dav:sync-system-addressbook')
+			await page.reload()
+			await page.click('.wm-tab[data-module="contacts"]')
+			await page.waitForSelector('.wm-book-row[data-key="nc:accounts"]')
+			assert.strictEqual(await page.textContent('.wm-book-row[data-key="nc:accounts"] .wm-cal-name'), 'Comptes Nextcloud')
+			await page.click('.wm-book-row[data-key="nc:accounts"] .wm-book-link')
+			await page.waitForSelector('.wm-contact:has-text("Denise Collègue")')
+			assert((await page.textContent('.wm-contact:has-text("Denise Collègue")')).includes('denise@nextcloud-e2e.fr'))
+			assert((await page.getAttribute('.wm-contact:has-text("Denise Collègue") img.wm-avatar-photo', 'src')).includes('/avatar/denise-e2e/'), 'her Nextcloud avatar')
+			assert(!(await page.$('.wm-contact:has-text("admin")')), 'not oneself')
+			await page.click('.wm-contact:has-text("Denise Collègue")')
+			await page.waitForSelector('.wm-toolbar:has-text("lecture seule")')
+			assert(await page.$('.wm-toolbar button:has-text("Écrire")'))
+			assert(!(await page.$('.wm-toolbar button:has-text("Modifier")')))
+			await shot('102-nextcloud-accounts')
+		} finally {
+			occ('user:delete denise-e2e')
+		}
+		await page.click(ncBook)
+		await page.waitForSelector('.wm-contact:has-text("Bruno Webmail")')
+
 		for (const name of ['Bruno Webmail', 'Claire Nextcloud']) {
 			await page.click('.wm-contact:has-text("' + name + '")')
 			page.once('dialog', (d) => d.accept())

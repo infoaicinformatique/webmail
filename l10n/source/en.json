@@ -1554,5 +1554,6 @@
 	"Répondez à cette invitation dans l'Agenda de Nextcloud": "Answer this invitation in the Nextcloud Calendar app",
 	"Ce carnet Nextcloud est en lecture seule pour vous": "This Nextcloud address book is read-only for you",
 	"Carnet Nextcloud inconnu": "Unknown Nextcloud address book",
-	"Les groupes se créent dans un carnet Exchange": "Groups are created in an Exchange address book"
+	"Les groupes se créent dans un carnet Exchange": "Groups are created in an Exchange address book",
+	"Comptes Nextcloud": "Nextcloud accounts"
 }
