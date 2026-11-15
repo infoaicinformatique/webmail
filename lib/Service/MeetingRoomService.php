@@ -126,7 +126,7 @@ class MeetingRoomService {
 			$do();
 		} catch (\Throwable $e) {
 			// (no account of the chat, a room left, the chat out of reach: the calendar goes on)
-			$this->logger->info('Webmail: room ' . $room . ' of a meeting not ' . $what . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
+			$this->logger->warning('Webmail: room ' . $room . ' of a meeting not ' . $what . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
 		}
 	}
 
