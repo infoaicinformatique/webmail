@@ -46,6 +46,75 @@ class AbsenceReplyService {
 		$this->config->setUserValue($userId, Application::APP_ID, 'oof_from_absence', $enabled ? '1' : '0');
 	}
 
+	/** What becomes of the invitations to meetings during an absence: 'decline' (with a message), 'tentative' or 'off'. */
+	public const INVITES = ['decline', 'tentative', 'off'];
+
+	public function invitesMode(string $userId): string {
+		$mode = $this->config->getUserValue($userId, Application::APP_ID, 'oof_invites', 'decline');
+		return in_array($mode, self::INVITES, true) ? $mode : 'decline';
+	}
+
+	public function setInvitesMode(string $userId, string $mode): void {
+		$this->config->setUserValue($userId, Application::APP_ID, 'oof_invites', in_array($mode, self::INVITES, true) ? $mode : 'decline');
+	}
+
+	/**
+	 * The invitations not answered yet to meetings during an absence: declined (the dates told)
+	 * or « provisoire », as chosen. The organiser knows at once; the meetings already answered stay.
+	 * @return int the invitations answered
+	 */
+	public function answerInvitations(Account $account, int $start, int $end, ?\DateTimeImmutable $now = null): int {
+		$userId = $account->getUserId();
+		$mode = $this->invitesMode($userId);
+		$now ??= new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+		$from = max($start, $now->getTimestamp());
+		if ($mode === 'off' || $end <= $from) {
+			return 0;
+		}
+		$calendar = new \OCA\Webmail\Ews\EwsCalendar($this->accounts->getClient($account, AccountService::BACKGROUND_TIMEOUT));
+		[$l, $zone] = $this->locale($userId);
+		$day = fn (int $ts) => $this->formatter->formatDate($ts, 'long', $zone, $l);
+		$message = $mode === 'decline' ? $l->t('Je suis absent du %1$s au %2$s : je ne pourrai pas participer à cette réunion.', [$day($start), $day($end - 60)]) : '';
+		$done = 0;
+		foreach ($calendar->findEvents(new \DateTimeImmutable('@' . $from), new \DateTimeImmutable('@' . $end)) as $e) {
+			if (!self::toAnswer($e)) {
+				continue;
+			}
+			try {
+				$calendar->respond((string)$e['id'], $mode, $message);
+				$done++;
+			} catch (\Throwable $ex) {
+				$this->logger->warning('Webmail: invitation of ' . $account->getEmail() . ' not answered during an absence: ' . $ex->getMessage(), ['app' => Application::APP_ID]);
+			}
+		}
+		return $done;
+	}
+
+	/** An invitation still to answer: a meeting of someone else, not cancelled, without an answer. */
+	public static function toAnswer(array $event): bool {
+		return !empty($event['isMeeting']) && empty($event['isOrganizer']) && empty($event['isCancelled'])
+			&& in_array((string)($event['response'] ?? ''), ['NoResponseReceived', 'Unknown'], true);
+	}
+
+	/** Every quarter of an hour: the invitations arrived during the absences under way or to come. */
+	public function answerAll(?\DateTimeImmutable $now = null): int {
+		$now ??= new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+		$done = 0;
+		foreach ($this->mapper->findAll() as $account) {
+			$userId = $account->getUserId();
+			$mark = json_decode($this->config->getUserValue($userId, Application::APP_ID, self::MARK . $account->getId(), ''), true);
+			if (!is_array($mark) || (int)($mark['end'] ?? 0) <= $now->getTimestamp() || !$this->isEnabled($userId)) {
+				continue;
+			}
+			try {
+				$done += $this->answerInvitations($account, (int)$mark['start'], (int)$mark['end'], $now);
+			} catch (\Throwable $e) {
+				$this->logger->info('Webmail: invitations of ' . $account->getEmail() . ' not checked during an absence: ' . $e->getMessage(), ['app' => Application::APP_ID]);
+			}
+		}
+		return $done;
+	}
+
 	/** The model of the user ('' = the one of the administrator). */
 	public function userTemplate(string $userId): string {
 		return $this->config->getUserValue($userId, Application::APP_ID, 'oof_template', '');
@@ -128,6 +197,12 @@ class AbsenceReplyService {
 					'id' => $data->getId(), 'start' => $start->getTimestamp(), 'end' => $end->getTimestamp(),
 				]));
 				$done[] = $account->getEmail();
+				// the invitations already there for these days
+				try {
+					$this->answerInvitations($account, $start->getTimestamp(), $end->getTimestamp());
+				} catch (\Throwable $e) {
+					$this->logger->info('Webmail: invitations of ' . $account->getEmail() . ' not checked for an absence: ' . $e->getMessage(), ['app' => Application::APP_ID]);
+				}
 			} catch (\Throwable $e) {
 				$this->logger->warning('Webmail: automatic reply of ' . $account->getEmail() . ' not scheduled for an absence: ' . $e->getMessage(), ['app' => Application::APP_ID]);
 			}
@@ -180,6 +255,19 @@ class AbsenceReplyService {
 				return;
 			}
 		}
+	}
+
+	/** @return array{0: IL10N, 1: \DateTimeZone} the language and time zone of the user */
+	private function locale(string $userId): array {
+		$lang = $this->config->getUserValue($userId, 'core', 'lang', '');
+		$l = $this->l10nFactory->get(Application::APP_ID, $lang !== '' ? $lang : null);
+		$tz = $this->config->getUserValue($userId, 'core', 'timezone', '') ?: date_default_timezone_get();
+		try {
+			$zone = new \DateTimeZone($tz);
+		} catch (\Exception) {
+			$zone = new \DateTimeZone('UTC');
+		}
+		return [$l, $zone];
 	}
 
 	private function oof(Account $account): EwsOof {

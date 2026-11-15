@@ -5626,6 +5626,10 @@
 	function absenceSettings() {
 		const enabled = h('input', { type: 'checkbox', name: 'absenceReplies' })
 		const template = h('textarea', { name: 'absenceTemplate', rows: '8' })
+		const invites = h('select', { name: 'absenceInvites' },
+			h('option', { value: 'decline' }, _('Les décliner, en donnant les dates de l\'absence')),
+			h('option', { value: 'tentative' }, _('Y répondre « provisoire »')),
+			h('option', { value: 'off' }, _('Ne rien faire')))
 		const link = h('a', { href: '#', target: '_blank', rel: 'noopener' }, _('Saisir une absence dans Nextcloud'))
 		const save = h('button', { type: 'submit', class: 'primary' }, _('Enregistrer'))
 		const card = h('form', {
@@ -5634,7 +5638,7 @@
 				e.preventDefault()
 				save.disabled = true
 				try {
-					show(await api('/absence', { method: 'POST', body: { enabled: enabled.checked, template: template.value } }))
+					show(await api('/absence', { method: 'POST', body: { enabled: enabled.checked, template: template.value, invites: invites.value } }))
 					toast(enabled.checked ? _('Vos absences de Nextcloud programmeront la réponse automatique') : _('Vos absences de Nextcloud ne changeront plus la réponse automatique'))
 				} catch (ex) { toast(ex.message, true) } finally { save.disabled = false }
 			},
@@ -5642,11 +5646,13 @@
 		h('fieldset', {},
 			h('legend', {}, '🌴 ' + _('Absences de Nextcloud')),
 			h('label', { class: 'wm-radio' }, enabled, ' ' + _('Pendant mes absences saisies dans Nextcloud, programmer la réponse automatique de tous mes comptes (mêmes dates)')),
+			h('label', { class: 'wm-field' }, h('span', {}, _('Invitations à des réunions pendant l\'absence')), invites),
 			h('p', { class: 'wm-muted' }, _('Ce modèle remplace le message de vos absences, avec ces éléments remplis : {debut}, {fin}, {retour} (le lendemain), {nom}, {message} (celui de l\'absence), {remplacement} (« En mon absence, vous pouvez joindre … »). Laissez vide pour envoyer le message de l\'absence tel quel (ou le modèle de votre organisation, s\'il y en a un).'), ' ', link),
 			template,
 			h('div', { class: 'wm-compose-actions' }, save)))
 		const show = (st) => {
 			enabled.checked = st.enabled
+			invites.value = st.invites || 'decline'
 			template.value = st.template
 			template.placeholder = st.defaultTemplate || st.example
 			link.href = st.settingsUrl

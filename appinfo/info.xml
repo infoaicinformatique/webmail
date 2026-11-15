@@ -53,6 +53,7 @@
 		<job>OCA\Webmail\BackgroundJob\OofStatusJob</job>
 		<job>OCA\Webmail\BackgroundJob\AutoFileJob</job>
 		<job>OCA\Webmail\BackgroundJob\ContactCopyJob</job>
+		<job>OCA\Webmail\BackgroundJob\AbsenceInvitationsJob</job>
 	</background-jobs>
 	<settings>
 		<admin>OCA\Webmail\Settings\Admin</admin>
