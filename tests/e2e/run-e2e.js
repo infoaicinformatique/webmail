@@ -5044,6 +5044,32 @@ async function main() {
 				await page.waitForSelector('.wm-toast:has-text("Salle de visio ajoutée")')
 				assert.ok(again.includes('a expiré'), again)
 				await page.click('.wm-modal .wm-modal-close')
+				// the participants with an account (of Nextcloud, so of the chat) invited in the room; the others keep the link
+				occ('user:add --generate-password --display-name="Marie Martin" marie-e2e')
+				try {
+					occ('user:setting marie-e2e settings email marie.martin@societe-a.fr')
+					for (let i = 0; i < 5 && !(await page.$('.wm-modal input[name=subject]')); i++) {
+						await page.click('.wm-compose-btn')
+						await page.waitForSelector('.wm-modal input[name=subject]', { timeout: 3000 }).catch(() => {})
+					}
+					await page.fill('.wm-modal input[name=subject]', 'Revue avec Marie')
+					await page.click('.wm-visio-btn')
+					await page.waitForSelector('.wm-toast:has-text("Salle de visio ajoutée")')
+					await page.fill('.wm-modal input[name=attendees]', 'marie.martin@societe-a.fr, client@exterieur-e2e.fr')
+					// (the suggestions of the completion closed by a click elsewhere)
+					await page.click('.wm-modal input[name=subject]')
+					await page.click('.wm-modal button[type=submit]')
+					await page.waitForSelector('.wm-toast:has-text("1 participant invité dans le salon du chat")')
+					const invited = await new Promise((resolve, reject) => require('https').get('https://localhost:8443/_matrix/test/invited', { rejectUnauthorized: false }, (res) => {
+						let data = ''
+						res.on('data', (c) => { data += c })
+						res.on('end', () => resolve(JSON.parse(data)))
+					}).on('error', reject))
+					const last = invited[invited.length - 1]
+					assert.ok(last && last.user_id === '@marie.martin:fake.test' && last.room.startsWith('!meet'), JSON.stringify(invited))
+				} finally {
+					occ('user:delete marie-e2e')
+				}
 				// the card of the account: linked, to link again by Nextcloud if need be
 				await page.click('.wm-tab[data-module="mail"]')
 				await page.click('text=Comptes et signature')

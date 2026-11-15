@@ -709,6 +709,9 @@
 		if (!core || core.state.module !== 'contacts') return
 		const h = core.h
 		const el = core.listEl
+		// (a search being typed, not sent yet, outlives a new drawing of the list)
+		const typing = el.querySelector('input.wm-search')
+		const typed = typing && typing.value !== ct.query ? { value: typing.value, focused: document.activeElement === typing, start: typing.selectionStart, end: typing.selectionEnd } : null
 		core.clear(el)
 		const book = currentBook()
 		const isDirectory = book.kind === 'directory'
@@ -736,6 +739,10 @@
 		book.kind === 'own' && !isDirectory ? h('button', { type: 'button', class: 'wm-icon-btn wm-dup-btn', title: _('Chercher les doublons de ce carnet et les fusionner'), 'aria-label': _('Doublons'), onclick: () => openDuplicates(book) }, '👥\uFE0E') : null,
 		book.canEdit && !isDirectory ? h('button', { type: 'button', class: 'wm-icon-btn wm-vcf-import', title: _('Importer des contacts (fichier vCard .vcf)'), 'aria-label': _('Importer des contacts'), onclick: () => importVcf(book) }, '⬆\uFE0E') : null,
 		h('button', { type: 'button', class: 'wm-icon-btn primary wm-mobile-only', 'aria-label': _('Nouveau contact'), onclick: () => openForm(null) }, '＋')))
+		if (typed) {
+			search.value = typed.value
+			if (typed.focused) { search.focus(); try { search.setSelectionRange(typed.start, typed.end) } catch (e) {} }
+		}
 
 		if (ct.query) {
 			const everywhere = (on) => (e) => { e.preventDefault(); ct.everywhere = on; load(true) }

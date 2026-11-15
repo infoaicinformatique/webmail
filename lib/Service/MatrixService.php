@@ -9,6 +9,7 @@ use OCA\Webmail\Exception\MailException;
 use OCP\Http\Client\IClientService;
 use OCP\ICacheFactory;
 use OCP\IConfig;
+use OCP\IUserManager;
 use OCP\Security\ISecureRandom;
 use OCP\Security\ICrypto;
 use Psr\Log\LoggerInterface;
@@ -29,6 +30,7 @@ class MatrixService {
 		private ServerConfigService $servers,
 		private ICacheFactory $cacheFactory,
 		private ISecureRandom $random,
+		private IUserManager $users,
 	) {
 	}
 
@@ -254,6 +256,61 @@ class MatrixService {
 			throw new MailException('Le serveur Matrix n\'a pas créé le salon');
 		}
 		return $id;
+	}
+
+	/**
+	 * The participants of a meeting invited in its room of the chat: those with a Nextcloud
+	 * account (so an account of the chat, by its single sign-on). Their Matrix id is checked
+	 * on the server first; the others (outside guests) keep the link of the invitation.
+	 *
+	 * @param string[] $emails
+	 * @return array{invited: list<string>, notFound: list<string>}
+	 * @throws MailException
+	 */
+	public function inviteToRoom(string $userId, string $roomId, array $emails): array {
+		[$hs, $token] = $this->account($userId);
+		if (!preg_match('~^![^\s:/]+:[a-z0-9.\-\[\]:]+$~i', $roomId)) {
+			throw new MailException('Salon Matrix introuvable : %s', [$roomId]);
+		}
+		$me = (string)($this->userCall($userId, 'GET', $hs, '/account/whoami', $token)['user_id'] ?? '');
+		$serverName = substr($me, (int)strpos($me, ':') + 1);
+		$invited = $notFound = [];
+		foreach (PresenceService::addresses($emails) as $email) {
+			$matrixId = null;
+			foreach ($this->users->getByEmail($email) as $user) {
+				if (!$user->isEnabled() || $user->getUID() === $userId) {
+					continue 2; // (oneself: already in the room)
+				}
+				foreach (Matrix::candidates($user->getUID(), $email, $serverName) as $candidate) {
+					try {
+						// (the session was checked just above: an answer « unknown » is the account's)
+						$this->call('GET', $hs, '/profile/' . rawurlencode($candidate), $token);
+						$matrixId = $candidate;
+						break 2;
+					} catch (MatrixTokenException) {
+						throw new MailException('Votre session du chat a expiré : reconnectez-vous avec « Se connecter avec Nextcloud » (Comptes et signature)');
+					} catch (MailException) {
+						// no such account on the chat: the next one
+					}
+				}
+			}
+			if ($matrixId === null) {
+				$notFound[] = $email;
+				continue;
+			}
+			try {
+				$this->userCall($userId, 'POST', $hs, '/rooms/' . rawurlencode($roomId) . '/invite', $token, ['user_id' => $matrixId]);
+				$invited[] = $email;
+			} catch (MailException $e) {
+				// already invited or in the room: as good as invited
+				if (str_contains($e->getMessage(), 'already') || str_contains($e->getMessage(), 'déjà')) {
+					$invited[] = $email;
+				} else {
+					$notFound[] = $email;
+				}
+			}
+		}
+		return ['invited' => $invited, 'notFound' => $notFound];
 	}
 
 	/**
