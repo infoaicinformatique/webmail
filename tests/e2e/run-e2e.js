@@ -2214,7 +2214,7 @@ async function main() {
 	// ------------------------------------------------------------------ shared calendars
 	await step('calendar: own calendars, colours and visibility', async () => {
 		await page.click('.wm-cal-toolbar button:has-text("Aujourd\'hui")')
-		const own = await page.$$eval('.wm-cal-row .wm-cal-name', (els) => els.map((e) => e.textContent))
+		const own = await page.$$eval('.wm-cal-row:not([data-key^="nc:"]) .wm-cal-name', (els) => els.map((e) => e.textContent))
 		assert.deepStrictEqual(own, ['Calendrier', 'Congés équipe'])
 		await page.waitForSelector('.wm-agenda-item:has-text("Congés Lucas")')
 		await page.click('.wm-segmented button:has-text("Mois")')
@@ -2243,7 +2243,7 @@ async function main() {
 		await add('paul.durand@societe-a.fr')
 		await page.waitForSelector('.wm-toast:has-text("Agenda de Paul Durand ajouté (disponibilités seulement)")')
 		await page.waitForSelector('.wm-cal-row:has-text("Paul Durand")')
-		const rows = await page.$$eval('.wm-cal-row', (els) => els.map((e) => e.textContent.replace('✕', '').replace('🔗', '').trim()))
+		const rows = await page.$$eval('.wm-cal-row:not([data-key^="nc:"])', (els) => els.map((e) => e.textContent.replace('✕', '').replace('🔗', '').trim()))
 		assert.deepStrictEqual(rows, ['Calendrier', 'Congés équipe', 'Marie Martinmodification', 'Martine Leroylecture', 'Paul Duranddisponibilités'])
 		await page.click('.wm-segmented button:has-text("Semaine")')
 		await page.waitForSelector('.wm-week-event:has-text("Inventaire")')
@@ -2278,7 +2278,8 @@ async function main() {
 	await step('calendar: create an event in a shared calendar', async () => {
 		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
 		const options = await page.$$eval('.wm-modal select[name=calendar] option', (els) => els.map((e) => e.textContent))
-		assert.deepStrictEqual(options, ['Calendrier', 'Congés équipe', 'Agenda de Marie Martin'], 'read-only calendars are not offered')
+		// (and the Nextcloud calendar of the user; not the birthdays, read only)
+		assert.deepStrictEqual(options, ['Calendrier', 'Congés équipe', 'Agenda de Marie Martin', 'Personal (Nextcloud)'], 'read-only calendars are not offered')
 		await page.selectOption('.wm-modal select[name=calendar]', { label: 'Agenda de Marie Martin' })
 		await page.fill('.wm-modal input[name=subject]', 'Préparer le salon (pour Marie)')
 		await page.click('.wm-modal button[type=submit]')
@@ -2663,7 +2664,7 @@ async function main() {
 			return i && i.complete && i.naturalWidth > 0
 		}, name)
 		const loaded = (sel) => page.waitForFunction((s) => { const i = document.querySelector(s); return i && i.complete && i.naturalWidth > 0 }, sel)
-		const bookLink = (name) => '.wm-book-row:has-text("' + name + '") .wm-book-link'
+		const bookLink = (name) => '.wm-book-row:not([data-key^="nc:"]):has-text("' + name + '") .wm-book-link'
 		// a photo set in Outlook
 		await photoOf('Anne Bernard')
 		assert(!(await page.$('.wm-contact:has-text("Lucas Petit") img')), 'initials without a photo')
@@ -2768,12 +2769,13 @@ async function main() {
 	})
 
 	// ------------------------------------------------------------------ shared contacts
-	const book = (name) => '.wm-book-row:has-text("' + name + '") .wm-book-link'
+	// (the Exchange books: the address books of Nextcloud Contacts are listed after them)
+	const book = (name) => '.wm-book-row:not([data-key^="nc:"]):has-text("' + name + '") .wm-book-link'
 
 	await step('contacts: own address books', async () => {
 		await page.click('.wm-tab[data-module="contacts"]')
 		await page.waitForSelector('.wm-book-row')
-		const books = await page.$$eval('.wm-book-row .wm-cal-name', (els) => els.map((e) => e.textContent))
+		const books = await page.$$eval('.wm-book-row:not([data-key^="nc:"]) .wm-cal-name', (els) => els.map((e) => e.textContent))
 		assert.deepStrictEqual(books, ['Contacts', 'Fournisseurs', 'Annuaire de l\'entreprise'], 'internal Exchange folders are hidden')
 		await page.click(book('Fournisseurs'))
 		await page.waitForSelector('.wm-contact:has-text("Électricité Azur")')
@@ -2826,7 +2828,7 @@ async function main() {
 		await page.waitForSelector('.wm-toolbar:has-text("lecture seule")')
 		assert(!(await page.$('.wm-toolbar button:has-text("Modifier")')))
 		assert(!(await page.$('.wm-toolbar button:has-text("Supprimer")')))
-		const badges = await page.$$eval('.wm-book-row .wm-cal-mode', (els) => els.map((e) => e.textContent))
+		const badges = await page.$$eval('.wm-book-row:not([data-key^="nc:"]) .wm-cal-mode', (els) => els.map((e) => e.textContent))
 		assert.deepStrictEqual(badges, ['modification', 'lecture', 'lecture'])
 		const sharedNames = await page.$$eval('.wm-book-row[data-key^="shared:"] .wm-cal-name', (els) => els.map((e) => e.textContent))
 		assert.deepStrictEqual(sharedNames, ['Marie Martin', 'Clients VIP (Marie Martin)', 'Martine Leroy'])
@@ -5124,6 +5126,140 @@ async function main() {
 		assert.ok(off, 'no request to take the calendar away')
 		assert.strictEqual((await off.json()).enabled, false)
 		assert.strictEqual((await caldav('PROPFIND')).found, false)
+	})
+
+	await step('Nextcloud calendars in the Agenda: read, created, an occurrence changed, the series deleted (CalDAV sees it all)', async () => {
+		// CalDAV of the user, as the Calendar app and the phones see it
+		const dav = (method, path, body = null, extra = {}) => page.evaluate(async ({ method, path, body, extra }) => {
+			const r = await fetch('/remote.php/dav/' + path.replace('{user}', OC.getCurrentUser().uid), {
+				method, body, headers: Object.assign({ requesttoken: OC.requestToken }, extra),
+			})
+			return { status: r.status, text: (await r.text()).replace(/\r?\n[ \t]/g, '') }
+		}, { method, path, body, extra })
+		await page.click('.wm-tab[data-module="calendar"]')
+		const personal = '.wm-cal-row[data-key^="nc:"]:has-text("Personal")'
+		await page.waitForSelector(personal + ' input:checked')
+		// the birthdays of the contacts: listed, not shown until ticked
+		const birthdays = '.wm-cal-row[data-key^="nc:"]:has-text("birthdays"), .wm-cal-row[data-key^="nc:"]:has-text("Anniversaires")'
+		assert(!(await page.isChecked(birthdays + ' >> input')), 'birthdays hidden by default')
+		assert.strictEqual(await page.textContent(birthdays + ' >> .wm-cal-mode'), 'lecture')
+
+		// an event put in the Calendar app (here by CalDAV): tomorrow 10:00, every week, 3 times
+		const day = await page.evaluate(() => { const d = new Date(Date.now() + 86400000); return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') })
+		const ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//e2e//FR\r\nBEGIN:VEVENT\r\nUID:e2e-nc-weekly\r\nDTSTAMP:20260101T000000Z\r\n'
+			+ 'DTSTART;TZID=Europe/Paris:' + day + 'T100000\r\nDTEND;TZID=Europe/Paris:' + day + 'T110000\r\nRRULE:FREQ=WEEKLY;COUNT=3\r\n'
+			+ 'SUMMARY:Point Nextcloud\r\nLOCATION:Salle B\r\nCATEGORIES:Projet\r\nX-E2E-KEPT:oui\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n'
+		const put = await dav('PUT', 'calendars/{user}/personal/e2e-nc-weekly.ics', ics, { 'Content-Type': 'text/calendar' })
+		assert([201, 204].includes(put.status), 'PUT ' + put.status)
+		await page.click('.wm-segmented button:has-text("Liste")')
+		await page.waitForFunction(() => [...document.querySelectorAll('.wm-agenda-item')].filter((e) => e.textContent.includes('Point Nextcloud')).length >= 2)
+		await page.click('.wm-agenda-item:has-text("Point Nextcloud") >> nth=0')
+		await page.waitForSelector('.wm-modal:has-text("Agenda Nextcloud « Personal »")')
+		await page.waitForSelector('.wm-modal .wm-event-rule:has-text("semaine")')
+		await shot('100-nextcloud-event')
+		// this occurrence only: renamed
+		await page.click('.wm-modal button:has-text("Modifier cette occurrence")')
+		await page.waitForSelector('.wm-modal h2:has-text("Modifier l\'événement")')
+		assert(await page.isHidden('.wm-modal input[name=attendees]'), 'no invitations from a Nextcloud calendar')
+		await page.fill('.wm-modal input[name=subject]', 'Point Nextcloud (avancé)')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement modifié")')
+		await page.waitForSelector('.wm-agenda-item:has-text("Point Nextcloud (avancé)")')
+		let got = await dav('GET', 'calendars/{user}/personal/e2e-nc-weekly.ics')
+		assert(got.text.includes('RRULE:FREQ=WEEKLY;COUNT=3') && got.text.includes('RECURRENCE-ID'), got.text)
+		assert(got.text.includes('SUMMARY:Point Nextcloud (avancé)') && got.text.includes('SUMMARY:Point Nextcloud\r\n'), got.text)
+		assert(got.text.includes('X-E2E-KEPT:oui') && got.text.includes('CATEGORIES:Projet'), 'the rest of the event is kept')
+
+		// a new event in the Nextcloud calendar, from the webmail
+		await page.click('.wm-compose-btn:has-text("Nouvel événement")')
+		const key = await page.getAttribute(personal, 'data-key')
+		await page.selectOption('.wm-modal select[name=calendar]', key)
+		assert(await page.isHidden('.wm-modal input[name=attendees]'))
+		await page.fill('.wm-modal input[name=subject]', 'Créé dans le webmail')
+		await page.click('.wm-modal button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Événement créé")')
+		await page.waitForSelector('.wm-agenda-item:has-text("Créé dans le webmail")')
+		const report = await dav('REPORT', 'calendars/{user}/personal/', '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><c:calendar-data/></d:prop>'
+			+ '<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"/></c:comp-filter></c:filter></c:calendar-query>', { Depth: '1', 'Content-Type': 'application/xml' })
+		assert(report.text.includes('SUMMARY:Créé dans le webmail') && report.text.includes('TZID=Europe/Paris'), report.text.slice(0, 1500))
+		assert(report.text.includes('TRIGGER:-PT15M'), 'the reminder of the form')
+		await page.click('.wm-agenda-item:has-text("Créé dans le webmail")')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-modal button.wm-danger:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Événement supprimé")')
+
+		// the whole series, from one occurrence
+		await page.click('.wm-agenda-item:has-text("Point Nextcloud") >> nth=1')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-modal button:has-text("Supprimer la série")')
+		await page.waitForSelector('.wm-toast:has-text("Événement supprimé")')
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-agenda-item')].some((e) => e.textContent.includes('Point Nextcloud') || e.textContent.includes('Créé dans le webmail')))
+		// (the list of the calendar: a GET of a missing event would be an error in the console)
+		const left = await dav('PROPFIND', 'calendars/{user}/personal/', null, { Depth: '1' })
+		assert.strictEqual(left.status, 207)
+		assert(!left.text.includes('e2e-nc-weekly.ics'), 'the series is deleted in Nextcloud')
+	})
+
+	await step('Nextcloud address books in Contacts: a card of the Contacts app read, changed (its other fields kept), created, deleted', async () => {
+		const dav = (method, path, body = null, extra = {}) => page.evaluate(async ({ method, path, body, extra }) => {
+			const r = await fetch('/remote.php/dav/' + path.replace('{user}', OC.getCurrentUser().uid), {
+				method, body, headers: Object.assign({ requesttoken: OC.requestToken }, extra),
+			})
+			return { status: r.status, text: (await r.text()).replace(/\r?\n[ \t]/g, '') }
+		}, { method, path, body, extra })
+		const card = 'BEGIN:VCARD\r\nVERSION:3.0\r\nUID:e2e-nc-claire\r\nFN:Claire Nextcloud\r\nN:Nextcloud;Claire;;;\r\nEMAIL;TYPE=WORK:claire@nextcloud-e2e.fr\r\n'
+			+ 'TEL;TYPE=CELL:06 99 88 77 66\r\nCATEGORIES:Amis\r\nX-E2E-KEPT:oui\r\nEND:VCARD\r\n'
+		const put = await dav('PUT', 'addressbooks/users/{user}/contacts/e2e-nc-claire.vcf', card, { 'Content-Type': 'text/vcard' })
+		assert([201, 204].includes(put.status), 'PUT ' + put.status)
+		await page.click('.wm-tab[data-module="contacts"]')
+		const ncBook = '.wm-book-row[data-key^="nc:"]:has-text("Contacts") .wm-book-link'
+		await page.waitForSelector('.wm-cal-section:has-text("Carnets Nextcloud")')
+		await page.click(ncBook)
+		await page.waitForSelector('.wm-contact:has-text("Claire Nextcloud")')
+		assert((await page.textContent('.wm-contact:has-text("Claire Nextcloud")')).includes('claire@nextcloud-e2e.fr'))
+		await page.click('.wm-contact:has-text("Claire Nextcloud")')
+		await page.waitForSelector('.wm-contact-card:has-text("06 99 88 77 66")')
+		await shot('101-nextcloud-contact')
+		await page.click('.wm-toolbar button:has-text("Modifier")')
+		await page.fill('input[name=jobTitle]', 'Architecte')
+		await page.click('.wm-contact-form button[type=submit]')
+		await page.waitForSelector('.wm-contact-card:has-text("Architecte")')
+		let got = await dav('GET', 'addressbooks/users/{user}/contacts/e2e-nc-claire.vcf')
+		assert(got.text.includes('TITLE:Architecte') && got.text.includes('UID:e2e-nc-claire'), got.text)
+		assert(got.text.includes('CATEGORIES:Amis') && got.text.includes('X-E2E-KEPT:oui'), 'the other fields are kept: ' + got.text)
+		// searched there too
+		await page.fill('.wm-list .wm-search', 'archi')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-contact').length === 0 || [...document.querySelectorAll('.wm-contact')].every((e) => e.textContent.includes('Claire')))
+		await page.fill('.wm-list .wm-search', 'claire')
+		await page.press('.wm-list .wm-search', 'Enter')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-contact').length === 1)
+		await page.click('.wm-search-info a')
+
+		// a new card, from the webmail, in the Nextcloud book shown
+		await page.click('.wm-compose-btn:has-text("Nouveau contact")')
+		assert((await page.inputValue('select[name=book]')).startsWith('nc:'), 'new contact goes to the displayed book')
+		await page.fill('input[name=givenName]', 'Bruno')
+		await page.fill('input[name=surname]', 'Webmail')
+		await page.fill('input[name=email1]', 'bruno@nextcloud-e2e.fr')
+		await page.click('.wm-contact-form button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Contact créé")')
+		await page.waitForSelector('.wm-contact:has-text("Bruno Webmail")')
+		const query = await dav('REPORT', 'addressbooks/users/{user}/contacts/', '<c:addressbook-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:carddav"><d:prop><c:address-data/></d:prop></c:addressbook-query>', { Depth: '1', 'Content-Type': 'application/xml' })
+		assert(query.text.includes('EMAIL;TYPE=INTERNET,PREF:bruno@nextcloud-e2e.fr') && /UID:[0-9a-f-]{36}/.test(query.text), query.text.slice(0, 1500))
+
+		for (const name of ['Bruno Webmail', 'Claire Nextcloud']) {
+			await page.click('.wm-contact:has-text("' + name + '")')
+			page.once('dialog', (d) => d.accept())
+			await page.click('.wm-toolbar button:has-text("Supprimer")')
+			await page.waitForSelector('.wm-toast:has-text("Contact supprimé")')
+			await page.waitForFunction((n) => ![...document.querySelectorAll('.wm-contact')].some((e) => e.textContent.includes(n)), name)
+		}
+		const left = await dav('PROPFIND', 'addressbooks/users/{user}/contacts/', null, { Depth: '1' })
+		assert.strictEqual(left.status, 207)
+		assert(!left.text.includes('e2e-nc-claire.vcf') && !left.text.includes('Bruno'), 'the cards are deleted in Nextcloud')
+		await page.click(book('Contacts'))
+		await page.waitForSelector('.wm-contact:has-text("Jean Dupont")')
 	})
 
 	await step('Nextcloud unified search: messages and events, the link opens them', async () => {

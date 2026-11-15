@@ -1542,5 +1542,17 @@
 	"En ligne": "Online",
 	"Absent pour le moment": "Away",
 	"Ne pas déranger": "Do not disturb",
-	"Hors ligne": "Offline"
+	"Hors ligne": "Offline",
+	"Agendas Nextcloud": "Nextcloud calendars",
+	"Agenda Nextcloud « {name} »": "Nextcloud calendar “{name}”",
+	"{name} (Nextcloud)": "{name} (Nextcloud)",
+	"Agenda Nextcloud en lecture seule": "Read-only Nextcloud calendar",
+	"Carnets Nextcloud": "Nextcloud address books",
+	"Cet agenda Nextcloud est en lecture seule pour vous": "This Nextcloud calendar is read-only for you",
+	"Agenda Nextcloud inconnu": "Unknown Nextcloud calendar",
+	"Événement illisible": "Unreadable event",
+	"Répondez à cette invitation dans l'Agenda de Nextcloud": "Answer this invitation in the Nextcloud Calendar app",
+	"Ce carnet Nextcloud est en lecture seule pour vous": "This Nextcloud address book is read-only for you",
+	"Carnet Nextcloud inconnu": "Unknown Nextcloud address book",
+	"Les groupes se créent dans un carnet Exchange": "Groups are created in an Exchange address book"
 }

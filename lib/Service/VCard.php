@@ -187,6 +187,115 @@ class VCard {
 		return $contacts;
 	}
 
+	/** The properties a contact of the form writes: the others of a card are kept as they are. */
+	private const MANAGED = ['FN', 'N', 'ORG', 'TITLE', 'EMAIL', 'TEL', 'ADR', 'BDAY', 'NOTE', 'X-MATRIX'];
+
+	/**
+	 * A card of Nextcloud Contacts changed by the form (or a new one with
+	 * $uid): the fields of the form replace theirs, the rest (photo, UID,
+	 * categories, other addresses of messaging, fields of other apps…) is kept.
+	 * @param ?string $existing the card as stored, null for a new one
+	 * @param array<string, mixed> $contact EwsContacts::normalize()
+	 */
+	public static function merge(?string $existing, array $contact, string $uid = ''): string {
+		$ours = [];
+		foreach (preg_split('/\r\n(?![ \t])/', rtrim(self::export([$contact]))) ?: [] as $line) {
+			$name = self::propertyName($line);
+			if (!in_array($name, ['BEGIN', 'END', 'VERSION'], true)) {
+				$ours[] = $line;
+			}
+		}
+		$version = '3.0';
+		$kept = [];
+		if ($existing !== null) {
+			$data = str_replace(["\r\n", "\r"], "\n", $existing);
+			$data = preg_replace('/\n[ \t]/', '', $data) ?? $data;
+			foreach (explode("\n", $data) as $line) {
+				if (trim($line) === '') {
+					continue;
+				}
+				$name = self::propertyName($line);
+				if ($name === 'VERSION') {
+					$version = trim(substr($line, (int)self::valueStart($line) + 1)) ?: $version;
+					continue;
+				}
+				if (in_array($name, ['BEGIN', 'END'], true) || in_array($name, self::MANAGED, true)
+					|| ($name === 'IMPP' && stripos($line, 'matrix') !== false)) {
+					continue;
+				}
+				$kept[] = self::fold($line);
+			}
+		}
+		if ($uid !== '' && !array_filter($kept, fn ($l) => self::propertyName($l) === 'UID')) {
+			$kept[] = 'UID:' . self::esc($uid);
+		}
+		return "BEGIN:VCARD\r\nVERSION:" . $version . "\r\n" . implode("\r\n", array_merge($ours, $kept)) . "\r\nEND:VCARD\r\n";
+	}
+
+	/**
+	 * The photo of a card (embedded: vCard 3 « ENCODING=b », vCard 4 « data: »);
+	 * null without one, or when it is only a link.
+	 * @return ?array{mime: string, data: string}
+	 */
+	public static function photo(string $vcf): ?array {
+		$data = preg_replace('/\r?\n[ \t]/', '', $vcf) ?? $vcf;
+		if (!preg_match('/^(?:[^:\n]*\.)?PHOTO([;:][^\n]*)$/mi', $data, $m)) {
+			return null;
+		}
+		$line = 'PHOTO' . rtrim($m[1], "\r");
+		$value = substr($line, (int)self::valueStart($line) + 1);
+		if (preg_match('#^data:(image/[a-z+.-]+)(?:;[^,]*)?;base64,(.+)$#i', $value, $d)) {
+			$bytes = base64_decode($d[2], true);
+			return $bytes === false ? null : ['mime' => strtolower($d[1]), 'data' => $bytes];
+		}
+		$head = strtoupper(substr($line, 0, (int)self::valueStart($line)));
+		if (str_contains($head, 'ENCODING=B') || str_contains($head, 'ENCODING=BASE64')) {
+			$bytes = base64_decode($value, true);
+			if ($bytes === false) {
+				return null;
+			}
+			$mime = match (true) {
+				str_starts_with($bytes, "\x89PNG") => 'image/png',
+				str_starts_with($bytes, 'GIF8') => 'image/gif',
+				default => 'image/jpeg',
+			};
+			return ['mime' => $mime, 'data' => $bytes];
+		}
+		return null;
+	}
+
+	public static function hasPhoto(string $vcf): bool {
+		return self::photo($vcf) !== null;
+	}
+
+	/** A card with a new photo (a JPEG, PNG or GIF), or without photo ($image ''). */
+	public static function withPhoto(string $vcf, string $image): string {
+		$data = str_replace(["\r\n", "\r"], "\n", $vcf);
+		$data = preg_replace('/\n[ \t]/', '', $data) ?? $data;
+		$lines = [];
+		$v4 = (bool)preg_match('/^VERSION:4/mi', $data);
+		foreach (explode("\n", $data) as $line) {
+			if (trim($line) === '' || self::propertyName($line) === 'PHOTO') {
+				continue;
+			}
+			if (self::propertyName($line) === 'END' && $image !== '') {
+				$type = str_starts_with($image, "\x89PNG") ? 'PNG' : (str_starts_with($image, 'GIF8') ? 'GIF' : 'JPEG');
+				$lines[] = self::fold($v4
+					? 'PHOTO:data:image/' . strtolower($type) . ';base64,' . base64_encode($image)
+					: 'PHOTO;ENCODING=b;TYPE=' . $type . ':' . base64_encode($image));
+			}
+			$lines[] = self::fold($line);
+		}
+		return implode("\r\n", $lines) . "\r\n";
+	}
+
+	/** « item1.EMAIL;TYPE=WORK:… » → EMAIL */
+	private static function propertyName(string $line): string {
+		$colon = self::valueStart($line);
+		$head = $colon === null ? $line : substr($line, 0, $colon);
+		return strtoupper((string)preg_replace('/^.*\./', '', explode(';', $head, 2)[0]));
+	}
+
 	/**
 	 * BDAY: « 19800512 », « 1980-05-12 », « 1980-05-12T00:00:00Z », or without a year « --0512 ».
 	 * Anything else (text, impossible dates): left out.
