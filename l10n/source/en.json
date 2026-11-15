@@ -1555,5 +1555,16 @@
 	"Ce carnet Nextcloud est en lecture seule pour vous": "This Nextcloud address book is read-only for you",
 	"Carnet Nextcloud inconnu": "Unknown Nextcloud address book",
 	"Les groupes se créent dans un carnet Exchange": "Groups are created in an Exchange address book",
-	"Comptes Nextcloud": "Nextcloud accounts"
+	"Comptes Nextcloud": "Nextcloud accounts",
+	"Compte du chat relié au webmail": "Chat account linked to the webmail",
+	"La connexion au chat a échoué": "Signing in to the chat failed",
+	"Connexion au chat annulée": "Signing in to the chat cancelled",
+	"Se reconnecter avec Nextcloud": "Sign in again with Nextcloud",
+	"Se connecter avec Nextcloud": "Sign in with Nextcloud",
+	"Votre compte du chat {name} (le même que Nextcloud) relié au webmail, sans jeton à copier": "Your {name} chat account (the same as Nextcloud) linked to the webmail, no token to copy",
+	"Pour créer le salon visio, reliez votre compte du chat {name} au webmail : la connexion se fait avec votre compte Nextcloud. Continuer ?": "To create the video room, link your {name} chat account to the webmail: you sign in with your Nextcloud account. Continue?",
+	"Créer un salon visio dans le chat (Element) pour cet événement, avec votre compte Nextcloud : son lien va dans le lieu et dans l'invitation": "Create a video room in the chat (Element) for this event, with your Nextcloud account: its link goes into the location and the invitation",
+	"La connexion au chat a expiré : recommencez": "Signing in to the chat expired: try again",
+	"Le serveur Matrix n'a pas ouvert la session": "The Matrix server did not open the session",
+	"Aucun chat Matrix (Element) n'est déclaré dans les « Sites externes » de Nextcloud : indiquez le serveur et le jeton": "No Matrix chat (Element) is declared in the “External sites” of Nextcloud: enter the server and the token"
 }

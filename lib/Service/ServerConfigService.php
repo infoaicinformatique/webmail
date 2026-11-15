@@ -240,6 +240,11 @@ class ServerConfigService {
 		return $mode;
 	}
 
+	/** The administrator chose the visio (even « none »): nothing is detected then. */
+	public function isVisioSet(): bool {
+		return in_array('visio', $this->config->getAppKeys(Application::APP_ID), true);
+	}
+
 	/** The address of the video meetings, '' when none is set. */
 	public function getVisio(): string {
 		return $this->config->getAppValue(Application::APP_ID, 'visio', '');

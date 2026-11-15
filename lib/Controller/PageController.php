@@ -7,6 +7,7 @@ namespace OCA\Webmail\Controller;
 use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\MailNotificationService;
+use OCA\Webmail\Service\MatrixService;
 use OCA\Webmail\Service\MeetingReminderService;
 use OCA\Webmail\Service\ServerConfigService;
 use OCA\Webmail\Service\TrustedImagesService;
@@ -35,6 +36,7 @@ class PageController extends Controller {
 		private MeetingReminderService $reminders,
 		private IInitialState $initialState,
 		private TrustedImagesService $trustedImages,
+		private MatrixService $matrix,
 		private LoggerInterface $logger,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -66,6 +68,11 @@ class PageController extends Controller {
 				$this->logger->warning('Webmail: accounts not given with the page', ['app' => Application::APP_ID, 'exception' => $e]);
 			}
 		}
+		try {
+			$visio = $this->matrix->effectiveVisio();
+		} catch (\Throwable $e) {
+			$visio = ['visio' => $this->servers->getVisio(), 'mode' => $this->servers->getVisioMode()];
+		}
 		$response = new TemplateResponse(Application::APP_ID, 'main', [
 			'domains' => $this->servers->getDomains(),
 			'autodiscover' => $this->servers->getAutodiscover()['enabled'],
@@ -73,8 +80,9 @@ class PageController extends Controller {
 			// Nextcloud Talk: video meetings in the invitations
 			'talk' => $user !== null && $this->apps->isEnabledForUser('spreed', $user),
 			// video meetings with Element Call (Matrix) or another service, set by the administrator
-			'visio' => $this->servers->getVisio(),
-			'visioMode' => $this->servers->getVisioMode(),
+			// (else, the chat of the organisation found among the « Sites externes »: before Talk)
+			'visio' => $visio['visio'],
+			'visioMode' => $visio['mode'],
 			// most attachments of one message (bytes), set by the administrator
 			'maxAttachments' => $this->servers->getMaxAttachmentsBytes(),
 			// folders whose messages show their remote images at once (the user's choice)

@@ -11,8 +11,11 @@ use OCA\Webmail\Service\MatrixService;
 use OCA\Webmail\Service\ServerConfigService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\IRequest;
+use OCP\IURLGenerator;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -25,6 +28,7 @@ class MatrixController extends Controller {
 		IRequest $request,
 		private MatrixService $matrix,
 		private ServerConfigService $servers,
+		private IURLGenerator $urls,
 		private LoggerInterface $logger,
 		private ?string $userId,
 	) {
@@ -76,11 +80,43 @@ class MatrixController extends Controller {
 	#[NoAdminRequired]
 	public function meeting(string $subject = '', string $when = ''): Response {
 		return $this->handle(function () use ($subject, $when) {
-			if ($this->servers->getVisioMode() !== ServerConfigService::VISIO_ELEMENT_ROOM || $this->servers->getVisio() === '') {
+			$visio = $this->matrix->effectiveVisio();
+			if ($visio['mode'] !== ServerConfigService::VISIO_ELEMENT_ROOM || $visio['visio'] === '') {
 				throw new MailException('La visio Element n\'est pas configurée par l\'administrateur');
 			}
 			$roomId = $this->matrix->createMeetingRoom((string)$this->userId, $subject, $when);
-			return ['roomId' => $roomId, 'url' => Matrix::roomLink($this->servers->getVisio(), $roomId)];
+			return ['roomId' => $roomId, 'url' => Matrix::roomLink($visio['visio'], $roomId)];
 		});
+	}
+
+	/**
+	 * « Se connecter avec Nextcloud »: to the Matrix server, which signs the user in through
+	 * Nextcloud (the same account) and sends them back to ssoCallback.
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function ssoStart(): Response {
+		try {
+			return new RedirectResponse($this->matrix->ssoStart((string)$this->userId, $this->urls->linkToRouteAbsolute('webmail.matrix.ssoCallback')));
+		} catch (MailException $e) {
+			return $this->back('error', $this->errorMessage($e));
+		}
+	}
+
+	/** The return of the Matrix server, with its login token. */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function ssoCallback(string $state = '', string $loginToken = ''): Response {
+		try {
+			$this->matrix->ssoFinish((string)$this->userId, $state, $loginToken);
+			return $this->back('connected');
+		} catch (MailException $e) {
+			return $this->back('error', $this->errorMessage($e));
+		}
+	}
+
+	private function back(string $result, string $message = ''): RedirectResponse {
+		$query = ['matrix' => $result] + ($message !== '' ? ['matrixMessage' => $message] : []);
+		return new RedirectResponse($this->urls->linkToRoute('webmail.page.index') . '?' . http_build_query($query));
 	}
 }

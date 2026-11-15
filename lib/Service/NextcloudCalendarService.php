@@ -227,7 +227,13 @@ class NextcloudCalendarService {
 		[$uri, $rid] = NcCalendarRules::splitId($id);
 		$backend = $this->backend();
 		if ($rid === null || $series) {
-			$backend->deleteCalendarObject($cal['id'], $uri);
+			try {
+				// into the trash bin of the Calendar app, as from the app
+				$backend->deleteCalendarObject($cal['id'], $uri);
+			} catch (\Sabre\DAV\Exception\Forbidden) {
+				// the trash bin already has a deleted event of this name (« …-deleted.ics »): deleted for good
+				$backend->deleteCalendarObject($cal['id'], $uri, \OCA\DAV\CalDAV\CalDavBackend::CALENDAR_TYPE_CALENDAR, true);
+			}
 			return;
 		}
 		$vcal = $this->load($cal['id'], $uri);

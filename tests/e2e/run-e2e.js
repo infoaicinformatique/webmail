@@ -23,6 +23,15 @@ fs.mkdirSync(SHOTS, { recursive: true })
 async function main() {
 	const browser = await chromium.launch()
 	const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'fr-FR', timezoneId: 'Europe/Paris' })
+	// « Se connecter avec Nextcloud »: the fake Matrix server « ex3.fake.test » is only known to Nextcloud
+	// (its container): the browser's step through it is made here, then the browser goes on to the webmail
+	await context.route(/\/apps\/webmail\/matrix\/sso$/, async (route) => {
+		const start = await route.fetch({ maxRedirects: 0 })
+		const toChat = start.headers().location || ''
+		if (!toChat.startsWith('https://ex3.fake.test:8443/')) return route.fulfill({ response: start })
+		const chat = await context.request.get(toChat.replace('//ex3.fake.test:8443/', '//127.0.0.1:8443/'), { maxRedirects: 0, ignoreHTTPSErrors: true })
+		await route.fulfill({ status: 302, headers: { Location: chat.headers().location } })
+	})
 	const page = await context.newPage()
 	/** every list request of the run: [offset, limit] */
 	const listRequests = []
@@ -4846,6 +4855,57 @@ async function main() {
 			await page.click('.wm-matrix-send-btn')
 			await page.waitForSelector('.wm-matrix-send button:has-text("Connecter mon compte Matrix")')
 			await page.click('.wm-matrix-send .wm-modal-close')
+
+			// the chat of the organisation among the « Sites externes », nothing set by the administrator:
+			// its visio comes before Talk, and the account is linked by Nextcloud (the chat's single sign-on), nothing to copy
+			const ssoSeen = () => new Promise((resolve, reject) => {
+				require('https').get('https://localhost:8443/_matrix/test/sso', { rejectUnauthorized: false }, (res) => {
+					let data = ''
+					res.on('data', (c) => { data += c })
+					res.on('end', () => resolve(JSON.parse(data)))
+				}).on('error', reject)
+			})
+			occ('config:app:set external sites --value=\'' + JSON.stringify({ 1: { id: 1, name: 'Chat PBCAN', url: 'https://ex3.fake.test:8443/element/', lang: '', type: 'link', device: '', icon: 'external.svg', groups: [], redirect: false } }) + '\'')
+			// (Nextcloud 33 and later keep the app settings 3 s in each web process)
+			await page.waitForTimeout(3500)
+			try {
+				await page.goto(NC + '/apps/webmail/')
+				await page.waitForSelector('.wm-tab')
+				await page.click('.wm-tab[data-module="calendar"]')
+				await page.waitForSelector('.wm-compose-btn:has-text("Nouvel événement")')
+				for (let i = 0; i < 5 && !(await page.$('.wm-modal input[name=subject]')); i++) {
+					await page.click('.wm-compose-btn')
+					await page.waitForSelector('.wm-modal input[name=subject]', { timeout: 3000 }).catch(() => {})
+				}
+				await page.fill('.wm-modal input[name=subject]', 'Réunion par le chat')
+				assert.ok(await page.$('.wm-modal .wm-visio-btn'), 'the visio of the chat, set by nobody')
+				assert.ok(!(await page.$('.wm-modal .wm-talk-btn')), 'the chat before Talk')
+				let asked = ''
+				page.once('dialog', (d) => { asked = d.message(); d.accept() })
+				const popup = page.waitForEvent('popup')
+				await page.click('.wm-visio-btn')
+				const win = await popup
+				// the window of the chat's sign-in closes by itself, the room is then made
+				await win.waitForEvent('close', { timeout: 30000 }).catch(() => {})
+				await page.waitForSelector('.wm-toast:has-text("Salle de visio ajoutée")')
+				assert.ok(asked.includes('Chat PBCAN') && asked.includes('Nextcloud'), asked)
+				const place = await page.inputValue('.wm-modal input[name=location]')
+				assert.ok(place.startsWith('https://ex3.fake.test:8443/element/#/room/%21meet'), place)
+				assert.ok((await ssoSeen()).some((u) => u.includes('/apps/webmail/matrix/sso/callback?state=')), 'back to the webmail')
+				await shot('95-visio-chat-sso')
+				await page.click('.wm-modal .wm-modal-close')
+				// the card of the account: linked, to link again by Nextcloud if need be
+				await page.click('.wm-tab[data-module="mail"]')
+				await page.click('text=Comptes et signature')
+				await page.waitForSelector('.wm-matrix-sso:has-text("Se reconnecter avec Nextcloud")')
+				await page.waitForSelector('.wm-matrix-form button:has-text("Déconnecter")')
+				await page.click('.wm-matrix-form button:has-text("Déconnecter")')
+				await page.waitForSelector('.wm-toast:has-text("Compte Matrix déconnecté")')
+				await page.waitForSelector('.wm-matrix-sso:has-text("Se connecter avec Nextcloud")')
+			} finally {
+				occ('config:app:delete external sites')
+				await page.waitForTimeout(3500)
+			}
 		} finally {
 			occ('config:system:delete allow_local_remote_servers')
 		}
@@ -5189,12 +5249,16 @@ async function main() {
 		page.once('dialog', (d) => d.accept())
 		await page.click('.wm-modal button.wm-danger:has-text("Supprimer")')
 		await page.waitForSelector('.wm-toast:has-text("Événement supprimé")')
+		// (the list drawn again without it, before the next click)
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-agenda-item')].some((e) => e.textContent.includes('Créé dans le webmail')))
+		await page.waitForSelector('.wm-modal', { state: 'detached' })
 
 		// the whole series, from one occurrence
 		await page.click('.wm-agenda-item:has-text("Point Nextcloud") >> nth=1')
+		await page.waitForSelector('.wm-modal button:has-text("Supprimer la série")')
 		page.once('dialog', (d) => d.accept())
 		await page.click('.wm-modal button:has-text("Supprimer la série")')
-		await page.waitForSelector('.wm-toast:has-text("Événement supprimé")')
+		await page.waitForSelector('.wm-modal', { state: 'detached' })
 		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-agenda-item')].some((e) => e.textContent.includes('Point Nextcloud') || e.textContent.includes('Créé dans le webmail')))
 		// (the list of the calendar: a GET of a missing event would be an error in the console)
 		const left = await dav('PROPFIND', 'calendars/{user}/personal/', null, { Depth: '1' })

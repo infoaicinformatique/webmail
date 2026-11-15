@@ -21,6 +21,9 @@ return [
 		['name' => 'matrix#rooms', 'url' => '/api/matrix/rooms', 'verb' => 'GET'],
 		['name' => 'matrix#send', 'url' => '/api/matrix/send', 'verb' => 'POST'],
 		['name' => 'matrix#meeting', 'url' => '/api/matrix/meeting', 'verb' => 'POST'],
+		// « Se connecter avec Nextcloud »: the Matrix account by the chat's single sign-on
+		['name' => 'matrix#ssoStart', 'url' => '/matrix/sso', 'verb' => 'GET'],
+		['name' => 'matrix#ssoCallback', 'url' => '/matrix/sso/callback', 'verb' => 'GET'],
 		['name' => 'trusted_images#index', 'url' => '/api/trusted-images', 'verb' => 'GET'],
 		['name' => 'trusted_images#add', 'url' => '/api/trusted-images', 'verb' => 'POST'],
 		['name' => 'trusted_images#remove', 'url' => '/api/trusted-images/remove', 'verb' => 'POST'],
