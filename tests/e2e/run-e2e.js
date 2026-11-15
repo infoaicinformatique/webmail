@@ -1526,7 +1526,11 @@ async function main() {
 	})
 
 	await step('compose: address autocompletion from contacts and directory', async () => {
-		await page.click('.wm-compose-btn')
+		// (a click while the list is drawn again may be lost: clicked again until the window is there)
+		for (let i = 0; i < 5 && !(await page.$('.wm-compose input[name=to]')); i++) {
+			await page.click('.wm-compose-btn')
+			await page.waitForSelector('.wm-compose input[name=to]', { timeout: 3000 }).catch(() => {})
+		}
 		// (the window of the message may be drawn again just after opening: typed in the field that stays)
 		await page.waitForSelector('.wm-compose input[name=to]')
 		await page.locator('.wm-compose input[name=to]').pressSequentially('dup')
