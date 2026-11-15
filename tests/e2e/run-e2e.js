@@ -3445,7 +3445,7 @@ async function main() {
 			}
 			process.stdout.write('    shown in ' + JSON.stringify(times) + ' ms (Exchange answering in 4 s)\n')
 		} finally {
-			await page.unroute(/\/calendar\/(events|calendars|batch)/)
+			await page.unroute(/\/calendar\/(events|calendars)/)
 			await page.unroute(/\/apps\/webmail\/api\/accounts\/\d+\/(tasks|contacts)(\?|\/books|$)/)
 		}
 		await page.click('.wm-tab[data-module="mail"]')
