@@ -162,6 +162,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 | | |
 |---|---|
 | Vues | **Jour**, **semaine**, **mois** et **liste** des 30 prochains jours. Mini-calendrier à gauche : un point sous les jours qui ont des rendez-vous (dans la période affichée), ses propres flèches pour parcourir les mois sans changer l'affichage principal, un clic va au jour, un double-clic l'affiche seul (vue jour). Les événements périodiques sont dépliés |
+| Rapidité | Tous les agendas affichés (Exchange, partagés, dossiers publics, Nextcloud) sont lus en **une seule requête** : Nextcloud ne démarre qu'une fois et une seule connexion à Exchange, authentifiée une fois (NTLM chez OVH : trois échanges avec le serveur à chaque nouvelle connexion), sert à tous les agendas Exchange |
 | Recherche | Champ « Rechercher un événement » : dans l'objet, le lieu et l'organisateur, sans tenir compte des accents ni des majuscules, de six mois avant à six mois après aujourd'hui, dans tous les agendas affichés (les événements périodiques apparaissent à chaque date). Un clic ouvre l'événement |
 | Semaine | Grille horaire sur 7 jours. Une ligne « Journée » regroupe les événements sur la journée entière. Les événements qui se chevauchent sont placés côte à côte, et un trait rouge marque l'heure actuelle. Un clic sur un créneau libre crée un événement à cette heure. Un clic sur un jour du mini-calendrier affiche sa semaine **Glisser pour créer** : appuyer sur une heure libre et tirer jusqu'à l'heure de fin dessine le créneau (par quarts d'heure), puis ouvre le formulaire avec ce début et cette fin ; un simple clic ouvre toujours une demi-heure |
 | Détail | Horaire, lieu, organisateur, participants et leur réponse, description |
@@ -282,7 +283,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.135.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.136.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -347,7 +348,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.135 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.136 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 
