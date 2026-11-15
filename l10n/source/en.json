@@ -1555,5 +1555,8 @@
 	"Ce carnet Nextcloud est en lecture seule pour vous": "This Nextcloud address book is read-only for you",
 	"Carnet Nextcloud inconnu": "Unknown Nextcloud address book",
 	"Les groupes se créent dans un carnet Exchange": "Groups are created in an Exchange address book",
-	"Comptes Nextcloud": "Nextcloud accounts"
+	"Comptes Nextcloud": "Nextcloud accounts",
+	"Listes de tâches": "Task lists",
+	"Terminées · {list}": "Completed · {list}",
+	"Ajouter une tâche à « {list} » (Entrée)": "Add a task to “{list}” (Enter)"
 }

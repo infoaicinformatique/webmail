@@ -127,6 +127,7 @@ return [
 		['name' => 'auto_file#remove', 'url' => '/api/accounts/{id}/autofile/remove', 'verb' => 'POST'],
 		['name' => 'oof#show', 'url' => '/api/accounts/{id}/oof', 'verb' => 'GET'],
 		['name' => 'oof#update', 'url' => '/api/accounts/{id}/oof', 'verb' => 'POST'],
+		['name' => 'task#lists', 'url' => '/api/accounts/{id}/tasks/lists', 'verb' => 'GET'],
 		['name' => 'task#index', 'url' => '/api/accounts/{id}/tasks', 'verb' => 'GET'],
 		['name' => 'task#show', 'url' => '/api/accounts/{id}/task', 'verb' => 'GET'],
 		['name' => 'task#create', 'url' => '/api/accounts/{id}/tasks', 'verb' => 'POST'],

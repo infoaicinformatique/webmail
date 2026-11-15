@@ -225,7 +225,7 @@ Les messages envoyés sont enregistrés par Exchange dans « Éléments envoyés
 
 ![Tâches](docs/capture-taches.png)
 
-L'onglet **✅ Tâches** affiche le dossier « Tâches » de la boîte Exchange, le même que dans Outlook et Outlook sur le web.
+L'onglet **✅ Tâches** affiche le dossier « Tâches » de la boîte Exchange, le même que dans Outlook et Outlook sur le web. Les **autres listes de tâches** de la boîte (créées dans Outlook) apparaissent sous « Listes de tâches » dans la barre latérale : un clic affiche les tâches de la liste, et une tâche ajoutée va dans la liste affichée (ou celle choisie dans le formulaire). La liste affichée est retenue.
 
 | | |
 |---|---|

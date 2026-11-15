@@ -3155,6 +3155,38 @@ async function main() {
 		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
 	})
 
+	await step('tasks: every task list of Exchange (made in Outlook), its tasks, a task added to it', async () => {
+		await page.click('.wm-tab[data-module="tasks"]')
+		await page.waitForSelector('.wm-task-list[data-list="tasks"].active')
+		const lists = await page.$$eval('.wm-task-list .wm-folder-name', (els) => els.map((e) => e.textContent))
+		assert.deepStrictEqual(lists, ['Tâches', 'Chantier Nice'])
+		await page.click('.wm-task-list:has-text("Chantier Nice")')
+		await page.waitForSelector('.wm-task:has-text("Commander les menuiseries")')
+		assert.strictEqual(await page.locator('.wm-task:has-text("Renouveler le nom de domaine")').count(), 0, 'only the tasks of this list')
+		// a task added here goes to this list
+		await page.fill('input[name=quickTask]', 'Valider les plans')
+		await page.press('input[name=quickTask]', 'Enter')
+		await page.waitForSelector('.wm-toast:has-text("Tâche ajoutée")')
+		await page.waitForSelector('.wm-task:has-text("Valider les plans")')
+		await shot('59-task-lists')
+		// the form: the list can be chosen
+		await page.click('.wm-compose-btn:has-text("Nouvelle tâche")')
+		assert.strictEqual(await page.inputValue('.wm-task-form select[name=list]'), 'F-TASKS2')
+		await page.click('.wm-task-form button:has-text("Annuler")')
+		// the list shown is kept for the next time
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-tab[data-module="tasks"]')
+		await page.waitForSelector('.wm-task-list[data-list="F-TASKS2"].active')
+		await page.waitForSelector('.wm-task:has-text("Valider les plans")')
+		// clean: deleted, back to « Tâches »
+		await page.click('.wm-task:has-text("Valider les plans") .wm-task-subject')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-task-form button:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("Tâche supprimée")')
+		await page.click('.wm-task-list[data-list="tasks"]')
+		await page.waitForSelector('.wm-task:has-text("Renouveler le nom de domaine")')
+	})
+
 	await step('task reminder: set in the form, rings in the bell of Nextcloud, its link opens the task, gone when removed', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\ReminderJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]

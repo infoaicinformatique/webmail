@@ -28,9 +28,13 @@ def outlook_due(days):
     return (dt.datetime(d.year, d.month, d.day) - dt.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
-def add(subject, due=None, status='NotStarted', importance='Normal', body=''):
+# the task lists: « Tâches » (the distinguished folder) and one made in Outlook
+LISTS = {'F-TASKS': 'Tâches', 'F-TASKS2': 'Chantier Nice'}
+
+
+def add(subject, due=None, status='NotStarted', importance='Normal', body='', folder='F-TASKS'):
     tid = 'TASK-%d' % next(COUNTER)
-    TASKS[tid] = {'id': tid, 'subject': subject, 'due': due, 'status': status, 'importance': importance, 'body': body,
+    TASKS[tid] = {'id': tid, 'folder': folder, 'subject': subject, 'due': due, 'status': status, 'importance': importance, 'body': body,
                   'percent': 100 if status == 'Completed' else 0, 'completed': now() if status == 'Completed' else None,
                   'created': now()}
     return tid
@@ -41,6 +45,7 @@ def seed():
     add('Renouveler le nom de domaine', due=outlook_due(1), importance='High')
     add('Commander des cartouches d\'encre', status='InProgress')
     add('Envoyer les vœux aux clients', status='Completed')
+    add('Commander les menuiseries', due=outlook_due(3), folder='F-TASKS2')
 
 
 seed()
@@ -107,25 +112,42 @@ def apply(t, f):
             t['percent'] = 100
 
 
+def list_of(parent):
+    """The task list of a t:DistinguishedFolderId (« tasks ») or t:FolderId element, None when not one."""
+    if parent is None:
+        return None
+    if parent.tag == T + 'DistinguishedFolderId':
+        return 'F-TASKS' if parent.get('Id') == 'tasks' and parent.find('t:Mailbox', NS) is None else None
+    return parent.get('Id') if parent.get('Id') in LISTS else None
+
+
 def handle(op, el):
+    if op == 'GetFolder':
+        ids = list(el.find('m:FolderIds', NS) or [])
+        if not ids or not all(list_of(i) for i in ids):
+            return None
+        return wrap(op, [ok(op, '<m:Folders><t:TasksFolder><t:FolderId Id="%s" ChangeKey="AQ"/></t:TasksFolder></m:Folders>' % list_of(i)) for i in ids])
     if op == 'FindItem':
-        parent = el.find('m:ParentFolderIds/t:DistinguishedFolderId', NS)
-        if parent is None or parent.get('Id') != 'tasks':
+        parents = el.find('m:ParentFolderIds', NS)
+        folder = list_of(parents[0]) if parents is not None and len(parents) else None
+        if folder is None:
             return None
         # as OVH Hosted Exchange: a Restriction on task:Status is refused
         if el.find('m:Restriction//t:FieldURI[@FieldURI="task:Status"]', NS) is not None:
             return wrap(op, [err(op, 'ErrorInvalidValueForProperty', 'The specified value is invalid for property.')])
-        items = list(TASKS.values())
+        items = [t for t in TASKS.values() if t['folder'] == folder]
         return wrap(op, [ok(op, '<m:RootFolder TotalItemsInView="%d" IncludesLastItemInRange="true"><t:Items>%s</t:Items></m:RootFolder>'
                             % (len(items), ''.join(task_xml(t) for t in items)))])
     if op == 'CreateItem':
         task = el.find('m:Items/t:Task', NS)
         if task is None:
             return None
-        if el.find('m:SavedItemFolderId/t:DistinguishedFolderId[@Id="tasks"]', NS) is None:
-            return wrap(op, [err(op, 'ErrorInvalidRequest', 'tasks go to the tasks folder')])
+        saved = el.find('m:SavedItemFolderId', NS)
+        folder = list_of(saved[0]) if saved is not None and len(saved) else None
+        if folder is None:
+            return wrap(op, [err(op, 'ErrorInvalidRequest', 'tasks go to a tasks folder')])
         f = fields(task)
-        tid = add(f.get('Subject', ''))
+        tid = add(f.get('Subject', ''), folder=folder)
         apply(TASKS[tid], f)
         return wrap(op, [ok(op, '<m:Items><t:Task><t:ItemId Id="%s" ChangeKey="CK"/></t:Task></m:Items>' % tid)])
     if op in ('GetItem', 'UpdateItem', 'DeleteItem'):
