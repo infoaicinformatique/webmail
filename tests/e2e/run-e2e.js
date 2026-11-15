@@ -1078,6 +1078,56 @@ async function main() {
 		await page.click('.wm-folder:has-text("Boîte de réception")')
 	})
 
+	await step('signature of the organisation: a model of the administrator filled in with the Nextcloud profile, proposed or imposed', async () => {
+		const profile = (key, value) => page.evaluate(async ({ key, value }) => {
+			const r = await fetch('/ocs/v2.php/cloud/users/' + encodeURIComponent(OC.getCurrentUser().uid) + '?format=json', {
+				method: 'PUT',
+				headers: { 'OCS-APIREQUEST': 'true', requesttoken: OC.requestToken, 'Content-Type': 'application/json' },
+				body: JSON.stringify({ key, value }),
+			})
+			return r.status
+		}, { key, value })
+		assert.strictEqual(await profile('role', 'Responsable achats'), 200)
+		assert.strictEqual(await profile('phone', '+33 4 93 00 00 00'), 200)
+		const admin = async (template, mode) => {
+			await page.goto(NC + '/settings/admin/webmail')
+			await page.fill('#webmail-org-signature', template)
+			await page.selectOption('#webmail-org-signature-mode', mode)
+			await page.click('#webmail-org-signature-save')
+			await page.waitForSelector('#webmail-org-signature-msg.success')
+		}
+		try {
+			// a line whose field is empty (no address in the profile) goes away
+			await admin('<p><b>{nom}</b><br>{fonction}<br>Tél. : {telephone}<br>Adresse : {adresse}</p><p><i>Société A — mentions légales</i></p>', 'forced')
+			const preview = await page.textContent('#webmail-org-signature-preview')
+			assert.ok(preview.includes('Responsable achats') && preview.includes('Tél. : +33 4 93 00 00 00') && !preview.includes('Adresse') && preview.includes('mentions légales'), preview)
+			await shot('107-org-signature-admin')
+			// imposed: every new message ends with it
+			await page.goto(NC + '/apps/webmail/')
+			await page.waitForSelector('.wm-message')
+			for (let i = 0; i < 5 && !(await page.$('.wm-compose input[name=to]')); i++) {
+				await page.click('.wm-compose-btn')
+				await page.waitForSelector('.wm-compose input[name=to]', { timeout: 3000 }).catch(() => {})
+			}
+			await page.waitForSelector('.wm-editor .wm-signature:has-text("Responsable achats")')
+			const sig = await page.textContent('.wm-editor .wm-signature')
+			assert.ok(sig.includes('Tél. : +33 4 93 00 00 00') && sig.includes('mentions légales'), sig)
+			// (the message left unwritten: nothing kept)
+			await page.goto(NC + '/apps/webmail/')
+			await page.waitForSelector('.wm-message')
+			// shown in « Comptes et signature »
+			await page.click('text=Comptes et signature')
+			await page.waitForSelector('.wm-account-card:has-text("user@societe-a.fr") .wm-org-signature-note:has-text("Votre organisation impose sa signature")')
+			await shot('107-org-signature-account')
+		} finally {
+			await admin('', 'off')
+			await profile('role', '')
+			await profile('phone', '')
+			await page.goto(NC + '/apps/webmail/')
+			await page.waitForSelector('.wm-message')
+		}
+	})
+
 	await step('inbox rules: create, order, switch off, run on arrival, from a message', async () => {
 		await page.click('text=Comptes et signature')
 		await page.click('.wm-account-card:has-text("user@societe-a.fr") .wm-rules-btn')

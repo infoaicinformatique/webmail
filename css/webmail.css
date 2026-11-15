@@ -1260,3 +1260,7 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-security-banner p { margin: 4px 0; }
 .wm-security-banner ul { margin: 2px 0 4px 18px; padding: 0; }
 .wm-security-banner .wm-shown { font-family: monospace; }
+
+/* the signature of the organisation, in « Comptes et signature » */
+.wm-org-signature-note { margin: 6px 0; padding: 8px 10px; border-radius: var(--border-radius, 6px); background: var(--color-background-dark); }
+.wm-org-signature-preview { margin-top: 6px; padding: 8px; border-left: 3px solid var(--color-primary-element); background: var(--color-main-background); }

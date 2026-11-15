@@ -49,6 +49,34 @@
 		})
 
 		// « État des services »: checked on demand
+		// the signature of the organisation: its model, how it is used, a preview with one's own profile
+		const orgSave = document.getElementById('webmail-org-signature-save')
+		if (orgSave) {
+			orgSave.addEventListener('click', async () => {
+				const out = document.getElementById('webmail-org-signature-msg')
+				orgSave.disabled = true
+				try {
+					const res = await fetch(OC.generateUrl('/apps/webmail/api/admin/org-signature'), {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json', requesttoken: OC.requestToken },
+						body: JSON.stringify({ template: document.getElementById('webmail-org-signature').value, mode: document.getElementById('webmail-org-signature-mode').value }),
+					})
+					const data = await res.json()
+					if (!res.ok) throw new Error(data.message || _('Erreur'))
+					document.getElementById('webmail-org-signature').value = data.template
+					document.getElementById('webmail-org-signature-mode').value = data.mode
+					// (cleaned by the server: no script can come in)
+					document.getElementById('webmail-org-signature-preview').innerHTML = data.preview
+					out.textContent = _('Enregistré')
+					out.className = 'msg success'
+				} catch (e) {
+					out.textContent = e.message
+					out.className = 'msg error'
+				} finally {
+					orgSave.disabled = false
+				}
+			})
+		}
 		// the model of the automatic replies during the absences of Nextcloud
 		const absenceSave = document.getElementById('webmail-absence-save')
 		if (absenceSave) {

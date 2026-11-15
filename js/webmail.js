@@ -4651,7 +4651,12 @@
 	/** The choices of an account's signatures: [value, label, html] ('' the main one, '-' none). */
 	function signatureChoices(account) {
 		const set = signatureSets.get(account && account.id) || { list: [] }
-		return [['', _('Principale'), account && account.signature ? signatureHtml(account.signature) : '']]
+		const org = set.org && set.org.html ? set.org : null
+		// the signature of the organisation, imposed: the only one
+		if (org && org.mode === 'forced') return [['', _('Organisation'), org.html], ['-', _('Aucune'), '']]
+		const own = account && account.signature ? signatureHtml(account.signature) : ''
+		return [['', own || !org ? _('Principale') : _('Organisation'), own || (org ? org.html : '')]]
+			.concat(org && own ? [['org', _('Organisation'), org.html]] : [])
 			.concat(set.list.map((x) => [x.name, x.name, x.html]))
 			.concat([['-', _('Aucune'), '']])
 	}
@@ -4716,8 +4721,23 @@
 			h('label', { class: 'wm-field' }, h('span', {}, _('Nouveaux messages')), pickNew),
 			h('label', { class: 'wm-field' }, h('span', {}, _('Réponses et transferts')), pickReply),
 			h('div', { class: 'wm-compose-actions' }, save))
+		const orgNote = h('div', { class: 'wm-org-signature-note', hidden: true })
+		// (after its summary: the first child of a « details »)
+		box.insertBefore(orgNote, box.children[1] || null)
 		loadSignatures(a.id).then((set) => {
 			if (!set) return
+			// the signature of the organisation (set by the administrator)
+			if (set.org && set.org.html) {
+				orgNote.hidden = false
+				orgNote.textContent = set.org.mode === 'forced'
+					? '🏢 ' + _('Votre organisation impose sa signature, remplie avec votre profil Nextcloud : elle termine tous vos messages, à la place de celles-ci.')
+					: '🏢 ' + _('Sans signature principale ici, celle de votre organisation est utilisée, remplie avec votre profil Nextcloud (nom, fonction, téléphone…).')
+				const preview = h('div', { class: 'wm-org-signature-preview' })
+				// (cleaned by the server, as every signature)
+				preview.innerHTML = set.org.html
+				orgNote.append(preview)
+				box.open = true
+			}
 			wanted = { new: set.new, reply: set.reply }
 			set.list.forEach((x) => addRow(x.name, x.html))
 			refreshChoices()
