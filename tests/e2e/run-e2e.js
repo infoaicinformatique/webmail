@@ -21,9 +21,17 @@ const OCC = process.env.OCC || 'docker exec -u www-data nc php occ'
 fs.mkdirSync(SHOTS, { recursive: true })
 
 async function main() {
-	// (the fake servers « *.fake.test » run here, with their own certificate: the chat's sign-in goes through them)
-	const browser = await chromium.launch({ args: ['--host-resolver-rules=MAP *.fake.test 127.0.0.1'] })
-	const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'fr-FR', timezoneId: 'Europe/Paris', ignoreHTTPSErrors: true })
+	const browser = await chromium.launch()
+	const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'fr-FR', timezoneId: 'Europe/Paris' })
+	// « Se connecter avec Nextcloud »: the fake Matrix server « ex3.fake.test » is only known to Nextcloud
+	// (its container): the browser's step through it is made here, then the browser goes on to the webmail
+	await context.route(/\/apps\/webmail\/matrix\/sso$/, async (route) => {
+		const start = await route.fetch({ maxRedirects: 0 })
+		const toChat = start.headers().location || ''
+		if (!toChat.startsWith('https://ex3.fake.test:8443/')) return route.fulfill({ response: start })
+		const chat = await context.request.get(toChat.replace('//ex3.fake.test:8443/', '//127.0.0.1:8443/'), { maxRedirects: 0, ignoreHTTPSErrors: true })
+		await route.fulfill({ status: 302, headers: { Location: chat.headers().location } })
+	})
 	const page = await context.newPage()
 	/** every list request of the run: [offset, limit] */
 	const listRequests = []
