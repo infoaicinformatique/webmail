@@ -3418,6 +3418,7 @@
 			h('h2', { class: 'wm-subject' }, m.subject || _('(sans objet)')),
 			h('div', { class: 'wm-header-cats' }, categoryPills(m.categories, true)),
 			h('div', { class: 'wm-header-line' }, h('span', { class: 'wm-header-label' }, _('De')), h('strong', {}, personLabel(m.from)),
+				m.security && m.security.external ? h('span', { class: 'wm-external-tag', title: _('Ce message vient de l\'extérieur de votre organisation : prudence avec les liens, les pièces jointes et les demandes inhabituelles') }, _('Externe')) : null,
 				m.from && /@/.test(m.from.email || '') ? h('button', {
 					type: 'button',
 					class: 'wm-small wm-add-contact',
@@ -3430,6 +3431,9 @@
 			recipients(_('Cci'), m.bcc),
 			h('div', { class: 'wm-header-line wm-muted' }, formatDate(m.date, true)),
 		))
+
+		const warning = securityBanner(m)
+		if (warning) detailEl.appendChild(warning)
 
 		// the other messages of the conversation (the replies sent included)
 		const thread = h('section', { class: 'wm-thread', hidden: true, 'aria-label': _('Conversation') })
@@ -3729,6 +3733,27 @@
 		return out
 	}
 
+	/**
+	 * What to be wary of in a message: a sender borrowing the name of a colleague from outside,
+	 * links leading elsewhere than the address they show (the server finds them).
+	 */
+	function securityBanner(m) {
+		const s = m.security
+		if (!s || (!s.impersonates && !(s.deceptiveLinks || []).length)) return null
+		const lines = []
+		if (s.impersonates) {
+			lines.push(h('p', {}, h('strong', {}, '⚠️ ' + _('Usurpation possible')), ' — ',
+				_('Ce message se présente comme venant de {name}, mais il est envoyé depuis une adresse extérieure ({email}). Ne répondez pas à une demande de paiement, de mot de passe ou de document sans vérifier auprès de la personne par un autre moyen.', { name: s.impersonates, email: (m.from && m.from.email) || '' })))
+		}
+		const links = s.deceptiveLinks || []
+		if (links.length) {
+			lines.push(h('p', {}, h('strong', {}, '⚠️ ' + (links.length > 1 ? _('{count} liens trompeurs', { count: links.length }) : _('Lien trompeur'))), ' — ',
+				_('Le texte affiche une adresse, mais le lien mène vers un autre site :')),
+			h('ul', {}, links.slice(0, 5).map((l) => h('li', {}, h('span', { class: 'wm-shown' }, l.shown), ' → ', h('strong', {}, l.real)))))
+		}
+		return h('div', { class: 'wm-security-banner' + (s.impersonates ? ' danger' : ''), role: 'alert' }, ...lines)
+	}
+
 	/** The (already cleaned) HTML of a message in a sandboxed frame, as tall as its content. */
 	function bodyFrame(html) {
 		const frame = h('iframe', {
@@ -3741,7 +3766,9 @@
 		})
 		frame.srcdoc = '<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank">'
 			+ '<style>html,body{margin:0;padding:0;background:#fff;color:#222;font-family:-apple-system,"Segoe UI",Roboto,Calibri,Arial,sans-serif;font-size:14px;line-height:1.45;overflow-wrap:anywhere}'
-			+ 'body{padding:4px 2px}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}blockquote{margin:0 0 0 8px;padding-left:8px;border-left:2px solid #ccc}</style>'
+			+ 'body{padding:4px 2px}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}blockquote{margin:0 0 0 8px;padding-left:8px;border-left:2px solid #ccc}'
+			// (a link leading elsewhere than the address it shows: framed, its destination on hover)
+			+ 'a[data-wm-deceptive]{outline:2px solid #e9a400;outline-offset:1px;border-radius:2px}a[data-wm-deceptive]::after{content:" ⚠";color:#b36b00}</style>'
 			+ '</head><body>' + html + '</body></html>'
 		const resize = () => {
 			try {

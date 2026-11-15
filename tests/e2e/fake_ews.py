@@ -1184,6 +1184,15 @@ class Handler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length)
         if self.path.startswith('/_matrix/'):
             return self.matrix('POST', raw)
+        # (for the test: a message arrives, or goes away)
+        if self.path in ('/_test/deliver', '/_test/remove'):
+            import json
+            data = json.loads(raw or b'{}')
+            if self.path == '/_test/remove':
+                MESSAGES.pop(data.get('id', ''), None)
+                return self.send(200, '{}', {'Content-Type': 'application/json'})
+            mid = add_message(data.get('folder', 'F-INBOX'), data['subject'], tuple(data['sender']), data['body'], 0, is_read=bool(data.get('isRead')))
+            return self.send(200, json.dumps({'id': mid}), {'Content-Type': 'application/json'})
         auth = self.headers.get('Authorization', '')
         user = None
         if NTLM_MODE:
