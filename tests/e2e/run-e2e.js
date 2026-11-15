@@ -21,8 +21,9 @@ const OCC = process.env.OCC || 'docker exec -u www-data nc php occ'
 fs.mkdirSync(SHOTS, { recursive: true })
 
 async function main() {
-	const browser = await chromium.launch()
-	const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'fr-FR', timezoneId: 'Europe/Paris' })
+	// (the fake servers « *.fake.test » run here, with their own certificate: the chat's sign-in goes through them)
+	const browser = await chromium.launch({ args: ['--host-resolver-rules=MAP *.fake.test 127.0.0.1'] })
+	const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'fr-FR', timezoneId: 'Europe/Paris', ignoreHTTPSErrors: true })
 	const page = await context.newPage()
 	/** every list request of the run: [offset, limit] */
 	const listRequests = []
