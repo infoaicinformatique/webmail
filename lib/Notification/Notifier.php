@@ -80,7 +80,7 @@ class Notifier implements INotifier {
 		$notification->setParsedSubject($l->t('Réponse automatique programmée du %1$s au %2$s', [$day($p['start'] ?? 0), $day($p['end'] ?? 0)]))
 			->setParsedMessage($l->t('Pour votre absence de Nextcloud : %s', [(string)($p['accounts'] ?? '')]))
 			->setLink($this->url->linkToRouteAbsolute('webmail.page.index'))
-			->setIcon($this->url->getAbsoluteURL($this->url->imagePath('core', 'actions/calendar.svg')));
+			->setIcon($this->url->getAbsoluteURL($this->url->imagePath('core', 'places/calendar.svg')));
 		return $notification;
 	}
 
