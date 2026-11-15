@@ -38,13 +38,24 @@ class Matrix {
 	 * @return array{type: string, value: string} type « id » or « alias »
 	 * @throws MailException
 	 */
+	/**
+	 * A room id: « !abc:example.org », or « !<hash> » with no server (room version 12, the
+	 * default of the recent Synapse servers).
+	 */
+	public static function isRoomId(string $id): bool {
+		return strlen($id) <= 255 && preg_match('~^![^\s:/?#]+(?::[a-z0-9.\-\[\]:]+)?$~i', $id) === 1;
+	}
+
 	public static function room(string $value): array {
 		$v = trim($value);
 		if (preg_match('~^https://matrix\.to/#/([^/?]+)~i', $v, $m)) {
 			$v = rawurldecode($m[1]);
 		}
-		if (strlen($v) <= 255 && preg_match('~^([!#])[^\s:/]+:[a-z0-9.\-\[\]:]+$~i', $v, $m)) {
-			return ['type' => $m[1] === '!' ? 'id' : 'alias', 'value' => $v];
+		if (self::isRoomId($v)) {
+			return ['type' => 'id', 'value' => $v];
+		}
+		if (strlen($v) <= 255 && preg_match('~^#[^\s:/]+:[a-z0-9.\-\[\]:]+$~i', $v)) {
+			return ['type' => 'alias', 'value' => $v];
 		}
 		throw new MailException('Salon Matrix invalide : %s (par exemple %s)', [$value, '#equipe:example.org']);
 	}
@@ -100,11 +111,13 @@ class Matrix {
 	 *
 	 * @throws MailException
 	 */
-	public static function roomLink(string $elementUrl, string $roomId): string {
-		if (!preg_match('~^![^\s:/]+:([a-z0-9.\-\[\]:]+)$~i', $roomId, $m)) {
+	public static function roomLink(string $elementUrl, string $roomId, string $via = ''): string {
+		if (!self::isRoomId($roomId)) {
 			throw new MailException('Le serveur Matrix n\'a pas créé le salon');
 		}
-		return rtrim($elementUrl, '/') . '/#/room/' . rawurlencode($roomId) . '?via=' . rawurlencode($m[1]);
+		// (a room of version 12 names no server: the one of the organiser's account)
+		$server = str_contains($roomId, ':') ? substr($roomId, strpos($roomId, ':') + 1) : $via;
+		return rtrim($elementUrl, '/') . '/#/room/' . rawurlencode($roomId) . ($server !== '' ? '?via=' . rawurlencode($server) : '');
 	}
 
 	/**
@@ -119,7 +132,7 @@ class Matrix {
 		} else {
 			return null;
 		}
-		return preg_match('~^![^\s:/]+:[a-z0-9.\-\[\]:]+$~i', $id) ? $id : null;
+		return self::isRoomId($id) ? $id : null;
 	}
 
 	/**

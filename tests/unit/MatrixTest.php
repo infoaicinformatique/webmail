@@ -26,6 +26,8 @@ class MatrixTest extends TestCase {
 	public function testRoom(): void {
 		$this->assertSame(['type' => 'alias', 'value' => '#equipe:example.org'], Matrix::room(' #equipe:example.org '));
 		$this->assertSame(['type' => 'id', 'value' => '!AbC123:example.org'], Matrix::room('!AbC123:example.org'));
+		// room version 12 (recent Synapse): no server in the id
+		$this->assertSame(['type' => 'id', 'value' => '!Zk3xQ9_dHf-2Lp8wVb5nRt7yMc1sGa4eJo6uKi0hXqE'], Matrix::room('!Zk3xQ9_dHf-2Lp8wVb5nRt7yMc1sGa4eJo6uKi0hXqE'));
 		$this->assertSame(['type' => 'alias', 'value' => '#chantier-antibes:matrix.example.org'], Matrix::room('https://matrix.to/#/%23chantier-antibes:matrix.example.org'));
 		$this->assertSame('#equipe:example.org', Matrix::room('https://matrix.to/#/#equipe:example.org?via=example.org')['value']);
 		foreach (['equipe', '@alice:example.org', '#equipe', '#a b:example.org', '!x:'] as $bad) {
@@ -85,6 +87,11 @@ class MatrixTest extends TestCase {
 	public function testRoomLink(): void {
 		$this->assertSame('https://chat.example.org/#/room/%21abc%3Amatrix.example.org?via=matrix.example.org',
 			Matrix::roomLink('https://chat.example.org/', '!abc:matrix.example.org'));
+		// room version 12: joined by the server of the organiser's account
+		$this->assertSame('https://chat.example.org/#/room/%21Zk3xQ9_dHf-2Lp8wVb5nRt7yMc1sGa4eJo6uKi0hXqE?via=matrix.example.org',
+			Matrix::roomLink('https://chat.example.org', '!Zk3xQ9_dHf-2Lp8wVb5nRt7yMc1sGa4eJo6uKi0hXqE', 'matrix.example.org'));
+		$this->assertSame('https://chat.example.org/#/room/%21abc%3Amatrix.example.org?via=matrix.example.org',
+			Matrix::roomLink('https://chat.example.org', '!abc:matrix.example.org', 'other.example.org'), 'the server of the id first');
 		$this->expectException(MailException::class);
 		Matrix::roomLink('https://chat.example.org', '#alias:example.org');
 	}
@@ -115,6 +122,8 @@ class MatrixTest extends TestCase {
 		$this->assertSame('!meet42:matrix.pbcannes.org', Matrix::roomIdIn('Salle B ' . $link));
 		$this->assertSame('!meet42:matrix.pbcannes.org', Matrix::roomIdIn("Rejoindre la visio : " . $link . "\n"));
 		$this->assertSame('!abc:fake.test', Matrix::roomIdIn('salon !abc:fake.test'));
+		$this->assertSame('!Zk3xQ9_dHf-2Lp8wVb5nRt7yMc1sGa4eJo6uKi0hXqE',
+			Matrix::roomIdIn('Visio : https://chat.pbcannes.org/#/room/%21Zk3xQ9_dHf-2Lp8wVb5nRt7yMc1sGa4eJo6uKi0hXqE?via=matrix.pbcannes.org'));
 		$this->assertNull(Matrix::roomIdIn('https://meet.example.org/reunion-k3x9'));
 		$this->assertNull(Matrix::roomIdIn('Bonjour ! à demain'));
 		$this->assertNull(Matrix::roomIdIn('https://chat.example/#/room/%23general%3Aserver'));
