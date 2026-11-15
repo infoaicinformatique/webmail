@@ -87,6 +87,7 @@ return [
 		['name' => 'calendar#availability', 'url' => '/api/accounts/{id}/calendar/availability', 'verb' => 'GET'],
 		['name' => 'calendar#search', 'url' => '/api/accounts/{id}/calendar/search', 'verb' => 'GET'],
 		['name' => 'calendar#events', 'url' => '/api/accounts/{id}/calendar/events', 'verb' => 'GET'],
+		['name' => 'calendar#batch', 'url' => '/api/accounts/{id}/calendar/batch', 'verb' => 'POST'],
 		['name' => 'calendar#event', 'url' => '/api/accounts/{id}/calendar/event', 'verb' => 'GET'],
 		['name' => 'calendar#series', 'url' => '/api/accounts/{id}/calendar/series', 'verb' => 'GET'],
 		['name' => 'calendar#create', 'url' => '/api/accounts/{id}/calendar/events', 'verb' => 'POST'],

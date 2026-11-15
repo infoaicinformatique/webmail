@@ -197,21 +197,72 @@ class CalendarController extends Controller {
 			if ($this->isNextcloud($id, $calendar)) {
 				return ['events' => $this->nextcloud->events((string)$this->userId, $calendar, self::date($start), self::date($end), $tz)];
 			}
-			$cal = $this->calendar($id, $tz, $calendar);
-			if (str_starts_with($calendar, 'shared:')) {
-				$entry = $this->shared->find(SharedFolderService::CALENDARS, (string)$this->userId, $id, substr($calendar, 7));
-				if ($entry === null) {
-					throw new MailException('Agenda partagé inconnu');
+			return ['events' => $this->exchangeEvents($id, $calendar, $this->calendar($id, $tz, $calendar), self::date($start), self::date($end))];
+		});
+	}
+
+	/**
+	 * The events of an Exchange calendar (own, shared — maybe only its free / busy times —, public).
+	 * @return list<array<string, mixed>>
+	 */
+	private function exchangeEvents(int $id, string $calendar, EwsCalendar $cal, \DateTimeImmutable $start, \DateTimeImmutable $end): array {
+		if (str_starts_with($calendar, 'shared:')) {
+			$entry = $this->shared->find(SharedFolderService::CALENDARS, (string)$this->userId, $id, substr($calendar, 7));
+			if ($entry === null) {
+				throw new MailException('Agenda partagé inconnu');
+			}
+			if ($entry['mode'] === 'freebusy') {
+				// the events without details are named after their state: in the language of the user
+				$l = $this->l10n();
+				return array_map(fn ($e) => in_array($e['subject'], EwsCalendar::FREE_BUSY_LABELS, true)
+					? ['subject' => $l->t($e['subject'])] + $e : $e,
+					$cal->freeBusy($entry['email'], $start, $end));
+			}
+		}
+		if (str_starts_with($calendar, 'public:')
+			&& $this->shared->find(SharedFolderService::PUBLIC_CALENDARS, (string)$this->userId, $id, '', substr($calendar, 7)) === null) {
+			throw new MailException('Agenda des dossiers publics inconnu');
+		}
+		return $cal->findEvents($start, $end, $calendar);
+	}
+
+	/**
+	 * The events of every calendar shown, in one request: the Exchange ones through one
+	 * connection (authenticated once: NTLM asks three exchanges with the server for
+	 * each new one), the Nextcloud ones at once. An error stays with its calendar.
+	 *
+	 * @param string[] $calendars calendar keys
+	 */
+	#[NoAdminRequired]
+	public function batch(int $id, string $start, string $end, array $calendars = [], string $tz = 'UTC'): Response {
+		return $this->handle(function () use ($id, $start, $end, $calendars, $tz) {
+			$account = $this->accounts->find((string)$this->userId, $id);
+			$from = self::date($start);
+			$to = self::date($end);
+			$clients = [];
+			$calendarOf = function (bool $public) use (&$clients, $account, $tz): EwsCalendar {
+				$k = $public ? 'public' : 'own';
+				if (!isset($clients[$k])) {
+					$client = $public ? $this->accounts->getPublicFolderClient($account) : $this->accounts->getClient($account);
+					$client->setTimeZone(TimeZones::toWindows($tz));
+					$clients[$k] = new EwsCalendar($client);
 				}
-				if ($entry['mode'] === 'freebusy') {
-					// the events without details are named after their state: in the language of the user
-					$l = $this->l10n();
-					return ['events' => array_map(fn ($e) => in_array($e['subject'], EwsCalendar::FREE_BUSY_LABELS, true)
-						? ['subject' => $l->t($e['subject'])] + $e : $e,
-						$cal->freeBusy($entry['email'], self::date($start), self::date($end)))];
+				return $clients[$k];
+			};
+			$out = [];
+			foreach (array_slice(array_values(array_unique(array_filter(array_map('strval', $calendars), fn ($c) => $c !== ''))), 0, 60) as $key) {
+				try {
+					$out[$key] = ['events' => NcCalendarRules::isKey($key)
+						? $this->nextcloud->events((string)$this->userId, $key, $from, $to, $tz)
+						: $this->exchangeEvents($id, $key, $calendarOf(str_starts_with($key, 'public:')), $from, $to)];
+				} catch (MailException $e) {
+					$out[$key] = ['error' => $this->errorMessage($e)];
+				} catch (\Throwable $e) {
+					$this->logger->error('Webmail: events of ' . $key . ' not read', ['app' => Application::APP_ID, 'exception' => $e]);
+					$out[$key] = ['error' => $this->l10n()->t('Erreur interne, consultez le journal Nextcloud')];
 				}
 			}
-			return ['events' => $cal->findEvents(self::date($start), self::date($end), $calendar)];
+			return ['results' => (object)$out];
 		});
 	}
 
