@@ -22,12 +22,13 @@ class HtmlSanitizer {
 
 	/**
 	 * @param array<string, string> $cidMap content-id (without <>) => URL
-	 * @return array{html: string, hasRemoteContent: bool}
+	 * @return array{html: string, hasRemoteContent: bool, deceptiveLinks: list<array{shown: string, real: string}>}
 	 */
 	public function sanitize(string $html, array $cidMap = [], bool $allowRemote = false): array {
 		$hasRemote = false;
+		$deceptive = [];
 		if (trim($html) === '') {
-			return ['html' => '', 'hasRemoteContent' => false];
+			return ['html' => '', 'hasRemoteContent' => false, 'deceptiveLinks' => []];
 		}
 
 		$doc = new \DOMDocument();
@@ -133,6 +134,13 @@ class HtmlSanitizer {
 			if (strtolower($el->tagName) === 'a' && $el->hasAttribute('href')) {
 				$el->setAttribute('target', '_blank');
 				$el->setAttribute('rel', 'noopener noreferrer');
+				// a link showing one address and leading to another site: marked, its real destination told
+				$real = SecurityCheck::deceptive((string)$el->textContent, (string)$el->getAttribute('href'));
+				if ($real !== null) {
+					$el->setAttribute('data-wm-deceptive', $real);
+					$el->setAttribute('title', '⚠ ' . $real);
+					$deceptive[] = ['shown' => mb_substr(trim((string)$el->textContent), 0, 120), 'real' => $real];
+				}
 			}
 			// a long newsletter: its images load as they come into view, decoded aside (the page stays fluid)
 			if (strtolower($el->tagName) === 'img') {
@@ -161,7 +169,7 @@ class HtmlSanitizer {
 			$out .= $doc->saveHTML();
 		}
 
-		return ['html' => $out, 'hasRemoteContent' => $hasRemote];
+		return ['html' => $out, 'hasRemoteContent' => $hasRemote, 'deceptiveLinks' => array_slice($deceptive, 0, 20)];
 	}
 
 	/**

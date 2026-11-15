@@ -949,6 +949,52 @@ async function main() {
 		assert.ok(!(await ncStatus()).includes('vacationing'), await ncStatus())
 	})
 
+	await step('security: a sender from outside, the name of a colleague borrowed, deceptive links', async () => {
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		// a colleague of the organisation: a Nextcloud account
+		try { occ('user:delete helene-e2e') } catch (e) { /* none */ }
+		occ('user:add --generate-password --display-name="Hélène Durand" helene-e2e')
+		const sent = await fake('/_test/deliver', {
+			subject: 'Virement urgent à faire',
+			sender: ['Hélène Durand', 'helene.durand.direction@gmail.com'],
+			body: '<p>Bonjour, merci de faire ce virement aujourd\'hui.</p><p>Connectez-vous sur <a href="https://evil.example.net/login">www.ma-banque.fr</a> puis voir <a href="https://www.societe-a.fr/rib">le RIB</a>.</p>',
+			isRead: true,
+		})
+		try {
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('.wm-folder:has-text("Boîte de réception")')
+			await page.click('.wm-list button[title="Actualiser"]')
+			await page.waitForSelector('.wm-message:has-text("Virement urgent à faire")')
+			await page.click('.wm-message:has-text("Virement urgent à faire")')
+			const banner = '.wm-security-banner.danger'
+			await page.waitForSelector(banner)
+			const text = await page.textContent(banner)
+			assert.ok(text.includes('Usurpation possible') && text.includes('Hélène Durand') && text.includes('helene.durand.direction@gmail.com'), text)
+			assert.ok(text.includes('Lien trompeur') && text.includes('www.ma-banque.fr') && text.includes('evil.example.net') && !text.includes('societe-a.fr/rib'), text)
+			await page.waitForSelector('.wm-message-header .wm-external-tag:has-text("Externe")')
+			// framed in the message, its destination on hover
+			await page.frameLocator('.wm-body-frame').locator('a[data-wm-deceptive="evil.example.net"][title="⚠ evil.example.net"]').waitFor()
+			await shot('106-security-banner')
+			// a message of a colleague (an address of the organisation): nothing said
+			await page.click('.wm-message:has-text("Newsletter n°1")')
+			await page.waitForSelector('.wm-message-header h2:has-text("Newsletter n°1")')
+			assert.ok(!(await page.$('.wm-security-banner')), 'no warning for an ordinary message')
+		} finally {
+			await fake('/_test/remove', { id: sent.id })
+			occ('user:delete helene-e2e')
+		}
+	})
+
 	await step('absence of Nextcloud: the automatic reply scheduled on its dates (the model, then its own message), taken away with it', async () => {
 		const ymd = (days) => { const d = new Date(Date.now() + days * 86400000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
 		const absence = (method, body) => page.evaluate(async ({ method, body }) => {

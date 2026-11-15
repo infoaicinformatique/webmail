@@ -12,6 +12,7 @@ use OCA\Webmail\Service\AttachmentZip;
 use OCA\Webmail\Service\FollowUpService;
 use OCA\Webmail\Service\HtmlSanitizer;
 use OCA\Webmail\Service\MailNotificationService;
+use OCA\Webmail\Service\SecurityCheck;
 use OCA\Webmail\Service\ServerConfigService;
 use OCA\Webmail\Service\SharedFolderService;
 use OCA\Webmail\Service\SnoozeService;
@@ -53,6 +54,7 @@ class MailController extends Controller {
 		private LoggerInterface $logger,
 		private ICacheFactory $cacheFactory,
 		private ServerConfigService $serverConfig,
+		private \OCP\IUserManager $userManager,
 		private ?string $userId,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -326,6 +328,7 @@ class MailController extends Controller {
 			$msg['remoteTrusted'] = $trusted && $clean['hasRemoteContent'];
 			// the remote images are in the body (asked, or a trusted sender)
 			$msg['remoteShown'] = $remote || $trusted;
+			$msg['security'] = $this->security($msg['from'] ?? null, $clean['deceptiveLinks'] ?? []);
 
 			// Inline images referenced from the body are not listed as attachments
 			$used = [];
@@ -348,6 +351,43 @@ class MailController extends Controller {
 			}
 			return $msg;
 		});
+	}
+
+	/**
+	 * The signs to be wary of: a sender from outside the organisation, one borrowing the name
+	 * (or the address) of a colleague, links leading elsewhere than the address they show.
+	 * @param ?array{name?: string, email?: string} $from
+	 * @param list<array{shown: string, real: string}> $links
+	 * @return array{external: bool, impersonates: ?string, deceptiveLinks: list<array{shown: string, real: string}>}
+	 */
+	private function security(?array $from, array $links): array {
+		$email = strtolower(trim((string)($from['email'] ?? '')));
+		$name = trim((string)($from['name'] ?? ''));
+		// the organisation: the domains of the administrator, and those of the user's accounts
+		$own = $this->serverConfig->getDomains();
+		foreach ($this->accounts->findAll((string)$this->userId) as $a) {
+			$own[] = SecurityCheck::domain($a->getEmail());
+		}
+		$own = array_values(array_unique(array_filter($own)));
+		$external = $email !== '' && SecurityCheck::isExternal($email, $own);
+		$impersonates = null;
+		if ($external && $name !== '') {
+			$impersonates = SecurityCheck::addressInName($name, $email, $own);
+			// the name of a colleague (a Nextcloud account) on an outside address
+			$wanted = SecurityCheck::normalizeName($name);
+			if ($impersonates === null && mb_strlen($wanted) >= 5 && str_contains($wanted, ' ')) {
+				try {
+					foreach ($this->userManager->searchDisplayName($name, 10) as $user) {
+						if (SecurityCheck::normalizeName($user->getDisplayName()) === $wanted) {
+							$impersonates = $user->getDisplayName() . ((string)$user->getEMailAddress() !== '' ? ' <' . $user->getEMailAddress() . '>' : '');
+							break;
+						}
+					}
+				} catch (\Throwable) {
+				}
+			}
+		}
+		return ['external' => $external, 'impersonates' => $impersonates, 'deceptiveLinks' => $links];
 	}
 
 	#[NoAdminRequired]

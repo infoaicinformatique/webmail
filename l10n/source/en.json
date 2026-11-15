@@ -1707,5 +1707,12 @@
 	"Ce modèle remplace le message de vos absences, avec ces éléments remplis : {debut}, {fin}, {retour} (le lendemain), {nom}, {message} (celui de l'absence), {remplacement} (« En mon absence, vous pouvez joindre … »). Laissez vide pour envoyer le message de l'absence tel quel (ou le modèle de votre organisation, s'il y en a un).": "This model replaces the message of your absences, with these filled in: {debut}, {fin}, {retour} (the day after), {nom}, {message} (the one of the absence), {remplacement} (“While I am away, you can reach …”). Leave empty to send the message of the absence as it is (or the model of your organisation, if there is one).",
 	"Réponse automatique pendant les absences": "Automatic reply during absences",
 	"Une absence saisie dans Nextcloud (Paramètres personnels › Disponibilité › Absence) programme la réponse automatique Exchange de la personne sur les mêmes dates. Ce modèle remplace alors le message de l'absence, sauf si la personne a écrit le sien ; y sont remplis : {debut}, {fin}, {retour}, {nom}, {message} (celui de l'absence), {remplacement}. Laissez vide pour envoyer le message de l'absence tel quel.": "An absence set in Nextcloud (Personal settings › Availability › Absence) schedules the Exchange automatic reply of the person on the same dates. This model then replaces the message of the absence, unless the person wrote their own; filled in: {debut}, {fin}, {retour}, {nom}, {message} (the one of the absence), {remplacement}. Leave empty to send the message of the absence as it is.",
-	"Enregistrer le modèle": "Save the model"
+	"Enregistrer le modèle": "Save the model",
+	"Ce message vient de l'extérieur de votre organisation : prudence avec les liens, les pièces jointes et les demandes inhabituelles": "This message comes from outside your organisation: be careful with links, attachments and unusual requests",
+	"Externe": "External",
+	"Usurpation possible": "Possible impersonation",
+	"Ce message se présente comme venant de {name}, mais il est envoyé depuis une adresse extérieure ({email}). Ne répondez pas à une demande de paiement, de mot de passe ou de document sans vérifier auprès de la personne par un autre moyen.": "This message presents itself as coming from {name}, but it is sent from an outside address ({email}). Do not answer a request for a payment, a password or a document without checking with the person by another means.",
+	"{count} liens trompeurs": "{count} deceptive links",
+	"Lien trompeur": "Deceptive link",
+	"Le texte affiche une adresse, mais le lien mène vers un autre site :": "The text shows an address, but the link leads to another site:"
 }

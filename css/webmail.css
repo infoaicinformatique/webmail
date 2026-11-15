@@ -1252,3 +1252,11 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 /* « Absences de Nextcloud » */
 .wm-absence-settings fieldset { border: 0; padding: 0; margin: 0; }
 .wm-absence-settings textarea { width: 100%; min-height: 9em; }
+
+/* security: a sender from outside, a borrowed name, deceptive links */
+.wm-external-tag { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 10px; font-size: 11px; font-weight: bold; line-height: 18px; vertical-align: middle; background: var(--color-warning, #c28900); color: #fff; cursor: help; }
+.wm-security-banner { margin: 8px 0; padding: 8px 12px; border-radius: var(--border-radius-large, 10px); border: 1px solid var(--color-warning, #c28900); background: rgba(233, 164, 0, .12); }
+.wm-security-banner.danger { border-color: var(--color-error, #e9322d); background: rgba(233, 50, 45, .10); }
+.wm-security-banner p { margin: 4px 0; }
+.wm-security-banner ul { margin: 2px 0 4px 18px; padding: 0; }
+.wm-security-banner .wm-shown { font-family: monospace; }
