@@ -127,7 +127,7 @@ async function main() {
 	await step('admin settings: « Mises à jour » tells the versions published since the one installed, with their notes', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		occ('config:system:set allow_local_remote_servers --value=true --type=boolean')
-		occ('config:app:set webmail update_url --value=https://ex3.fake.test:8443/_test/releases')
+		occ('config:system:set webmail_update_url --value=https://ex3.fake.test:8443/_test/releases')
 		try {
 			// (at first, with no network to GitHub: the version installed is said all the same)
 			await page.waitForSelector('#webmail-update .wm-update-status')
@@ -151,7 +151,7 @@ async function main() {
 			})
 			await page.click('label[for=webmail-update-notify]')
 		} finally {
-			occ('config:app:delete webmail update_url')
+			occ('config:system:delete webmail_update_url')
 			// (the list kept by the check forgotten)
 			await page.click('#webmail-update-check')
 			await page.waitForFunction(() => !document.querySelector('#webmail-update.available'))

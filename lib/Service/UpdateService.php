@@ -74,7 +74,8 @@ class UpdateService {
 
 	/** @return array<int, mixed> */
 	private function fetch(): array {
-		$url = $this->config->getAppValue(Application::APP_ID, 'update_url', '') ?: self::RELEASES;
+		// (another list, for tests: « webmail_update_url » in config.php)
+		$url = (string)$this->config->getSystemValue('webmail_update_url', '') ?: self::RELEASES;
 		$r = $this->http->newClient()->get($url, [
 			'timeout' => 10,
 			'headers' => ['Accept' => 'application/vnd.github+json', 'User-Agent' => 'nextcloud-webmail'],
