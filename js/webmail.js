@@ -1447,7 +1447,48 @@
 			h('label', { class: 'wm-field' }, h('span', {}, '☀️ ' + _('Résumé du matin')), digest),
 			h('p', { class: 'wm-muted' }, _('Chaque jour à l\'heure choisie, une seule notification de Nextcloud résume votre journée, tous comptes réunis : les réunions, les messages non lus (dont les importants et ceux des expéditeurs prioritaires), les réponses à faire, les tâches et les messages à suivre. Un clic ouvre « Aujourd\'hui ».')),
 			h('p', {}, now))
+		// « Heures calmes »: no new message told in the bell in this time, nor on the weekend if asked
+		const hourSel = (name) => h('select', { name }, Array.from({ length: 24 }, (x, n) => h('option', { value: String(n) }, _('{hour} h', { hour: n }))))
+		const qOn = h('input', { type: 'checkbox', name: 'quietOn' })
+		const qFrom = hourSel('quietFrom')
+		const qTo = hourSel('quietTo')
+		const qWeekend = h('input', { type: 'checkbox', name: 'quietWeekend' })
+		const qVip = h('input', { type: 'checkbox', name: 'quietVip' })
+		const qReminders = h('input', { type: 'checkbox', name: 'quietReminders' })
+		const qMore = h('div', { class: 'wm-quiet-more' },
+			h('label', { class: 'wm-quiet-range' }, _('De'), ' ', qFrom, ' ', _('à'), ' ', qTo),
+			h('label', { class: 'wm-quiet-check' }, qWeekend, ' ', _('Et tout le week-end')),
+			h('label', { class: 'wm-quiet-check' }, qVip, ' ', _('Signaler quand même les messages des expéditeurs prioritaires')),
+			h('label', { class: 'wm-quiet-check' }, qReminders, ' ', _('Signaler quand même les rappels des réunions et des tâches')))
+		const quietInputs = [qOn, qFrom, qTo, qWeekend, qVip, qReminders]
+		quietInputs.forEach((i) => { i.disabled = true })
+		card.append(
+			h('label', { class: 'wm-quiet-check wm-quiet-on' }, qOn, ' ', '🌙 ' + _('Heures calmes')),
+			qMore,
+			h('p', { class: 'wm-muted' }, _('Pendant ces heures, la cloche de Nextcloud (et son application sur téléphone) ne signale plus les nouveaux messages. Ils vous attendent dans la boîte de réception.')))
+		const showQuiet = (q) => {
+			qOn.checked = q.on
+			qFrom.value = String(q.from)
+			qTo.value = String(q.to)
+			qWeekend.checked = q.weekend
+			qVip.checked = q.vip
+			qReminders.checked = q.reminders
+			qMore.hidden = !q.on
+			quietInputs.forEach((i) => { i.disabled = false })
+		}
+		const saveQuiet = async () => {
+			const quiet = { on: qOn.checked, from: Number(qFrom.value), to: Number(qTo.value), weekend: qWeekend.checked, vip: qVip.checked, reminders: qReminders.checked }
+			qMore.hidden = !quiet.on
+			quietInputs.forEach((i) => { i.disabled = true })
+			try {
+				const r = await api('/notify-settings', { method: 'POST', body: { quiet } })
+				showQuiet(r.quiet)
+				toast(r.quiet.on ? _('Heures calmes de {from} h à {to} h', { from: r.quiet.from, to: r.quiet.to }) : _('Heures calmes désactivées'))
+			} catch (e) { quietInputs.forEach((i) => { i.disabled = false }); toast(e.message, true) }
+		}
+		quietInputs.forEach((i) => i.addEventListener('change', saveQuiet))
 		const show = (r) => {
+			if (r.quiet) showQuiet(r.quiet)
 			clear(digest)
 			digest.appendChild(h('option', { value: '0' }, _('Désactivé')))
 			r.hours.forEach((n) => digest.appendChild(h('option', { value: String(n), selected: n === r.digestHour }, _('À {hour} h', { hour: n }))))

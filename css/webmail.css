@@ -1336,3 +1336,7 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-vip-btn.on { border-color: #e0b000; }
 .wm-vip-list { list-style: none; padding: 0; }
 .wm-vip-list .unread .wm-today-subject { font-weight: 700; }
+.wm-notify-settings .wm-quiet-check { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.wm-notify-settings .wm-quiet-on { font-weight: bold; margin-top: 12px; }
+.wm-quiet-more { margin-inline-start: 24px; }
+.wm-quiet-range select { width: auto; min-width: 5em; }

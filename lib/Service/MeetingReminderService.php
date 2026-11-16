@@ -35,6 +35,7 @@ class MeetingReminderService {
 		private ICacheFactory $cacheFactory,
 		private MatrixService $matrix,
 		private MeetingRoomService $rooms,
+		private QuietHoursService $quiet,
 	) {
 	}
 
@@ -193,7 +194,10 @@ class MeetingReminderService {
 					'subject' => mb_substr((string)$t['subject'], 0, 200),
 					'due' => (string)($t['due'] ?? ''),
 				]);
-			$this->notifications->notify($n);
+			// « Heures calmes » without the reminders: not told, and not later either
+			if (!$this->quiet->silences($userId, 'reminder', $now)) {
+				$this->notifications->notify($n);
+			}
 			$seen[$objectId] = (string)$t['reminder'];
 			$sent++;
 		}
@@ -269,7 +273,10 @@ class MeetingReminderService {
 					'location' => mb_substr((string)($ev['location'] ?? ''), 0, 200),
 					'join' => (string)($ev['join'] ?? ''),
 				]);
-			$this->notifications->notify($n);
+			// « Heures calmes » without the reminders: not told, and not later either
+			if (!$this->quiet->silences($userId, 'reminder', $now)) {
+				$this->notifications->notify($n);
+			}
 			$seen[$objectId] = (string)$ev['end'];
 			$sent++;
 		}

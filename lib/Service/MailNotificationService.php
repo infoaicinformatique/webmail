@@ -35,6 +35,7 @@ class MailNotificationService {
 		private LoggerInterface $logger,
 		private MatrixService $matrix,
 		private IFactory $l10n,
+		private QuietHoursService $quiet,
 	) {
 	}
 
@@ -197,6 +198,10 @@ class MailNotificationService {
 		$vip = VipList::has($vips, is_array($from) ? $from : null);
 		// the bell off: only the priority senders
 		if (!$vip && !$this->isEnabled($account->getUserId(), $account->getId())) {
+			return;
+		}
+		// « Heures calmes »: nothing, or only the priority senders
+		if ($this->quiet->silences($account->getUserId(), $vip ? 'vip' : 'message')) {
 			return;
 		}
 		$n = $this->notifications->createNotification();

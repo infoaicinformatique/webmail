@@ -1959,5 +1959,13 @@
 	"1 tâche à faire": "1 task to do",
 	"%s messages à suivre": "%s messages to follow up",
 	"1 message à suivre": "1 message to follow up",
-	"Votre journée": "Your day"
+	"Votre journée": "Your day",
+	"à": "to",
+	"Et tout le week-end": "And all weekend",
+	"Signaler quand même les messages des expéditeurs prioritaires": "Still tell the messages of priority senders",
+	"Signaler quand même les rappels des réunions et des tâches": "Still tell the reminders of meetings and tasks",
+	"Heures calmes": "Quiet hours",
+	"Pendant ces heures, la cloche de Nextcloud (et son application sur téléphone) ne signale plus les nouveaux messages. Ils vous attendent dans la boîte de réception.": "During these hours, Nextcloud's bell (and its phone app) no longer tells the new messages. They wait for you in the inbox.",
+	"Heures calmes de {from} h à {to} h": "Quiet hours from {from}:00 to {to}:00",
+	"Heures calmes désactivées": "Quiet hours off"
 }
