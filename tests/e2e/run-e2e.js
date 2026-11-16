@@ -1177,9 +1177,21 @@ async function main() {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		const container = (OCC.match(/docker exec(?:\s+-u\s+\S+)?\s+(\S+)\s+php occ/) || [])[1]
 		assert(container, 'container of the tests: ' + OCC)
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		const mail = await fake('/_test/deliver', { subject: 'Question pour l\'Assistant', sender: ['Paul Durand', 'paul.durand@societe-a.fr'], body: '<p>Bonjour Paul,</p><p>Peux-tu me confirmer la réunion de jeudi ?</p>', isRead: true })
 		const openMenu = async () => {
-			await page.click('.wm-message:has-text("Réunion de lundi")')
-			await page.waitForSelector('.wm-message-header h2:has-text("Réunion de lundi")')
+			await page.click('.wm-list button[title="Actualiser"]')
+			await page.click('.wm-message:has-text("Question pour l\'Assistant")')
+			await page.waitForSelector('.wm-message-header h2:has-text("Question pour l\'Assistant")')
 			await page.click('.wm-message-toolbar .wm-more-btn')
 			await page.waitForSelector('.wm-more-menu')
 		}
@@ -1209,7 +1221,7 @@ async function main() {
 			await page.click('.wm-more-menu .wm-ai-summary')
 			await page.waitForSelector('.wm-assistant-panel[data-kind=summary]:has-text("L\'Assistant travaille")')
 			work()
-			await page.waitForSelector('.wm-assistant-panel[data-kind=summary] .wm-assistant-output:has-text("RÉSUMÉ : Salut,")', { timeout: 20000 })
+			await page.waitForSelector('.wm-assistant-panel[data-kind=summary] .wm-assistant-output:has-text("RÉSUMÉ : Bonjour Paul,")', { timeout: 20000 })
 			// a reply proposed, then another one with a hint
 			await page.click('.wm-message-toolbar .wm-more-btn')
 			await page.click('.wm-more-menu .wm-ai-reply')
@@ -1225,8 +1237,9 @@ async function main() {
 			await page.click('.wm-message-toolbar .wm-more-btn')
 			await page.click('.wm-more-menu .wm-ai-translate')
 			work()
-			await page.waitForSelector('.wm-assistant-panel[data-kind=translate] .wm-assistant-output:has-text("[fr] Salut,")', { timeout: 20000 })
+			await page.waitForSelector('.wm-assistant-panel[data-kind=translate] .wm-assistant-output:has-text("[fr] Bonjour Paul,")', { timeout: 20000 })
 		} finally {
+			await fake('/_test/remove', { id: mail.id })
 			occ('app:disable webmail_testai')
 			execSync('docker exec ' + container + ' rm -rf /var/www/html/custom_apps/webmail_testai')
 			await page.goto(NC + '/apps/webmail/')
