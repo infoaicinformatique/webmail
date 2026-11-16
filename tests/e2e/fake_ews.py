@@ -1227,7 +1227,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/_test/remove':
                 MESSAGES.pop(data.get('id', ''), None)
                 return self.send(200, '{}', {'Content-Type': 'application/json'})
-            mid = add_message(data.get('folder', 'F-INBOX'), data['subject'], tuple(data['sender']), data['body'], 0, is_read=bool(data.get('isRead')))
+            mid = add_message(data.get('folder', 'F-INBOX'), data['subject'], tuple(data['sender']), data['body'], int(data.get('minutesAgo', 0)), is_read=bool(data.get('isRead')))
             return self.send(200, json.dumps({'id': mid}), {'Content-Type': 'application/json'})
         auth = self.headers.get('Authorization', '')
         user = None
