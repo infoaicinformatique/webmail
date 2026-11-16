@@ -56,6 +56,7 @@
 		<job>OCA\Webmail\BackgroundJob\AbsenceInvitationsJob</job>
 		<job>OCA\Webmail\BackgroundJob\UpdateCheckJob</job>
 		<job>OCA\Webmail\BackgroundJob\ArchiveJob</job>
+		<job>OCA\Webmail\BackgroundJob\MergeJob</job>
 	</background-jobs>
 	<settings>
 		<admin>OCA\Webmail\Settings\Admin</admin>
