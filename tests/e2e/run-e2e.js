@@ -1900,6 +1900,8 @@ async function main() {
 			await admin(true, 'fake.test')
 			await add()
 			await page.waitForFunction(() => [...document.querySelectorAll('.wm-account-select option')].some((o) => o.textContent === 'jean@societe-c.fr'))
+			// (the new account opens on its inbox: once shown, to the settings)
+			await page.waitForSelector('.wm-message')
 			await page.click('text=Comptes et signature')
 			await page.waitForSelector('.wm-domains-hint:has-text("Pour les autres, le serveur est cherché automatiquement")')
 			await page.goto(NC + '/settings/admin/webmail')
