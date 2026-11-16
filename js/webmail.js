@@ -2174,7 +2174,7 @@
 				h('td', { class: 'wm-muted' }, formatBytes(r.size)),
 				h('td', {}, from),
 				h('td', { class: 'wm-muted' }, r.date ? new Date(r.date).toLocaleDateString(locale(), { day: 'numeric', month: 'short', year: 'numeric' }) : ''),
-				h('td', {}, h('button', { type: 'button', class: 'wm-link-btn wm-files-open', title: _('Ouvrir le message'), onclick: () => { state.filesView = false; openMessage(r.messageId) } }, r.subject || _('(sans objet)'))))
+				h('td', {}, h('button', { type: 'button', class: 'wm-link-btn wm-files-open', title: _('Ouvrir le message'), onclick: () => openMessage(r.messageId) }, r.subject || _('(sans objet)'))))
 		}
 		const show = () => {
 			clear(body)
