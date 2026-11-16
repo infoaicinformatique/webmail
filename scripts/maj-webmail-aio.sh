@@ -224,8 +224,17 @@ fi
 info "occ upgrade…"
 if ! occ upgrade; then
 	echo
-	echo "« occ upgrade » a échoué. Pour revenir à la version d'avant :  sudo $0 --retour"
-	exit 1
+	# « occ upgrade » met aussi à jour d'autres apps (depuis l'App Store) : l'erreur peut venir d'elles
+	ENREGISTREE="$(occ app:list --enabled 2>/dev/null | sed -n 's/^ *- webmail: *//p' | head -n1)"
+	MAINTENANCE="$(occ status 2>/dev/null | sed -n 's/^ *- maintenance: *//p' | head -n1)"
+	if [ "$ENREGISTREE" = "$VERSION" ] && [ "$MAINTENANCE" = "false" ]; then
+		info "« occ upgrade » a signalé une erreur, mais Webmail Exchange $VERSION est bien installé et activé,"
+		info "et Nextcloud n'est pas en maintenance : l'erreur vient d'une autre app mise à jour en même temps"
+		info "(voir son nom juste au-dessus). Pas besoin de revenir à la version d'avant."
+	else
+		echo "« occ upgrade » a échoué. Pour revenir à la version d'avant :  sudo $0 --retour"
+		exit 1
+	fi
 fi
 occ app:enable webmail >/dev/null 2>&1 || true
 
