@@ -59,6 +59,7 @@
 		<job>OCA\Webmail\BackgroundJob\MergeJob</job>
 		<job>OCA\Webmail\BackgroundJob\AllowedSendersJob</job>
 		<job>OCA\Webmail\BackgroundJob\ReplyLaterJob</job>
+		<job>OCA\Webmail\BackgroundJob\DigestJob</job>
 	</background-jobs>
 	<settings>
 		<admin>OCA\Webmail\Settings\Admin</admin>

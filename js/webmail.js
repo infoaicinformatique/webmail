@@ -1436,6 +1436,42 @@
 	}
 
 	/**
+	 * « Notifications » of the settings, all accounts together: « Résumé du matin », the day
+	 * in one notification at the hour chosen.
+	 */
+	function notifySettingsCard() {
+		const digest = h('select', { name: 'digestHour', disabled: true }, h('option', { value: '0' }, _('Désactivé')))
+		const now = h('button', { type: 'button', class: 'wm-digest-now' }, _('Recevoir le résumé maintenant'))
+		const card = h('fieldset', { class: 'wm-account-card wm-notify-settings' },
+			h('legend', {}, _('Notifications')),
+			h('label', { class: 'wm-field' }, h('span', {}, '☀️ ' + _('Résumé du matin')), digest),
+			h('p', { class: 'wm-muted' }, _('Chaque jour à l\'heure choisie, une seule notification de Nextcloud résume votre journée, tous comptes réunis : les réunions, les messages non lus (dont les importants et ceux des expéditeurs prioritaires), les réponses à faire, les tâches et les messages à suivre. Un clic ouvre « Aujourd\'hui ».')),
+			h('p', {}, now))
+		const show = (r) => {
+			clear(digest)
+			digest.appendChild(h('option', { value: '0' }, _('Désactivé')))
+			r.hours.forEach((n) => digest.appendChild(h('option', { value: String(n), selected: n === r.digestHour }, _('À {hour} h', { hour: n }))))
+			digest.disabled = false
+		}
+		digest.addEventListener('change', async () => {
+			digest.disabled = true
+			try {
+				show(await api('/notify-settings', { method: 'POST', body: { digestHour: Number(digest.value) } }))
+				toast(digest.value === '0' ? _('Plus de résumé du matin') : _('Résumé du matin chaque jour à {hour} h', { hour: digest.value }))
+			} catch (e) { digest.disabled = false; toast(e.message, true) }
+		})
+		now.addEventListener('click', async () => {
+			now.disabled = true
+			try {
+				const r = await api('/notify-settings/digest-now', { method: 'POST' })
+				toast(r.sent ? _('Résumé envoyé : il est dans les notifications de Nextcloud') : _('Rien à signaler aujourd\'hui : pas de résumé'))
+			} catch (e) { toast(e.message, true) } finally { now.disabled = false }
+		})
+		api('/notify-settings').then(show, (e) => toast(e.message, true))
+		return card
+	}
+
+	/**
 	 * « Lettres d'information »: the mailing lists of the inbox, one row per sender (how many,
 	 * how heavy, how often opened); leave one and delete its messages, or keep it.
 	 */
@@ -7002,6 +7038,8 @@
 			}
 		}, (e) => toast(e.message, true))
 
+		wrap.appendChild(notifySettingsCard())
+
 		state.accounts.forEach((a) => {
 			const name = h('input', { type: 'text', value: a.displayName === a.email ? '' : a.displayName, placeholder: _('Nom affiché (facultatif)') })
 			const sig = signatureEditor(a.signature || '')
@@ -7292,6 +7330,7 @@
 		if (['calendar', 'contacts', 'tasks', 'mail'].includes(linkModule)) state.module = linkModule
 		else if (link.get('message') || link.get('mailto') || link.get('file')) state.module = 'mail'
 		const linkMessage = link.get('message')
+		const linkView = link.get('view')
 		const linkMailto = link.get('mailto')
 		const linkEvent = link.get('event')
 		const linkTask = link.get('task')
@@ -7309,6 +7348,8 @@
 		const first = state.accounts.find((a) => a.id === saved) || state.accounts[0]
 		await selectAccount(first.id)
 		if (linkMessage && state.module === 'mail') openMessage(linkMessage)
+		// ?view=today: « Résumé du matin » of the bell
+		if (linkView === 'today' && state.module === 'mail') openToday()
 		// ?mailto=…: a mailto: link of another site, the webmail being the browser's mail program
 		if (linkMailto && state.module === 'mail') openCompose('new', null, parseMailto(linkMailto))
 		if (linkFiles.length && state.module === 'mail') {
