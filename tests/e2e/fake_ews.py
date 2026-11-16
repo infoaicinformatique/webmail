@@ -784,8 +784,8 @@ def handle(op, el, user):
             elif el.findtext('m:ItemShape/t:IncludeMimeContent', default='', namespaces=NS) == 'true':
                 # the whole message, as an .eml (what Exchange gives with IncludeMimeContent)
                 msgs.append(ok(op, '<m:Items><t:Message><t:MimeContent CharacterSet="UTF-8">%s</t:MimeContent>'
-                                   '<t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject></t:Message></m:Items>'
-                               % (base64.b64encode(mime_of(m)).decode(), m['id'], m['ck'], esc(m['subject']))))
+                                   '<t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject><t:DateTimeReceived>%s</t:DateTimeReceived></t:Message></m:Items>'
+                               % (base64.b64encode(mime_of(m)).decode(), m['id'], m['ck'], esc(m['subject']), m['date'])))
             elif el.find('m:ItemShape/t:AdditionalProperties/t:ExtendedFieldURI[@PropertyTag="0x1081"]', NS) is not None:
                 # PR_LAST_VERB_EXECUTED: 102 replied, 103 replied to all
                 prop = ('<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0x1081" PropertyType="Integer"/><t:Value>%d</t:Value></t:ExtendedProperty>'
