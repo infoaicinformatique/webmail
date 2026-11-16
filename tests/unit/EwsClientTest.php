@@ -327,6 +327,18 @@ class EwsClientTest extends EwsTestCase {
 		$this->assertStringContainsString('<m:DeleteFolder DeleteType="HardDelete"><m:FolderIds><t:FolderId Id="OLD"/>', $deletes[0]);
 	}
 
+	public function testWhichMessagesWereAnswered(): void {
+		$item = fn (string $id, ?int $verb) => '<m:GetItemResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Items><t:Message><t:ItemId Id="' . $id . '" ChangeKey="c"/>'
+			. ($verb !== null ? '<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0x1081" PropertyType="Integer"/><t:Value>' . $verb . '</t:Value></t:ExtendedProperty>' : '')
+			. '</t:Message></m:Items></m:GetItemResponseMessage>';
+		$this->queue('<m:GetItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>'
+			. $item('A', 102) . $item('B', 103) . $item('C', 104) . $item('D', null)
+			. '<m:GetItemResponseMessage ResponseClass="Error"><m:MessageText>gone</m:MessageText><m:ResponseCode>ErrorItemNotFound</m:ResponseCode></m:GetItemResponseMessage>'
+			. '</m:ResponseMessages></m:GetItemResponse>');
+		$this->assertSame(['A' => true, 'B' => true, 'C' => false, 'D' => false], $this->client()->repliedTo(['A', 'B', 'C', 'D', 'GONE']), 'forwarded is no answer; a message gone is left out');
+		$this->assertStringContainsString('<t:ExtendedFieldURI PropertyTag="0x1081" PropertyType="Integer"/>', $this->lastRequest());
+	}
+
 	public function testExchangeFoldersAreProtected(): void {
 		$this->queue($this->roles());
 		try {

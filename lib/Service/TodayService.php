@@ -26,6 +26,7 @@ class TodayService {
 		private AccountMapper $mapper,
 		private AccountService $accounts,
 		private SnoozeService $snoozes,
+		private ReplyLaterService $replies,
 		private MatrixService $matrix,
 		private IConfig $config,
 		private LoggerInterface $logger,
@@ -48,7 +49,7 @@ class TodayService {
 		} catch (\Throwable) {
 			$visio = '';
 		}
-		$out = ['date' => $today, 'meetings' => [], 'tasks' => [], 'flagged' => [], 'snoozed' => [], 'failed' => []];
+		$out = ['date' => $today, 'meetings' => [], 'tasks' => [], 'flagged' => [], 'snoozed' => [], 'toReply' => [], 'failed' => []];
 		foreach ($this->mapper->findAllForUser($userId) as $account) {
 			try {
 				$client = $this->accounts->getClient($account);
@@ -56,6 +57,7 @@ class TodayService {
 				$out['tasks'] = array_merge($out['tasks'], $this->tasks($account, $client, $today));
 				$out['flagged'] = array_merge($out['flagged'], $this->flagged($account, $client, $today));
 				$out['snoozed'] = array_merge($out['snoozed'], $this->snoozed($account, $client, $now, $dayEnd));
+				$out['toReply'] = array_merge($out['toReply'], array_map(fn ($e) => self::account($account) + $e, $this->replies->forToday($account)));
 			} catch (\Throwable $e) {
 				$this->logger->info('Webmail: today of ' . $account->getEmail() . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
 				$out['failed'][] = $account->getEmail();
@@ -65,7 +67,8 @@ class TodayService {
 		usort($out['tasks'], fn ($a, $b) => strcmp((string)$a['due'], (string)$b['due']));
 		usort($out['flagged'], fn ($a, $b) => strcmp((string)$a['due'], (string)$b['due']));
 		usort($out['snoozed'], fn ($a, $b) => strcmp($a['until'], $b['until']));
-		foreach (['meetings', 'tasks', 'flagged', 'snoozed'] as $k) {
+		usort($out['toReply'], fn ($a, $b) => strcmp($a['until'], $b['until']));
+		foreach (['meetings', 'tasks', 'flagged', 'snoozed', 'toReply'] as $k) {
 			$out[$k] = array_slice($out[$k], 0, self::LIMIT);
 		}
 		return $out;

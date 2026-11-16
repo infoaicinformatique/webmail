@@ -776,6 +776,11 @@ def handle(op, el, user):
                 msgs.append(ok(op, '<m:Items><t:Message><t:MimeContent CharacterSet="UTF-8">%s</t:MimeContent>'
                                    '<t:ItemId Id="%s" ChangeKey="%s"/><t:Subject>%s</t:Subject></t:Message></m:Items>'
                                % (base64.b64encode(mime_of(m)).decode(), m['id'], m['ck'], esc(m['subject']))))
+            elif el.find('m:ItemShape/t:AdditionalProperties/t:ExtendedFieldURI[@PropertyTag="0x1081"]', NS) is not None:
+                # PR_LAST_VERB_EXECUTED: 102 replied, 103 replied to all
+                prop = ('<t:ExtendedProperty><t:ExtendedFieldURI PropertyTag="0x1081" PropertyType="Integer"/><t:Value>%d</t:Value></t:ExtendedProperty>'
+                        % m['last_verb']) if m.get('last_verb') else ''
+                msgs.append(ok(op, '<m:Items><t:Message><t:ItemId Id="%s" ChangeKey="%s"/>%s</t:Message></m:Items>' % (m['id'], m['ck'], prop)))
             elif el.find('m:ItemShape/t:AdditionalProperties/t:ExtendedFieldURI[@PropertyTag="0x007D"]', NS) is not None:
                 # the Internet headers (PR_TRANSPORT_MESSAGE_HEADERS): none for a message written in the mailbox
                 raw = headers_of(m)
@@ -970,6 +975,8 @@ def handle(op, el, user):
             to = recipients(it, 'ToRecipients')
             if tag in ('ReplyToItem', 'ReplyAllToItem'):
                 to = [ref['sender']] + to
+                if disposition != 'SaveOnly':
+                    ref['last_verb'] = 102 if tag == 'ReplyToItem' else 103
             if not to and disposition != 'SaveOnly':
                 msgs.append(err(op, 'ErrorInvalidRecipients', 'At least one recipient is required.'))
                 continue
