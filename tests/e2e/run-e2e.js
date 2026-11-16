@@ -817,7 +817,7 @@ async function main() {
 		await page.hover(row('Boîte de réception'))
 		await page.click(row('Boîte de réception') + ' .wm-folder-menu-btn')
 		const items = await page.$$eval('.wm-folder-menu button', (els) => els.map((e) => e.textContent))
-		assert.deepStrictEqual(items, ['★ Ajouter aux favoris', '＋ Nouveau sous-dossier', '📥 Importer des messages (.eml)…'])
+		assert.deepStrictEqual(items, ['★ Ajouter aux favoris', '＋ Nouveau sous-dossier', '📥 Importer des messages (.eml)…', '📦 Exporter (.zip)…'])
 		await page.keyboard.press('Escape')
 		await page.click(row('Boîte de réception') + ' .wm-folder')
 		await page.waitForSelector('.wm-message')
@@ -5569,6 +5569,48 @@ async function main() {
 			await page.goto(NC + '/apps/webmail/')
 			await page.waitForSelector('.wm-message')
 		}
+	})
+
+	await step('export a folder: its messages as .eml files in a .zip, downloaded or put into Files', async () => {
+		const row = (name) => '.wm-folder-row:has(.wm-folder-name:text-is("' + name + '"))'
+		const subjects = await (async () => {
+			await page.click(row('Clients') + ' .wm-folder')
+			await page.waitForSelector('.wm-message')
+			const total = await page.evaluate(() => document.querySelectorAll('.wm-messages .wm-message').length)
+			return total
+		})()
+		const openExport = async () => {
+			await page.hover(row('Clients'))
+			await page.click(row('Clients') + ' .wm-folder-menu-btn')
+			await page.click('.wm-folder-menu button:has-text("Exporter (.zip)")')
+			await page.waitForSelector('.wm-export-dialog')
+		}
+		await openExport()
+		assert.match(await page.textContent('.wm-export-dialog'), /\d+ messages?/)
+		await shot('124-export-folder')
+		const [download] = await Promise.all([page.waitForEvent('download'), page.click('.wm-export-download')])
+		assert.match(download.suggestedFilename(), /^Clients \(\d{4}-\d{2}-\d{2}\)\.zip$/)
+		await page.waitForSelector('.wm-toast:has-text("exporté")')
+		const list = execSync('unzip -Z1 ' + JSON.stringify(await download.path()), { encoding: 'utf8' }).trim().split('\n')
+		assert.ok(list.length >= subjects && list.every((n) => /^\d{4}-\d{2}-\d{2} \d{4} .+\.eml$/.test(n)), list.join(' | '))
+		// each one a message, named after its subject
+		const first = list[0]
+		const eml = execSync('unzip -p ' + JSON.stringify(await download.path()) + ' ' + JSON.stringify(first.replace(/[[\]*?]/g, '\\$&')), { encoding: 'utf8' })
+		assert.ok(/^Subject: /m.test(eml) && /^From: /m.test(eml), eml.slice(0, 300))
+		// into Files
+		await openExport()
+		await page.evaluate(() => { OC.dialogs.filepicker = (t, cb) => cb('/Exports webmail') })
+		await page.click('.wm-export-files')
+		await page.waitForSelector('.wm-toast:has-text("messages enregistrés dans /Exports webmail/Clients (")')
+		const path = (await page.textContent('.wm-toast:has-text("messages enregistrés dans")')).match(/\/Exports webmail\/[^]*?\.zip/)[0]
+		const size = await page.evaluate(async (p) => {
+			const r = await fetch('/remote.php/dav/files/admin' + p.split('/').map(encodeURIComponent).join('/'), { headers: { requesttoken: OC.requestToken } })
+			return r.ok ? (await r.arrayBuffer()).byteLength : -r.status
+		}, path)
+		assert.ok(size > 100, 'the .zip in Files: ' + size)
+		await page.evaluate(async () => {
+			await fetch('/remote.php/dav/files/admin/' + encodeURIComponent('Exports webmail'), { method: 'DELETE', headers: { requesttoken: OC.requestToken } })
+		})
 	})
 
 	await step('newsletters: the lists of the inbox by sender; one left and its messages deleted, another kept', async () => {

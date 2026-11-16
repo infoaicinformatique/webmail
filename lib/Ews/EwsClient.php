@@ -1327,6 +1327,65 @@ class EwsClient {
 	}
 
 	/**
+	 * The ids of a folder's messages, newest first, at most $max (« Exporter le dossier »).
+	 * @return list<string>
+	 * @throws MailException
+	 */
+	public function folderItemIds(string $folderId, int $max): array {
+		$ids = [];
+		for ($offset = 0; $offset < $max; $offset += 200) {
+			$xp = $this->request(
+				'<m:FindItem Traversal="Shallow">'
+				. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape></m:ItemShape>'
+				. '<m:IndexedPageItemView MaxEntriesReturned="' . min(200, $max - $offset) . '" Offset="' . $offset . '" BasePoint="Beginning"/>'
+				. self::sortOrderXml('date', true)
+				. '<m:ParentFolderIds>' . $this->folderIdXml($folderId) . '</m:ParentFolderIds>'
+				. '</m:FindItem>'
+			);
+			foreach ($xp->query('//m:RootFolder/t:Items/*/t:ItemId') as $n) {
+				$ids[] = $n->getAttribute('Id');
+			}
+			$root = $xp->query('//m:RootFolder')->item(0);
+			if (!$root instanceof \DOMElement || $root->getAttribute('IncludesLastItemInRange') !== 'false') {
+				break;
+			}
+		}
+		return array_slice(array_values(array_unique($ids)), 0, $max);
+	}
+
+	/**
+	 * Several messages as .eml in one request; those gone are left out.
+	 * @param list<string> $ids
+	 * @return list<array{id: string, subject: string, date: ?string, content: string}>
+	 * @throws MailException
+	 */
+	public function mimes(array $ids): array {
+		if ($ids === []) {
+			return [];
+		}
+		$xp = $this->request(
+			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:IncludeMimeContent>true</t:IncludeMimeContent>'
+			. '<t:AdditionalProperties><t:FieldURI FieldURI="item:Subject"/><t:FieldURI FieldURI="item:DateTimeReceived"/></t:AdditionalProperties></m:ItemShape>'
+			. '<m:ItemIds>' . $this->itemIdsXml($ids) . '</m:ItemIds></m:GetItem>',
+			false
+		);
+		$out = [];
+		foreach ($xp->query('//m:GetItemResponseMessage[@ResponseClass="Success"]/m:Items/*') as $item) {
+			$mime = (string)$this->text($xp, 't:MimeContent', $item);
+			if ($mime === '') {
+				continue;
+			}
+			$out[] = [
+				'id' => (string)$this->attr($xp, 't:ItemId', 'Id', $item),
+				'subject' => trim((string)$this->text($xp, 't:Subject', $item)),
+				'date' => $this->text($xp, 't:DateTimeReceived', $item),
+				'content' => (string)base64_decode($mime),
+			];
+		}
+		return $out;
+	}
+
+	/**
 	 * The Internet headers of a message (PR_TRANSPORT_MESSAGE_HEADERS, 0x007D): who sent it through
 	 * which servers, and the SPF / DKIM / DMARC checks. None for a message written in the mailbox.
 	 *

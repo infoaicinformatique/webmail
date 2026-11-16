@@ -1967,5 +1967,17 @@
 	"Heures calmes": "Quiet hours",
 	"Pendant ces heures, la cloche de Nextcloud (et son application sur téléphone) ne signale plus les nouveaux messages. Ils vous attendent dans la boîte de réception.": "During these hours, Nextcloud's bell (and its phone app) no longer tells the new messages. They wait for you in the inbox.",
 	"Heures calmes de {from} h à {to} h": "Quiet hours from {from}:00 to {to}:00",
-	"Heures calmes désactivées": "Quiet hours off"
+	"Heures calmes désactivées": "Quiet hours off",
+	"Exporter (.zip)…": "Export (.zip)…",
+	"Exporter « {name} »": "Export “{name}”",
+	"Enregistrer dans Fichiers…": "Save in Files…",
+	"Préparation du fichier .zip… Cela peut prendre un moment pour un gros dossier.": "Preparing the .zip file… This may take a while for a large folder.",
+	"L'export a échoué": "The export failed",
+	"{count} messages exportés": "{count} messages exported",
+	"{count} message exporté": "{count} message exported",
+	"{count} messages enregistrés dans {path}": "{count} messages saved in {path}",
+	"(les {max} plus récents)": "(the {max} most recent)",
+	"Un fichier .zip avec un fichier .eml par message, que lisent Outlook, Thunderbird et la plupart des logiciels de messagerie. Les messages restent dans le dossier, et ses sous-dossiers ne sont pas inclus.": "A .zip file with one .eml file per message, which Outlook, Thunderbird and most mail programs read. The messages stay in the folder, and its subfolders are not included.",
+	"Les {max} messages les plus récents seulement.": "Only the {max} most recent messages.",
+	"Ce dossier est vide": "This folder is empty"
 }
