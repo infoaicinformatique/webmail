@@ -142,14 +142,16 @@ async function main() {
 			assert.ok((await page.textContent('#webmail-update')).includes('sudo maj-webmail --auto'))
 			await page.locator('#webmail-update').scrollIntoViewIfNeeded()
 			await shot('01c-admin-update')
-			// told to the administrators: on by default, kept when unticked
-			assert(await page.isChecked('#webmail-update-notify'))
-			await page.click('label[for=webmail-update-notify]')
-			await page.waitForFunction(async () => {
+			// told to the administrators (a setting kept on the server): unticked, then ticked again
+			const notifyIs = (v) => page.waitForFunction(async (v) => {
 				const r = await fetch(OC.generateUrl('/apps/webmail/api/admin/update'), { headers: { requesttoken: OC.requestToken } })
-				return (await r.json()).notify === false
-			})
+				return (await r.json()).notify === v
+			}, v)
+			const before = await page.isChecked('#webmail-update-notify')
 			await page.click('label[for=webmail-update-notify]')
+			await notifyIs(!before)
+			await page.click('label[for=webmail-update-notify]')
+			await notifyIs(before)
 		} finally {
 			occ('config:system:delete webmail_update_url')
 			// (the list kept by the check forgotten)
