@@ -847,6 +847,63 @@ async function main() {
 		await page.waitForSelector(msg(12))
 	})
 
+	await step('blocked and allowed senders: the lists (also filled by « Indésirable »), kept by Exchange as two rules acting on arrival', async () => {
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		const where = (subject) => page.evaluate(async (subject) => {
+			const headers = { requesttoken: OC.requestToken }
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			for (const folder of ['inbox', 'junkemail']) {
+				const r = await (await fetch('/apps/webmail/api/accounts/' + id + '/messages?folder=' + folder, { headers })).json()
+				if (r.items.some((m) => m.subject === subject)) return folder
+			}
+			return null
+		}, subject)
+		await page.click('text=Comptes et signature')
+		const card = '.wm-sender-lists'
+		await page.waitForSelector(card)
+		// the sender put in the junk mail, then trusted again (step before): in the allowed list
+		await page.waitForSelector(card + ' .wm-sender-list[data-kind=allowed] li[data-entry="news@exemple.org"]')
+		// a whole domain blocked, one address of it allowed
+		await page.fill(card + ' input[name=senderEntry]', 'promo-exemple.com')
+		await page.click(card + ' .wm-sender-block')
+		await page.waitForSelector(card + ' .wm-sender-list[data-kind=blocked] li[data-entry="@promo-exemple.com"]:has-text("Tout le domaine promo-exemple.com")')
+		await page.fill(card + ' input[name=senderEntry]', 'Service client <contact@promo-exemple.com>')
+		await page.click(card + ' .wm-sender-allow')
+		await page.waitForSelector(card + ' .wm-sender-list[data-kind=allowed] li[data-entry="contact@promo-exemple.com"]')
+		await shot('115-sender-lists')
+		const made = []
+		try {
+			made.push(await fake('/_test/deliver', { subject: 'Soldes flash -70 %', sender: ['Promo', 'offres@promo-exemple.com'], body: '<p>Promo.</p>', rules: true }))
+			made.push(await fake('/_test/deliver', { subject: 'Votre commande 7781', sender: ['Service client', 'contact@promo-exemple.com'], body: '<p>Commande.</p>', rules: true }))
+			assert.strictEqual(await where('Soldes flash -70 %'), 'junkemail')
+			assert.strictEqual(await where('Votre commande 7781'), 'inbox')
+		} finally {
+			for (const m of made) await fake('/_test/remove', { id: m.id })
+		}
+		// lists emptied: the rules of Exchange taken away
+		for (const [kind, e] of [['blocked', '@promo-exemple.com'], ['allowed', 'contact@promo-exemple.com'], ['allowed', 'news@exemple.org']]) {
+			await page.click(card + ' .wm-sender-list[data-kind=' + kind + '] li[data-entry="' + e + '"] .wm-sender-remove')
+			await page.waitForFunction((sel) => !document.querySelector(sel), card + ' .wm-sender-list[data-kind=' + kind + '] li[data-entry="' + e + '"]')
+		}
+		const left = await page.evaluate(async () => {
+			const headers = { requesttoken: OC.requestToken }
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			return (await (await fetch('/apps/webmail/api/accounts/' + id + '/rules', { headers })).json()).rules.filter((r) => r.name.startsWith('Webmail :')).map((r) => r.name)
+		})
+		assert.deepStrictEqual(left, [])
+	})
+
 	await step('send options: later delivery, read receipt; printing', async () => {
 		await page.click('.wm-compose-btn')
 		await page.fill('input[name=to]', 'client@exemple.fr')

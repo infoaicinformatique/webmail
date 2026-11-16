@@ -35,6 +35,8 @@ return [
 		['name' => 'mail#addMailbox', 'url' => '/api/accounts/{id}/mailboxes', 'verb' => 'POST'],
 		['name' => 'mail#removeMailbox', 'url' => '/api/accounts/{id}/mailboxes/delete', 'verb' => 'POST'],
 		['name' => 'mail#messages', 'url' => '/api/accounts/{id}/messages', 'verb' => 'GET'],
+		['name' => 'sender_list#index', 'url' => '/api/accounts/{id}/sender-lists', 'verb' => 'GET'],
+		['name' => 'sender_list#change', 'url' => '/api/accounts/{id}/sender-lists', 'verb' => 'POST'],
 		['name' => 'assistant#capabilities', 'url' => '/api/assistant', 'verb' => 'GET'],
 		['name' => 'assistant#start', 'url' => '/api/accounts/{id}/assistant', 'verb' => 'POST'],
 		['name' => 'assistant#result', 'url' => '/api/assistant/{taskId}', 'verb' => 'GET'],

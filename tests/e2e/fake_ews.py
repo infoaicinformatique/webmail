@@ -1226,6 +1226,9 @@ class Handler(BaseHTTPRequestHandler):
                 MESSAGES.pop(data.get('id', ''), None)
                 return self.send(200, '{}', {'Content-Type': 'application/json'})
             mid = add_message(data.get('folder', 'F-INBOX'), data['subject'], tuple(data['sender']), data['body'], int(data.get('minutesAgo', 0)), is_read=bool(data.get('isRead')))
+            if data.get('rules'):
+                # (as on its arrival: the rules of the inbox run on it)
+                rules.apply('user@societe-a.fr', MESSAGES[mid], lambda msg, folder: move_message(msg['id'], folder))
             return self.send(200, json.dumps({'id': mid}), {'Content-Type': 'application/json'})
         auth = self.headers.get('Authorization', '')
         user = None

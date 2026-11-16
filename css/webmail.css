@@ -1310,3 +1310,11 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-message.wm-context { outline: 2px solid var(--color-primary-element); outline-offset: -2px; }
 .wm-move-menu .wm-move-filter { width: 100%; box-sizing: border-box; margin: 4px 0; }
 .wm-move-menu .wm-move-list { max-height: 50vh; overflow: auto; }
+
+/* « Expéditeurs bloqués et autorisés » */
+.wm-sender-add { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.wm-sender-add input { flex: 1 1 220px; min-width: 0; }
+.wm-sender-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.wm-sender-columns h4 { margin: 6px 0 2px; }
+.wm-sender-list { list-style: none; padding: 0; margin: 0; max-height: 240px; overflow: auto; }
+.wm-sender-list li { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 2px 0; }

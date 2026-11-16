@@ -58,6 +58,7 @@ class MailController extends Controller {
 		private ServerConfigService $serverConfig,
 		private \OCP\IUserManager $userManager,
 		private \OCP\IConfig $config,
+		private \OCA\Webmail\Service\SenderListService $senderLists,
 		private ?string $userId,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -764,8 +765,27 @@ class MailController extends Controller {
 	#[NoAdminRequired]
 	public function junk(int $id, array $itemIds, bool $junk): Response {
 		return $this->handle(function () use ($id, $itemIds, $junk) {
-			$this->client($id)->markAsJunk($itemIds, $junk);
+			$client = $this->client($id);
+			// (their senders, read before they move)
+			$senders = [];
+			try {
+				foreach ($client->summaries($itemIds) as $m) {
+					$senders[] = (string)($m['from']['email'] ?? '');
+				}
+			} catch (\Throwable $e) {
+				$this->logger->debug('Webmail: senders of junk not read', ['app' => Application::APP_ID, 'exception' => $e]);
+			}
+			$client->markAsJunk($itemIds, $junk);
 			$this->dismiss($itemIds);
+			// shown in « Expéditeurs bloqués et autorisés » (Exchange's own lists cannot be read)
+			$senders = array_values(array_filter(array_unique($senders), fn ($e) => filter_var($e, FILTER_VALIDATE_EMAIL)));
+			if ($senders !== []) {
+				try {
+					$this->senderLists->change($this->accounts->find((string)$this->userId, $id), $junk ? 'blocked' : 'allowed', $senders);
+				} catch (\Throwable $e) {
+					$this->logger->info('Webmail: sender lists not changed: ' . $e->getMessage(), ['app' => Application::APP_ID]);
+				}
+			}
 			return ['status' => 'ok'];
 		});
 	}
