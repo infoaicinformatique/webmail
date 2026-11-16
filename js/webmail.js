@@ -1574,6 +1574,123 @@
 		loadMessages(true)
 	}
 
+	/**
+	 * The menu of a message of the list (right-click): the usual actions with their keys.
+	 * On a message among several ticked: the actions on all of them.
+	 */
+	function messageContextMenu(e, m, li) {
+		document.querySelectorAll('.wm-cat-menu').forEach((x) => x.remove())
+		const role = folderRole()
+		const many = state.checked.has(m.id) && state.checked.size > 1
+		const ids = many ? [...state.checked] : [m.id]
+		li.classList.add('wm-context')
+		const menu = h('div', { class: 'wm-cat-menu wm-more-menu wm-context-menu', role: 'menu', 'aria-label': many ? _('{count} messages sélectionnés', { count: ids.length }) : _('Actions sur le message') })
+		const close = () => {
+			menu.remove(); li.classList.remove('wm-context')
+			document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', keys, true)
+			window.removeEventListener('blur', close); listEl.removeEventListener('scroll', close)
+		}
+		const outside = (ev) => { if (!menu.contains(ev.target)) close() }
+		const keys = (ev) => {
+			if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); close(); li.focus(); return }
+			if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+				ev.preventDefault()
+				const list = [...menu.querySelectorAll('[role=menuitem]')]
+				const i = list.indexOf(document.activeElement)
+				list[(i + (ev.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length].focus()
+			}
+		}
+		document.addEventListener('mousedown', outside, true)
+		document.addEventListener('keydown', keys, true)
+		window.addEventListener('blur', close)
+		listEl.addEventListener('scroll', close)
+		// (the full message, for the answers: opened first)
+		const full = async (then) => {
+			if (!state.current || state.current.id !== m.id) await openMessage(m.id)
+			if (state.current && state.current.id === m.id) then(state.current)
+		}
+		const item = (cls, icon, label, key, action, danger) => h('button', {
+			type: 'button', role: 'menuitem', class: 'wm-menu-item ' + cls + (danger ? ' wm-danger' : ''),
+			onclick: () => { close(); action() },
+		}, h('span', { class: 'wm-menu-icon', 'aria-hidden': 'true' }, icon), h('span', { class: 'wm-menu-label' }, label), key ? h('kbd', { class: 'wm-menu-key' }, key) : null)
+		const sep = () => h('div', { class: 'wm-menu-sep', role: 'separator' })
+		const list = state.messages.filter((x) => ids.includes(x.id))
+		const allRead = list.every((x) => x.isRead)
+		const allFlagged = list.every((x) => x.flagged)
+		const notJunkable = ['sentitems', 'drafts', 'deleteditems'].includes(role)
+		const parts = []
+		if (many) {
+			parts.push(h('div', { class: 'wm-cat-title' }, _('{count} messages sélectionnés', { count: ids.length })))
+		} else {
+			parts.push(
+				item('wm-ctx-reply', '↩', _('Répondre'), 'R', () => full((x) => openCompose('reply', x))),
+				item('wm-ctx-reply-all', '↩↩', _('Répondre à tous'), 'A', () => full((x) => openCompose('replyAll', x))),
+				item('wm-ctx-forward', '↪', _('Transférer'), 'F', () => full((x) => openCompose('forward', x))),
+				sep())
+		}
+		parts.push(
+			item('wm-ctx-read', allRead ? '✉' : '✓', allRead ? _('Marquer comme non lu') : _('Marquer comme lu'), many ? null : 'U', () => setReadMany(ids, !allRead)),
+			item('wm-ctx-flag', '⚑', allFlagged ? _('Retirer le suivi') : _('Assurer un suivi'), many ? null : 'S', () => setFlagMany(ids)),
+			item('wm-ctx-cat', '🏷', _('Catégoriser…'), null, () => categoryMenu(li, () => state.messages.filter((x) => ids.includes(x.id)))))
+		if (!many) {
+			const pinned = state.pinned.has(m.id)
+			parts.push(item('wm-ctx-pin', '📌', pinned ? _('Désépingler') : _('Épingler en haut du dossier'), null, () => togglePin(m)))
+			if (role === 'inbox') parts.push(item('wm-ctx-snooze', '⏰', _('Reporter…'), null, () => snoozeMenu(li, m)))
+		}
+		parts.push(sep())
+		if (canArchive(role)) parts.push(item('wm-ctx-archive', '🗄', _('Archiver'), 'E', () => archiveMessages(ids)))
+		parts.push(item('wm-ctx-move', '📁', _('Déplacer vers…'), null, () => moveMenu(li, ids)))
+		if (!many && m.from && m.from.email && !m.from.email.startsWith('/')) {
+			parts.push(item('wm-ctx-sender', '👤', _('Tous ses messages…'), null, () => senderMessages(m)))
+		}
+		if (!notJunkable) {
+			parts.push(role === 'junkemail'
+				? item('wm-ctx-junk', '✔', _('Pas indésirable'), null, () => markJunk(ids, false))
+				: item('wm-ctx-junk', '⛔', _('Indésirable'), null, () => markJunk(ids, true)))
+		}
+		parts.push(item('wm-ctx-delete', '🗑', role === 'deleteditems' ? _('Supprimer définitivement') : _('Supprimer'), _('Suppr'), () => deleteMessages(ids, role === 'deleteditems'), true))
+		menu.append(...parts)
+		document.body.appendChild(menu)
+		// at the pointer (from the keyboard: under the message), inside the window
+		const r = li.getBoundingClientRect()
+		const x = e.clientX || r.left + 24
+		const y = e.clientY || r.bottom
+		menu.style.left = Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8)) + 'px'
+		menu.style.top = Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8)) + 'px'
+		const first = menu.querySelector('[role=menuitem]')
+		if (first) first.focus({ preventScroll: true })
+	}
+
+	/** « Déplacer vers… »: the folders, found by a few letters. */
+	function moveMenu(anchor, ids) {
+		document.querySelectorAll('.wm-cat-menu').forEach((x) => x.remove())
+		const menu = h('div', { class: 'wm-cat-menu wm-more-menu wm-move-menu', role: 'dialog', 'aria-label': _('Déplacer vers') })
+		const close = () => { menu.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', esc, true) }
+		const outside = (e) => { if (!menu.contains(e.target)) close() }
+		const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close() } }
+		document.addEventListener('mousedown', outside, true)
+		document.addEventListener('keydown', esc, true)
+		const filter = h('input', { type: 'search', class: 'wm-move-filter', placeholder: _('Rechercher un dossier'), 'aria-label': _('Rechercher un dossier') })
+		const box = h('div', { class: 'wm-move-list' })
+		const fill = () => {
+			clear(box)
+			const q = fold(filter.value.trim())
+			moveTargets().filter((f) => !q || fold(f.name).includes(q)).forEach((f) => box.appendChild(h('button', {
+				type: 'button', class: 'wm-menu-item', dataset: { folderId: f.id },
+				onclick: () => { close(); moveMessages(ids, f.id) },
+			}, h('span', { class: 'wm-menu-icon', 'aria-hidden': 'true' }, ROLE_ICON[f.role] || '📁'), h('span', {}, f.name))))
+		}
+		filter.addEventListener('input', fill)
+		filter.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const b = box.querySelector('button'); if (b) b.click() } })
+		fill()
+		menu.append(h('div', { class: 'wm-cat-title' }, ids.length > 1 ? _('Déplacer {count} messages vers', { count: ids.length }) : _('Déplacer vers')), filter, box)
+		document.body.appendChild(menu)
+		const r = anchor.getBoundingClientRect()
+		menu.style.left = Math.max(8, Math.min(r.left + 24, window.innerWidth - menu.offsetWidth - 8)) + 'px'
+		menu.style.top = Math.max(8, Math.min(r.bottom, window.innerHeight - menu.offsetHeight - 8)) + 'px'
+		filter.focus()
+	}
+
 	/** « Épingler » / « Désépingler »: at the top of its folder, whatever the order. */
 	async function togglePin(m) {
 		const pinned = !state.pinned.has(m.id)
@@ -2175,7 +2292,7 @@
 				h('td', { class: 'wm-muted' }, formatBytes(r.size)),
 				h('td', {}, from),
 				h('td', { class: 'wm-muted' }, r.date ? new Date(r.date).toLocaleDateString(locale(), { day: 'numeric', month: 'short', year: 'numeric' }) : ''),
-				h('td', {}, h('button', { type: 'button', class: 'wm-link-btn wm-files-open', title: _('Ouvrir le message'), onclick: () => { state.filesView = false; openMessage(r.messageId) } }, r.subject || _('(sans objet)'))))
+				h('td', {}, h('button', { type: 'button', class: 'wm-link-btn wm-files-open', title: _('Ouvrir le message'), onclick: () => openMessage(r.messageId) }, r.subject || _('(sans objet)'))))
 		}
 		const show = () => {
 			clear(body)
@@ -2487,6 +2604,8 @@
 				tabindex: '0',
 				draggable: conv ? 'false' : 'true',
 				dataset: { id: m.id },
+				// right-click (or the menu key): the usual actions on it, or on the messages ticked
+				oncontextmenu: conv ? null : (e) => { e.preventDefault(); messageContextMenu(e, m, e.currentTarget) },
 				onclick: (e) => {
 					// (the end of a swipe is not a click)
 					if (e.currentTarget.dataset.swiped) return
@@ -6513,8 +6632,8 @@
 					if (!navEl || !root.contains(navEl)) buildLayout()
 					await selectAccount(acc.id)
 					startBackground()
-					// unless another account or a message was opened meanwhile
-					if (state.accountId === acc.id && !state.selectedId && state.module === 'mail') {
+					// unless another account, a message or the settings were opened meanwhile
+					if (state.accountId === acc.id && !state.selectedId && state.module === 'mail' && (!detailEl.firstChild || detailEl.querySelector('.wm-empty-detail'))) {
 						renderEmptyDetail()
 						setView('list')
 					}

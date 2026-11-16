@@ -1821,5 +1821,13 @@
 	"Envoi introuvable": "Sending not found",
 	"Envoi personnalisé terminé : %s": "Personalised sending done: %s",
 	"%1$s messages envoyés, %2$s en échec": "%1$s messages sent, %2$s failed",
-	"%s messages envoyés": "%s messages sent"
+	"%s messages envoyés": "%s messages sent",
+	"{count} messages sélectionnés": "{count} messages selected",
+	"Actions sur le message": "Message actions",
+	"Catégoriser…": "Categorise…",
+	"Épingler en haut du dossier": "Pin at the top of the folder",
+	"Reporter…": "Snooze…",
+	"Rechercher un dossier": "Find a folder",
+	"Déplacer {count} messages vers": "Move {count} messages to",
+	"Marquer comme lu": "Mark as read"
 }
