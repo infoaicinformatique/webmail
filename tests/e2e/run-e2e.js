@@ -5013,7 +5013,14 @@ async function main() {
 		occ('app:enable deck')
 		occ('config:app:delete deck test_cards')
 		try {
-			await page.goto(NC + '/apps/webmail/')
+			// (Nextcloud may keep the list of its apps for a while: the page opened again until Deck is there)
+			for (let i = 0; ; i++) {
+				await page.goto(NC + '/apps/webmail/')
+				await page.waitForSelector('.wm-message')
+				if (await page.$eval('#webmail-app', (e) => e.dataset.deck === '1')) break
+				assert.ok(i < 24, 'Deck seen once enabled')
+				await page.waitForTimeout(5000)
+			}
 			await openIt()
 			await more('.wm-deck-btn')
 			await page.waitForSelector('.wm-deck-dialog select[name=stack]:not([disabled])')
