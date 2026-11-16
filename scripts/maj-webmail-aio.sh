@@ -207,6 +207,17 @@ ok "Empreinte vérifiée : $(cut -d' ' -f1 "$TMP/$ARCHIVE.sha256")"
 DANS_ARCHIVE="$(tar -xzOf "$TMP/$ARCHIVE" webmail/appinfo/info.xml | sed -n 's:.*<version>\(.*\)</version>.*:\1:p' | head -n1)"
 [ "$DANS_ARCHIVE" = "$VERSION" ] || erreur "l'archive annonce la version '$DANS_ARCHIVE' au lieu de $VERSION"
 
+# le script lui-même, à jour avec la version (celui joint à sa release) : dès maintenant,
+# même si la suite (occ upgrade) signale une erreur
+MOI="$(readlink -f "$0")"
+if [ -w "$MOI" ] && curl -fsSL -o "$TMP/maj-webmail-aio.sh" "$BASE/maj-webmail-aio.sh" 2>/dev/null \
+	&& bash -n "$TMP/maj-webmail-aio.sh" && head -n1 "$TMP/maj-webmail-aio.sh" | grep -q '^#!/bin/bash' \
+	&& ! cmp -s "$TMP/maj-webmail-aio.sh" "$MOI"; then
+	# (à côté puis renommé : le script en cours continue de lire l'ancien fichier)
+	install -m 755 "$TMP/maj-webmail-aio.sh" "$MOI.nouveau" && mv -f "$MOI.nouveau" "$MOI" \
+		&& info "Script de mise à jour remis à jour ($MOI)."
+fi
+
 SAUVEGARDE=""
 if [ -n "$ACTUELLE" ]; then
 	SAUVEGARDE="$SAUVEGARDES/webmail-$ACTUELLE-$(date +%Y%m%d-%H%M%S).tar.gz"
@@ -240,10 +251,3 @@ occ app:enable webmail >/dev/null 2>&1 || true
 
 ok "Webmail Exchange $(version_en_place) installé."
 
-# le script lui-même, à jour avec la version (celui joint à sa release)
-MOI="$(readlink -f "$0")"
-if [ -w "$MOI" ] && curl -fsSL -o "$TMP/maj-webmail-aio.sh" "$BASE/maj-webmail-aio.sh" 2>/dev/null \
-	&& bash -n "$TMP/maj-webmail-aio.sh" && head -n1 "$TMP/maj-webmail-aio.sh" | grep -q '^#!/bin/bash' \
-	&& ! cmp -s "$TMP/maj-webmail-aio.sh" "$MOI"; then
-	install -m 755 "$TMP/maj-webmail-aio.sh" "$MOI" && info "Script de mise à jour remis à jour ($MOI)."
-fi
