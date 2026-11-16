@@ -1294,3 +1294,11 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-merge-reports { list-style: none; padding: 0; }
 .wm-merge-report { padding: 4px 0; }
 .wm-merge-failed { color: var(--color-error-text, #c9190b); }
+
+/* the Assistant of Nextcloud on a message */
+.wm-assistant-panel { margin: 8px 16px; padding: 10px 14px; border: 1px solid var(--color-primary-element-light, var(--color-border)); border-radius: var(--border-radius-large, 8px); background: var(--color-primary-element-light, var(--color-background-hover)); }
+.wm-assistant-head { display: flex; align-items: center; gap: 8px; }
+.wm-assistant-head .wm-icon-btn { margin-inline-start: auto; }
+.wm-assistant-output p { margin: 6px 0; white-space: pre-wrap; }
+.wm-assistant-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.wm-assistant-hint { flex: 1 1 200px; min-width: 0; }

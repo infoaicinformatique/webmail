@@ -1173,6 +1173,67 @@ async function main() {
 		assert.ok(bell.length >= 1 && bell[0].message.startsWith('2 messages envoyés'), JSON.stringify(bell))
 	})
 
+	await step('Assistant of Nextcloud: nothing without an AI; with one, a summary, a reply proposed, a translation', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const container = (OCC.match(/docker exec(?:\s+-u\s+\S+)?\s+(\S+)\s+php occ/) || [])[1]
+		assert(container, 'container of the tests: ' + OCC)
+		const openMenu = async () => {
+			await page.click('.wm-message:has-text("Réunion de lundi")')
+			await page.waitForSelector('.wm-message-header h2:has-text("Réunion de lundi")')
+			await page.click('.wm-message-toolbar .wm-more-btn')
+			await page.waitForSelector('.wm-more-menu')
+		}
+		const work = () => occ("background-job:worker 'OC\\TaskProcessing\\SynchronousBackgroundJob' --once")
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		// no AI in this Nextcloud: no « Assistant » in the menu
+		await openMenu()
+		assert.ok(!(await page.$('.wm-more-menu .wm-ai-summary')), 'no Assistant without an AI')
+		await page.keyboard.press('Escape')
+		// a fake AI (answers known in advance), for this test only
+		execSync('docker cp ' + require('path').join(__dirname, 'testai') + ' ' + container + ':/var/www/html/custom_apps/webmail_testai')
+		execSync('docker exec ' + container + ' chown -R www-data:www-data /var/www/html/custom_apps/webmail_testai')
+		occ('app:enable webmail_testai')
+		try {
+			await page.goto(NC + '/apps/webmail/')
+			await page.waitForSelector('.wm-message')
+			await page.waitForFunction(async () => {
+				const r = await fetch(OC.generateUrl('/apps/webmail/api/assistant'), { headers: { requesttoken: OC.requestToken } })
+				const c = await r.json()
+				return c.summary && c.reply && c.translate
+			})
+			await page.goto(NC + '/apps/webmail/')
+			await page.waitForSelector('.wm-message')
+			await openMenu()
+			await shot('112-assistant-menu')
+			await page.click('.wm-more-menu .wm-ai-summary')
+			await page.waitForSelector('.wm-assistant-panel[data-kind=summary]:has-text("L\'Assistant travaille")')
+			work()
+			await page.waitForSelector('.wm-assistant-panel[data-kind=summary] .wm-assistant-output:has-text("RÉSUMÉ : Salut,")', { timeout: 20000 })
+			// a reply proposed, then another one with a hint
+			await page.click('.wm-message-toolbar .wm-more-btn')
+			await page.click('.wm-more-menu .wm-ai-reply')
+			work()
+			await page.waitForSelector('.wm-assistant-panel[data-kind=reply] .wm-assistant-output:has-text("merci pour votre message")', { timeout: 20000 })
+			await page.waitForSelector('.wm-assistant-panel .wm-assistant-use')
+			await shot('113-assistant-reply')
+			await page.fill('.wm-assistant-hint', 'accepter')
+			await page.click('.wm-assistant-panel button:has-text("Autre proposition")')
+			work()
+			await page.waitForSelector('.wm-assistant-panel[data-kind=reply] .wm-assistant-output:has-text("(avec consigne)")', { timeout: 20000 })
+			// translated into the language of the page
+			await page.click('.wm-message-toolbar .wm-more-btn')
+			await page.click('.wm-more-menu .wm-ai-translate')
+			work()
+			await page.waitForSelector('.wm-assistant-panel[data-kind=translate] .wm-assistant-output:has-text("[fr] Salut,")', { timeout: 20000 })
+		} finally {
+			occ('app:disable webmail_testai')
+			execSync('docker exec ' + container + ' rm -rf /var/www/html/custom_apps/webmail_testai')
+			await page.goto(NC + '/apps/webmail/')
+			await page.waitForSelector('.wm-message')
+		}
+	})
+
 	await step('saved searches: kept under a name, in the side pane with their unread messages, opened again, deleted', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)
