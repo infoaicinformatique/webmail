@@ -1847,5 +1847,13 @@
 	"Rédige une réponse courte et polie à ce message, dans la langue du message, sans objet ni signature.": "Write a short and polite reply to this message, in the language of the message, without subject nor signature.",
 	"Consignes : %s": "Instructions: %s",
 	"Objet : %s": "Subject: %s",
-	"Demande à l'Assistant introuvable": "Request to the Assistant not found"
+	"Demande à l'Assistant introuvable": "Request to the Assistant not found",
+	"{count} messages sélectionnés": "{count} messages selected",
+	"Actions sur le message": "Message actions",
+	"Catégoriser…": "Categorise…",
+	"Épingler en haut du dossier": "Pin at the top of the folder",
+	"Reporter…": "Snooze…",
+	"Rechercher un dossier": "Find a folder",
+	"Déplacer {count} messages vers": "Move {count} messages to",
+	"Marquer comme lu": "Mark as read"
 }

@@ -1234,6 +1234,75 @@ async function main() {
 		}
 	})
 
+	await step('right-click on a message of the list: its usual actions with their keys; on several ticked, for all of them', async () => {
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		const made = []
+		for (const x of ['A', 'B']) made.push(await fake('/_test/deliver', { subject: 'Menu clic droit ' + x, sender: ['Paul Durand', 'paul.durand@societe-a.fr'], body: '<p>Test.</p>', isRead: true }))
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		await page.click('.wm-list button[title="Actualiser"]')
+		const row = (subject) => '.wm-message:has(.wm-message-subject:text-is("' + subject + '"))'
+		await page.waitForSelector(row('Menu clic droit A'))
+		// one message: answered, read, flagged, moved… from its menu
+		await page.click(row('Menu clic droit A'), { button: 'right' })
+		await page.waitForSelector('.wm-context-menu')
+		const labels = await page.$$eval('.wm-context-menu [role=menuitem] .wm-menu-label', (els) => els.map((e) => e.textContent))
+		for (const l of ['Répondre', 'Répondre à tous', 'Transférer', 'Marquer comme non lu', 'Assurer un suivi', 'Archiver', 'Déplacer vers…', 'Supprimer']) assert.ok(labels.includes(l), l + ' in ' + labels.join(', '))
+		assert.ok((await page.textContent('.wm-context-menu .wm-ctx-reply kbd')) === 'R')
+		await shot('114-context-menu')
+		await page.click('.wm-context-menu .wm-ctx-read')
+		await page.waitForSelector(row('Menu clic droit A') + '.unread')
+		await page.click(row('Menu clic droit A'), { button: 'right' })
+		await page.click('.wm-context-menu .wm-ctx-flag')
+		await page.waitForSelector(row('Menu clic droit A') + ' .wm-flag.on')
+		// from the keyboard: the menu key on the focused message, Escape closes it
+		await page.focus(row('Menu clic droit B'))
+		await page.keyboard.press('ContextMenu')
+		await page.waitForSelector('.wm-context-menu')
+		await page.keyboard.press('Escape')
+		await page.waitForFunction(() => !document.querySelector('.wm-context-menu'))
+		// reply: the message opened, then its answer
+		await page.click(row('Menu clic droit A'), { button: 'right' })
+		await page.click('.wm-context-menu .wm-ctx-reply')
+		await page.waitForSelector('.wm-compose h2:has-text("Répondre")')
+		await page.click('.wm-compose-actions button:has-text("Annuler")')
+		// two ticked: the menu acts on both (read again, then moved and back)
+		await page.click(row('Menu clic droit A'), { modifiers: ['Control'] })
+		await page.click(row('Menu clic droit B'), { modifiers: ['Control'] })
+		await page.click(row('Menu clic droit B'), { button: 'right' })
+		await page.waitForSelector('.wm-context-menu .wm-cat-title:has-text("2 messages sélectionnés")')
+		assert.ok(!(await page.$('.wm-context-menu .wm-ctx-reply')), 'no answer for several')
+		await page.click('.wm-context-menu .wm-ctx-flag')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-message .wm-flag.on').length >= 1)
+		await page.click(row('Menu clic droit A'), { modifiers: ['Control'] })
+		await page.click(row('Menu clic droit B'), { modifiers: ['Control'] })
+		await page.click(row('Menu clic droit A'), { button: 'right' })
+		await page.click('.wm-context-menu .wm-ctx-move')
+		await page.fill('.wm-move-menu .wm-move-filter', 'factu')
+		await page.waitForSelector('.wm-move-menu .wm-move-list button:has-text("Factures")')
+		await page.keyboard.press('Enter')
+		await page.waitForSelector('.wm-toast:has-text("2 messages déplacés vers « Factures »")')
+		await page.click('.wm-toast:has-text("2 messages déplacés") .wm-toast-action')
+		await page.waitForSelector(row('Menu clic droit A'))
+		await page.waitForSelector(row('Menu clic droit B'))
+		// (as before: read, not followed)
+		for (const n of ['A', 'B']) {
+			await page.click(row('Menu clic droit ' + n), { button: 'right' })
+			if (await page.$('.wm-context-menu .wm-ctx-flag:has-text("Retirer le suivi")')) { await page.click('.wm-context-menu .wm-ctx-flag'); await page.click(row('Menu clic droit ' + n), { button: 'right' }) }
+			if (await page.$('.wm-context-menu .wm-ctx-read:has-text("Marquer comme lu")')) await page.click('.wm-context-menu .wm-ctx-read'); else await page.keyboard.press('Escape')
+		}
+		for (const m of made) await fake('/_test/remove', { id: m.id })
+	})
+
 	await step('saved searches: kept under a name, in the side pane with their unread messages, opened again, deleted', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)
