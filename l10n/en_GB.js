@@ -1808,6 +1808,7 @@ OC.L10N.register(
     "{name} sera réservée à l'enregistrement": "{name} will be booked when you save",
     "{name} vous partage {count} carnets. Cochez ceux à ajouter :": "{name} shares {count} address books with you. Tick the ones to add:",
     "{n} s": "{n} s",
+    "{path} enregistré, avec sa pièce jointe": "{path} saved, with its attachment",
     "{path} enregistré, avec {count} pièces jointes": "{path} saved, with {count} attachments",
     "{rule} {when}": "{rule} {when}",
     "{rule}, 1 fois": "{rule}, once",

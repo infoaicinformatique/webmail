@@ -1418,7 +1418,7 @@ async function main() {
 			await page.click('.wm-message-toolbar .wm-more-btn')
 			await shot('116-pdf-menu')
 			await page.click('.wm-more-menu .wm-pdf-save-btn')
-			await page.waitForSelector('.wm-toast:has-text("Facture F-2027-118.pdf enregistré, avec 1 pièces jointes")')
+			await page.waitForSelector('.wm-toast:has-text("Facture F-2027-118.pdf enregistré, avec sa pièce jointe")')
 			const files = await page.evaluate(async () => {
 				const uid = OC.getCurrentUser().uid
 				const r = await fetch('/remote.php/dav/files/' + encodeURIComponent(uid) + '/' + encodeURIComponent('Courriers e2e') + '/', { method: 'PROPFIND', headers: { requesttoken: OC.requestToken, Depth: '1' } })

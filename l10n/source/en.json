@@ -1882,5 +1882,6 @@
 	"{path} enregistré, avec {count} pièces jointes": "{path} saved, with {count} attachments",
 	"Courriers": "Letters",
 	"(message sans texte)": "(message without text)",
-	"Cc": "Cc"
+	"Cc": "Cc",
+	"{path} enregistré, avec sa pièce jointe": "{path} saved, with its attachment"
 }

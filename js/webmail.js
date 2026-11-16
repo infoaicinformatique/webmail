@@ -2353,9 +2353,9 @@
 				: _('Enregistrer aussi sa pièce jointe dans le même dossier ?'))
 			try {
 				const r = await api('/accounts/' + state.accountId + '/message/pdf', { method: 'POST', body: { itemId: m.id, path: dir, attachments: withFiles } })
-				toast(r.attachments.length
+				toast(r.attachments.length > 1
 					? _('{path} enregistré, avec {count} pièces jointes', { path: r.path, count: r.attachments.length })
-					: _('Enregistré dans {path}', { path: r.path }))
+					: r.attachments.length ? _('{path} enregistré, avec sa pièce jointe', { path: r.path }) : _('Enregistré dans {path}', { path: r.path }))
 			} catch (e) { toast(e.message, true) }
 		}
 		if (OC.dialogs && typeof OC.dialogs.filepicker === 'function') {
