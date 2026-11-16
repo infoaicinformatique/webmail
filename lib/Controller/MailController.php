@@ -8,6 +8,7 @@ use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Ews\EwsClient;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
+use OCA\Webmail\Service\AttachmentKinds;
 use OCA\Webmail\Service\AttachmentZip;
 use OCA\Webmail\Service\FollowUpService;
 use OCA\Webmail\Service\HtmlSanitizer;
@@ -252,6 +253,32 @@ class MailController extends Controller {
 				}
 			}
 			return ['counts' => $counts];
+		});
+	}
+
+	/** most messages read for one page of « Pièces jointes » */
+	private const FILES_PAGE = 40;
+
+	/**
+	 * « Pièces jointes »: the files received, newest first, in every folder but the
+	 * sent, drafts, deleted, junk ones; by kind and by words (in their name or message).
+	 */
+	#[NoAdminRequired]
+	public function files(int $id, string $q = '', string $kind = '', int $offset = 0): Response {
+		return $this->handle(function () use ($id, $q, $kind, $offset) {
+			$client = $this->client($id);
+			$kind = in_array($kind, AttachmentKinds::KINDS, true) ? $kind : '';
+			$skip = ['sentitems', 'drafts', 'deleteditems', 'junkemail', 'outbox'];
+			$ids = array_values(array_map(fn ($f) => (string)$f['id'], array_filter($client->listFolders(), fn ($f) => !in_array($f['role'] ?? null, $skip, true))));
+			$query = (string)EwsClient::searchQuery($q, ['attachments' => true]);
+			$found = $client->searchFolders($ids, max(0, $offset), self::FILES_PAGE, $query);
+			$messages = array_values(array_filter($found['items'], fn ($m) => !empty($m['hasAttachments'])));
+			$files = $client->attachmentsOf(array_map(fn ($m) => (string)$m['id'], $messages));
+			return [
+				'files' => AttachmentKinds::rows($messages, $files, $kind),
+				'next' => max(0, $offset) + count($found['items']),
+				'hasMore' => (bool)($found['hasMore'] ?? false),
+			];
 		});
 	}
 

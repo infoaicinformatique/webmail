@@ -35,6 +35,7 @@ return [
 		['name' => 'mail#addMailbox', 'url' => '/api/accounts/{id}/mailboxes', 'verb' => 'POST'],
 		['name' => 'mail#removeMailbox', 'url' => '/api/accounts/{id}/mailboxes/delete', 'verb' => 'POST'],
 		['name' => 'mail#messages', 'url' => '/api/accounts/{id}/messages', 'verb' => 'GET'],
+		['name' => 'mail#files', 'url' => '/api/accounts/{id}/files', 'verb' => 'GET'],
 		['name' => 'archive#archive', 'url' => '/api/accounts/{id}/archive', 'verb' => 'POST'],
 		['name' => 'archive#settings', 'url' => '/api/accounts/{id}/autoarchive', 'verb' => 'GET'],
 		['name' => 'archive#save', 'url' => '/api/accounts/{id}/autoarchive', 'verb' => 'POST'],

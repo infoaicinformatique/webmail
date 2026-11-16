@@ -1270,3 +1270,17 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 /* the signature of the organisation, in « Comptes et signature » */
 .wm-org-signature-note { margin: 6px 0; padding: 8px 10px; border-radius: var(--border-radius, 6px); background: var(--color-background-dark); }
 .wm-org-signature-preview { margin-top: 6px; padding: 8px; border-left: 3px solid var(--color-primary-element); background: var(--color-main-background); }
+
+/* « Pièces jointes »: every file received */
+.wm-files { padding: 12px 20px; }
+.wm-files-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 12px; }
+.wm-files-bar .wm-files-search { flex: 1 1 240px; min-width: 0; }
+.wm-files-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.wm-files-table th { text-align: start; font-weight: 600; color: var(--color-text-maxcontrast); padding: 4px 6px; border-bottom: 1px solid var(--color-border); }
+.wm-files-table td { padding: 6px; border-bottom: 1px solid var(--color-border); vertical-align: middle; }
+.wm-files-name a { word-break: break-all; }
+.wm-files-open { text-align: start; color: var(--color-main-text); }
+.wm-files-more { margin: 12px auto; display: block; }
+@media (max-width: 700px) {
+	.wm-files-table th:nth-child(3), .wm-files-table td:nth-child(3), .wm-files-table th:nth-child(5), .wm-files-table td:nth-child(5) { display: none; }
+}
