@@ -4663,6 +4663,60 @@
 		}
 	}
 
+	/**
+	 * « Expéditeurs bloqués et autorisés »: two rules of Exchange (kept on the server, also seen
+	 * in Outlook). « Indésirable » and « Pas indésirable » fill them too.
+	 */
+	function senderListsCard() {
+		const accountPick = state.accounts.length > 1
+			? h('select', { name: 'senderListsAccount', 'aria-label': _('Compte') }, state.accounts.map((a) => h('option', { value: String(a.id), selected: a.id === state.accountId }, a.email)))
+			: null
+		const accountId = () => accountPick ? parseInt(accountPick.value, 10) : state.accountId
+		const entry = h('input', { type: 'text', name: 'senderEntry', placeholder: _('adresse@exemple.fr ou @exemple.fr'), 'aria-label': _('Adresse ou domaine') })
+		const lists = { blocked: h('ul', { class: 'wm-sender-list', dataset: { kind: 'blocked' } }), allowed: h('ul', { class: 'wm-sender-list', dataset: { kind: 'allowed' } }) }
+		const empty = { blocked: _('Aucun expéditeur bloqué'), allowed: _('Aucun expéditeur autorisé') }
+		const show = (data) => {
+			;['blocked', 'allowed'].forEach((kind) => {
+				clear(lists[kind])
+				if (!data[kind].length) lists[kind].appendChild(h('li', { class: 'wm-muted' }, empty[kind]))
+				data[kind].forEach((e) => lists[kind].appendChild(h('li', { dataset: { entry: e } },
+					h('span', {}, e.startsWith('@') ? _('Tout le domaine {domain}', { domain: e.slice(1) }) : e),
+					h('button', { type: 'button', class: 'wm-small wm-sender-remove', 'aria-label': _('Retirer {entry}', { entry: e }), title: _('Retirer'), onclick: () => change(kind, [], [e]) }, '✕'))))
+			})
+		}
+		const load = async () => {
+			clear(lists.blocked); clear(lists.allowed)
+			lists.blocked.appendChild(h('li', {}, h('span', { class: 'icon-loading-small' })))
+			try { show(await api('/accounts/' + accountId() + '/sender-lists')) } catch (e) { clear(lists.blocked); lists.blocked.appendChild(h('li', { class: 'wm-form-error' }, e.message)) }
+		}
+		const change = async (kind, add, remove) => {
+			try {
+				show(await api('/accounts/' + accountId() + '/sender-lists', { method: 'POST', body: { kind, add, remove } }))
+				if (add.length) toast(kind === 'blocked' ? _('{entry} bloqué : ses messages iront dans « Courrier indésirable »', { entry: add[0] }) : _('{entry} autorisé : ses messages resteront dans la boîte de réception', { entry: add[0] }))
+				entry.value = ''
+			} catch (e) { toast(e.message, true) }
+		}
+		const addTo = (kind) => {
+			const v = entry.value.trim()
+			if (!v) { entry.focus(); return }
+			change(kind, [v], [])
+		}
+		entry.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addTo('blocked') } })
+		if (accountPick) accountPick.addEventListener('change', load)
+		const card = h('fieldset', { class: 'wm-account-card wm-sender-lists' },
+			h('legend', {}, '🚫 ' + _('Expéditeurs bloqués et autorisés')),
+			h('p', { class: 'wm-muted' }, _('Les messages des expéditeurs bloqués vont directement dans « Courrier indésirable » ; ceux des expéditeurs autorisés restent dans la boîte de réception (même s\'ils sont dans un domaine bloqué) et sont ramenés du courrier indésirable. « Indésirable » et « Pas indésirable » sur un message remplissent aussi ces listes. Elles sont gardées par Exchange sous forme de deux règles, visibles aussi dans Outlook.')),
+			accountPick ? h('label', { class: 'wm-field' }, h('span', {}, _('Compte')), accountPick) : null,
+			h('div', { class: 'wm-sender-add' }, entry,
+				h('button', { type: 'button', class: 'wm-sender-block', onclick: () => addTo('blocked') }, '⛔ ' + _('Bloquer')),
+				h('button', { type: 'button', class: 'wm-sender-allow', onclick: () => addTo('allowed') }, '✔ ' + _('Autoriser'))),
+			h('div', { class: 'wm-sender-columns' },
+				h('div', {}, h('h4', {}, '⛔ ' + _('Bloqués')), lists.blocked),
+				h('div', {}, h('h4', {}, '✔ ' + _('Toujours autorisés')), lists.allowed)))
+		load()
+		return card
+	}
+
 	/** « Archivage »: the read messages of the inbox to « Archives » after some months, each night. */
 	function archiveSettings() {
 		const card = h('fieldset', { class: 'wm-account-card wm-archive-settings' },
@@ -6517,6 +6571,7 @@
 			h('legend', {}, _('Modèles de réponse')), templateList))
 		loadTemplates(true).then(showTemplates, (e) => toast(e.message, true))
 		// (last: the account cards stay first)
+		wrap.appendChild(senderListsCard())
 		wrap.appendChild(archiveSettings())
 		wrap.appendChild(absenceSettings())
 		wrap.appendChild(matrixSettings())

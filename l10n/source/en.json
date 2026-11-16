@@ -1856,5 +1856,21 @@
 	"Rechercher un dossier": "Find a folder",
 	"Déplacer {count} messages vers": "Move {count} messages to",
 	"Marquer comme lu": "Mark as read",
-	"Les messages sont supprimés, mais Exchange a gardé ces dossiers : %s": "The messages are deleted, but Exchange kept these folders: %s"
+	"Les messages sont supprimés, mais Exchange a gardé ces dossiers : %s": "The messages are deleted, but Exchange kept these folders: %s",
+	"adresse@exemple.fr ou @exemple.fr": "address@example.com or @example.com",
+	"Adresse ou domaine": "Address or domain",
+	"Aucun expéditeur bloqué": "No blocked sender",
+	"Aucun expéditeur autorisé": "No allowed sender",
+	"Retirer {entry}": "Remove {entry}",
+	"{entry} bloqué : ses messages iront dans « Courrier indésirable »": "{entry} blocked: their messages will go to “Junk e-mail”",
+	"{entry} autorisé : ses messages resteront dans la boîte de réception": "{entry} allowed: their messages will stay in the inbox",
+	"Expéditeurs bloqués et autorisés": "Blocked and allowed senders",
+	"Les messages des expéditeurs bloqués vont directement dans « Courrier indésirable » ; ceux des expéditeurs autorisés restent dans la boîte de réception (même s'ils sont dans un domaine bloqué) et sont ramenés du courrier indésirable. « Indésirable » et « Pas indésirable » sur un message remplissent aussi ces listes. Elles sont gardées par Exchange sous forme de deux règles, visibles aussi dans Outlook.": "Messages from blocked senders go straight to “Junk e-mail”; those from allowed senders stay in the inbox (even in a blocked domain) and are brought back from junk e-mail. “Junk” and “Not junk” on a message fill these lists too. Exchange keeps them as two rules, also seen in Outlook.",
+	"Bloquer": "Block",
+	"Autoriser": "Allow",
+	"Bloqués": "Blocked",
+	"Toujours autorisés": "Always allowed",
+	"Liste inconnue": "Unknown list",
+	"Vous ne pouvez pas bloquer votre propre adresse ni votre propre domaine": "You cannot block your own address or your own domain",
+	"Trop d'expéditeurs dans la liste (%s au plus)": "Too many senders in the list (%s at most)"
 }
