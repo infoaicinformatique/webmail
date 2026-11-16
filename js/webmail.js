@@ -33,6 +33,7 @@
 		snoozes: new Map(),
 		unified: false, // « Toutes les boîtes de réception »: the inboxes of every account in one list
 		today: false, // « Aujourd'hui » shown in the reading pane
+		filesView: false, // « Pièces jointes » shown in the reading pane
 		unifiedItems: [],
 		pinned: new Map(), // id -> summary (with its folder): kept at the top of their folder
 		savedSearches: [], // « Recherches enregistrées » of the account
@@ -1139,7 +1140,12 @@
 			href: '#',
 			class: 'wm-today-link' + (state.today ? ' active' : ''),
 			onclick: (e) => { e.preventDefault(); openToday() },
-		}, h('span', { class: 'wm-folder-name' }, '☀️ ' + _('Aujourd\'hui'))))))
+		}, h('span', { class: 'wm-folder-name' }, '☀️ ' + _('Aujourd\'hui')))),
+		h('li', {}, h('a', {
+			href: '#',
+			class: 'wm-files-link' + (state.filesView ? ' active' : ''),
+			onclick: (e) => { e.preventDefault(); openFiles() },
+		}, h('span', { class: 'wm-folder-name' }, '📎 ' + _('Pièces jointes'))))))
 		if (state.accounts.length > 1) {
 			navEl.appendChild(h('ul', { class: 'wm-folders wm-unified' }, h('li', {}, h('a', {
 				href: '#',
@@ -1839,6 +1845,7 @@
 	function selectFolder(id) {
 		state.unified = false
 		state.today = false
+		state.filesView = false
 		saveListCache()
 		state.folderId = id
 		resetSearch()
@@ -2033,6 +2040,7 @@
 	async function openToday() {
 		const mine = ++todaySeq
 		state.today = true
+		state.filesView = false
 		renderNav()
 		setView('detail')
 		clear(detailEl)
@@ -2116,6 +2124,125 @@
 				h('button', { type: 'button', class: 'wm-icon-btn wm-today-refresh', title: _('Actualiser'), 'aria-label': _('Actualiser'), onclick: () => openToday() }, '⟳')),
 			data.failed && data.failed.length ? h('p', { class: 'wm-search-info wm-muted' }, _('Non consultés : {books}', { books: data.failed.join(', ') })) : null,
 			h('div', { class: 'wm-today-grid' }, meetings, tasks, flagged, snoozed)))
+	}
+
+	// ------------------------------------------------------------------
+	// « Pièces jointes »: every file received, found by name, kind, sender
+	// ------------------------------------------------------------------
+
+	let filesSeq = 0
+	const FILE_KINDS = () => [
+		['', _('Tous les types')], ['pdf', 'PDF'], ['image', _('Images')], ['document', _('Documents')],
+		['sheet', _('Tableurs')], ['presentation', _('Présentations')], ['archive', _('Archives (.zip…)')], ['other', _('Autres')],
+	]
+	const KIND_ICON = { pdf: '📕', image: '🖼', document: '📄', sheet: '📊', presentation: '📽', archive: '🗜', other: '📎' }
+
+	function openFiles() {
+		state.filesView = true
+		state.today = false
+		const view = { q: '', kind: '', rows: [], next: 0, hasMore: false, loading: false, checked: new Set() }
+		renderNav()
+		setView('detail')
+		clear(detailEl)
+		const search = h('input', { type: 'search', class: 'wm-files-search', placeholder: _('Nom du fichier, expéditeur, objet…'), 'aria-label': _('Rechercher une pièce jointe') })
+		const kind = h('select', { class: 'wm-files-kind', 'aria-label': _('Type de fichier') }, FILE_KINDS().map(([v, l]) => h('option', { value: v }, l)))
+		const count = h('span', { class: 'wm-muted wm-files-count' })
+		const saveBtn = h('button', { type: 'button', class: 'primary wm-files-save', disabled: true, onclick: () => saveAttachments(view.rows.filter((r) => view.checked.has(r.id))) })
+		const zipBtn = h('a', { class: 'button wm-files-zip', download: '' })
+		const body = h('tbody')
+		const more = h('button', { type: 'button', class: 'wm-files-more', hidden: true, onclick: () => load(false) }, _('Afficher plus'))
+		const actions = () => {
+			const n = view.checked.size
+			saveBtn.disabled = !n
+			saveBtn.textContent = '☁️ ' + (n ? _('Enregistrer dans Fichiers ({count})', { count: n }) : _('Enregistrer dans Fichiers'))
+			zipBtn.hidden = n < 2
+			const qs = new URLSearchParams({ name: _('Pièces jointes') })
+			view.rows.filter((r) => view.checked.has(r.id)).forEach((r) => qs.append('ids[]', r.id))
+			zipBtn.href = OC.generateUrl('/apps/webmail/api/accounts/' + state.accountId + '/attachments/zip') + '?' + qs
+			zipBtn.textContent = '⬇︎ ' + _('Télécharger (.zip)')
+		}
+		const row = (r) => {
+			const tick = h('input', { type: 'checkbox', class: 'wm-files-check', 'aria-label': _('Sélectionner {name}', { name: r.name }), checked: view.checked.has(r.id),
+				onchange: (e) => { if (e.target.checked) view.checked.add(r.id); else view.checked.delete(r.id); actions() } })
+			const from = r.from ? (r.from.name || r.from.email || '') : ''
+			return h('tr', { class: 'wm-files-row', dataset: { kind: r.kind } },
+				h('td', {}, tick),
+				h('td', { class: 'wm-files-name' },
+					h('span', { 'aria-hidden': 'true' }, (KIND_ICON[r.kind] || '📎') + ' '),
+					h('a', { href: attachmentUrl(r), download: r.name, title: _('Télécharger') }, r.name),
+					previewKind(r) ? h('button', { type: 'button', class: 'wm-small wm-files-preview', title: _('Aperçu'), onclick: () => openPreview([r], 0) }, '👁') : null),
+				h('td', { class: 'wm-muted' }, formatBytes(r.size)),
+				h('td', {}, from),
+				h('td', { class: 'wm-muted' }, r.date ? new Date(r.date).toLocaleDateString(locale(), { day: 'numeric', month: 'short', year: 'numeric' }) : ''),
+				h('td', {}, h('button', { type: 'button', class: 'wm-link-btn wm-files-open', title: _('Ouvrir le message'), onclick: () => openMessage(r.messageId) }, r.subject || _('(sans objet)'))))
+		}
+		const show = () => {
+			clear(body)
+			if (!view.rows.length && !view.loading) body.appendChild(h('tr', {}, h('td', { colspan: '6', class: 'wm-muted' }, _('Aucune pièce jointe trouvée'))))
+			view.rows.forEach((r) => body.appendChild(row(r)))
+			if (view.loading) body.appendChild(h('tr', {}, h('td', { colspan: '6' }, h('span', { class: 'icon-loading-small' }))))
+			count.textContent = view.rows.length ? (view.rows.length > 1 ? _('{count} fichiers', { count: view.rows.length }) : _('1 fichier')) : ''
+			more.hidden = !view.hasMore || view.loading
+			actions()
+		}
+		const load = async (reset) => {
+			const mine = reset ? ++filesSeq : filesSeq
+			if (reset) { view.rows = []; view.next = 0; view.checked.clear() }
+			view.loading = true
+			show()
+			try {
+				// (a kind seldom found: a few pages read at once)
+				let got = 0
+				do {
+					const r = await api('/accounts/' + state.accountId + '/files', { query: { q: view.q, kind: view.kind, offset: view.next } })
+					if (mine !== filesSeq || !state.filesView) return
+					view.rows = view.rows.concat(r.files)
+					got += r.files.length
+					view.next = r.next
+					view.hasMore = r.hasMore
+				} while (view.hasMore && got < 15)
+			} catch (e) {
+				if (mine === filesSeq) toast(e.message, true)
+			} finally {
+				if (mine === filesSeq) { view.loading = false; show() }
+			}
+		}
+		let timer = null
+		search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { view.q = search.value.trim(); load(true) }, SEARCH_DELAY) })
+		kind.addEventListener('change', () => { view.kind = kind.value; load(true) })
+		detailEl.appendChild(h('div', { class: 'wm-files' },
+			h('div', { class: 'wm-today-head' },
+				h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Retour'), onclick: () => { state.filesView = false; renderNav(); setView('list') } }, '←'),
+				h('h2', {}, '📎 ' + _('Pièces jointes')),
+				count),
+			h('p', { class: 'wm-muted' }, _('Les fichiers reçus dans tous les dossiers (hors éléments envoyés, supprimés et indésirables), les plus récents d\'abord.')),
+			h('div', { class: 'wm-files-bar' }, search, kind, saveBtn, zipBtn),
+			h('table', { class: 'wm-files-table' },
+				h('thead', {}, h('tr', {}, h('th', {}), h('th', {}, _('Fichier')), h('th', {}, _('Taille')), h('th', {}, _('De')), h('th', {}, _('Date')), h('th', {}, _('Message')))),
+				body),
+			more))
+		load(true)
+		search.focus()
+	}
+
+	/** Several attachments to Nextcloud Files, in the folder chosen once. */
+	function saveAttachments(list) {
+		if (!list.length) return
+		const doSave = async (dir) => {
+			let done = 0
+			for (const a of list) {
+				try {
+					await api('/accounts/' + state.accountId + '/attachment/save', { method: 'POST', body: { attachmentId: a.id, path: dir } })
+					done++
+				} catch (e) { toast(a.name + ' : ' + e.message, true) }
+			}
+			if (done) toast(done > 1 ? _('{count} fichiers enregistrés dans {path}', { count: done, path: dir }) : _('Enregistré dans {path}', { path: dir }))
+		}
+		if (OC.dialogs && typeof OC.dialogs.filepicker === 'function') {
+			OC.dialogs.filepicker(_('Choisir le dossier de destination'), (dir) => doSave(dir || '/'), false, 'httpd/unix-directory', true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
+		} else {
+			doSave('/' + _('Pièces jointes'))
+		}
 	}
 
 	/** A message of the unified list: its account and inbox, the message open. */
@@ -3316,6 +3443,7 @@
 
 	async function openMessage(id, remote) {
 		if (state.today) { state.today = false; todaySeq++; renderNav() }
+		if (state.filesView) { state.filesView = false; filesSeq++; renderNav() }
 		// a result opened: the search was useful, kept among the recent ones
 		if (state.query) rememberSearch(state.query)
 		state.selectedId = id
@@ -6282,8 +6410,8 @@
 					if (!navEl || !root.contains(navEl)) buildLayout()
 					await selectAccount(acc.id)
 					startBackground()
-					// unless another account or a message was opened meanwhile
-					if (state.accountId === acc.id && !state.selectedId && state.module === 'mail') {
+					// unless another account, a message or the settings were opened meanwhile
+					if (state.accountId === acc.id && !state.selectedId && state.module === 'mail' && (!detailEl.firstChild || detailEl.querySelector('.wm-empty-detail'))) {
 						renderEmptyDetail()
 						setView('list')
 					}

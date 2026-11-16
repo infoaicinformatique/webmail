@@ -1101,6 +1101,46 @@ async function main() {
 		}
 	})
 
+	await step('« Pièces jointes »: every file received, by kind and words, a few saved to Files at once', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-files-link')
+		await page.waitForSelector('.wm-files-row:has-text("devis-2027.pdf")')
+		await page.waitForSelector('.wm-files-row:has-text("facade.png")')
+		const names = () => page.$$eval('.wm-files-row .wm-files-name a', (els) => els.map((e) => e.textContent))
+		let all = await names()
+		assert.ok(!all.includes('logo.png'), 'not the images in the text: ' + all.join(', '))
+		assert.ok(all.indexOf('devis-2027.pdf') < all.indexOf('facade.png'), 'newest first: ' + all.join(', '))
+		await shot('110-attachments-view')
+		// only the PDF
+		await page.selectOption('.wm-files-kind', 'pdf')
+		await page.waitForFunction(() => [...document.querySelectorAll('.wm-files-row')].every((r) => r.dataset.kind === 'pdf') && document.querySelectorAll('.wm-files-row').length === 2)
+		assert.deepStrictEqual((await names()).sort(), ['devis-2027.pdf', 'plan.pdf'])
+		// by words: the files of « Photos du chantier »
+		await page.selectOption('.wm-files-kind', '')
+		await page.fill('.wm-files-search', 'chantier')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-files-row').length === 5 && !document.querySelector('.wm-files-row[data-kind] a[download="devis-2027.pdf"]'))
+		// two ticked: saved in the folder chosen, or downloaded in one .zip
+		await page.check('.wm-files-row:has-text("plan.pdf") .wm-files-check')
+		await page.check('.wm-files-row:has-text("releve.txt") .wm-files-check')
+		await page.waitForSelector('.wm-files-zip:not([hidden])')
+		assert.ok((await page.getAttribute('.wm-files-zip', 'href')).includes('ids%5B%5D='))
+		await page.evaluate(() => { OC.dialogs.filepicker = (title, cb) => cb('/Pièces jointes') })
+		await page.click('.wm-files-save')
+		await page.waitForSelector('.wm-toast:has-text("2 fichiers enregistrés dans /Pièces jointes")')
+		await page.evaluate(async () => {
+			const uid = OC.getCurrentUser().uid
+			for (const f of ['plan.pdf', 'releve.txt']) {
+				await fetch('/remote.php/dav/files/' + encodeURIComponent(uid) + '/' + encodeURIComponent('Pièces jointes') + '/' + f, { method: 'DELETE', headers: { requesttoken: OC.requestToken } })
+			}
+		})
+		// a message opened from its file
+		await page.click('.wm-files-row:has-text("plan.pdf") .wm-files-open')
+		await page.waitForSelector('.wm-message-header h2:has-text("Photos du chantier")')
+		assert.ok(!(await page.$('.wm-files-link.active')))
+		await page.goto(NC + '/apps/webmail/')
+		await page.waitForSelector('.wm-message')
+	})
+
 	await step('saved searches: kept under a name, in the side pane with their unread messages, opened again, deleted', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)

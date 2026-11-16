@@ -1826,6 +1826,42 @@ class EwsClient {
 		return $out;
 	}
 
+	/**
+	 * The files attached to messages (not the images in their text), in one request.
+	 * @param string[] $itemIds
+	 * @return array<string, list<array{id: string, name: string, size: int, contentType: string}>> item id => its files
+	 */
+	public function attachmentsOf(array $itemIds): array {
+		if ($itemIds === []) {
+			return [];
+		}
+		$xp = $this->request(
+			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:FieldURI FieldURI="item:Attachments"/></t:AdditionalProperties></m:ItemShape>'
+			. '<m:ItemIds>' . $this->itemIdsXml(array_values($itemIds)) . '</m:ItemIds></m:GetItem>'
+		);
+		$out = [];
+		foreach ($xp->query('//m:Items/*') as $item) {
+			$id = (string)$this->attr($xp, 't:ItemId', 'Id', $item);
+			if ($id === '') {
+				continue;
+			}
+			$out[$id] = [];
+			foreach ($xp->query('t:Attachments/t:FileAttachment', $item) as $att) {
+				if ($this->text($xp, 't:IsInline', $att) === 'true') {
+					continue;
+				}
+				$out[$id][] = [
+					'id' => (string)$this->attr($xp, 't:AttachmentId', 'Id', $att),
+					'name' => (string)($this->text($xp, 't:Name', $att) ?? 'piece-jointe'),
+					'size' => (int)$this->text($xp, 't:Size', $att),
+					'contentType' => (string)($this->text($xp, 't:ContentType', $att) ?? ''),
+				];
+			}
+		}
+		return $out;
+	}
+
 	public function deleteAttachment(string $attachmentId): void {
 		$this->request('<m:DeleteAttachment><m:AttachmentIds><t:AttachmentId Id="' . $this->esc($attachmentId) . '"/></m:AttachmentIds></m:DeleteAttachment>');
 	}
