@@ -81,6 +81,7 @@ return [
 		['name' => 'open#attachment', 'url' => '/api/accounts/{id}/attachment/open', 'verb' => 'POST'],
 		['name' => 'mail#headers', 'url' => '/api/accounts/{id}/message/headers', 'verb' => 'GET'],
 		['name' => 'note#fromMessage', 'url' => '/api/accounts/{id}/message/note', 'verb' => 'POST'],
+		['name' => 'note#card', 'url' => '/api/accounts/{id}/message/card', 'verb' => 'GET'],
 		['name' => 'mail#followUp', 'url' => '/api/accounts/{id}/followups', 'verb' => 'POST'],
 		['name' => 'mail#unsubscribe', 'url' => '/api/accounts/{id}/message/unsubscribe', 'verb' => 'POST'],
 		['name' => 'mail#eml', 'url' => '/api/accounts/{id}/message/eml', 'verb' => 'GET'],

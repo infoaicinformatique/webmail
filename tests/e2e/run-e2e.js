@@ -4993,6 +4993,78 @@ async function main() {
 		}, path)
 	})
 
+	await step('Deck: a message as a card of a board (the list chosen, a due date), from « Plus » or a right-click', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const container = (OCC.match(/docker exec(?:\s+-u\s+\S+)?\s+(\S+)\s+php occ/) || [])[1]
+		const subject = 'Devis pour la maintenance annuelle'
+		const openIt = async () => {
+			await page.click('.wm-folder >> nth=0')
+			await page.click('.wm-message:has-text("' + subject + '")')
+			await page.waitForSelector('.wm-message-header h2:has-text("' + subject + '")')
+		}
+		// no Deck in this Nextcloud: not offered
+		await openIt()
+		await openMore()
+		assert.strictEqual(await page.$('.wm-more-menu .wm-deck-btn'), null)
+		await page.keyboard.press('Escape')
+		// the routes of Deck's API the webmail uses, for this test only
+		execSync('docker cp ' + require('path').join(__dirname, 'testdeck') + ' ' + container + ':/var/www/html/custom_apps/deck')
+		execSync('docker exec ' + container + ' chown -R www-data:www-data /var/www/html/custom_apps/deck')
+		occ('app:enable deck')
+		occ('config:app:delete deck test_cards')
+		try {
+			// (Nextcloud may keep the list of its apps for a while: the page opened again until Deck is there)
+			for (let i = 0; ; i++) {
+				await page.goto(NC + '/apps/webmail/')
+				await page.waitForSelector('.wm-message')
+				if (await page.$eval('#webmail-app', (e) => e.dataset.deck === '1')) break
+				assert.ok(i < 24, 'Deck seen once enabled')
+				await page.waitForTimeout(5000)
+			}
+			await openIt()
+			await more('.wm-deck-btn')
+			await page.waitForSelector('.wm-deck-dialog select[name=stack]:not([disabled])')
+			// only the boards where a card can be added (not a read-only nor an archived one)
+			assert.deepStrictEqual(await page.$$eval('.wm-deck-dialog select[name=board] option', (o) => o.map((x) => x.textContent)), ['Projets'])
+			assert.deepStrictEqual(await page.$$eval('.wm-deck-dialog select[name=stack] option', (o) => o.map((x) => x.textContent)), ['À faire', 'En cours'])
+			assert.strictEqual(await page.inputValue('.wm-deck-dialog input[name=title]'), subject)
+			await page.selectOption('.wm-deck-dialog select[name=stack]', { label: 'En cours' })
+			await page.fill('.wm-deck-dialog input[name=due]', '2030-12-02')
+			await shot('121-deck')
+			await page.click('.wm-deck-dialog button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Carte créée dans Projets › En cours")')
+			await page.waitForSelector('.wm-deck-dialog', { state: 'detached' })
+			const cards = await page.evaluate(async () => (await fetch(OC.generateUrl('/apps/deck/api/v1.0/test/cards'), { headers: { 'OCS-APIRequest': 'true', requesttoken: OC.requestToken } })).json())
+			assert.strictEqual(cards.length, 1, JSON.stringify(cards))
+			const card = cards[0]
+			assert.strictEqual(card.title, subject)
+			assert.deepStrictEqual([card.boardId, card.stackId, card.type], [1, 12, 'plain'])
+			assert.ok(card.description.startsWith('**De :** Jean Dupont <jean.dupont@client-exemple.fr>'), card.description)
+			assert.ok(card.description.includes('Veuillez trouver ci-joint notre devis pour la maintenance 2027.'), card.description)
+			assert.ok(/\[Ouvrir dans le webmail\]\(http[^)]+\/apps\/webmail\/\?account=\d+&message=/.test(card.description), card.description)
+			assert.ok(card.duedate && new Date(card.duedate).getFullYear() === 2030, card.duedate)
+			// « Ouvrir dans Deck »: the card itself
+			await page.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(u); return null } })
+			await page.click('.wm-toast .wm-toast-action:text-is("Ouvrir dans Deck")')
+			const opened = await page.evaluate(() => window.__opened)
+			assert.ok(/\/apps\/deck\/board\/1\/card\/100$/.test(opened[0]), opened.join(' '))
+			assert.strictEqual(await page.evaluate(async (u) => (await fetch(u)).text(), opened[0]), 'Carte 100 du tableau 1')
+			// a right-click: the same, the list used last chosen again
+			await page.click('.wm-message:has-text("' + subject + '")', { button: 'right' })
+			await page.click('.wm-ctx-deck')
+			await page.waitForSelector('.wm-deck-dialog select[name=stack]:not([disabled])')
+			assert.strictEqual(await page.$eval('.wm-deck-dialog select[name=stack]', (s) => s.selectedOptions[0].textContent), 'En cours')
+			await page.keyboard.press('Escape')
+			await page.waitForSelector('.wm-deck-dialog', { state: 'detached' })
+		} finally {
+			occ('config:app:delete deck test_cards')
+			occ('app:disable deck')
+			execSync('docker exec ' + container + ' rm -rf /var/www/html/custom_apps/deck')
+			await page.goto(NC + '/apps/webmail/')
+			await page.waitForSelector('.wm-message')
+		}
+	})
+
 	await step('rich links: a webmail link previewed by Nextcloud (Talk, Text, Deck…), and offered by the Smart Picker', async () => {
 		await page.click('.wm-folder >> nth=0')
 		const id = await page.getAttribute('.wm-message:has-text("Devis pour la maintenance annuelle")', 'data-id')

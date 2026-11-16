@@ -13,7 +13,7 @@ use OCP\IRequest;
 use Psr\Log\LoggerInterface;
 
 /**
- * A message kept as a note of Nextcloud Notes.
+ * A message kept as a note of Nextcloud Notes, or as a card of Nextcloud Deck.
  */
 class NoteController extends Controller {
 	use ErrorHandling;
@@ -34,5 +34,11 @@ class NoteController extends Controller {
 	#[NoAdminRequired]
 	public function fromMessage(int $id, string $itemId): Response {
 		return $this->handle(fn () => $this->notes->fromMessage((string)$this->userId, $id, $itemId));
+	}
+
+	/** « Carte Deck »: the title and description of a card made from a message. */
+	#[NoAdminRequired]
+	public function card(int $id, string $itemId): Response {
+		return $this->handle(fn () => $this->notes->card((string)$this->userId, $id, $itemId));
 	}
 }

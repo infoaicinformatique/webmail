@@ -37,6 +37,15 @@ class MessageNote {
 		return mb_strlen($text) > self::MAX_TEXT ? mb_substr($text, 0, self::MAX_TEXT) . '…' : $text;
 	}
 
+	/** At most this many characters of the message's text in a card of Deck. */
+	public const CARD_TEXT = 4000;
+
+	/** The title of a card of Deck (255 characters at most there), from the subject. */
+	public static function cardTitle(string $subject): string {
+		$title = trim((string)preg_replace('/[\x00-\x1f\s]+/u', ' ', $subject));
+		return mb_substr($title !== '' ? $title : 'Message', 0, 255);
+	}
+
 	/** A file name from the subject (Notes shows it as the title). */
 	public static function fileName(string $subject): string {
 		$name = trim((string)preg_replace(['~[\\\\/:*?"<>|\x00-\x1f]+~', '~\s+~u'], ' ', $subject), ' .');

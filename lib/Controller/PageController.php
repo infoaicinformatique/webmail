@@ -79,6 +79,8 @@ class PageController extends Controller {
 			'isAdmin' => $user !== null && $this->groupManager->isAdmin($user->getUID()),
 			// Nextcloud Talk: video meetings in the invitations
 			'talk' => $user !== null && $this->apps->isEnabledForUser('spreed', $user),
+			// Nextcloud Deck: a card from a message
+			'deck' => $user !== null && $this->apps->isEnabledForUser('deck', $user),
 			// video meetings with Element Call (Matrix) or another service, set by the administrator
 			// (else, the chat of the organisation found among the « Sites externes »: before Talk)
 			'visio' => $visio['visio'],
