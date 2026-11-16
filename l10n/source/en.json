@@ -1790,5 +1790,12 @@
 	"Fichier": "File",
 	"Taille": "Size",
 	"Afficher plus": "Show more",
-	"{count} fichiers enregistrés dans {path}": "{count} files saved in {path}"
+	"{count} fichiers enregistrés dans {path}": "{count} files saved in {path}",
+	"{count} messages sélectionnés": "{count} messages selected",
+	"Actions sur le message": "Message actions",
+	"Catégoriser…": "Categorise…",
+	"Épingler en haut du dossier": "Pin at the top of the folder",
+	"Reporter…": "Snooze…",
+	"Rechercher un dossier": "Find a folder",
+	"Déplacer {count} messages vers": "Move {count} messages to"
 }

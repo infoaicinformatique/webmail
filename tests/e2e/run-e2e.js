@@ -1141,6 +1141,61 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('right-click on a message of the list: its usual actions with their keys; on several ticked, for all of them', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-folder:has-text("Boîte de réception")')
+		const row = (subject) => '.wm-message:has(.wm-message-subject:text-is("' + subject + '"))'
+		await page.waitForSelector(row('Newsletter n°3'))
+		// one message: answered, read, flagged, moved… from its menu
+		await page.click(row('Newsletter n°3'), { button: 'right' })
+		await page.waitForSelector('.wm-context-menu')
+		const labels = await page.$$eval('.wm-context-menu [role=menuitem] .wm-menu-label', (els) => els.map((e) => e.textContent))
+		for (const l of ['Répondre', 'Répondre à tous', 'Transférer', 'Marquer comme non lu', 'Assurer un suivi', 'Archiver', 'Déplacer vers…', 'Supprimer']) assert.ok(labels.includes(l), l + ' in ' + labels.join(', '))
+		assert.ok((await page.textContent('.wm-context-menu .wm-ctx-reply kbd')) === 'R')
+		await shot('114-context-menu')
+		await page.click('.wm-context-menu .wm-ctx-read')
+		await page.waitForSelector(row('Newsletter n°3') + '.unread')
+		await page.click(row('Newsletter n°3'), { button: 'right' })
+		await page.click('.wm-context-menu .wm-ctx-flag')
+		await page.waitForSelector(row('Newsletter n°3') + ' .wm-flag.on')
+		// from the keyboard: the menu key on the focused message, Escape closes it
+		await page.focus(row('Newsletter n°4'))
+		await page.keyboard.press('ContextMenu')
+		await page.waitForSelector('.wm-context-menu')
+		await page.keyboard.press('Escape')
+		await page.waitForFunction(() => !document.querySelector('.wm-context-menu'))
+		// reply: the message opened, then its answer
+		await page.click(row('Newsletter n°3'), { button: 'right' })
+		await page.click('.wm-context-menu .wm-ctx-reply')
+		await page.waitForSelector('.wm-compose h2:has-text("Répondre")')
+		await page.click('.wm-compose-actions button:has-text("Annuler")')
+		// two ticked: the menu acts on both (read again, then moved and back)
+		await page.click(row('Newsletter n°3'), { modifiers: ['Control'] })
+		await page.click(row('Newsletter n°4'), { modifiers: ['Control'] })
+		await page.click(row('Newsletter n°4'), { button: 'right' })
+		await page.waitForSelector('.wm-context-menu .wm-cat-title:has-text("2 messages sélectionnés")')
+		assert.ok(!(await page.$('.wm-context-menu .wm-ctx-reply')), 'no answer for several')
+		await page.click('.wm-context-menu .wm-ctx-flag')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-message .wm-flag.on').length >= 1)
+		await page.click(row('Newsletter n°3'), { modifiers: ['Control'] })
+		await page.click(row('Newsletter n°4'), { modifiers: ['Control'] })
+		await page.click(row('Newsletter n°3'), { button: 'right' })
+		await page.click('.wm-context-menu .wm-ctx-move')
+		await page.fill('.wm-move-menu .wm-move-filter', 'factu')
+		await page.waitForSelector('.wm-move-menu .wm-move-list button:has-text("Factures")')
+		await page.keyboard.press('Enter')
+		await page.waitForSelector('.wm-toast:has-text("2 messages déplacés vers « Factures »")')
+		await page.click('.wm-toast:has-text("2 messages déplacés") .wm-toast-action')
+		await page.waitForSelector(row('Newsletter n°3'))
+		await page.waitForSelector(row('Newsletter n°4'))
+		// (as before: read, not followed)
+		for (const n of [3, 4]) {
+			await page.click(row('Newsletter n°' + n), { button: 'right' })
+			if (await page.$('.wm-context-menu .wm-ctx-flag:has-text("Retirer le suivi")')) { await page.click('.wm-context-menu .wm-ctx-flag'); await page.click(row('Newsletter n°' + n), { button: 'right' }) }
+			if (await page.$('.wm-context-menu .wm-ctx-read:has-text("Marquer comme lu")')) await page.click('.wm-context-menu .wm-ctx-read'); else await page.keyboard.press('Escape')
+		}
+	})
+
 	await step('saved searches: kept under a name, in the side pane with their unread messages, opened again, deleted', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)
