@@ -72,6 +72,9 @@ class Notifier implements INotifier {
 				->setIcon($this->url->getAbsoluteURL($this->url->imagePath('core', 'actions/mail.svg')));
 			return $notification;
 		}
+		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'digest') {
+			return $this->prepareDigest($notification, $l);
+		}
 		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'update_available') {
 			return $this->prepareUpdate($notification, $l);
 		}
@@ -88,6 +91,51 @@ class Notifier implements INotifier {
 			->setParsedMessage($message)
 			->setLink($this->url->linkToRouteAbsolute('webmail.page.index') . '?' . http_build_query(['account' => $p['account'] ?? '', 'message' => $p['itemId'] ?? '']))
 			->setIcon($this->url->getAbsoluteURL($this->url->imagePath(Application::APP_ID, 'app-dark.svg')));
+		return $notification;
+	}
+
+	/**
+	 * « Résumé du matin » — « 3 réunions (la première à 09:30 : Point projet) · 12 non lus, dont 2 importants ·
+	 * 1 réponse à faire · 2 tâches · 1 message à suivre »
+	 */
+	private function prepareDigest(INotification $notification, IL10N $l): INotification {
+		$p = $notification->getSubjectParameters();
+		$n = fn (string $k) => (int)($p[$k] ?? 0);
+		$parts = [];
+		if ($n('meetings') > 0) {
+			$text = $n('meetings') > 1 ? $l->t('%s réunions', [$n('meetings')]) : $l->t('1 réunion');
+			if ((string)($p['first'] ?? '') !== '' && (string)($p['firstStart'] ?? '') !== '') {
+				$tz = $this->config->getUserValue($notification->getUser(), 'core', 'timezone', '') ?: date_default_timezone_get();
+				try {
+					$zone = new \DateTimeZone($tz);
+				} catch (\Exception) {
+					$zone = new \DateTimeZone('UTC');
+				}
+				$at = (new \DateTime((string)$p['firstStart']))->setTimezone($zone)->format('H:i');
+				$text .= ' (' . $l->t('la prochaine à %1$s : %2$s', [$at, (string)$p['first']]) . ')';
+			}
+			$parts[] = $text;
+		}
+		if ($n('unread') > 0) {
+			$text = $n('unread') > 1 ? $l->t('%s non lus', [$n('unread')]) : $l->t('1 non lu');
+			if ($n('important') > 0) {
+				$text .= ', ' . ($n('important') > 1 ? $l->t('dont %s importants', [$n('important')]) : $l->t('dont 1 important'));
+			}
+			$parts[] = $text;
+		}
+		if ($n('toReply') > 0) {
+			$parts[] = $n('toReply') > 1 ? $l->t('%s réponses à faire', [$n('toReply')]) : $l->t('1 réponse à faire');
+		}
+		if ($n('tasks') > 0) {
+			$parts[] = $n('tasks') > 1 ? $l->t('%s tâches à faire', [$n('tasks')]) : $l->t('1 tâche à faire');
+		}
+		if ($n('flagged') > 0) {
+			$parts[] = $n('flagged') > 1 ? $l->t('%s messages à suivre', [$n('flagged')]) : $l->t('1 message à suivre');
+		}
+		$notification->setParsedSubject('☀️ ' . $l->t('Votre journée'))
+			->setParsedMessage(implode(' · ', $parts))
+			->setLink($this->url->linkToRouteAbsolute('webmail.page.index') . '?view=today')
+			->setIcon($this->url->getAbsoluteURL($this->url->imagePath('core', 'places/calendar.svg')));
 		return $notification;
 	}
 

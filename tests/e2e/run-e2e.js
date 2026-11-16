@@ -5430,6 +5430,71 @@ async function main() {
 		await page.waitForSelector('.wm-message:has-text("Desinscription lettre d\'info")')
 	})
 
+	await step('morning summary: the day in one notification, at the hour chosen (once a day) or at once; it opens « Aujourd\'hui »', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const bell = () => page.evaluate(async () => (await (await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })).json()).ocs.data.filter((n) => n.app === 'webmail' && n.subject.includes('Votre journée')))
+		let tz = ''
+		try { tz = occ('user:setting admin core timezone').trim() } catch (e) { /* none */ }
+		try {
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('text=Comptes et signature')
+			const sel = '.wm-notify-settings select[name=digestHour]'
+			await page.waitForSelector(sel + ':not([disabled])')
+			assert.strictEqual(await page.inputValue(sel), '0', 'off at first')
+			await page.selectOption(sel, '8')
+			await page.waitForSelector('.wm-toast:has-text("Résumé du matin chaque jour à 8 h")')
+			assert.strictEqual(occ('user:setting admin webmail digest_hour').trim(), '8')
+			await shot('122-digest-settings')
+			// at once: in the bell, a click opens « Aujourd'hui »
+			await page.click('.wm-digest-now')
+			await page.waitForSelector('.wm-toast:has-text("Résumé envoyé")')
+			let told = await bell()
+			assert.strictEqual(told.length, 1, JSON.stringify(told))
+			assert.strictEqual(told[0].subject, '☀️ Votre journée')
+			assert.match(told[0].message, /\d+ non lus?/, told[0].message)
+			assert.ok(told[0].link.endsWith('/apps/webmail/?view=today'), told[0].link)
+			// again: the new one replaces it
+			const again = page.waitForResponse((r) => r.url().includes('/api/notify-settings/digest-now'))
+			await page.click('.wm-digest-now')
+			assert.strictEqual((await (await again).json()).sent, true)
+			assert.strictEqual((await bell()).length, 1)
+			await page.goto(told[0].link)
+			await page.waitForSelector('.wm-today-link.active')
+			// the background job: at its hour (the user's time zone), once a day
+			await page.evaluate(async (ids) => {
+				for (const id of ids) await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications/' + id, { method: 'DELETE', headers: { 'OCS-APIREQUEST': 'true', requesttoken: OC.requestToken } })
+			}, (await bell()).map((n) => n.notification_id))
+			let off = (8 - new Date().getUTCHours() + 24) % 24
+			if (off > 14) off -= 24
+			occ('user:setting admin core timezone ' + (off >= 0 ? 'Etc/GMT-' + off : 'Etc/GMT+' + -off))
+			occ('user:setting --delete admin webmail digest_last')
+			const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\DigestJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+			assert(jobId, 'background job registered')
+			occ('background-job:execute ' + jobId + ' --force-execute')
+			assert.strictEqual((await bell()).length, 1, 'sent at its hour')
+			await page.evaluate(async (ids) => {
+				for (const id of ids) await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications/' + id, { method: 'DELETE', headers: { 'OCS-APIREQUEST': 'true', requesttoken: OC.requestToken } })
+			}, (await bell()).map((n) => n.notification_id))
+			occ('background-job:execute ' + jobId + ' --force-execute')
+			assert.strictEqual((await bell()).length, 0, 'once a day')
+			// off: none
+			await page.click('text=Comptes et signature')
+			await page.waitForSelector(sel + ':not([disabled])')
+			assert.strictEqual(await page.inputValue(sel), '8')
+			await page.selectOption(sel, '0')
+			await page.waitForSelector('.wm-toast:has-text("Plus de résumé du matin")')
+			occ('user:setting --delete admin webmail digest_last')
+			occ('background-job:execute ' + jobId + ' --force-execute')
+			assert.strictEqual((await bell()).length, 0, 'off')
+		} finally {
+			if (tz) occ('user:setting admin core timezone ' + tz)
+			else occ('user:setting --delete admin core timezone')
+			for (const k of ['digest_hour', 'digest_last']) occ('user:setting --delete admin webmail ' + k)
+			await page.goto(NC + '/apps/webmail/')
+			await page.waitForSelector('.wm-message')
+		}
+	})
+
 	await step('newsletters: the lists of the inbox by sender; one left and its messages deleted, another kept', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)
