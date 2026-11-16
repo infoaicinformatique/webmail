@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+	<id>webmail_testai</id>
+	<name>Webmail test AI</name>
+	<summary>For the end-to-end tests of Webmail only: a fake AI, with answers known in advance.</summary>
+	<description>For the end-to-end tests of Webmail only.</description>
+	<version>1.0.0</version>
+	<licence>agpl</licence>
+	<author>Webmail</author>
+	<namespace>WebmailTestAi</namespace>
+	<category>tools</category>
+	<dependencies>
+		<nextcloud min-version="30" max-version="40"/>
+	</dependencies>
+</info>

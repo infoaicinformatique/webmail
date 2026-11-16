@@ -34,6 +34,7 @@
 		unified: false, // « Toutes les boîtes de réception »: the inboxes of every account in one list
 		today: false, // « Aujourd'hui » shown in the reading pane
 		filesView: false, // « Pièces jointes » shown in the reading pane
+		assistant: null, // what the Assistant of Nextcloud can do (summary, reply, translate), when there is one
 		unifiedItems: [],
 		pinned: new Map(), // id -> summary (with its folder): kept at the top of their folder
 		savedSearches: [], // « Recherches enregistrées » of the account
@@ -3729,6 +3730,13 @@
 			m.conversationId && role !== 'deleteditems' && role !== 'sentitems' && role !== 'drafts'
 				? item('wm-ignore-btn', '🔇', _('Ignorer la conversation'), () => ignoreConversation(m), _('Ignorer la conversation : ses messages, et ceux qui arriveront, vont dans les éléments supprimés'))
 				: null)
+		const ai = state.assistant
+		if (ai && (ai.summary || ai.reply || ai.translate)) {
+			section(_('Assistant'),
+				ai.summary ? item('wm-ai-summary', '✨', _('Résumer'), () => assistantRun(m, 'summary'), _('Un résumé du message par l\'Assistant de Nextcloud')) : null,
+				ai.reply ? item('wm-ai-reply', '✨', _('Proposer une réponse'), () => assistantRun(m, 'reply'), _('Un brouillon de réponse par l\'Assistant de Nextcloud, à relire')) : null,
+				ai.translate ? item('wm-ai-translate', '✨', _('Traduire'), () => assistantRun(m, 'translate'), _('Le message traduit par l\'Assistant de Nextcloud')) : null)
+		}
 		section(_('Détails'),
 			item('wm-headers-btn', '🧾', _('En-têtes Internet'), () => showHeaders(m), _('En-têtes Internet : expéditeur réel, serveurs traversés, contrôles SPF, DKIM et DMARC')))
 		document.body.appendChild(menu)
@@ -4118,6 +4126,53 @@
 	 * What to be wary of in a message: a sender borrowing the name of a colleague from outside,
 	 * links leading elsewhere than the address they show (the server finds them).
 	 */
+	/**
+	 * The Assistant of Nextcloud on the message open: its answer in a panel above the text
+	 * (the AI may take a while: asked again every few seconds, for 3 minutes at most).
+	 */
+	async function assistantRun(m, kind, instructions) {
+		const old = detailEl.querySelector('.wm-assistant-panel')
+		if (old) old.remove()
+		const titles = { summary: _('Résumé'), reply: _('Réponse proposée'), translate: _('Traduction') }
+		const content = h('div', { class: 'wm-assistant-output' }, h('span', { class: 'icon-loading-small' }), ' ' + _('L\'Assistant travaille…'))
+		const actions = h('div', { class: 'wm-assistant-actions' })
+		const panel = h('section', { class: 'wm-assistant-panel', 'aria-live': 'polite', dataset: { kind } },
+			h('div', { class: 'wm-assistant-head' },
+				h('strong', {}, '✨ ' + titles[kind]),
+				h('span', { class: 'wm-muted' }, _('par l\'Assistant de Nextcloud : à vérifier')),
+				h('button', { type: 'button', class: 'wm-icon-btn', 'aria-label': _('Fermer'), onclick: () => panel.remove() }, '✕')),
+			content, actions)
+		const anchor = detailEl.querySelector('.wm-message-header')
+		if (anchor) anchor.after(panel); else detailEl.prepend(panel)
+		const lang = (document.documentElement.lang || 'fr').slice(0, 2)
+		let taskId
+		try {
+			taskId = (await api('/accounts/' + state.accountId + '/assistant', { method: 'POST', body: { itemId: m.id, kind, instructions: instructions || '', language: kind === 'translate' ? lang : '' } })).taskId
+		} catch (e) { clear(content); content.textContent = e.message; return }
+		const until = Date.now() + 3 * 60000
+		while (panel.isConnected) {
+			let r
+			try { r = await api('/assistant/' + taskId) } catch (e) { clear(content); content.textContent = e.message; return }
+			if (r.status === 'done') {
+				clear(content)
+				r.output.split(/\n{2,}/).forEach((p) => content.appendChild(h('p', {}, p)))
+				clear(actions)
+				actions.append(h('button', { type: 'button', class: 'wm-small', onclick: async () => {
+					try { await navigator.clipboard.writeText(r.output); toast(_('Copié')) } catch (e) { toast(_('Copie impossible'), true) }
+				} }, '📋 ' + _('Copier')))
+				if (kind === 'reply') {
+					const hint = h('input', { type: 'text', class: 'wm-assistant-hint', placeholder: _('Consigne, par exemple : accepter, proposer mardi') })
+					actions.prepend(h('button', { type: 'button', class: 'primary wm-small wm-assistant-use', onclick: () => openCompose('reply', m, { body: r.output }) }, '↩ ' + _('Répondre avec ce texte')))
+					actions.append(hint, h('button', { type: 'button', class: 'wm-small', onclick: () => assistantRun(m, 'reply', hint.value.trim()) }, '↻ ' + _('Autre proposition')))
+				}
+				return
+			}
+			if (r.status === 'failed') { clear(content); content.textContent = _('L\'Assistant n\'a pas pu répondre : {error}', { error: r.error || '?' }); return }
+			if (Date.now() > until) { clear(content); content.textContent = _('L\'Assistant met trop de temps à répondre : réessayez plus tard.'); return }
+			await new Promise((resolve) => setTimeout(resolve, 2000))
+		}
+	}
+
 	function securityBanner(m) {
 		const s = m.security
 		if (!s || (!s.impersonates && !(s.deceptiveLinks || []).length)) return null
@@ -6773,6 +6828,7 @@
 			if (folders && typeof folders === 'object') state.imageFolders = Object.assign(state.imageFolders, folders)
 		} catch (e) { /* the defaults */ }
 		state.isAdmin = root.dataset.isAdmin === '1'
+		api('/assistant').then((c) => { state.assistant = c }, () => {})
 		restoreTab()
 		window.addEventListener('pagehide', writeTab)
 		applyDensity()
