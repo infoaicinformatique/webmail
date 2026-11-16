@@ -1225,7 +1225,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/_test/remove':
                 MESSAGES.pop(data.get('id', ''), None)
                 return self.send(200, '{}', {'Content-Type': 'application/json'})
-            mid = add_message(data.get('folder', 'F-INBOX'), data['subject'], tuple(data['sender']), data['body'], int(data.get('minutesAgo', 0)), is_read=bool(data.get('isRead')))
+            files = [dict(name=a['name'], content_type=a.get('type', 'text/plain'), content=a.get('text', '').encode('utf-8'), inline=False) for a in data.get('attachments', [])]
+            mid = add_message(data.get('folder', 'F-INBOX'), data['subject'], tuple(data['sender']), data['body'], int(data.get('minutesAgo', 0)), is_read=bool(data.get('isRead')), attachments=files)
             if data.get('rules'):
                 # (as on its arrival: the rules of the inbox run on it)
                 rules.apply('user@societe-a.fr', MESSAGES[mid], lambda msg, folder: move_message(msg['id'], folder))

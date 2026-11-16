@@ -12,6 +12,7 @@ use OCA\Webmail\Service\AttachmentKinds;
 use OCA\Webmail\Service\AttachmentZip;
 use OCA\Webmail\Service\FollowUpService;
 use OCA\Webmail\Service\HtmlSanitizer;
+use OCA\Webmail\Service\MessagePdf;
 use OCA\Webmail\Service\SavedSearches;
 use OCA\Webmail\Service\MailNotificationService;
 use OCA\Webmail\Service\SecurityCheck;
@@ -631,6 +632,48 @@ class MailController extends Controller {
 		return $this->handle(function () use ($id, $itemId) {
 			$mail = $this->client($id)->getMime($itemId);
 			return new DataDownloadResponse($mail['content'], $mail['name'], 'message/rfc822');
+		});
+	}
+
+	private function userZone(): \DateTimeZone {
+		try {
+			return new \DateTimeZone($this->config->getUserValue((string)$this->userId, 'core', 'timezone', '') ?: date_default_timezone_get());
+		} catch (\Exception) {
+			return new \DateTimeZone('UTC');
+		}
+	}
+
+	/** A message as a PDF, to download. */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function pdf(int $id, string $itemId): Response {
+		return $this->handle(function () use ($id, $itemId) {
+			$m = $this->client($id)->getItem($itemId);
+			return new DataDownloadResponse(MessagePdf::render($m, $this->l10n(), $this->userZone()), MessagePdf::fileName($m), 'application/pdf');
+		});
+	}
+
+	/**
+	 * A message as a PDF into a folder of Files, its attachments beside it when asked.
+	 * @return array{path: string, attachments: list<string>}
+	 */
+	#[NoAdminRequired]
+	public function savePdf(int $id, string $itemId, string $path = '/Courriers', bool $attachments = false): Response {
+		return $this->handle(function () use ($id, $itemId, $path, $attachments) {
+			$client = $this->client($id);
+			$m = $client->getItem($itemId);
+			$saved = $this->saveToFiles($path, MessagePdf::fileName($m), MessagePdf::render($m, $this->l10n(), $this->userZone()));
+			$files = [];
+			if ($attachments) {
+				foreach ((array)($m['attachments'] ?? []) as $a) {
+					if (!empty($a['isInline']) || !empty($a['isItem']) || empty($a['id'])) {
+						continue;
+					}
+					$att = $client->getAttachment((string)$a['id']);
+					$files[] = $this->saveToFiles($path, $att['name'], $att['content']);
+				}
+			}
+			return ['path' => $saved, 'attachments' => $files];
 		});
 	}
 
