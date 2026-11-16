@@ -844,6 +844,7 @@ OC.L10N.register(
     "Listes Nextcloud": "Nextcloud lists",
     "Listes de tâches": "Task lists",
     "Lu": "Read",
+    "Marquer comme lu": "Mark as read",
     "Marquer comme non lu": "Mark as unread",
     "Marquer comme terminée": "Mark as completed",
     "Masquer ces messages": "Hide these messages",

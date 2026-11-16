@@ -1797,5 +1797,6 @@
 	"Épingler en haut du dossier": "Pin at the top of the folder",
 	"Reporter…": "Snooze…",
 	"Rechercher un dossier": "Find a folder",
-	"Déplacer {count} messages vers": "Move {count} messages to"
+	"Déplacer {count} messages vers": "Move {count} messages to",
+	"Marquer comme lu": "Mark as read"
 }
