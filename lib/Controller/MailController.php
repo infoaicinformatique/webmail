@@ -96,7 +96,15 @@ class MailController extends Controller {
 				throw new MailException('Seuls les éléments supprimés et le courrier indésirable se vident d\'un coup');
 			}
 			$this->forgetFolderIds($id);
-			$this->client($id)->emptyFolder($role, $role === 'deleteditems');
+			$client = $this->client($id);
+			if ($role === 'deleteditems') {
+				$left = $client->emptyDeletedItems();
+				if ($left !== []) {
+					throw new MailException('Les messages sont supprimés, mais Exchange a gardé ces dossiers : %s', [implode(', ', $left)]);
+				}
+			} else {
+				$client->emptyFolder($role, false);
+			}
 			return ['emptied' => $role];
 		});
 	}

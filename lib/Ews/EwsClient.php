@@ -1595,12 +1595,47 @@ class EwsClient {
 	 * Empty a folder (« Vider »): its messages to the deleted items, or
 	 * deleted for good when it is the deleted items itself. Sub-folders kept.
 	 */
-	public function emptyFolder(string $folderId, bool $permanent): void {
+	public function emptyFolder(string $folderId, bool $permanent, ?bool $subFolders = null): void {
+		// emptied for good: its sub-folders too (the folders deleted earlier land there)
+		$subFolders ??= $permanent;
 		$this->request(
-			// emptied for good: its sub-folders too (the folders deleted earlier land there)
-			'<m:EmptyFolder DeleteType="' . ($permanent ? 'HardDelete' : 'MoveToDeletedItems') . '" DeleteSubFolders="' . ($permanent ? 'true' : 'false') . '">'
+			'<m:EmptyFolder DeleteType="' . ($permanent ? 'HardDelete' : 'MoveToDeletedItems') . '" DeleteSubFolders="' . ($subFolders ? 'true' : 'false') . '">'
 			. '<m:FolderIds>' . $this->folderIdXml($folderId) . '</m:FolderIds></m:EmptyFolder>'
 		);
+	}
+
+	/**
+	 * « Éléments supprimés » emptied for good, its folders too. Some Exchange servers keep
+	 * the folders (or refuse DeleteSubFolders): those left are then deleted one by one.
+	 * @return list<string> the names of the folders that could not be deleted
+	 */
+	public function emptyDeletedItems(): array {
+		try {
+			$this->emptyFolder('deleteditems', true, true);
+		} catch (MailException $e) {
+			// (the messages at least)
+			$this->emptyFolder('deleteditems', true, false);
+		}
+		$folders = $this->listFolders();
+		$trash = null;
+		foreach ($folders as $f) {
+			if (($f['role'] ?? null) === 'deleteditems') {
+				$trash = $f['id'];
+			}
+		}
+		$left = [];
+		foreach ($folders as $f) {
+			if ($trash === null || $f['parentId'] !== $trash) {
+				continue;
+			}
+			try {
+				// (its own sub-folders go with it)
+				$this->deleteFolder($f['id'], true);
+			} catch (MailException $e) {
+				$left[] = $f['name'];
+			}
+		}
+		return $left;
 	}
 
 	public function deleteItems(array $itemIds, bool $permanent = false): void {

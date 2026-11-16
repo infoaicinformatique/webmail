@@ -303,6 +303,30 @@ class EwsClientTest extends EwsTestCase {
 		$this->assertStringContainsString('<m:EmptyFolder DeleteType="MoveToDeletedItems" DeleteSubFolders="false">', $this->lastRequest());
 	}
 
+	public function testTheFoldersLeftInTheDeletedItemsAreDeletedOneByOne(): void {
+		// an Exchange refusing DeleteSubFolders: the messages emptied, then each folder deleted for good
+		$this->queue('<m:EmptyFolderResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"><m:ResponseMessages><m:EmptyFolderResponseMessage ResponseClass="Error"><m:MessageText>not supported</m:MessageText><m:ResponseCode>ErrorCannotEmptyFolder</m:ResponseCode></m:EmptyFolderResponseMessage></m:ResponseMessages></m:EmptyFolderResponse>');
+		$this->queue(self::ok('EmptyFolder'));
+		$this->queue($this->roles());
+		$this->queue(self::ok('FindFolder', '<m:RootFolder TotalItemsInView="3" IncludesLastItemInRange="true"><t:Folders>'
+			. '<t:Folder><t:FolderId Id="DELETED"/><t:ParentFolderId Id="ROOT"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Éléments supprimés</t:DisplayName><t:TotalCount>0</t:TotalCount><t:UnreadCount>0</t:UnreadCount></t:Folder>'
+			. '<t:Folder><t:FolderId Id="OLD"/><t:ParentFolderId Id="DELETED"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Vieux projets</t:DisplayName><t:TotalCount>0</t:TotalCount><t:UnreadCount>0</t:UnreadCount></t:Folder>'
+			. '<t:Folder><t:FolderId Id="SUB"/><t:ParentFolderId Id="OLD"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>2019</t:DisplayName><t:TotalCount>0</t:TotalCount><t:UnreadCount>0</t:UnreadCount></t:Folder>'
+			. '<t:Folder><t:FolderId Id="KEPT"/><t:ParentFolderId Id="DELETED"/><t:FolderClass>IPF.Note</t:FolderClass><t:DisplayName>Gardé</t:DisplayName><t:TotalCount>0</t:TotalCount><t:UnreadCount>0</t:UnreadCount></t:Folder>'
+			. '</t:Folders></m:RootFolder>'));
+		// (Exchange's own folders checked before each deletion: they are never deleted)
+		$this->queue($this->roles());
+		$this->queue(self::ok('DeleteFolder'));
+		$this->queue($this->roles());
+		$this->queue('<m:DeleteFolderResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"><m:ResponseMessages><m:DeleteFolderResponseMessage ResponseClass="Error"><m:MessageText>denied</m:MessageText><m:ResponseCode>ErrorAccessDenied</m:ResponseCode></m:DeleteFolderResponseMessage></m:ResponseMessages></m:DeleteFolderResponse>');
+		$this->assertSame(['Gardé'], $this->client()->emptyDeletedItems());
+		$this->assertStringContainsString('DeleteSubFolders="true"', $this->requests[0]);
+		$this->assertStringContainsString('<m:EmptyFolder DeleteType="HardDelete" DeleteSubFolders="false">', $this->requests[1]);
+		$deletes = array_values(array_filter($this->requests, fn ($r) => str_contains($r, '<m:DeleteFolder ')));
+		$this->assertCount(2, $deletes, 'the folders directly in it (« 2019 » goes with « Vieux projets »)');
+		$this->assertStringContainsString('<m:DeleteFolder DeleteType="HardDelete"><m:FolderIds><t:FolderId Id="OLD"/>', $deletes[0]);
+	}
+
 	public function testExchangeFoldersAreProtected(): void {
 		$this->queue($this->roles());
 		try {
