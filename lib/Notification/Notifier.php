@@ -73,7 +73,7 @@ class Notifier implements INotifier {
 		[$subject, $message] = MailNotificationService::texts($p, (string)($notification->getMessageParameters()['preview'] ?? ''), $l);
 		$sender = MailNotificationService::sender($p);
 		$notification->setParsedSubject($subject)
-			->setRichSubject(MailNotificationService::title($sender, $l, '{sender}'),
+			->setRichSubject((!empty($p['vip']) ? '⭐ ' : '') . MailNotificationService::title($sender, $l, '{sender}'),
 				$sender !== '' ? ['sender' => ['type' => 'highlight', 'id' => 'sender', 'name' => $sender]] : [])
 			->setParsedMessage($message)
 			->setLink($this->url->linkToRouteAbsolute('webmail.page.index') . '?' . http_build_query(['account' => $p['account'] ?? '', 'message' => $p['itemId'] ?? '']))

@@ -1883,5 +1883,15 @@
 	"Courriers": "Letters",
 	"(message sans texte)": "(message without text)",
 	"Cc": "Cc",
-	"{path} enregistré, avec sa pièce jointe": "{path} saved, with its attachment"
+	"{path} enregistré, avec sa pièce jointe": "{path} saved, with its attachment",
+	"Expéditeur prioritaire": "Priority sender",
+	"Ne plus mettre en avant les messages de {email}": "Stop highlighting the messages of {email}",
+	"Mettre en avant les messages de {email} (expéditeur prioritaire)": "Highlight the messages of {email} (priority sender)",
+	"Prioritaires": "Priority",
+	"Retirer des prioritaires": "Remove from priority senders",
+	"{name} est un expéditeur prioritaire : ses messages sont mis en avant, et annoncés même si les notifications sont coupées": "{name} is a priority sender: their messages are highlighted, and announced even when notifications are off",
+	"{name} n'est plus un expéditeur prioritaire": "{name} is no longer a priority sender",
+	"Les messages de vos expéditeurs prioritaires dans la boîte de réception : {names}.": "The messages of your priority senders in the inbox: {names}.",
+	"Aucun message de vos expéditeurs prioritaires": "No message from your priority senders",
+	"Trop d'expéditeurs prioritaires (%s au plus)": "Too many priority senders (%s at most)"
 }

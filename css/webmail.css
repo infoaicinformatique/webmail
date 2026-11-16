@@ -1318,3 +1318,9 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-sender-columns h4 { margin: 6px 0 2px; }
 .wm-sender-list { list-style: none; padding: 0; margin: 0; max-height: 240px; overflow: auto; }
 .wm-sender-list li { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 2px 0; }
+
+/* « Expéditeurs prioritaires » */
+.wm-vip-star { font-size: 0.9em; }
+.wm-vip-btn.on { border-color: #e0b000; }
+.wm-vip-list { list-style: none; padding: 0; }
+.wm-vip-list .unread .wm-today-subject { font-weight: 700; }
