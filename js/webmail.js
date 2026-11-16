@@ -1150,6 +1150,11 @@
 			class: 'wm-files-link' + (state.filesView ? ' active' : ''),
 			onclick: (e) => { e.preventDefault(); openFiles() },
 		}, h('span', { class: 'wm-folder-name' }, '📎 ' + _('Pièces jointes')))),
+		h('li', {}, h('a', {
+			href: '#',
+			class: 'wm-news-link',
+			onclick: (e) => { e.preventDefault(); openNewsletters() },
+		}, h('span', { class: 'wm-folder-name' }, '📰 ' + _('Lettres d\'information')))),
 		state.vip.size ? h('li', {}, h('a', {
 			href: '#',
 			class: 'wm-vip-link' + (state.vipView ? ' active' : ''),
@@ -1418,6 +1423,7 @@
 							},
 						}, '🗑 ' + _('Vider')) : null))
 			})))
+			body.appendChild(h('p', {}, h('button', { type: 'button', class: 'wm-small wm-space-news', onclick: () => { close(); openNewsletters() } }, '📰 ' + _('Nettoyer les lettres d\'information'))))
 			body.appendChild(h('p', { class: 'wm-muted' }, _('Avant de supprimer un message, enregistrez dans Fichiers les pièces jointes à garder ; pour en envoyer de lourdes, préférez un lien de partage Nextcloud.')))
 		}
 		render()
@@ -1425,6 +1431,105 @@
 			h('div', { class: 'wm-modal-header' }, h('h2', {}, title), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
 			body))
 		document.body.appendChild(overlay)
+		const first = body.querySelector('button')
+		if (first) first.focus()
+	}
+
+	/**
+	 * « Lettres d'information »: the mailing lists of the inbox, one row per sender (how many,
+	 * how heavy, how often opened); leave one and delete its messages, or keep it.
+	 */
+	async function openNewsletters() {
+		const accountId = state.accountId
+		const base = '/accounts/' + accountId + '/newsletters'
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const title = _('Lettres d\'information')
+		const body = h('div', { class: 'wm-news-body' }, h('span', { class: 'icon-loading' }))
+		overlay.appendChild(h('div', { class: 'wm-modal wm-news-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, title), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			body))
+		document.body.appendChild(overlay)
+		let info
+		try {
+			info = await api(base)
+		} catch (e) { close(); toast(e.message, true); return }
+		const count = (n) => n > 1 ? _('{count} messages', { count: n }) : _('{count} message', { count: n })
+		const render = () => {
+			clear(body)
+			const rows = info.senders
+			body.appendChild(h('p', {}, rows.length
+				? _('Les listes de diffusion de la boîte de réception, celles qui envoient le plus d\'abord. Désabonnez-vous de celles que vous ne lisez plus : leurs messages sont supprimés en même temps.')
+				: _('Aucune lettre d\'information dans la boîte de réception.')))
+			if (info.scanned >= info.max) body.appendChild(h('p', { class: 'wm-muted' }, _('Parmi les {max} messages les plus récents.', { max: info.max })))
+			body.appendChild(h('ul', { class: 'wm-news-list' }, rows.map((r) => {
+				const who = r.name && r.name.toLowerCase() !== r.email ? r.name : r.email
+				const rate = h('span', { class: 'wm-news-rate' + (r.readRate < 25 ? ' wm-news-unread' : '') }, _('ouverts : {rate} %', { rate: r.readRate }))
+				const clean = h('button', {
+					type: 'button',
+					class: 'wm-small wm-danger wm-news-clean',
+					onclick: async (e) => {
+						const question = r.method === 'link'
+							? _('Supprimer les {count} de {who} ? La page de désinscription de la liste s\'ouvrira : confirmez-y le désabonnement.', { count: count(r.count), who })
+							: _('Se désabonner de {who} et supprimer ses {count} ?', { who, count: count(r.count) })
+						if (!window.confirm(question)) return
+						const btn = e.currentTarget
+						btn.disabled = true
+						try {
+							const res = await api(base + '/clean', { method: 'POST', body: { email: r.email, itemId: r.itemId } })
+							if (res.unsubscribe && res.unsubscribe.method === 'link') window.open(res.unsubscribe.url, '_blank', 'noopener,noreferrer')
+							unsubscribed.add(r.email)
+							info.senders = info.senders.filter((x) => x !== r)
+							if (state.accountId === accountId) removeFromList(res.itemIds)
+							listCache.clear()
+							loadFolders()
+							toast(_('{who} : désabonnement demandé, {count} supprimés', { who, count: count(res.count) }))
+							render()
+						} catch (ex) {
+							btn.disabled = false
+							toast(ex.message, true)
+						}
+					},
+				}, _('Se désabonner et tout supprimer'))
+				const keep = h('button', {
+					type: 'button',
+					class: 'wm-small wm-news-keep',
+					title: _('Ne plus la proposer ici'),
+					onclick: async (e) => {
+						e.currentTarget.disabled = true
+						try {
+							info.kept = (await api(base + '/keep', { method: 'POST', body: { email: r.email, keep: true } })).kept
+							info.senders = info.senders.filter((x) => x !== r)
+							render()
+						} catch (ex) { e.currentTarget.disabled = false; toast(ex.message, true) }
+					},
+				}, _('Garder'))
+				return h('li', { class: 'wm-news-row', dataset: { email: r.email } },
+					h('div', { class: 'wm-news-head' },
+						h('span', { class: 'wm-news-name', title: r.email }, who),
+						h('span', { class: 'wm-muted' }, count(r.count) + ' · ' + formatBytes(r.bytes) + ' · '), rate),
+					h('div', { class: 'wm-news-actions' }, clean, keep))
+			})))
+			if (info.kept.length) {
+				body.appendChild(h('details', { class: 'wm-news-kept' },
+					h('summary', {}, info.kept.length > 1 ? _('{count} listes gardées', { count: info.kept.length }) : _('{count} liste gardée', { count: info.kept.length })),
+					h('ul', {}, info.kept.map((email) => h('li', {}, h('span', {}, email), ' ', h('button', {
+						type: 'button',
+						class: 'wm-small wm-news-unkeep',
+						onclick: async () => {
+							try {
+								await api(base + '/keep', { method: 'POST', body: { email, keep: false } })
+								info = await api(base)
+								render()
+							} catch (ex) { toast(ex.message, true) }
+						},
+					}, _('Proposer à nouveau')))))))
+			}
+		}
+		render()
 		const first = body.querySelector('button')
 		if (first) first.focus()
 	}

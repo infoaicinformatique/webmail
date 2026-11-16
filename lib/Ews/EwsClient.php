@@ -1384,6 +1384,56 @@ class EwsClient {
 		return $this->unsubscribeOf($xp, $item);
 	}
 
+	/** « Lettres d'information »: at most this many of the newest messages looked at. */
+	public const LISTS_SCAN = 2000;
+
+	/**
+	 * The messages of a folder that come from a mailing list (a List-Unsubscribe header),
+	 * newest first, among its LISTS_SCAN newest: who sent them, read or not, how heavy.
+	 *
+	 * @return array{messages: list<array{id: string, email: string, name: string, isRead: bool, size: int, date: ?string, method: string}>, scanned: int}
+	 * @throws MailException
+	 */
+	public function mailingListMessages(string $folderId): array {
+		$out = [];
+		$scanned = 0;
+		for ($offset = 0; $offset < self::LISTS_SCAN; $offset += 200) {
+			$xp = $this->request(
+				'<m:FindItem Traversal="Shallow">'
+				. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+				. '<t:FieldURI FieldURI="message:From"/><t:FieldURI FieldURI="message:IsRead"/>'
+				. '<t:FieldURI FieldURI="item:Size"/><t:FieldURI FieldURI="item:DateTimeReceived"/>'
+				. self::LIST_HEADERS . '</t:AdditionalProperties></m:ItemShape>'
+				. '<m:IndexedPageItemView MaxEntriesReturned="200" Offset="' . $offset . '" BasePoint="Beginning"/>'
+				. self::sortOrderXml('date', true)
+				. '<m:ParentFolderIds>' . $this->folderIdXml($folderId) . '</m:ParentFolderIds>'
+				. '</m:FindItem>'
+			);
+			foreach ($xp->query('//m:RootFolder/t:Items/*') as $node) {
+				$scanned++;
+				$how = $this->unsubscribeOf($xp, $node);
+				$from = $this->mailbox($xp, 't:From/t:Mailbox', $node);
+				if ($how === null || !is_array($from) || (string)($from['email'] ?? '') === '') {
+					continue;
+				}
+				$out[] = [
+					'id' => (string)$this->attr($xp, 't:ItemId', 'Id', $node),
+					'email' => mb_strtolower((string)$from['email']),
+					'name' => (string)($from['name'] ?? ''),
+					'isRead' => $this->text($xp, 't:IsRead', $node) !== 'false',
+					'size' => (int)$this->text($xp, 't:Size', $node),
+					'date' => $this->text($xp, 't:DateTimeReceived', $node),
+					'method' => (string)$how['method'],
+				];
+			}
+			$root = $xp->query('//m:RootFolder')->item(0);
+			if (!$root instanceof \DOMElement || $root->getAttribute('IncludesLastItemInRange') !== 'false') {
+				break;
+			}
+		}
+		return ['messages' => $out, 'scanned' => $scanned];
+	}
+
 	/** Largest .eml imported (Exchange refuses bigger messages anyway). */
 	public const MAX_EML_BYTES = 26214400;
 

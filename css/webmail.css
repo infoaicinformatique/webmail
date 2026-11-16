@@ -1121,6 +1121,16 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-space-fill { height: 100%; background: var(--color-primary-element, #0082c9); }
 .wm-space-actions { display: flex; gap: 8px; }
 .wm-space-actions button { margin: 0; }
+.wm-news-dialog { max-width: 640px; }
+.wm-news-list { list-style: none; margin: 8px 0; padding: 0; max-height: 60vh; overflow-y: auto; }
+.wm-news-row { padding: 8px 0; border-bottom: 1px solid var(--color-border); }
+.wm-news-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.wm-news-name { font-weight: bold; flex: 1 1 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-news-unread { color: var(--color-error-text, var(--color-error, #c00)); font-weight: bold; }
+.wm-news-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.wm-news-actions button, .wm-news-kept button { margin: 0; }
+.wm-news-kept ul { list-style: none; padding: 0; }
+.wm-news-kept li { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 2px 0; }
 
 /* « Tous ses messages » */
 .wm-sender-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
