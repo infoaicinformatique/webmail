@@ -1495,6 +1495,82 @@ async function main() {
 		}
 	})
 
+	await step('quiet hours: no new message in the bell during them, the priority senders if wished; settings kept', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		const accountId = await page.evaluate(async () => (await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()).find((a) => a.email === 'user@societe-a.fr').id)
+		const bell = (subject) => page.evaluate(async (subject) => (await (await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })).json()).ocs.data
+			.filter((n) => n.app === 'webmail' && n.message.includes(subject)), subject)
+		const vip = (email, on) => page.evaluate(async ({ id, email, on }) => {
+			await fetch('/apps/webmail/api/accounts/' + id + '/vip', { method: 'POST', headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, vip: on }) })
+		}, { id: accountId, email, on })
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\NewMailJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		const runJob = () => occ('background-job:execute ' + jobId + ' --force-execute')
+		const made = []
+		let tz = ''
+		try { tz = occ('user:setting admin core timezone').trim() } catch (e) { /* none */ }
+		try {
+			occ('user:setting admin core timezone UTC')
+			await vip('directeur@client-calme.fr', true)
+			const hour = new Date().getUTCHours()
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('text=Comptes et signature')
+			const card = '.wm-notify-settings'
+			await page.waitForSelector(card + ' input[name=quietOn]:not([disabled])')
+			assert.ok(await page.isHidden(card + ' .wm-quiet-more'), 'the details only once on')
+			await page.check(card + ' input[name=quietOn]')
+			await page.waitForSelector('.wm-toast:has-text("Heures calmes de 19 h à 8 h")')
+			await page.waitForSelector(card + ' select[name=quietFrom]:not([disabled])')
+			await page.selectOption(card + ' select[name=quietFrom]', String(hour))
+			await page.waitForSelector(card + ' select[name=quietTo]:not([disabled])')
+			await page.selectOption(card + ' select[name=quietTo]', String((hour + 2) % 24))
+			await page.waitForSelector('.wm-toast:has-text("Heures calmes de ' + hour + ' h à ' + ((hour + 2) % 24) + ' h")')
+			await shot('123-quiet-hours')
+			// kept
+			await page.reload()
+			await page.click('text=Comptes et signature')
+			await page.waitForSelector(card + ' input[name=quietOn]:checked:not([disabled])')
+			assert.strictEqual(await page.inputValue(card + ' select[name=quietFrom]'), String(hour))
+			assert.ok(await page.isChecked(card + ' input[name=quietVip]'))
+			// now: the others silent, the priority sender told
+			runJob()
+			made.push(await fake('/_test/deliver', { subject: 'Calme : relance fournisseur', sender: ['Fournisseur', 'ventes@fournisseur-calme.fr'], body: '<p>Relance.</p>' }))
+			made.push(await fake('/_test/deliver', { subject: 'Calme : urgent du directeur', sender: ['Le Directeur', 'directeur@client-calme.fr'], body: '<p>Urgent.</p>' }))
+			runJob()
+			assert.strictEqual((await bell('Calme : relance fournisseur')).length, 0, 'quiet')
+			assert.strictEqual((await bell('Calme : urgent du directeur')).length, 1, 'a priority sender comes through')
+			// not even them
+			await page.uncheck(card + ' input[name=quietVip]')
+			await page.waitForSelector(card + ' input[name=quietVip]:not([disabled])')
+			made.push(await fake('/_test/deliver', { subject: 'Calme : second message du directeur', sender: ['Le Directeur', 'directeur@client-calme.fr'], body: '<p>Encore.</p>' }))
+			runJob()
+			assert.strictEqual((await bell('Calme : second message du directeur')).length, 0)
+			// off: told again
+			await page.uncheck(card + ' input[name=quietOn]')
+			await page.waitForSelector('.wm-toast:has-text("Heures calmes désactivées")')
+			made.push(await fake('/_test/deliver', { subject: 'Calme : après les heures calmes', sender: ['Fournisseur', 'ventes@fournisseur-calme.fr'], body: '<p>Après.</p>' }))
+			runJob()
+			assert.strictEqual((await bell('Calme : après les heures calmes')).length, 1)
+		} finally {
+			try { occ('user:setting --delete admin webmail quiet_hours') } catch (e) { /* none */ }
+			await vip('directeur@client-calme.fr', false)
+			if (tz) occ('user:setting admin core timezone ' + tz)
+			else occ('user:setting --delete admin core timezone')
+			for (const m of made) await fake('/_test/remove', { id: m.id })
+			await page.goto(NC + '/apps/webmail/')
+			await page.waitForSelector('.wm-message')
+		}
+	})
+
 	await step('« Répondre plus tard »: in « À répondre » of « Aujourd\'hui », a reminder at its time, gone once answered', async () => {
 		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
 		const fake = (path, body) => new Promise((resolve, reject) => {
