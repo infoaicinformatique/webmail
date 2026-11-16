@@ -1214,7 +1214,10 @@ async function main() {
 				const c = await r.json()
 				return c.summary && c.reply && c.translate
 			})
+			// (what the Assistant can do, asked when the page opens: answered before the menu)
+			const asked = page.waitForResponse((r) => /\/apps\/webmail\/api\/assistant(\?|$)/.test(r.url()))
 			await page.goto(NC + '/apps/webmail/')
+			await asked
 			await page.waitForSelector('.wm-message')
 			await openMenu()
 			await shot('112-assistant-menu')
