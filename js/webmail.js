@@ -6529,8 +6529,8 @@
 					if (!navEl || !root.contains(navEl)) buildLayout()
 					await selectAccount(acc.id)
 					startBackground()
-					// unless another account or a message was opened meanwhile
-					if (state.accountId === acc.id && !state.selectedId && state.module === 'mail') {
+					// unless another account, a message or the settings were opened meanwhile
+					if (state.accountId === acc.id && !state.selectedId && state.module === 'mail' && (!detailEl.firstChild || detailEl.querySelector('.wm-empty-detail'))) {
 						renderEmptyDetail()
 						setView('list')
 					}
