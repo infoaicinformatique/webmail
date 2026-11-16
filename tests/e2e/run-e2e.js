@@ -1495,6 +1495,64 @@ async function main() {
 		}
 	})
 
+	await step('« Répondre plus tard »: in « À répondre » of « Aujourd\'hui », a reminder at its time, gone once answered', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		const a = await fake('/_test/deliver', { subject: 'Question budget 2027', sender: ['Paul Durand', 'paul.durand@societe-a.fr'], body: '<p>Peux-tu me dire le budget ?</p>', isRead: true })
+		const b = await fake('/_test/deliver', { subject: 'Devis à valider', sender: ['Client B', 'contact@client-b.fr'], body: '<p>Merci de valider le devis.</p>', isRead: true })
+		const accountId = await page.evaluate(async () => (await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()).find((x) => x.email === 'user@societe-a.fr').id)
+		try {
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('.wm-folder:has-text("Boîte de réception")')
+			await page.click('.wm-list button[title="Actualiser"]')
+			// from the toolbar: a time later today, or tomorrow
+			await page.click('.wm-message:has-text("Question budget 2027")')
+			await page.waitForSelector('.wm-message-header h2:has-text("Question budget 2027")')
+			await page.click('.wm-message-toolbar .wm-reply-later-btn')
+			await page.waitForSelector('.wm-reply-later-menu')
+			await shot('118-reply-later')
+			await page.click('.wm-reply-later-menu .wm-flag-choice >> nth=0')
+			await page.waitForSelector('.wm-toast:has-text("Nextcloud vous le rappellera")')
+			// the other one due already: told in the bell (not the first one, not due)
+			await page.evaluate(async ({ id, itemId }) => {
+				await fetch('/apps/webmail/api/accounts/' + id + '/reply-later', { method: 'POST', headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ itemId, until: new Date(Date.now() - 60000).toISOString() }) })
+			}, { id: accountId, itemId: b.id })
+			const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\ReplyLaterJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+			assert(jobId, 'background job registered')
+			occ('background-job:execute ' + jobId + ' --force-execute')
+			const bell = await page.evaluate(async () => (await (await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })).json()).ocs.data.filter((n) => n.app === 'webmail' && n.subject.startsWith('À répondre')))
+			assert.deepStrictEqual(bell.map((n) => n.subject), ['À répondre : Devis à valider'])
+			// « Aujourd'hui »: both, the late one first
+			await page.click('.wm-today-link')
+			await page.waitForSelector('.wm-today-to-reply li:has-text("Devis à valider"):has-text("En retard")')
+			await page.waitForSelector('.wm-today-to-reply li:has-text("Question budget 2027")')
+			await shot('119-to-reply')
+			// answered: out of the list by itself
+			await page.click('.wm-today-to-reply li:has-text("Devis à valider") .wm-today-open')
+			await page.waitForSelector('.wm-message-header h2:has-text("Devis à valider")')
+			await page.click('.wm-reply-btn')
+			await page.fill('.wm-editor', 'C\'est validé, merci.')
+			await submitCompose()
+			await page.click('.wm-today-link')
+			await page.waitForSelector('.wm-today-to-reply li:has-text("Question budget 2027")')
+			assert.ok(!(await page.$('.wm-today-to-reply li:has-text("Devis à valider")')), 'answered: gone')
+			// no more reminder for the other one
+			await page.click('.wm-today-to-reply li:has-text("Question budget 2027") .wm-today-done')
+			await page.waitForFunction(() => !document.querySelector('.wm-today-to-reply li:not(.wm-muted)') || ![...document.querySelectorAll('.wm-today-to-reply li')].some((li) => li.textContent.includes('Question budget 2027')))
+		} finally {
+			for (const m of [a, b]) await fake('/_test/remove', { id: m.id })
+		}
+	})
+
 	await step('saved searches: kept under a name, in the side pane with their unread messages, opened again, deleted', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)

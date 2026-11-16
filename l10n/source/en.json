@@ -1893,5 +1893,16 @@
 	"{name} n'est plus un expéditeur prioritaire": "{name} is no longer a priority sender",
 	"Les messages de vos expéditeurs prioritaires dans la boîte de réception : {names}.": "The messages of your priority senders in the inbox: {names}.",
 	"Aucun message de vos expéditeurs prioritaires": "No message from your priority senders",
-	"Trop d'expéditeurs prioritaires (%s au plus)": "Too many priority senders (%s at most)"
+	"Trop d'expéditeurs prioritaires (%s au plus)": "Too many priority senders (%s at most)",
+	"Répondre plus tard": "Reply later",
+	"Me rappeler d'y répondre…": "Remind me to reply…",
+	"Sans réponse d'ici {date}, Nextcloud vous le rappellera (« À répondre » dans « Aujourd'hui »)": "Without a reply by {date}, Nextcloud will remind you (“To reply” in “Today”)",
+	"Répondre plus tard : un rappel à l'heure choisie, s'il n'a toujours pas de réponse": "Reply later: a reminder at the time chosen, if it still has no reply",
+	"Répondre plus tard…": "Reply later…",
+	"À répondre": "To reply",
+	"Ne plus me le rappeler": "No more reminder",
+	"Aucun message à répondre": "No message to reply to",
+	"Trop de messages à répondre (%s au plus)": "Too many messages to reply to (%s at most)",
+	"À répondre : %s": "To reply: %s",
+	"Message de %s, toujours sans réponse": "Message from %s, still without reply"
 }

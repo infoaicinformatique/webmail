@@ -1897,6 +1897,37 @@ class EwsClient {
 		return $out;
 	}
 
+	/** PR_LAST_VERB_EXECUTED: 102 replied, 103 replied to all */
+	private const REPLIED_VERBS = [102, 103];
+
+	/**
+	 * Whether each message was answered (« Répondre » or « Répondre à tous », from any mail
+	 * program: Exchange keeps it on the message); a message gone is left out.
+	 * @param string[] $itemIds
+	 * @return array<string, bool>
+	 */
+	public function repliedTo(array $itemIds): array {
+		if ($itemIds === []) {
+			return [];
+		}
+		// (not strict: a message deleted since is one error among the answers)
+		$xp = $this->request(
+			'<m:GetItem><m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>'
+			. '<t:ExtendedFieldURI PropertyTag="0x1081" PropertyType="Integer"/></t:AdditionalProperties></m:ItemShape>'
+			. '<m:ItemIds>' . $this->itemIdsXml(array_values($itemIds)) . '</m:ItemIds></m:GetItem>',
+			false
+		);
+		$out = [];
+		foreach ($xp->query('//m:GetItemResponseMessage[@ResponseClass="Success"]/m:Items/*') as $item) {
+			$id = (string)$this->attr($xp, 't:ItemId', 'Id', $item);
+			if ($id !== '') {
+				$verb = (int)$this->text($xp, 't:ExtendedProperty/t:Value', $item);
+				$out[$id] = in_array($verb, self::REPLIED_VERBS, true);
+			}
+		}
+		return $out;
+	}
+
 	public function deleteAttachment(string $attachmentId): void {
 		$this->request('<m:DeleteAttachment><m:AttachmentIds><t:AttachmentId Id="' . $this->esc($attachmentId) . '"/></m:AttachmentIds></m:DeleteAttachment>');
 	}

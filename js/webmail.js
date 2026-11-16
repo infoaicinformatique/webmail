@@ -1644,6 +1644,7 @@
 			const pinned = state.pinned.has(m.id)
 			parts.push(item('wm-ctx-pin', '📌', pinned ? _('Désépingler') : _('Épingler en haut du dossier'), null, () => togglePin(m)))
 			if (role === 'inbox') parts.push(item('wm-ctx-snooze', '⏰', _('Reporter…'), null, () => snoozeMenu(li, m)))
+			if (!['sentitems', 'drafts', 'outbox'].includes(role)) parts.push(item('wm-ctx-reply-later', '⏳', _('Répondre plus tard…'), null, () => replyLaterMenu(li, m)))
 		}
 		parts.push(sep())
 		if (canArchive(role)) parts.push(item('wm-ctx-archive', '🗄', _('Archiver'), 'E', () => archiveMessages(ids)))
@@ -2245,6 +2246,16 @@
 			who(m)))
 		const flagged = section('wm-today-flagged', '🚩 ' + _('Messages à suivre'), data.flagged, message('flagged'), _('Aucun suivi arrivé à échéance'))
 		const snoozed = section('wm-today-snoozed', '⏰ ' + _('Messages reportés qui reviennent'), data.snoozed, message('snoozed'), _('Aucun message reporté ne revient aujourd\'hui'))
+		const toReply = section('wm-today-to-reply', '⏳ ' + _('À répondre'), data.toReply || [], (m) => h('li', { class: 'wm-today-item' + (Date.parse(m.until) <= now ? ' late' : '') },
+			h('button', { type: 'button', class: 'wm-today-open', onclick: () => go(m.accountId, () => openMessage(m.id)) },
+				h('span', { class: 'wm-today-when' }, Date.parse(m.until) <= now ? _('En retard') : snoozeLabel(m.until)),
+				h('span', { class: 'wm-today-subject' }, m.subject || _('(sans objet)')),
+				h('span', { class: 'wm-muted' }, sender(m.from)),
+				who(m)),
+			h('button', { type: 'button', class: 'wm-small wm-today-done', title: _('Ne plus me le rappeler'), 'aria-label': _('Ne plus me le rappeler'), onclick: async (e) => {
+				const li = e.currentTarget.closest('li')
+				try { await api('/accounts/' + m.accountId + '/reply-later/remove', { method: 'POST', body: { itemId: m.id } }); li.remove() } catch (err) { toast(err.message, true) }
+			} }, '✓')), _('Aucun message à répondre'))
 		const date = new Date(data.date + 'T12:00:00').toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' })
 		clear(detailEl)
 		detailEl.appendChild(h('div', { class: 'wm-today' },
@@ -2253,7 +2264,7 @@
 				h('h2', {}, '☀️ ' + _('Aujourd\'hui'), h('span', { class: 'wm-today-date' }, date)),
 				h('button', { type: 'button', class: 'wm-icon-btn wm-today-refresh', title: _('Actualiser'), 'aria-label': _('Actualiser'), onclick: () => openToday() }, '⟳')),
 			data.failed && data.failed.length ? h('p', { class: 'wm-search-info wm-muted' }, _('Non consultés : {books}', { books: data.failed.join(', ') })) : null,
-			h('div', { class: 'wm-today-grid' }, meetings, tasks, flagged, snoozed)))
+			h('div', { class: 'wm-today-grid' }, meetings, tasks, toReply, flagged, snoozed)))
 	}
 
 	// ------------------------------------------------------------------
@@ -3891,6 +3902,9 @@
 				role === 'inbox' || folderRole() === 'inbox' || state.snoozes.has(m.id)
 					? h('button', { class: 'wm-snooze-btn', title: _('Ne plus voir ce message jusqu\'à l\'heure choisie : il revient alors dans la boîte de réception, non lu'), 'aria-label': _('Reporter'), 'aria-haspopup': 'menu', onclick: (e) => snoozeMenu(e.currentTarget, m) }, '⏰')
 					: null,
+				role !== 'sentitems' && role !== 'drafts' && role !== 'outbox'
+					? h('button', { class: 'wm-reply-later-btn', title: _('Répondre plus tard : un rappel à l\'heure choisie, s\'il n\'a toujours pas de réponse'), 'aria-label': _('Répondre plus tard'), 'aria-haspopup': 'menu', onclick: (e) => replyLaterMenu(e.currentTarget, m) }, '⏳')
+					: null,
 				h('button', { class: 'wm-cat-btn', title: _('Catégoriser'), 'aria-label': _('Catégoriser'), onclick: (e) => categoryMenu(e.currentTarget, () => [m]) }, '🏷'),
 				h('button', {
 					class: 'wm-pin-btn' + (pinned ? ' on' : ''),
@@ -4656,6 +4670,43 @@
 		menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px'
 		const first = menu.querySelector('button')
 		if (first) first.focus()
+	}
+
+	/** « Répondre plus tard »: the time of the reminder (in the bell, if no answer was sent meanwhile). */
+	function replyLaterMenu(anchor, m) {
+		document.querySelectorAll('.wm-cat-menu').forEach((x) => x.remove())
+		const menu = h('div', { class: 'wm-cat-menu wm-flag-menu wm-reply-later-menu', role: 'menu', 'aria-label': _('Répondre plus tard') })
+		const close = () => { menu.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', esc, true); if (anchor.isConnected) anchor.focus() }
+		const outside = (e) => { if (!menu.contains(e.target) && e.target !== anchor) close() }
+		const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close() } }
+		document.addEventListener('mousedown', outside, true)
+		document.addEventListener('keydown', esc, true)
+		const pick = (date) => { close(); replyLater(m, date) }
+		menu.appendChild(h('div', { class: 'wm-cat-title' }, _('Me rappeler d\'y répondre…')))
+		snoozeChoices().forEach(([key, label, date]) => menu.appendChild(h('button', {
+			type: 'button', role: 'menuitem', class: 'wm-flag-choice', dataset: { choice: key }, onclick: () => pick(date),
+		}, h('span', {}, label), h('span', { class: 'wm-muted' }, snoozeLabel(date.toISOString())))))
+		const pad = (n) => String(n).padStart(2, '0')
+		const local = (d) => ymdLocal(d) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes())
+		const tomorrow = new Date(Date.now() + 86400000)
+		tomorrow.setHours(9, 0, 0, 0)
+		const input = h('input', { type: 'datetime-local', name: 'replyLaterAt', 'aria-label': _('Date et heure'), min: local(new Date()), value: local(tomorrow) })
+		menu.appendChild(h('form', {
+			class: 'wm-flag-custom',
+			onsubmit: (e) => { e.preventDefault(); const d = new Date(input.value); if (!isNaN(d)) pick(d) },
+		}, input, h('button', { type: 'submit', class: 'primary' }, _('OK'))))
+		document.body.appendChild(menu)
+		const r = anchor.getBoundingClientRect()
+		menu.style.top = Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8) + 'px'
+		menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px'
+		const first = menu.querySelector('button')
+		if (first) first.focus()
+	}
+	async function replyLater(m, date) {
+		try {
+			await api('/accounts/' + state.accountId + '/reply-later', { method: 'POST', body: { itemId: m.id, until: date.toISOString() } })
+			toast(_('Sans réponse d\'ici {date}, Nextcloud vous le rappellera (« À répondre » dans « Aujourd\'hui »)', { date: snoozeLabel(date.toISOString()) }))
+		} catch (e) { toast(e.message, true) }
 	}
 
 	/** The message leaves the list now, for « Reportés », and comes back to the inbox (unread) at the time chosen. */

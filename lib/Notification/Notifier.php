@@ -51,6 +51,16 @@ class Notifier implements INotifier {
 		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'booking_taken') {
 			return $this->prepareBooking($notification, $l);
 		}
+		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'reply_later') {
+			$p = $notification->getSubjectParameters();
+			$subject = trim((string)($p['subject'] ?? '')) !== '' ? (string)$p['subject'] : $l->t('(sans objet)');
+			$notification->setParsedSubject($l->t('À répondre : %s', [$subject]))
+				->setRichSubject($l->t('À répondre : %s', ['{message}']), ['message' => ['type' => 'highlight', 'id' => 'message', 'name' => $subject]])
+				->setParsedMessage(((string)($p['from'] ?? '') !== '' ? $l->t('Message de %s, toujours sans réponse', [(string)$p['from']]) . ' · ' : '') . (string)($p['email'] ?? ''))
+				->setLink($this->url->linkToRouteAbsolute('webmail.page.index') . '?' . http_build_query(['account' => $p['account'] ?? '', 'message' => $p['itemId'] ?? '']))
+				->setIcon($this->url->getAbsoluteURL($this->url->imagePath('core', 'actions/mail.svg')));
+			return $notification;
+		}
 		if ($notification->getApp() === Application::APP_ID && $notification->getSubject() === 'merge_done') {
 			$p = $notification->getSubjectParameters();
 			$failed = (int)($p['failed'] ?? 0);
