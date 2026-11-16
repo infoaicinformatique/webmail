@@ -2344,6 +2344,27 @@
 		search.focus()
 	}
 
+	/** The message as a PDF in a folder of Files (its attachments beside it, when asked). */
+	function saveMessagePdf(m) {
+		const files = (m.attachments || []).filter((a) => !a.isInline && !a.isItem)
+		const doSave = async (dir) => {
+			const withFiles = files.length > 0 && window.confirm(files.length > 1
+				? _('Enregistrer aussi ses {count} pièces jointes dans le même dossier ?', { count: files.length })
+				: _('Enregistrer aussi sa pièce jointe dans le même dossier ?'))
+			try {
+				const r = await api('/accounts/' + state.accountId + '/message/pdf', { method: 'POST', body: { itemId: m.id, path: dir, attachments: withFiles } })
+				toast(r.attachments.length > 1
+					? _('{path} enregistré, avec {count} pièces jointes', { path: r.path, count: r.attachments.length })
+					: r.attachments.length ? _('{path} enregistré, avec sa pièce jointe', { path: r.path }) : _('Enregistré dans {path}', { path: r.path }))
+			} catch (e) { toast(e.message, true) }
+		}
+		if (OC.dialogs && typeof OC.dialogs.filepicker === 'function') {
+			OC.dialogs.filepicker(_('Choisir le dossier de destination'), (dir) => doSave(dir || '/'), false, 'httpd/unix-directory', true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
+		} else {
+			doSave('/' + _('Courriers'))
+		}
+	}
+
 	/** Several attachments to Nextcloud Files, in the folder chosen once. */
 	function saveAttachments(list) {
 		if (!list.length) return
@@ -3719,7 +3740,17 @@
 			title: _('Télécharger le message (.eml, pour Outlook, Thunderbird…)'),
 			onclick: () => setTimeout(close, 0),
 		}, h('span', { class: 'wm-menu-icon', 'aria-hidden': 'true' }, '⬇\uFE0E'), h('span', {}, _('Télécharger (.eml)')))
+		const pdfLink = h('a', {
+			role: 'menuitem',
+			class: 'button wm-menu-item wm-pdf-btn',
+			href: OC.generateUrl('/apps/webmail/api/accounts/' + state.accountId + '/message/pdf') + '?' + new URLSearchParams({ itemId: m.id }),
+			download: '',
+			title: _('Télécharger le message en PDF'),
+			onclick: () => setTimeout(close, 0),
+		}, h('span', { class: 'wm-menu-icon', 'aria-hidden': 'true' }, '⬇\uFE0E'), h('span', {}, _('Télécharger en PDF')))
 		section(_('Envoyer, garder'),
+			item('wm-pdf-save-btn', '📄', _('Enregistrer en PDF dans Fichiers'), () => saveMessagePdf(m), _('Le message en PDF (en-tête, texte, liste des pièces jointes) dans un dossier de Fichiers')),
+			pdfLink,
 			item('wm-matrix-send-btn', '💬', _('Envoyer sur Matrix'), () => sendToMatrix(mailSummaryForMatrix(m)), _('Envoyer sur Matrix (Element) : un résumé du message dans un salon')),
 			item('wm-eml-save-btn', '☁️', _('Enregistrer dans Fichiers'), () => saveMessageToFiles(m), _('Enregistrer le message dans Fichiers (.eml)')),
 			eml)

@@ -1382,6 +1382,58 @@ async function main() {
 		for (const m of made) await fake('/_test/remove', { id: m.id })
 	})
 
+	await step('a message as a PDF: downloaded, or saved in Files with its attachments beside it', async () => {
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		const mail = await fake('/_test/deliver', { subject: 'Facture F-2027-118', sender: ['Comptabilité', 'compta@fournisseur-exemple.fr'], body: '<p>Bonjour,</p><p>Veuillez trouver notre facture d\'électricité de novembre.</p>', isRead: true, attachments: [{ name: 'facture-F-2027-118.txt', text: 'Montant : 418,20 EUR' }] })
+		try {
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('.wm-folder:has-text("Boîte de réception")')
+			await page.click('.wm-list button[title="Actualiser"]')
+			await page.click('.wm-message:has-text("Facture F-2027-118")')
+			await page.waitForSelector('.wm-message-header h2:has-text("Facture F-2027-118")')
+			// downloaded: a PDF with its subject, its sender, its text and its files
+			const pdf = await page.evaluate(async (id) => {
+				const accounts = await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()
+				const acc = accounts.find((a) => a.email === 'user@societe-a.fr').id
+				const r = await fetch('/apps/webmail/api/accounts/' + acc + '/message/pdf?itemId=' + encodeURIComponent(id))
+				const bytes = new Uint8Array(await r.arrayBuffer())
+				return { type: r.headers.get('Content-Type'), disposition: r.headers.get('Content-Disposition'), text: Array.from(bytes, (b) => String.fromCharCode(b)).join('') }
+			}, mail.id)
+			assert.ok(pdf.type.startsWith('application/pdf'), pdf.type)
+			assert.ok(/Facture F-2027-118\.pdf/.test(pdf.disposition), pdf.disposition)
+			assert.ok(pdf.text.startsWith('%PDF-1.4') && pdf.text.trimEnd().endsWith('%%EOF'))
+			for (const t of ['(Facture F-2027-118) Tj', 'compta@fournisseur-exemple.fr', 'facture-F-2027-118.txt', 'lectricit']) assert.ok(pdf.text.includes(t), t)
+			// saved in Files, with its attachment beside it
+			await page.evaluate(() => { OC.dialogs.filepicker = (title, cb) => cb('/Courriers e2e') })
+			page.once('dialog', (d) => { assert.ok(d.message().includes('pièce jointe'), d.message()); d.accept() })
+			await page.click('.wm-message-toolbar .wm-more-btn')
+			await shot('116-pdf-menu')
+			await page.click('.wm-more-menu .wm-pdf-save-btn')
+			await page.waitForSelector('.wm-toast:has-text("Facture F-2027-118.pdf enregistré, avec sa pièce jointe")')
+			const files = await page.evaluate(async () => {
+				const uid = OC.getCurrentUser().uid
+				const r = await fetch('/remote.php/dav/files/' + encodeURIComponent(uid) + '/' + encodeURIComponent('Courriers e2e') + '/', { method: 'PROPFIND', headers: { requesttoken: OC.requestToken, Depth: '1' } })
+				return decodeURIComponent(await r.text())
+			})
+			assert.ok(/\d{4}-\d{2}-\d{2} Facture F-2027-118\.pdf/.test(files) && files.includes('facture-F-2027-118.txt'), files.slice(0, 500))
+		} finally {
+			await fake('/_test/remove', { id: mail.id })
+			await page.evaluate(async () => {
+				const uid = OC.getCurrentUser().uid
+				await fetch('/remote.php/dav/files/' + encodeURIComponent(uid) + '/' + encodeURIComponent('Courriers e2e'), { method: 'DELETE', headers: { requesttoken: OC.requestToken } })
+			})
+		}
+	})
+
 	await step('saved searches: kept under a name, in the side pane with their unread messages, opened again, deleted', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)

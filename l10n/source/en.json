@@ -1872,5 +1872,16 @@
 	"Toujours autorisés": "Always allowed",
 	"Liste inconnue": "Unknown list",
 	"Vous ne pouvez pas bloquer votre propre adresse ni votre propre domaine": "You cannot block your own address or your own domain",
-	"Trop d'expéditeurs dans la liste (%s au plus)": "Too many senders in the list (%s at most)"
+	"Trop d'expéditeurs dans la liste (%s au plus)": "Too many senders in the list (%s at most)",
+	"Télécharger le message en PDF": "Download the message as PDF",
+	"Télécharger en PDF": "Download as PDF",
+	"Enregistrer en PDF dans Fichiers": "Save as PDF to Files",
+	"Le message en PDF (en-tête, texte, liste des pièces jointes) dans un dossier de Fichiers": "The message as PDF (header, text, list of attachments) in a folder of Files",
+	"Enregistrer aussi ses {count} pièces jointes dans le même dossier ?": "Also save its {count} attachments in the same folder?",
+	"Enregistrer aussi sa pièce jointe dans le même dossier ?": "Also save its attachment in the same folder?",
+	"{path} enregistré, avec {count} pièces jointes": "{path} saved, with {count} attachments",
+	"Courriers": "Letters",
+	"(message sans texte)": "(message without text)",
+	"Cc": "Cc",
+	"{path} enregistré, avec sa pièce jointe": "{path} saved, with its attachment"
 }
