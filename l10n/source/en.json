@@ -1904,5 +1904,20 @@
 	"Aucun message à répondre": "No message to reply to",
 	"Trop de messages à répondre (%s au plus)": "Too many messages to reply to (%s at most)",
 	"À répondre : %s": "To reply: %s",
-	"Message de %s, toujours sans réponse": "Message from %s, still without reply"
+	"Message de %s, toujours sans réponse": "Message from %s, still without reply",
+	"Lettres d'information": "Newsletters",
+	"Nettoyer les lettres d'information": "Clean up newsletters",
+	"Les listes de diffusion de la boîte de réception, celles qui envoient le plus d'abord. Désabonnez-vous de celles que vous ne lisez plus : leurs messages sont supprimés en même temps.": "The mailing lists of the inbox, those sending the most first. Unsubscribe from those you no longer read: their messages are deleted at the same time.",
+	"Aucune lettre d'information dans la boîte de réception.": "No newsletters in the inbox.",
+	"Parmi les {max} messages les plus récents.": "Among the {max} most recent messages.",
+	"ouverts : {rate} %": "opened: {rate} %",
+	"Supprimer les {count} de {who} ? La page de désinscription de la liste s'ouvrira : confirmez-y le désabonnement.": "Delete the {count} from {who}? The list's unsubscribe page will open: confirm the unsubscription there.",
+	"Se désabonner de {who} et supprimer ses {count} ?": "Unsubscribe from {who} and delete its {count}?",
+	"{who} : désabonnement demandé, {count} supprimés": "{who}: unsubscription requested, {count} deleted",
+	"Se désabonner et tout supprimer": "Unsubscribe and delete all",
+	"Ne plus la proposer ici": "Stop suggesting it here",
+	"Garder": "Keep",
+	"{count} listes gardées": "{count} lists kept",
+	"{count} liste gardée": "{count} list kept",
+	"Proposer à nouveau": "Suggest again"
 }

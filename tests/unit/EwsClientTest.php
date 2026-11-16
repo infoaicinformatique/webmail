@@ -587,4 +587,23 @@ class EwsClientTest extends EwsTestCase {
 		$this->client()->sendMessage('new', "Bad\x01char", 'x', ['a@x.fr'], [], []);
 		$this->assertStringContainsString('<t:Subject>Badchar</t:Subject>', $this->lastRequest());
 	}
+	public function testMailingListMessagesOfAFolder(): void {
+		$msg = fn (string $id, string $email, bool $read, ?string $unsub) => '<t:Message><t:ItemId Id="' . $id . '" ChangeKey="c"/>'
+			. '<t:From><t:Mailbox><t:Name>Liste</t:Name><t:EmailAddress>' . $email . '</t:EmailAddress></t:Mailbox></t:From>'
+			. '<t:IsRead>' . ($read ? 'true' : 'false') . '</t:IsRead><t:Size>1000</t:Size><t:DateTimeReceived>2026-11-01T10:00:00Z</t:DateTimeReceived>'
+			. ($unsub !== null ? '<t:ExtendedProperty><t:ExtendedFieldURI DistinguishedPropertySetId="InternetHeaders" PropertyName="list-unsubscribe" PropertyType="String"/><t:Value>' . $unsub . '</t:Value></t:ExtendedProperty>' : '')
+			. '</t:Message>';
+		$this->queue('<m:FindItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>'
+			. '<m:FindItemResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:RootFolder IndexedPagingOffset="3" TotalItemsInView="3" IncludesLastItemInRange="true"><t:Items>'
+			. $msg('A', 'News@Exemple.org', true, '&lt;mailto:off@exemple.org&gt;') . $msg('B', 'ami@exemple.org', false, null) . $msg('C', 'promo@shop.fr', false, '&lt;https://shop.fr/off&gt;')
+			. '</t:Items></m:RootFolder></m:FindItemResponseMessage></m:ResponseMessages></m:FindItemResponse>');
+		$r = $this->client()->mailingListMessages('inbox');
+		$this->assertSame(3, $r['scanned']);
+		$this->assertSame(['A', 'C'], array_column($r['messages'], 'id'), 'a message without List-Unsubscribe is no newsletter');
+		$this->assertSame('news@exemple.org', $r['messages'][0]['email']);
+		$this->assertSame(['mailto', 'link'], array_column($r['messages'], 'method'));
+		$this->assertSame([true, false], array_column($r['messages'], 'isRead'));
+		$this->assertStringContainsString('PropertyName="List-Unsubscribe"', $this->lastRequest());
+		$this->assertStringContainsString('<t:DistinguishedFolderId Id="inbox"/>', $this->lastRequest());
+	}
 }

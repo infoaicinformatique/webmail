@@ -760,8 +760,18 @@ def handle(op, el, user):
                     msgs.sort(key=key, reverse=first.get('Order') == 'Descending')
             page = msgs[offset:offset + limit]
             last = offset + limit >= len(msgs)
+            # « Lettres d'information »: the List-Unsubscribe header of each message, when asked
+            headers = el.find('m:ItemShape/t:AdditionalProperties/t:ExtendedFieldURI[@DistinguishedPropertySetId="InternetHeaders"]', NS) is not None
+
+            def summary(m):
+                xml = item_summary_xml(m, with_folder)
+                if headers and m.get('list_unsubscribe'):
+                    head, sep, tail = xml.rpartition('</t:')
+                    xml = head + ('<t:ExtendedProperty><t:ExtendedFieldURI DistinguishedPropertySetId="InternetHeaders" PropertyName="list-unsubscribe" PropertyType="String"/>'
+                                  '<t:Value>%s</t:Value></t:ExtendedProperty>' % esc(m['list_unsubscribe'])) + sep + tail
+                return xml
             out.append(ok(op, '<m:RootFolder IndexedPagingOffset="%d" TotalItemsInView="%d" IncludesLastItemInRange="%s"><t:Items>%s</t:Items></m:RootFolder>'
-                          % (offset + len(page), len(msgs), 'true' if last else 'false', ''.join(item_summary_xml(m, with_folder) for m in page))))
+                          % (offset + len(page), len(msgs), 'true' if last else 'false', ''.join(summary(m) for m in page))))
         return wrap(op, out)
 
     if op == 'GetItem':
@@ -1234,6 +1244,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, '{}', {'Content-Type': 'application/json'})
             files = [dict(name=a['name'], content_type=a.get('type', 'text/plain'), content=a.get('text', '').encode('utf-8'), inline=False) for a in data.get('attachments', [])]
             mid = add_message(data.get('folder', 'F-INBOX'), data['subject'], tuple(data['sender']), data['body'], int(data.get('minutesAgo', 0)), is_read=bool(data.get('isRead')), attachments=files)
+            if data.get('listUnsubscribe'):
+                MESSAGES[mid]['list_unsubscribe'] = data['listUnsubscribe']
             if data.get('rules'):
                 # (as on its arrival: the rules of the inbox run on it)
                 rules.apply('user@societe-a.fr', MESSAGES[mid], lambda msg, folder: move_message(msg['id'], folder))

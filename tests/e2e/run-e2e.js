@@ -5358,6 +5358,60 @@ async function main() {
 		await page.waitForSelector('.wm-message:has-text("Desinscription lettre d\'info")')
 	})
 
+	await step('newsletters: the lists of the inbox by sender; one left and its messages deleted, another kept', async () => {
+		const promo = 'offres@boutique-test.example'
+		for (const n of [1, 2, 3]) {
+			await fake('/_test/deliver', { subject: 'Promo boutique ' + n, sender: ['Boutique Test', promo], body: '<p>Promo ' + n + '.</p>', minutesAgo: n, listUnsubscribe: '<mailto:stop@boutique-test.example?subject=STOP%20boutique>' })
+		}
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-message:has-text("Promo boutique 1")')
+		const open = async () => {
+			await page.click('.wm-news-link')
+			await page.waitForSelector('.wm-news-dialog .wm-news-row[data-email="' + promo + '"]')
+		}
+		await open()
+		const row = '.wm-news-row[data-email="' + promo + '"]'
+		const news = '.wm-news-row[data-email="news@exemple.org"]'
+		assert.match(await page.textContent(row), /Boutique Test.*3 messages/)
+		// never opened: said so
+		await page.waitForSelector(row + ' .wm-news-unread:text-is("ouverts : 0 %")')
+		// the list sending the most first, all read
+		assert.strictEqual(await page.$eval('.wm-news-row', (e) => e.dataset.email), 'news@exemple.org')
+		assert.match(await page.textContent(news), /\d+ messages.*ouverts : 100 %/)
+		assert.strictEqual(await page.$(news + ' .wm-news-unread'), null)
+		await shot('120-newsletters')
+		// « Garder »: no longer shown, even after reopening; then shown again
+		await page.click(news + ' .wm-news-keep')
+		await page.waitForSelector(news, { state: 'detached' })
+		await page.click('.wm-news-dialog .wm-modal-close')
+		await open()
+		assert.strictEqual(await page.$(news), null)
+		await page.click('.wm-news-kept summary:text-is("1 liste gardée")')
+		await page.click('.wm-news-kept li:has-text("news@exemple.org") .wm-news-unkeep')
+		await page.waitForSelector(news)
+		assert.strictEqual(await page.$('.wm-news-kept'), null)
+		// « Se désabonner et tout supprimer »: asked first; nothing done when declined
+		let question = ''
+		page.once('dialog', (d) => { question = d.message(); d.dismiss() })
+		await page.click(row + ' .wm-news-clean')
+		await page.waitForFunction((s) => !document.querySelector(s).disabled, row + ' .wm-news-clean')
+		assert.ok(question.includes('Se désabonner de Boutique Test et supprimer ses 3 messages'), question)
+		page.once('dialog', (d) => d.accept())
+		await page.click(row + ' .wm-news-clean')
+		await page.waitForSelector('.wm-toast:has-text("Boutique Test : désabonnement demandé, 3 messages supprimés")')
+		await page.waitForSelector(row, { state: 'detached' })
+		await page.click('.wm-news-dialog .wm-modal-close')
+		// gone from the inbox; the message asking to leave sent from the mailbox
+		await page.waitForSelector('.wm-message:has-text("Promo boutique 1")', { state: 'detached' })
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.waitForSelector('.wm-message:has-text("STOP boutique")')
+		// also from « Libérer de l'espace »
+		await page.click('.wm-quota')
+		await page.click('.wm-space-news')
+		await page.waitForSelector('.wm-news-dialog ' + news)
+		await page.click('.wm-news-dialog .wm-modal-close')
+	})
+
 	await step('sort: « Trier par » subject, size, then back to the date (kept after a reload)', async () => {
 		const subjects = () => page.$$eval('.wm-messages .wm-message-subject', (els) => els.map((e) => e.textContent))
 		await page.click('.wm-folder >> nth=0')
