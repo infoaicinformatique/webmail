@@ -606,4 +606,38 @@ class EwsClientTest extends EwsTestCase {
 		$this->assertStringContainsString('PropertyName="List-Unsubscribe"', $this->lastRequest());
 		$this->assertStringContainsString('<t:DistinguishedFolderId Id="inbox"/>', $this->lastRequest());
 	}
+	public function testFolderExportedAsZip(): void {
+		$ns = 'xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"';
+		$this->queue('<m:FindItemResponse ' . $ns . '><m:ResponseMessages><m:FindItemResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode>'
+			. '<m:RootFolder IndexedPagingOffset="3" TotalItemsInView="3" IncludesLastItemInRange="true"><t:Items>'
+			. '<t:Message><t:ItemId Id="A" ChangeKey="c"/></t:Message><t:Message><t:ItemId Id="B" ChangeKey="c"/></t:Message><t:Message><t:ItemId Id="C" ChangeKey="c"/></t:Message>'
+			. '</t:Items></m:RootFolder></m:FindItemResponseMessage></m:ResponseMessages></m:FindItemResponse>');
+		$mime = fn (string $id, string $subject) => '<m:GetItemResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Items><t:Message>'
+			. '<t:MimeContent CharacterSet="UTF-8">' . base64_encode("Subject: $subject\r\n\r\nTexte $id") . '</t:MimeContent><t:ItemId Id="' . $id . '" ChangeKey="c"/>'
+			. '<t:Subject>' . $subject . '</t:Subject><t:DateTimeReceived>2026-11-16T13:32:00Z</t:DateTimeReceived></t:Message></m:Items></m:GetItemResponseMessage>';
+		$this->queue('<m:GetItemResponse ' . $ns . '><m:ResponseMessages>' . $mime('A', 'Devis') . $mime('B', 'Devis')
+			. '<m:GetItemResponseMessage ResponseClass="Error"><m:MessageText>gone</m:MessageText><m:ResponseCode>ErrorItemNotFound</m:ResponseCode></m:GetItemResponseMessage>'
+			. '</m:ResponseMessages></m:GetItemResponse>');
+		$r = \OCA\Webmail\Service\FolderExport::build($this->client(), 'F1', new \DateTimeZone('Europe/Paris'));
+		try {
+			$this->assertSame(['count' => 2, 'total' => 3, 'truncated' => false], array_diff_key($r, ['path' => 1]), 'a message gone is left out');
+			$zip = new \ZipArchive();
+			$this->assertTrue($zip->open($r['path']));
+			$this->assertSame('2026-11-16 1432 Devis.eml', $zip->getNameIndex(0), 'the local time of the message, then its subject');
+			$this->assertSame('2026-11-16 1432 Devis (2).eml', $zip->getNameIndex(1), 'two with the same name');
+			$this->assertSame("Subject: Devis\r\n\r\nTexte B", $zip->getFromIndex(1));
+			$zip->close();
+		} finally {
+			@unlink($r['path']);
+		}
+		$this->assertStringContainsString('<t:IncludeMimeContent>true</t:IncludeMimeContent>', $this->lastRequest());
+		$this->assertStringContainsString('<t:ItemId Id="A"/><t:ItemId Id="B"/><t:ItemId Id="C"/>', $this->lastRequest());
+	}
+
+	public function testEmptyFolderNotExported(): void {
+		$this->queue('<m:FindItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages><m:FindItemResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode>'
+			. '<m:RootFolder IndexedPagingOffset="0" TotalItemsInView="0" IncludesLastItemInRange="true"><t:Items/></m:RootFolder></m:FindItemResponseMessage></m:ResponseMessages></m:FindItemResponse>');
+		$this->expectException(MailException::class);
+		\OCA\Webmail\Service\FolderExport::build($this->client(), 'F1', new \DateTimeZone('UTC'));
+	}
 }

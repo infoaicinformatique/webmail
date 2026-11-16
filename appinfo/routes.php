@@ -95,6 +95,8 @@ return [
 		['name' => 'sender#count', 'url' => '/api/accounts/{id}/sender', 'verb' => 'GET'],
 		['name' => 'sender#apply', 'url' => '/api/accounts/{id}/sender', 'verb' => 'POST'],
 		['name' => 'newsletter#index', 'url' => '/api/accounts/{id}/newsletters', 'verb' => 'GET'],
+		['name' => 'folder_export#download', 'url' => '/api/accounts/{id}/folder/export', 'verb' => 'GET'],
+		['name' => 'folder_export#save', 'url' => '/api/accounts/{id}/folder/export', 'verb' => 'POST'],
 		['name' => 'notify_settings#index', 'url' => '/api/notify-settings', 'verb' => 'GET'],
 		['name' => 'notify_settings#save', 'url' => '/api/notify-settings', 'verb' => 'POST'],
 		['name' => 'notify_settings#digestNow', 'url' => '/api/notify-settings/digest-now', 'verb' => 'POST'],

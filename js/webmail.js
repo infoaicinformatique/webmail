@@ -3437,6 +3437,7 @@
 			f.role === 'deleteditems' && (f.total > 0 || subFolders(f).length > 0) ? item('🗑 ' + _('Vider les éléments supprimés'), () => emptyFolder(f), true) : null,
 			f.role === 'junkemail' && f.total > 0 ? item('🗑 ' + _('Vider le courrier indésirable'), () => emptyFolder(f), true) : null,
 			item('📥 ' + _('Importer des messages (.eml)…'), () => pickEml(f)),
+			f.total > 0 ? item('📦 ' + _('Exporter (.zip)…'), () => exportFolder(f)) : null,
 			fixed ? null : item('✏️ ' + _('Renommer'), () => renameFolder(f)),
 			fixed ? null : item('↪ ' + _('Déplacer…'), () => moveFolder(f)),
 			fixed ? null : item('🗑 ' + _('Supprimer'), () => deleteFolder(f), true))
@@ -3451,6 +3452,80 @@
 		menu.style.left = Math.max(8, Math.min(r.right - 210, window.innerWidth - menu.offsetWidth - 8)) + 'px'
 		const first = menu.querySelector('button')
 		if (first) first.focus()
+	}
+
+	/**
+	 * « Exporter le dossier »: its messages as .eml files (Outlook, Thunderbird…) in one .zip,
+	 * downloaded or put into Files.
+	 */
+	function exportFolder(f) {
+		const MAX = 2000
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const name = folderName(f.id)
+		const title = _('Exporter « {name} »', { name })
+		const accountId = state.accountId
+		const status = h('p', { class: 'wm-export-status', role: 'status' })
+		const down = h('button', { type: 'button', class: 'primary wm-export-download' }, '⬇︎ ' + _('Télécharger (.zip)'))
+		const toFiles = h('button', { type: 'button', class: 'wm-export-files' }, '📁 ' + _('Enregistrer dans Fichiers…'))
+		const busy = (on) => {
+			down.disabled = on
+			toFiles.disabled = on
+			clear(status)
+			if (on) status.append(h('span', { class: 'icon-loading-small' }), ' ', _('Préparation du fichier .zip… Cela peut prendre un moment pour un gros dossier.'))
+		}
+		const fileName = (r) => {
+			const m = /filename\*=UTF-8''([^;]+)/.exec(r.headers.get('Content-Disposition') || '')
+			return m ? decodeURIComponent(m[1]) : name + '.zip'
+		}
+		down.addEventListener('click', async () => {
+			busy(true)
+			try {
+				const r = await fetch(url('/accounts/' + accountId + '/folder/export') + '?' + new URLSearchParams({ folderId: f.id, name }), { headers: { requesttoken: OC.requestToken }, credentials: 'same-origin' })
+				if (!r.ok) {
+					let message = _('L\'export a échoué')
+					try { message = (await r.json()).message || message } catch (e) { /* not JSON */ }
+					throw new Error(message)
+				}
+				const blob = await r.blob()
+				const a = h('a', { href: URL.createObjectURL(blob), download: fileName(r) })
+				document.body.appendChild(a)
+				a.click()
+				a.remove()
+				setTimeout(() => URL.revokeObjectURL(a.href), 60000)
+				const count = Number(r.headers.get('X-Webmail-Count') || 0)
+				close()
+				toast(count > 1 ? _('{count} messages exportés', { count }) : _('{count} message exporté', { count }))
+			} catch (e) { busy(false); toast(e.message, true) }
+		})
+		const save = async (dir) => {
+			busy(true)
+			try {
+				const r = await api('/accounts/' + accountId + '/folder/export', { method: 'POST', body: { folderId: f.id, path: dir, name } })
+				close()
+				toast(_('{count} messages enregistrés dans {path}', { count: r.count, path: r.path }) + (r.truncated ? ' ' + _('(les {max} plus récents)', { max: r.max }) : ''))
+			} catch (e) { busy(false); toast(e.message, true) }
+		}
+		toFiles.addEventListener('click', () => {
+			if (OC.dialogs && typeof OC.dialogs.filepicker === 'function') {
+				OC.dialogs.filepicker(_('Choisir le dossier de destination'), (dir) => save(dir || '/'), false, 'httpd/unix-directory', true, OC.dialogs.FILEPICKER_TYPE_CHOOSE)
+			} else {
+				save('/' + _('Courriers'))
+			}
+		})
+		overlay.appendChild(h('div', { class: 'wm-modal wm-modal-small wm-export-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, title), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			h('div', { class: 'wm-export-body' },
+				h('p', {}, (f.total > 1 ? _('{count} messages', { count: f.total }) : _('{count} message', { count: f.total })) + (f.size ? ' · ' + formatBytes(f.size) : '')),
+				h('p', { class: 'wm-muted' }, _('Un fichier .zip avec un fichier .eml par message, que lisent Outlook, Thunderbird et la plupart des logiciels de messagerie. Les messages restent dans le dossier, et ses sous-dossiers ne sont pas inclus.')),
+				f.total > MAX ? h('p', { class: 'wm-warning' }, _('Les {max} messages les plus récents seulement.', { max: MAX })) : null,
+				status,
+				h('div', { class: 'wm-form-actions' }, toFiles, down))))
+		document.body.appendChild(overlay)
+		down.focus()
 	}
 
 	/**
