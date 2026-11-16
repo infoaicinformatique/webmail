@@ -1214,9 +1214,18 @@ async function main() {
 				const c = await r.json()
 				return c.summary && c.reply && c.translate
 			})
-			await page.goto(NC + '/apps/webmail/')
-			await page.waitForSelector('.wm-message')
-			await openMenu()
+			// (Nextcloud keeps the list of what its AI can do for a minute: the page opened again until it shows)
+			for (let i = 0; ; i++) {
+				const asked = page.waitForResponse((r) => /\/apps\/webmail\/api\/assistant(\?|$)/.test(r.url()))
+				await page.goto(NC + '/apps/webmail/')
+				await asked
+				await page.waitForSelector('.wm-message')
+				await openMenu()
+				if (await page.$('.wm-more-menu .wm-ai-summary')) break
+				assert.ok(i < 18, 'the Assistant is offered once Nextcloud knows its AI')
+				await page.keyboard.press('Escape')
+				await page.waitForTimeout(5000)
+			}
 			await shot('112-assistant-menu')
 			await page.click('.wm-more-menu .wm-ai-summary')
 			await page.waitForSelector('.wm-assistant-panel[data-kind=summary]:has-text("L\'Assistant travaille")')

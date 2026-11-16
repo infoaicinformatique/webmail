@@ -1855,5 +1855,6 @@
 	"Reporter…": "Snooze…",
 	"Rechercher un dossier": "Find a folder",
 	"Déplacer {count} messages vers": "Move {count} messages to",
-	"Marquer comme lu": "Mark as read"
+	"Marquer comme lu": "Mark as read",
+	"Les messages sont supprimés, mais Exchange a gardé ces dossiers : %s": "The messages are deleted, but Exchange kept these folders: %s"
 }

@@ -839,6 +839,7 @@ OC.L10N.register(
     "Les images distantes ont été bloquées pour protéger votre vie privée.": "Remote images were blocked to protect your privacy.",
     "Les liens de partage sont désactivés sur ce Nextcloud": "Share links are disabled on this Nextcloud",
     "Les messages de cet expéditeur dans ce dossier : les afficher, les marquer comme lus, les déplacer ou les supprimer d'un coup": "The messages of this sender in this folder: show them, mark them as read, move or delete them at once",
+    "Les messages sont supprimés, mais Exchange a gardé ces dossiers : %s": "The messages are deleted, but Exchange kept these folders: %s",
     "Les modifications s'appliquent à toutes les occurrences, à partir du début de la série. Les occurrences modifiées une par une peuvent reprendre les valeurs de la série.": "The changes apply to all the occurrences, from the start of the series. Occurrences changed one by one may take back the values of the series.",
     "Les modifications s'appliquent à toutes les occurrences. La répétition a été définie dans Outlook : seuls les horaires sont modifiables ici, pas les dates.": "The changes apply to all the occurrences. The recurrence was set in Outlook: only the times can be changed here, not the dates.",
     "Les nouveaux messages ne seront plus signalés dans Nextcloud": "New messages will no longer be announced in Nextcloud",
