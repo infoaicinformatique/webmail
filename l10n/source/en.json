@@ -1738,5 +1738,20 @@
 	"Supprimer la recherche {name}": "Delete the search {name}",
 	"Retrouver cette recherche dans le volet de gauche": "Keep this search in the left pane",
 	"Trop de recherches enregistrées (%s au plus)": "Too many saved searches (%s at most)",
-	"Rien à enregistrer : saisissez des mots ou choisissez un filtre": "Nothing to save: type some words or choose a filter"
+	"Rien à enregistrer : saisissez des mots ou choisissez un filtre": "Nothing to save: type some words or choose a filter",
+	"Mises à jour": "Updates",
+	"Version installée : %s": "Installed version: %s",
+	"Sur le serveur, la commande %1$s installe la dernière version (empreinte vérifiée, sauvegarde, retour possible par %2$s). Avec %3$s, elle s'installe aussi en tâche planifiée qui fait la mise à jour chaque nuit, à 3 h ; %4$s la retire.": "On the server, the command %1$s installs the latest version (checksum verified, backup, back with %2$s). With %3$s, it also installs itself as a scheduled task that updates every night at 3 am; %4$s removes it.",
+	"Rechercher une nouvelle version": "Check for a new version",
+	"Prévenir les administrateurs dans leurs notifications": "Tell the administrators in their notifications",
+	"Nouvelle version disponible : {latest} (installée : {installed})": "New version available: {latest} (installed: {installed})",
+	"Version {version}": "Version {version}",
+	"Voir sur GitHub ↗": "See on GitHub ↗",
+	"Version installée : {installed}. Les nouvelles versions n'ont pas pu être lues ({error}).": "Installed version: {installed}. The new versions could not be read ({error}).",
+	"Version installée : {installed} — à jour.": "Installed version: {installed} — up to date.",
+	"Webmail Exchange %s est disponible": "Webmail Exchange %s is available",
+	"Version installée : %s. Nouveautés et commande de mise à jour dans les paramètres d'administration.": "Installed version: %s. What's new and the update command in the administration settings.",
+	"Supprimer définitivement les {count} éléments supprimés et les {folders} dossiers qu'ils contiennent ? Ils ne pourront pas être récupérés ici.": "Permanently delete the {count} deleted items and the {folders} folders they contain? They cannot be recovered here.",
+	"Supprimer définitivement le dossier « {name} » et tout son contenu ? Il ne pourra pas être récupéré ici.": "Permanently delete the folder “{name}” and all its content? It cannot be recovered here.",
+	"Dossier « {name} » supprimé définitivement": "Folder “{name}” permanently deleted"
 }

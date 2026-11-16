@@ -283,7 +283,7 @@ make dist
 ```
 
 ```bash
-sudo tar -xzf build/webmail-1.153.0.tar.gz -C /var/www/nextcloud/custom_apps/
+sudo tar -xzf build/webmail-1.154.0.tar.gz -C /var/www/nextcloud/custom_apps/
 ```
 
 ```bash
@@ -322,6 +322,14 @@ sudo maj-webmail
 | `sudo maj-webmail --retour` | remet la version d'avant (dernière sauvegarde) |
 | `sudo maj-webmail -y` | sans demander de confirmation (pour une tâche planifiée) |
 | `sudo maj-webmail -c autre-conteneur` | autre nom de conteneur Nextcloud |
+| `sudo maj-webmail --auto` | met à jour toute seule chaque nuit vers 3 h (minuteur systemd, sinon cron) ; journal dans `/var/log/maj-webmail.log` |
+| `sudo maj-webmail --auto 04:30` | la même chose, à l'heure choisie |
+| `sudo maj-webmail --auto-retrait` | plus de mise à jour automatique |
+
+Après chaque installation réussie, le script se remet lui-même à jour (celui joint à la release).
+Dans Nextcloud, **Administration → Webmail Exchange → Mises à jour** indique si une nouvelle
+version est sortie, avec ses nouveautés ; les administrateurs en sont aussi prévenus une fois
+dans leurs notifications (case à décocher sur la même page).
 
 #### À la main
 
@@ -376,7 +384,7 @@ Remplacez le dossier `custom_apps/webmail` par la nouvelle version, puis lancez 
 sudo -u www-data php /var/www/nextcloud/occ upgrade
 ```
 
-Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.153 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
+Les comptes déjà configurés sont conservés. Les versions 1.1 à 1.154 ne modifient pas la base de données (les agendas et contacts partagés ajoutés sont enregistrés dans les préférences de l'utilisateur).
 
 ## Configuration (administrateur)
 

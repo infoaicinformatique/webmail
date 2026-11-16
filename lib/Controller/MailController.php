@@ -94,6 +94,7 @@ class MailController extends Controller {
 			if (!in_array($role, ['deleteditems', 'junkemail'], true)) {
 				throw new MailException('Seuls les éléments supprimés et le courrier indésirable se vident d\'un coup');
 			}
+			$this->forgetFolderIds($id);
 			$this->client($id)->emptyFolder($role, $role === 'deleteditems');
 			return ['emptied' => $role];
 		});
@@ -126,10 +127,10 @@ class MailController extends Controller {
 	}
 
 	#[NoAdminRequired]
-	public function deleteFolder(int $id, string $folderId): Response {
-		return $this->handle(function () use ($id, $folderId) {
+	public function deleteFolder(int $id, string $folderId, bool $permanent = false): Response {
+		return $this->handle(function () use ($id, $folderId, $permanent) {
 			$this->forgetFolderIds($id);
-			$this->client($id)->deleteFolder($folderId);
+			$this->client($id)->deleteFolder($folderId, $permanent);
 			return ['status' => 'ok'];
 		});
 	}

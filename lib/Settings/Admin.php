@@ -19,6 +19,7 @@ class Admin implements ISettings {
 		private \OCP\IL10N $l,
 		private \OCA\Webmail\Service\OrgSignatureService $orgSignature,
 		private \OCP\IConfig $config,
+		private \OCP\App\IAppManager $appManager,
 	) {
 	}
 
@@ -37,6 +38,8 @@ class Admin implements ISettings {
 			'maxAttachmentsMb' => $this->servers->getMaxAttachmentsMb(),
 			'maxAttachmentsLimit' => ServerConfigService::MAX_ATTACHMENTS_MB_LIMIT,
 			'absenceTemplate' => $this->absences->adminTemplate(),
+			'version' => (string)$this->appManager->getAppVersion(Application::APP_ID),
+			'updateNotify' => $this->config->getAppValue(Application::APP_ID, 'update_notify', 'yes') !== 'no',
 			'orgSignature' => $this->orgSignature->template(),
 			'orgSignatureMode' => $this->config->getAppValue(Application::APP_ID, 'org_signature_mode', 'off'),
 			'absenceDefault' => \OCA\Webmail\Service\AbsenceReplyService::defaultTemplate($this->l),

@@ -1373,7 +1373,7 @@
 			const folders = state.folders.filter((f) => f.size > 0).sort((a, b) => b.size - a.size).slice(0, 12)
 			const max = folders.length ? folders[0].size : 1
 			body.appendChild(h('ul', { class: 'wm-space-list' }, folders.map((f) => {
-				const emptyable = (f.role === 'deleteditems' || f.role === 'junkemail') && f.total > 0
+				const emptyable = (f.role === 'deleteditems' && (f.total > 0 || subFolders(f).length > 0)) || (f.role === 'junkemail' && f.total > 0)
 				return h('li', { class: 'wm-space-row', dataset: { role: f.role || '' } },
 					h('div', { class: 'wm-space-head' },
 						h('span', { class: 'wm-space-name' }, folderName(f.id)),
@@ -2863,8 +2863,11 @@
 	 */
 	async function emptyFolder(f) {
 		const deleted = f.role === 'deleteditems'
+		const folders = deleted ? subFolders(f).length : 0
 		if (!window.confirm(deleted
-			? _('Supprimer définitivement les {count} éléments supprimés ? Ils ne pourront pas être récupérés ici.', { count: f.total })
+			? (folders
+				? _('Supprimer définitivement les {count} éléments supprimés et les {folders} dossiers qu\'ils contiennent ? Ils ne pourront pas être récupérés ici.', { count: f.total, folders })
+				: _('Supprimer définitivement les {count} éléments supprimés ? Ils ne pourront pas être récupérés ici.', { count: f.total }))
 			: _('Mettre les {count} messages indésirables dans les éléments supprimés ?', { count: f.total }))) return false
 		try {
 			await api('/accounts/' + state.accountId + '/folders/empty', { method: 'POST', body: { role: f.role } })
@@ -2895,7 +2898,7 @@
 				: item('★ ' + _('Ajouter aux favoris'), () => setFavorite(f, true)),
 			item('＋ ' + _('Nouveau sous-dossier'), () => createFolder(f)),
 			f.unread ? item('✓ ' + _('Tout marquer comme lu'), () => markFolderRead(f)) : null,
-			f.role === 'deleteditems' && f.total > 0 ? item('🗑 ' + _('Vider les éléments supprimés'), () => emptyFolder(f), true) : null,
+			f.role === 'deleteditems' && (f.total > 0 || subFolders(f).length > 0) ? item('🗑 ' + _('Vider les éléments supprimés'), () => emptyFolder(f), true) : null,
 			f.role === 'junkemail' && f.total > 0 ? item('🗑 ' + _('Vider le courrier indésirable'), () => emptyFolder(f), true) : null,
 			item('📥 ' + _('Importer des messages (.eml)…'), () => pickEml(f)),
 			fixed ? null : item('✏️ ' + _('Renommer'), () => renameFolder(f)),
@@ -3044,12 +3047,33 @@
 	}
 
 	async function deleteFolder(f) {
-		if (!window.confirm(_('Supprimer le dossier « {name} » et tout son contenu ? Il sera placé dans « Éléments supprimés ».', { name: f.name }))) return
+		// already in « Éléments supprimés »: for good
+		const permanent = inDeletedItems(f)
+		if (!window.confirm(permanent
+			? _('Supprimer définitivement le dossier « {name} » et tout son contenu ? Il ne pourra pas être récupéré ici.', { name: f.name })
+			: _('Supprimer le dossier « {name} » et tout son contenu ? Il sera placé dans « Éléments supprimés ».', { name: f.name }))) return
 		const wasOpen = state.folderId === f.id
-		if (await folderAction('/delete', { folderId: f.id }, _('Dossier « {name} » placé dans les éléments supprimés', { name: f.name })) && wasOpen) {
+		if (await folderAction('/delete', { folderId: f.id, permanent }, permanent
+			? _('Dossier « {name} » supprimé définitivement', { name: f.name })
+			: _('Dossier « {name} » placé dans les éléments supprimés', { name: f.name })) && wasOpen) {
 			const inbox = state.folders.find((x) => x.role === 'inbox')
 			if (inbox) selectFolder(inbox.id)
 		}
+	}
+
+	/** All the folders under $f (at any depth). */
+	function subFolders(f) {
+		const out = []
+		const walk = (id) => state.folders.forEach((x) => { if (x.parentId === id) { out.push(x); walk(x.id) } })
+		walk(f.id)
+		return out
+	}
+	/** A folder somewhere under « Éléments supprimés ». */
+	function inDeletedItems(f) {
+		for (let p = state.folders.find((x) => x.id === f.parentId); p; p = state.folders.find((x) => x.id === p.parentId)) {
+			if (p.role === 'deleteditems') return true
+		}
+		return false
 	}
 
 	function folderName(id) {

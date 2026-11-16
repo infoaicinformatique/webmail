@@ -7,6 +7,7 @@ namespace OCA\Webmail\Controller;
 use OCA\Webmail\AppInfo\Application;
 use OCA\Webmail\Service\HealthService;
 use OCA\Webmail\Service\ServerConfigService;
+use OCA\Webmail\Service\UpdateService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Response;
 use OCP\IRequest;
@@ -22,6 +23,8 @@ class AdminController extends Controller {
 		IRequest $request,
 		private ServerConfigService $servers,
 		private HealthService $health,
+		private UpdateService $updates,
+		private \OCP\IConfig $config,
 		private LoggerInterface $logger,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -33,6 +36,21 @@ class AdminController extends Controller {
 
 	public function get(): Response {
 		return $this->handle(fn () => $this->state());
+	}
+
+	/** « Mises à jour »: the versions published after the one installed, with their notes. */
+	public function update(bool $fresh = false): Response {
+		return $this->handle(fn () => $this->updates->check($fresh) + [
+			'notify' => $this->config->getAppValue(Application::APP_ID, 'update_notify', 'yes') !== 'no',
+		]);
+	}
+
+	/** The administrators told of a new version in their notifications, or not. */
+	public function updateNotify(bool $notify): Response {
+		return $this->handle(function () use ($notify) {
+			$this->config->setAppValue(Application::APP_ID, 'update_notify', $notify ? 'yes' : 'no');
+			return ['notify' => $notify];
+		});
 	}
 
 	/** « État des services »: checked now. */

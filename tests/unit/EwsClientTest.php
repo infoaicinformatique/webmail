@@ -286,6 +286,21 @@ class EwsClientTest extends EwsTestCase {
 		$this->queue(self::ok('DeleteFolder'));
 		$this->client()->deleteFolder('F1');
 		$this->assertStringContainsString('<m:DeleteFolder DeleteType="MoveToDeletedItems"><m:FolderIds><t:FolderId Id="F1"/>', $this->lastRequest());
+		// a folder already in « Éléments supprimés »: for good
+		$this->queue($this->roles());
+		$this->queue(self::ok('DeleteFolder'));
+		$this->client()->deleteFolder('F1', true);
+		$this->assertStringContainsString('<m:DeleteFolder DeleteType="HardDelete"><m:FolderIds><t:FolderId Id="F1"/>', $this->lastRequest());
+	}
+
+	public function testEmptyingTheDeletedItemsTakesTheirFoldersToo(): void {
+		$this->queue(self::ok('EmptyFolder'));
+		$this->client()->emptyFolder('deleteditems', true);
+		$this->assertStringContainsString('<m:EmptyFolder DeleteType="HardDelete" DeleteSubFolders="true">', $this->lastRequest());
+		// the junk e-mail: its messages moved to the deleted items, its folders left
+		$this->queue(self::ok('EmptyFolder'));
+		$this->client()->emptyFolder('junkemail', false);
+		$this->assertStringContainsString('<m:EmptyFolder DeleteType="MoveToDeletedItems" DeleteSubFolders="false">', $this->lastRequest());
 	}
 
 	public function testExchangeFoldersAreProtected(): void {

@@ -102,6 +102,79 @@
 				}
 			})
 		}
+		// « Mises à jour »: the versions published since the one installed, and what they bring
+		const update = document.getElementById('webmail-update')
+		if (update) {
+			const status = update.querySelector('.wm-update-status')
+			const notes = update.querySelector('.wm-update-notes')
+			const checkBtn = document.getElementById('webmail-update-check')
+			const notify = document.getElementById('webmail-update-notify')
+			const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e }
+			// the notes of a release (Markdown): headings, list items and paragraphs, as text
+			const renderNotes = (md) => {
+				const box = el('div', 'wm-update-release-notes')
+				let ul = null
+				md.split('\n').forEach((line) => {
+					const t = line.trim()
+					if (!t) { ul = null; return }
+					const clean = (x) => x.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+					if (/^#{1,6}\s/.test(t)) { ul = null; box.appendChild(el('strong', 'wm-update-heading', clean(t.replace(/^#+\s*/, '')))); return }
+					if (/^[-*]\s/.test(t)) { if (!ul) { ul = el('ul'); box.appendChild(ul) } ul.appendChild(el('li', '', clean(t.slice(2)))); return }
+					ul = null
+					box.appendChild(el('p', '', clean(t)))
+				})
+				return box
+			}
+			const show = (data) => {
+				notes.innerHTML = ''
+				update.classList.toggle('available', !!data.available)
+				if (data.available) {
+					status.textContent = '🆕 ' + _('Nouvelle version disponible : {latest} (installée : {installed})', { latest: data.latest, installed: data.installed })
+					data.releases.forEach((r) => {
+						const box = el('details', 'wm-update-release')
+						if (r.version === data.latest) box.open = true
+						const sum = el('summary', '', _('Version {version}', { version: r.version }) + (r.date ? ' — ' + r.date : ''))
+						box.appendChild(sum)
+						if (r.notes) box.appendChild(renderNotes(r.notes))
+						if (r.url) {
+							const a = el('a', 'external', _('Voir sur GitHub ↗'))
+							a.href = r.url
+							a.target = '_blank'
+							a.rel = 'noopener noreferrer'
+							box.appendChild(a)
+						}
+						notes.appendChild(box)
+					})
+				} else if (data.error) {
+					status.textContent = '⚠️ ' + _('Version installée : {installed}. Les nouvelles versions n\'ont pas pu être lues ({error}).', { installed: data.installed, error: data.error })
+				} else {
+					status.textContent = '✅ ' + _('Version installée : {installed} — à jour.', { installed: data.installed })
+				}
+			}
+			const load = async (fresh) => {
+				checkBtn.disabled = true
+				try {
+					const res = await fetch(OC.generateUrl('/apps/webmail/api/admin/update') + (fresh ? '?fresh=1' : ''), { headers: { requesttoken: OC.requestToken, Accept: 'application/json' } })
+					const data = await res.json()
+					if (!res.ok) throw new Error(data.message || ('HTTP ' + res.status))
+					show(data)
+				} catch (e) {
+					status.textContent = '⚠️ ' + e.message
+				} finally {
+					checkBtn.disabled = false
+				}
+			}
+			checkBtn.addEventListener('click', () => load(true))
+			notify.addEventListener('change', async () => {
+				await fetch(OC.generateUrl('/apps/webmail/api/admin/update'), {
+					method: 'POST',
+					headers: { requesttoken: OC.requestToken, Accept: 'application/json', 'Content-Type': 'application/json' },
+					body: JSON.stringify({ notify: notify.checked }),
+				})
+			})
+			load(false)
+		}
+
 		const healthBtn = document.getElementById('webmail-health-check')
 		const healthList = document.getElementById('webmail-health')
 		if (healthBtn && healthList) {

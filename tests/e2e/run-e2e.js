@@ -124,6 +124,43 @@ async function main() {
 		}
 	})
 
+	await step('admin settings: « Mises à jour » tells the versions published since the one installed, with their notes', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		occ('config:system:set allow_local_remote_servers --value=true --type=boolean')
+		occ('config:system:set webmail_update_url --value=https://ex3.fake.test:8443/_test/releases')
+		try {
+			// (at first, with no network to GitHub: the version installed is said all the same)
+			await page.waitForSelector('#webmail-update .wm-update-status')
+			await page.click('#webmail-update-check')
+			await page.waitForSelector('#webmail-update.available .wm-update-status:has-text("99.0.0")')
+			const versions = await page.$$eval('#webmail-update .wm-update-release summary', (els) => els.map((e) => e.textContent))
+			assert.strictEqual(versions.length, 2, versions.join(' | ')) // not the draft, nor the older one
+			assert.ok(versions[0].includes('99.0.0') && versions[1].includes('98.0.0'), versions.join(' | '))
+			// the notes of the newest, open: a heading and a list, as text
+			await page.waitForSelector('#webmail-update details[open] .wm-update-heading:has-text("Nouveautés")')
+			await page.waitForSelector('#webmail-update details[open] li:has-text("Recherches enregistrées dans le volet")')
+			assert.ok((await page.textContent('#webmail-update')).includes('sudo maj-webmail --auto'))
+			await page.locator('#webmail-update').scrollIntoViewIfNeeded()
+			await shot('01c-admin-update')
+			// told to the administrators (a setting kept on the server): unticked, then ticked again
+			const notifyIs = (v) => page.waitForFunction(async (v) => {
+				const r = await fetch(OC.generateUrl('/apps/webmail/api/admin/update'), { headers: { requesttoken: OC.requestToken } })
+				return (await r.json()).notify === v
+			}, v)
+			const before = await page.isChecked('#webmail-update-notify')
+			await page.click('label[for=webmail-update-notify]')
+			await notifyIs(!before)
+			await page.click('label[for=webmail-update-notify]')
+			await notifyIs(before)
+		} finally {
+			occ('config:system:delete webmail_update_url')
+			// (the list kept by the check forgotten)
+			await page.click('#webmail-update-check')
+			await page.waitForFunction(() => !document.querySelector('#webmail-update.available'))
+			occ('config:system:delete allow_local_remote_servers')
+		}
+	})
+
 	await step('admin settings: certificates and size of the attachments', async () => {
 		// this test Nextcloud talks to the fake server without checking its certificate (occ verify_tls=no)
 		assert(await page.isChecked('#webmail-no-verify-tls'))
@@ -343,7 +380,8 @@ async function main() {
 
 	await step('list headings: « Aujourd\'hui », « Hier », « Cette semaine »… where the period changes', async () => {
 		const periods = await page.$$eval('.wm-messages > .wm-list-period', (els) => els.map((e) => e.textContent))
-		assert.strictEqual(periods[0], 'Aujourd\'hui', periods.join(' | '))
+		// (the newest messages of the fake server are from its start: « Hier » once midnight passed in Paris)
+		assert.ok(['Aujourd\'hui', 'Hier'].includes(periods[0]), periods.join(' | '))
 		assert.strictEqual(new Set(periods).size, periods.length, 'each period once: ' + periods.join(' | '))
 		// the order of the periods, newest first; then months (« Octobre 2026 »)
 		const order = ['Aujourd\'hui', 'Hier', 'Cette semaine', 'La semaine dernière', 'Ce mois-ci']
@@ -1862,6 +1900,8 @@ async function main() {
 			await admin(true, 'fake.test')
 			await add()
 			await page.waitForFunction(() => [...document.querySelectorAll('.wm-account-select option')].some((o) => o.textContent === 'jean@societe-c.fr'))
+			// (the new account opens on its inbox: once shown, to the settings)
+			await page.waitForSelector('.wm-message')
 			await page.click('text=Comptes et signature')
 			await page.waitForSelector('.wm-domains-hint:has-text("Pour les autres, le serveur est cherché automatiquement")')
 			await page.goto(NC + '/settings/admin/webmail')
@@ -4944,6 +4984,26 @@ async function main() {
 		await page.waitForSelector('.wm-toast:has-text("éléments supprimés")')
 		await page.click('.wm-search-info a:has-text("effacer")')
 		const trash = '.wm-folder:has(.wm-folder-name:text-is("Éléments supprimés"))'
+		// folders deleted earlier are in it too: « Vieux projets » (with « 2019 » inside) and « Brouillons perso »
+		await page.evaluate(async () => {
+			const headers = { requesttoken: OC.requestToken, 'Content-Type': 'application/json' }
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers })).json()
+			const base = '/apps/webmail/api/accounts/' + accounts.find((a) => a.email === 'user@societe-a.fr').id + '/folders'
+			const post = async (path, body) => (await fetch(base + path, { method: 'POST', headers, body: JSON.stringify(body) })).json()
+			const old = await post('', { name: 'Vieux projets', parentId: '' })
+			await post('', { name: '2019', parentId: old.id })
+			const perso = await post('', { name: 'Brouillons perso', parentId: '' })
+			await post('/delete', { folderId: old.id })
+			await post('/delete', { folderId: perso.id })
+		})
+		await page.click('.wm-list button[title="Actualiser"]')
+		await page.waitForSelector('.wm-folder-name:text-is("Vieux projets")')
+		// a folder already in « Éléments supprimés »: deleted for good
+		await page.click('.wm-folder:has(.wm-folder-name:text-is("Brouillons perso"))', { button: 'right' })
+		page.once('dialog', (d) => { assert.ok(d.message().includes('Supprimer définitivement le dossier « Brouillons perso »'), d.message()); d.accept() })
+		await page.click('.wm-folder-menu-item:has-text("Supprimer")')
+		await page.waitForSelector('.wm-toast:has-text("supprimé définitivement")')
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-folder-name')].some((e) => e.textContent === 'Brouillons perso'))
 		// the menu of the folder, from a right-click (no such entry for another folder)
 		await page.click('.wm-folder:has(.wm-folder-name:text-is("Clients"))', { button: 'right' })
 		await page.waitForSelector('.wm-folder-menu')
@@ -4952,9 +5012,20 @@ async function main() {
 		await page.click(trash, { button: 'right' })
 		await page.waitForSelector('.wm-folder-menu .wm-folder-menu-item:has-text("Vider les éléments supprimés")')
 		await shot('90-empty-deleted-items')
-		page.once('dialog', (d) => { assert.ok(d.message().includes('Supprimer définitivement')); d.accept() })
+		page.once('dialog', (d) => { assert.ok(d.message().includes('Supprimer définitivement') && /et les \d+ dossiers qu'ils contiennent/.test(d.message()), d.message()); d.accept() })
 		await page.click('.wm-folder-menu-item:has-text("Vider les éléments supprimés")')
 		await page.waitForSelector('.wm-toast:has-text("Éléments supprimés vidés")')
+		// its folders gone with it (also the one deleted in an earlier step)
+		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-folder-name')].some((e) => e.textContent === 'Vieux projets' || e.textContent === '2019'))
+		const leftInTrash = await page.evaluate(async () => {
+			const headers = { requesttoken: OC.requestToken }
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const folders = (await (await fetch('/apps/webmail/api/accounts/' + id + '/folders', { headers })).json()).folders
+			const trash = folders.find((f) => f.role === 'deleteditems')
+			return folders.filter((f) => f.parentId === trash.id).map((f) => f.name)
+		})
+		assert.deepStrictEqual(leftInTrash, [])
 		await page.click(trash)
 		await page.waitForSelector('.wm-empty:has-text("Aucun message")')
 		// nothing left: no such entry any more

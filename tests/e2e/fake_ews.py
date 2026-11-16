@@ -436,6 +436,15 @@ def move_message(mid, folder):
     MESSAGES[mid]['folder'] = folder
 
 
+def drop_folder(fid):
+    """A folder gone for good, with its sub-folders and their messages."""
+    for sub in [f[0] for f in FOLDERS if f[2] == fid]:
+        drop_folder(sub)
+    for m in [m for m in MESSAGES.values() if m['folder'] == fid]:
+        del MESSAGES[m['id']]
+    FOLDERS[:] = [f for f in FOLDERS if f[0] != fid]
+
+
 def manage_folder(op, el):
     """Create, rename, move, delete mail folders (Exchange's own ones are refused)."""
     ids = {f[0]: i for i, f in enumerate(FOLDERS)}
@@ -483,6 +492,11 @@ def manage_folder(op, el):
             p = FOLDERS[ids[p]][2] if p in ids else None
         if p == fid:
             out.append(err(op, 'ErrorMoveCopyFailed', 'cannot move a folder into itself'))
+            continue
+        if op == 'DeleteFolder' and el.get('DeleteType') == 'HardDelete':
+            drop_folder(fid)
+            out.append(ok(op, ''))
+            ids = {f[0]: i for i, f in enumerate(FOLDERS)}
             continue
         f = FOLDERS[ids[fid]]
         FOLDERS[ids[fid]] = (fid, f[1], target, f[3])
@@ -898,6 +912,9 @@ def handle(op, el, user):
                     del MESSAGES[m['id']]
                 else:
                     m['folder'] = 'F-DELETED'
+            if el.get('DeleteSubFolders') == 'true':
+                for sub in [f[0] for f in FOLDERS if f[2] == fid]:
+                    drop_folder(sub)
             out.append(ok(op, ''))
         return wrap(op, out)
 
@@ -1167,6 +1184,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith('/_matrix/'):
             return self.matrix('GET')
+        if self.path.split('?')[0] == '/_test/releases':
+            # (for the test: the releases of the app, as GitHub lists them)
+            import json
+            rel = lambda tag, body, **kw: dict({'tag_name': tag, 'html_url': 'https://github.com/infoaicinformatique/webmail/releases/tag/' + tag,
+                                               'published_at': '2026-11-20T10:00:00Z', 'body': body, 'draft': False, 'prerelease': False}, **kw)
+            return self.send(200, json.dumps([
+                rel('v100.0.0', 'brouillon', draft=True),
+                rel('v99.0.0', '## Nouveautés\n- **Recherches** enregistrées dans le volet\n- Corrections\n\nVoir [le détail](https://example.org).'),
+                rel('v98.0.0', '- Alertes de sécurité'),
+                rel('v1.0.0', 'ancienne'),
+            ]), {'Content-Type': 'application/json'})
         if self.path.split('?')[0] == '/element/config.json':
             # an Element Web (its configuration names its homeserver), for « Sites externes »
             import json
