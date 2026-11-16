@@ -912,9 +912,7 @@ def handle(op, el, user):
                     del MESSAGES[m['id']]
                 else:
                     m['folder'] = 'F-DELETED'
-            if el.get('DeleteSubFolders') == 'true':
-                for sub in [f[0] for f in FOLDERS if f[2] == fid]:
-                    drop_folder(sub)
+            # (as the Exchange of OVH: the sub-folders are kept, even with DeleteSubFolders)
             out.append(ok(op, ''))
         return wrap(op, out)
 
