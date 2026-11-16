@@ -34,6 +34,8 @@
 		unified: false, // « Toutes les boîtes de réception »: the inboxes of every account in one list
 		today: false, // « Aujourd'hui » shown in the reading pane
 		filesView: false, // « Pièces jointes » shown in the reading pane
+		vip: new Set(), // the priority senders of the account (addresses, lower case)
+		vipView: false, // « Prioritaires » shown in the reading pane
 		assistant: null, // what the Assistant of Nextcloud can do (summary, reply, translate), when there is one
 		unifiedItems: [],
 		pinned: new Map(), // id -> summary (with its folder): kept at the top of their folder
@@ -1147,7 +1149,12 @@
 			href: '#',
 			class: 'wm-files-link' + (state.filesView ? ' active' : ''),
 			onclick: (e) => { e.preventDefault(); openFiles() },
-		}, h('span', { class: 'wm-folder-name' }, '📎 ' + _('Pièces jointes'))))))
+		}, h('span', { class: 'wm-folder-name' }, '📎 ' + _('Pièces jointes')))),
+		state.vip.size ? h('li', {}, h('a', {
+			href: '#',
+			class: 'wm-vip-link' + (state.vipView ? ' active' : ''),
+			onclick: (e) => { e.preventDefault(); openVip() },
+		}, h('span', { class: 'wm-folder-name' }, '⭐ ' + _('Prioritaires')))) : null))
 		if (state.accounts.length > 1) {
 			navEl.appendChild(h('ul', { class: 'wm-folders wm-unified' }, h('li', {}, h('a', {
 				href: '#',
@@ -1643,6 +1650,7 @@
 		parts.push(item('wm-ctx-move', '📁', _('Déplacer vers…'), null, () => moveMenu(li, ids)))
 		if (!many && m.from && m.from.email && !m.from.email.startsWith('/')) {
 			parts.push(item('wm-ctx-sender', '👤', _('Tous ses messages…'), null, () => senderMessages(m)))
+			parts.push(item('wm-ctx-vip', '⭐', isVip(m.from) ? _('Retirer des prioritaires') : _('Expéditeur prioritaire'), null, () => toggleVip(m.from)))
 		}
 		if (!notJunkable) {
 			parts.push(role === 'junkemail'
@@ -1710,6 +1718,7 @@
 		if (!signatureSets.has(state.accountId)) loadSignatures(state.accountId)
 		loadPinned()
 		loadSavedSearches()
+		loadVip()
 		try {
 			const data = await api('/accounts/' + state.accountId + '/folders')
 			state.folders = data.folders
@@ -1965,6 +1974,7 @@
 		state.unified = false
 		state.today = false
 		state.filesView = false
+		state.vipView = false
 		saveListCache()
 		state.folderId = id
 		resetSearch()
@@ -2160,6 +2170,7 @@
 		const mine = ++todaySeq
 		state.today = true
 		state.filesView = false
+		state.vipView = false
 		renderNav()
 		setView('detail')
 		clear(detailEl)
@@ -2259,6 +2270,7 @@
 	function openFiles() {
 		state.filesView = true
 		state.today = false
+		state.vipView = false
 		const view = { q: '', kind: '', rows: [], next: 0, hasMore: false, loading: false, checked: new Set() }
 		renderNav()
 		setView('detail')
@@ -2363,6 +2375,64 @@
 		} else {
 			doSave('/' + _('Courriers'))
 		}
+	}
+
+	// ------------------------------------------------------------------
+	// « Expéditeurs prioritaires »: a star, their own view, a notification even with the bell off
+	// ------------------------------------------------------------------
+
+	let vipSeq = 0
+	const isVip = (from) => !!(from && from.email && state.vip.has(String(from.email).toLowerCase()))
+	async function loadVip() {
+		const account = state.accountId
+		try {
+			const r = await api('/accounts/' + account + '/vip')
+			if (account !== state.accountId) return
+			const before = [...state.vip].join('|')
+			state.vip = new Set(r.vip)
+			if ([...state.vip].join('|') !== before && state.module === 'mail') { renderNav(); if (listEl && !state.loadingList) renderList(false) }
+		} catch (e) { /* no star */ }
+	}
+	async function toggleVip(from) {
+		const vip = !isVip(from)
+		try {
+			const r = await api('/accounts/' + state.accountId + '/vip', { method: 'POST', body: { email: from.email, vip } })
+			state.vip = new Set(r.vip)
+			toast(vip
+				? _('{name} est un expéditeur prioritaire : ses messages sont mis en avant, et annoncés même si les notifications sont coupées', { name: from.name || from.email })
+				: _('{name} n\'est plus un expéditeur prioritaire', { name: from.name || from.email }))
+			renderNav()
+			if (listEl && !state.loadingList) renderList(false)
+			if (state.current && state.current.from && String(state.current.from.email).toLowerCase() === String(from.email).toLowerCase()) renderMessage()
+			if (state.vipView) openVip()
+		} catch (e) { toast(e.message, true) }
+	}
+	/** « ⭐ Prioritaires »: the messages of the priority senders in the inbox. */
+	async function openVip() {
+		const mine = ++vipSeq
+		state.vipView = true
+		state.today = false
+		state.filesView = false
+		renderNav()
+		setView('detail')
+		clear(detailEl)
+		const box = h('div', { class: 'wm-files wm-vip-view' },
+			h('div', { class: 'wm-today-head' },
+				h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Retour'), onclick: () => { state.vipView = false; renderNav(); setView('list') } }, '←'),
+				h('h2', {}, '⭐ ' + _('Prioritaires'))),
+			h('div', { class: 'wm-loading' }, _('Chargement…')))
+		detailEl.appendChild(box)
+		let r
+		try { r = await api('/accounts/' + state.accountId + '/vip/messages') } catch (e) { box.lastChild.textContent = e.message; return }
+		if (mine !== vipSeq || !state.vipView) return
+		box.lastChild.remove()
+		box.appendChild(h('p', { class: 'wm-muted' }, _('Les messages de vos expéditeurs prioritaires dans la boîte de réception : {names}.', { names: r.vip.join(', ') })))
+		if (!r.messages.length) { box.appendChild(h('p', { class: 'wm-muted' }, _('Aucun message de vos expéditeurs prioritaires'))); return }
+		box.appendChild(h('ul', { class: 'wm-vip-list' }, r.messages.map((m) => h('li', { class: 'wm-today-item' + (m.isRead ? '' : ' unread') },
+			h('button', { type: 'button', class: 'wm-today-open wm-vip-open', onclick: () => openMessage(m.id) },
+				h('span', { class: 'wm-today-when' }, m.date ? new Date(m.date).toLocaleDateString(locale(), { day: 'numeric', month: 'short' }) : ''),
+				h('span', { class: 'wm-today-subject' }, m.subject || _('(sans objet)')),
+				h('span', { class: 'wm-muted' }, personShort(m.from)))))))
 	}
 
 	/** Several attachments to Nextcloud Files, in the folder chosen once. */
@@ -2663,7 +2733,7 @@
 				onclick: (e) => { e.stopPropagation(); if (e.shiftKey) { e.preventDefault(); checkRange(m.id) } else toggleChecked(m.id) },
 			}),
 			h('div', { class: 'wm-message-line1' },
-				h('span', { class: 'wm-message-from' }, who),
+				h('span', { class: 'wm-message-from' }, isVip(m.from) && !showRecipients ? h('span', { class: 'wm-vip-star', title: _('Expéditeur prioritaire') }, '⭐ ') : null, who),
 				conv && m.count > 1 ? h('span', { class: 'wm-thread-count', title: !m.unreadCount ? _('{count} messages', { count: m.count }) : m.unreadCount > 1 ? _('{count} messages, dont {unread} non lus', { count: m.count, unread: m.unreadCount }) : _('{count} messages, dont {unread} non lu', { count: m.count, unread: m.unreadCount }) }, String(m.count)) : null,
 				m.folderId && state.filters.all ? h('span', { class: 'wm-message-folder' }, folderName(m.folderId)) : null,
 				h('span', { class: 'wm-message-date' }, bySize && m.size ? formatSize(m.size) : formatDate(m.date))),
@@ -3586,6 +3656,7 @@
 	async function openMessage(id, remote) {
 		if (state.today) { state.today = false; todaySeq++; renderNav() }
 		if (state.filesView) { state.filesView = false; filesSeq++; renderNav() }
+		if (state.vipView) { state.vipView = false; vipSeq++; renderNav() }
 		// a result opened: the search was useful, kept among the recent ones
 		if (state.query) rememberSearch(state.query)
 		state.selectedId = id
@@ -3845,7 +3916,14 @@
 					title: _('Ajouter {email} à mes contacts', { email: m.from.email }),
 					'aria-label': _('Ajouter {email} à mes contacts', { email: m.from.email }),
 					onclick: (e) => addSenderToContacts(m.from, e.currentTarget),
-				}, '👤＋') : null),
+				}, '👤＋') : null,
+				m.from && /@/.test(m.from.email || '') ? h('button', {
+					type: 'button',
+					class: 'wm-small wm-vip-btn' + (isVip(m.from) ? ' on' : ''),
+					title: isVip(m.from) ? _('Ne plus mettre en avant les messages de {email}', { email: m.from.email }) : _('Mettre en avant les messages de {email} (expéditeur prioritaire)', { email: m.from.email }),
+					'aria-pressed': isVip(m.from) ? 'true' : 'false',
+					onclick: () => toggleVip(m.from),
+				}, isVip(m.from) ? '⭐' : '☆') : null),
 			recipients(_('À'), m.to),
 			recipients('Cc', m.cc),
 			recipients(_('Cci'), m.bcc),

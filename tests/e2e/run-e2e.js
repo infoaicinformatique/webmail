@@ -1434,6 +1434,67 @@ async function main() {
 		}
 	})
 
+	await step('priority senders: a star in the list, their own view, told in the bell even when it is off for the others', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		const account = () => page.evaluate(async () => {
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()
+			return accounts.find((a) => a.email === 'user@societe-a.fr').id
+		})
+		const setBell = async (on) => {
+			const id = await account()
+			await page.evaluate(async ({ on, id }) => {
+				await fetch('/apps/webmail/api/accounts/' + id, { method: 'PUT', headers: { requesttoken: OC.requestToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ bell: on }) })
+			}, { on, id })
+		}
+		const bell = () => page.evaluate(async () => (await (await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })).json()).ocs.data.filter((n) => n.app === 'webmail'))
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\NewMailJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		const runJob = () => occ('background-job:execute ' + jobId + ' --force-execute')
+		const made = []
+		try {
+			made.push(await fake('/_test/deliver', { subject: 'Contrat cadre 2027', sender: ['Le Directeur', 'directeur@client-vip.fr'], body: '<p>Merci de relire le contrat.</p>', isRead: true }))
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('.wm-folder:has-text("Boîte de réception")')
+			await page.click('.wm-list button[title="Actualiser"]')
+			await page.click('.wm-message:has-text("Contrat cadre 2027")')
+			await page.waitForSelector('.wm-message-header h2:has-text("Contrat cadre 2027")')
+			await page.click('.wm-message-header .wm-vip-btn')
+			await page.waitForSelector('.wm-toast:has-text("est un expéditeur prioritaire")')
+			await page.waitForSelector('.wm-message:has-text("Contrat cadre 2027") .wm-vip-star')
+			await page.waitForSelector('.wm-message-header .wm-vip-btn.on')
+			// its own view
+			await page.click('.wm-vip-link')
+			await page.waitForSelector('.wm-vip-list .wm-vip-open:has-text("Contrat cadre 2027")')
+			await shot('117-priority-senders')
+			// the bell off: only the priority senders are told
+			await setBell(false)
+			runJob() // (the first check only notes what is there)
+			made.push(await fake('/_test/deliver', { subject: 'Avenant au contrat', sender: ['Le Directeur', 'directeur@client-vip.fr'], body: '<p>Voici l\'avenant.</p>' }))
+			made.push(await fake('/_test/deliver', { subject: 'Lettre d\'info de décembre', sender: ['Lettre', 'news@exemple.org'], body: '<p>Info.</p>' }))
+			runJob()
+			const mine = (await bell()).filter((n) => n.message.includes('Avenant au contrat') || n.message.includes('Lettre d\'info de décembre'))
+			assert.strictEqual(mine.length, 1, JSON.stringify(mine))
+			assert.ok(mine[0].subject.startsWith('⭐ ') && mine[0].message.includes('Avenant au contrat'), JSON.stringify(mine[0]))
+			// no longer a priority sender, from the right-click menu
+			await page.click('.wm-message:has-text("Contrat cadre 2027")', { button: 'right' })
+			await page.click('.wm-context-menu .wm-ctx-vip:has-text("Retirer des prioritaires")')
+			await page.waitForSelector('.wm-toast:has-text("n\'est plus un expéditeur prioritaire")')
+			await page.waitForFunction(() => !document.querySelector('.wm-vip-link') && !document.querySelector('.wm-vip-star'))
+		} finally {
+			await setBell(true)
+			for (const m of made) await fake('/_test/remove', { id: m.id })
+		}
+	})
+
 	await step('saved searches: kept under a name, in the side pane with their unread messages, opened again, deleted', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)

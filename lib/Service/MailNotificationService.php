@@ -61,7 +61,9 @@ class MailNotificationService {
 		$sent = 0;
 		foreach ($this->mapper->findAll() as $account) {
 			$user = $this->users->get($account->getUserId());
-			if ($user === null || !$user->isEnabled() || !$this->isEnabled($account->getUserId(), $account->getId())) {
+			// (the bell off: the messages of the priority senders are still told)
+			if ($user === null || !$user->isEnabled()
+				|| (!$this->isEnabled($account->getUserId(), $account->getId()) && $this->vips($account) === [])) {
 				continue;
 			}
 			try {
@@ -183,9 +185,20 @@ class MailNotificationService {
 		$this->config->setUserValue($userId, Application::APP_ID, 'bell_seen_' . $accountId, json_encode($seen));
 	}
 
+	/** @return list<string> the priority senders of the account */
+	private function vips(Account $account): array {
+		return VipList::decode($this->config->getUserValue($account->getUserId(), Application::APP_ID, VipList::PREF . $account->getId(), '[]'));
+	}
+
 	/** @param array<string, mixed> $item */
 	private function notify(Account $account, array $item): void {
 		$from = $item['from'] ?? null;
+		$vips = $this->vips($account);
+		$vip = VipList::has($vips, is_array($from) ? $from : null);
+		// the bell off: only the priority senders
+		if (!$vip && !$this->isEnabled($account->getUserId(), $account->getId())) {
+			return;
+		}
 		$n = $this->notifications->createNotification();
 		$date = date_create_immutable((string)($item['date'] ?? '')) ?: new \DateTimeImmutable();
 		$n->setApp(Application::APP_ID)
@@ -198,6 +211,7 @@ class MailNotificationService {
 				'from' => is_array($from) ? (string)(($from['name'] ?? '') !== '' ? $from['name'] : ($from['email'] ?? '')) : '',
 				'subject' => mb_substr((string)($item['subject'] ?? ''), 0, 200),
 				'itemId' => (string)$item['id'],
+				'vip' => $vip,
 			])
 			->setMessage('preview', ['preview' => mb_substr((string)($item['preview'] ?? ''), 0, 200)]);
 		$this->notifications->notify($n);
@@ -287,6 +301,6 @@ class MailNotificationService {
 			$parts[] = mb_strlen($preview) > 140 ? mb_substr($preview, 0, 139) . '…' : $preview;
 		}
 		$message = implode(' — ', $parts) . ' · ' . (string)($p['email'] ?? '');
-		return [self::title(self::sender($p), $l), $message];
+		return [(!empty($p['vip']) ? '⭐ ' : '') . self::title(self::sender($p), $l), $message];
 	}
 }
