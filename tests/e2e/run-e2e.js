@@ -5424,6 +5424,16 @@ async function main() {
 	})
 
 	await step('newsletters: the lists of the inbox by sender; one left and its messages deleted, another kept', async () => {
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
 		const promo = 'offres@boutique-test.example'
 		for (const n of [1, 2, 3]) {
 			await fake('/_test/deliver', { subject: 'Promo boutique ' + n, sender: ['Boutique Test', promo], body: '<p>Promo ' + n + '.</p>', minutesAgo: n, listUnsubscribe: '<mailto:stop@boutique-test.example?subject=STOP%20boutique>' })
