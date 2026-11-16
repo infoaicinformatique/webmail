@@ -25,4 +25,9 @@ class MessageNoteTest extends TestCase {
 		$this->assertSame("# Devis toiture\n\n**De :** Jean Dupont <jean@client.fr>  \n**Date :** 13 nov. 2026, 09:12\n\n\\# pas un titre\n\\- ni une liste\nTexte\n\n"
 			. "[Ouvrir dans le webmail](https://cloud.example.org/apps/webmail/?account=3&message=M1)\n", $md);
 	}
+	public function testCardTitle(): void {
+		$this->assertSame('Devis 2027 urgent', MessageNote::cardTitle("  Devis\t2027\r\n urgent "));
+		$this->assertSame('Message', MessageNote::cardTitle('   '));
+		$this->assertSame(255, mb_strlen(MessageNote::cardTitle(str_repeat('é', 300))));
+	}
 }

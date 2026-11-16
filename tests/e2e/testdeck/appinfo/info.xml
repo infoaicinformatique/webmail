@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+	<id>deck</id>
+	<name>Webmail test Deck</name>
+	<summary>For the end-to-end tests of Webmail only: the few routes of Deck's API the webmail uses.</summary>
+	<description>For the end-to-end tests of Webmail only. Never install it next to the real Deck.</description>
+	<version>0.0.1</version>
+	<licence>agpl</licence>
+	<author>Webmail</author>
+	<namespace>WebmailTestDeck</namespace>
+	<category>tools</category>
+	<dependencies>
+		<nextcloud min-version="30" max-version="40"/>
+	</dependencies>
+</info>

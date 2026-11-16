@@ -1750,6 +1750,7 @@
 			parts.push(item('wm-ctx-pin', '📌', pinned ? _('Désépingler') : _('Épingler en haut du dossier'), null, () => togglePin(m)))
 			if (role === 'inbox') parts.push(item('wm-ctx-snooze', '⏰', _('Reporter…'), null, () => snoozeMenu(li, m)))
 			if (!['sentitems', 'drafts', 'outbox'].includes(role)) parts.push(item('wm-ctx-reply-later', '⏳', _('Répondre plus tard…'), null, () => replyLaterMenu(li, m)))
+			if (hasDeck()) parts.push(item('wm-ctx-deck', '🗂', _('Carte Deck…'), null, () => messageToDeck(m)))
 		}
 		parts.push(sep())
 		if (canArchive(role)) parts.push(item('wm-ctx-archive', '🗄', _('Archiver'), 'E', () => archiveMessages(ids)))
@@ -3916,6 +3917,7 @@
 			item('wm-forward-attach', '📎', _('Transférer en pièce jointe'), () => forwardAsAttachment([m]), _('Transférer en pièce jointe (.eml)')))
 		section(_('Créer à partir du message'),
 			item('wm-note-btn', '📝', _('Une note'), () => messageToNote(m), _('Garder ce message comme note (Nextcloud Notes)')),
+			hasDeck() ? item('wm-deck-btn', '🗂', _('Une carte Deck…'), () => messageToDeck(m), _('Créer une carte dans un tableau de Nextcloud Deck')) : null,
 			window.WebmailModules.tasks ? item('wm-task-from-msg', '✅', _('Une tâche'), () => taskFromMessage(m)) : null,
 			window.WebmailModules.calendar ? item('wm-event-from-msg', '📅', _('Un événement'), () => eventFromMessage(m)) : null,
 			item('wm-rule-from-msg', '📋', _('Une règle…'), () => ruleFromMessage(m), _('Créer une règle pour les messages de cet expéditeur')))
@@ -5210,6 +5212,113 @@
 				run: () => window.open(r.url, '_blank', 'noopener'),
 			})
 		} catch (e) { toast(e.message, true) }
+	}
+
+	/** Nextcloud Deck there for this user (« Une carte Deck »). */
+	const hasDeck = () => root.dataset.deck === '1'
+
+	/** Deck's own REST API, with the session (its routes keep it when the request token is sent). */
+	async function deckApi(path, body) {
+		const init = { method: body ? 'POST' : 'GET', credentials: 'same-origin', headers: { 'OCS-APIRequest': 'true', requesttoken: OC.requestToken, Accept: 'application/json' } }
+		if (body) {
+			init.headers['Content-Type'] = 'application/json'
+			init.body = JSON.stringify(body)
+		}
+		let res
+		try {
+			res = await fetch(OC.generateUrl('/apps/deck/api/v1.0' + path), init)
+		} catch (e) { throw new Error(_('Deck ne répond pas')) }
+		if (res.status === 403) throw new Error(_('Vous ne pouvez pas modifier ce tableau Deck'))
+		if (!res.ok) throw new Error(_('Deck a refusé la demande (erreur {status})', { status: res.status }))
+		return res.json()
+	}
+
+	/**
+	 * « Une carte Deck »: the message as a card of a board of Nextcloud Deck (its subject as
+	 * title, its sender, date, text and a link back to it), in the list chosen, with a due date.
+	 */
+	async function messageToDeck(m) {
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const heading = _('Créer une carte Deck')
+		const body = h('div', { class: 'wm-deck-body' }, h('span', { class: 'icon-loading' }))
+		overlay.appendChild(h('div', { class: 'wm-modal wm-modal-small wm-deck-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': heading },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, heading), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			body))
+		document.body.appendChild(overlay)
+		let boards, card
+		try {
+			[boards, card] = await Promise.all([
+				deckApi('/boards'),
+				api('/accounts/' + state.accountId + '/message/card', { query: { itemId: m.id } }),
+			])
+		} catch (e) { close(); toast(e.message, true); return }
+		// the boards the user can add cards to
+		boards = boards.filter((b) => !b.archived && !b.deletedAt && b.permissions && b.permissions.PERMISSION_EDIT)
+		clear(body)
+		if (!boards.length) {
+			body.appendChild(h('p', {}, _('Aucun tableau Deck où vous pouvez ajouter une carte. Créez-en un dans Deck.')))
+			return
+		}
+		let last = {}
+		try { last = JSON.parse(localStorage.getItem('webmail.deck') || '{}') || {} } catch (e) { /* none */ }
+		const field = (label, input) => h('label', { class: 'wm-field' }, h('span', {}, label), input)
+		const title = h('input', { type: 'text', name: 'title', maxlength: '255', required: true, value: card.title })
+		const boardSel = h('select', { name: 'board' }, boards.map((b) => h('option', { value: String(b.id), selected: b.id === last.board }, b.title)))
+		const stackSel = h('select', { name: 'stack', disabled: true })
+		const due = h('input', { type: 'date', name: 'due' })
+		const submit = h('button', { type: 'submit', class: 'primary', disabled: true }, _('Créer la carte'))
+		const loadStacks = async () => {
+			stackSel.disabled = true
+			submit.disabled = true
+			clear(stackSel)
+			try {
+				const stacks = (await deckApi('/boards/' + boardSel.value + '/stacks')).sort((a, b) => a.order - b.order)
+				stacks.forEach((s) => stackSel.appendChild(h('option', { value: String(s.id), selected: s.id === last.stack }, s.title)))
+				if (!stacks.length) stackSel.appendChild(h('option', { value: '' }, _('Aucune liste dans ce tableau')))
+				stackSel.disabled = !stacks.length
+				submit.disabled = !stacks.length
+			} catch (e) { toast(e.message, true) }
+		}
+		boardSel.addEventListener('change', loadStacks)
+		body.appendChild(h('form', {
+			class: 'wm-deck-form',
+			onsubmit: async (e) => {
+				e.preventDefault()
+				if (!title.value.trim() || !stackSel.value) return
+				submit.disabled = true
+				const boardId = Number(boardSel.value)
+				const stackId = Number(stackSel.value)
+				try {
+					// (the due date at the end of the day chosen, in the user's time zone)
+					const made = await deckApi('/boards/' + boardId + '/stacks/' + stackId + '/cards', {
+						title: title.value.trim(), type: 'plain', order: 999, description: card.description,
+						duedate: due.value ? new Date(due.value + 'T18:00:00').toISOString() : null,
+					})
+					try { localStorage.setItem('webmail.deck', JSON.stringify({ board: boardId, stack: stackId })) } catch (ex) { /* not kept */ }
+					close()
+					const where = boardSel.selectedOptions[0].textContent + ' › ' + stackSel.selectedOptions[0].textContent
+					toast(_('Carte créée dans {where}', { where }), false, {
+						label: _('Ouvrir dans Deck'),
+						run: () => window.open(OC.generateUrl('/apps/deck/board/{board}/card/{card}', { board: boardId, card: made.id }), '_blank', 'noopener'),
+					})
+				} catch (ex) {
+					submit.disabled = false
+					toast(ex.message, true)
+				}
+			},
+		},
+		field(_('Titre'), title),
+		field(_('Tableau'), boardSel),
+		field(_('Liste'), stackSel),
+		field(_('Échéance (facultatif)'), due),
+		h('p', { class: 'wm-muted' }, _('La carte reprend l\'expéditeur, la date, le texte du message et un lien pour le rouvrir ici.')),
+		h('div', { class: 'wm-form-actions' }, h('button', { type: 'button', onclick: close }, _('Annuler')), submit)))
+		await loadStacks()
+		title.focus()
 	}
 
 	/** « Ajouter à mon agenda »: the events of an .ics file received (a ticket, a booking…). */

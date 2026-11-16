@@ -1131,6 +1131,8 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-news-actions button, .wm-news-kept button { margin: 0; }
 .wm-news-kept ul { list-style: none; padding: 0; }
 .wm-news-kept li { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 2px 0; }
+.wm-deck-form { display: flex; flex-direction: column; gap: 8px; }
+.wm-deck-form select, .wm-deck-form input { width: 100%; }
 
 /* « Tous ses messages » */
 .wm-sender-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }

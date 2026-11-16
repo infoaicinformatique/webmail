@@ -1919,5 +1919,20 @@
 	"Garder": "Keep",
 	"{count} listes gardées": "{count} lists kept",
 	"{count} liste gardée": "{count} list kept",
-	"Proposer à nouveau": "Suggest again"
+	"Proposer à nouveau": "Suggest again",
+	"Deck ne répond pas": "Deck does not answer",
+	"Vous ne pouvez pas modifier ce tableau Deck": "You cannot edit this Deck board",
+	"Deck a refusé la demande (erreur {status})": "Deck refused the request (error {status})",
+	"Créer une carte Deck": "Create a Deck card",
+	"Aucun tableau Deck où vous pouvez ajouter une carte. Créez-en un dans Deck.": "No Deck board you can add a card to. Create one in Deck.",
+	"Créer la carte": "Create the card",
+	"Aucune liste dans ce tableau": "No list in this board",
+	"Carte créée dans {where}": "Card created in {where}",
+	"Ouvrir dans Deck": "Open in Deck",
+	"Tableau": "Board",
+	"Échéance (facultatif)": "Due date (optional)",
+	"La carte reprend l'expéditeur, la date, le texte du message et un lien pour le rouvrir ici.": "The card has the sender, the date, the text of the message and a link to open it here again.",
+	"Une carte Deck…": "A Deck card…",
+	"Créer une carte dans un tableau de Nextcloud Deck": "Create a card in a Nextcloud Deck board",
+	"Carte Deck…": "Deck card…"
 }
