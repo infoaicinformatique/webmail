@@ -1141,6 +1141,38 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 	})
 
+	await step('« Envoi personnalisé »: one message per recipient of a list, filled with their name, a report and a notification', async () => {
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-merge-link')
+		await page.waitForSelector('.wm-merge')
+		await page.fill('.wm-merge textarea[name=mergeList]', 'E-mail;Prénom;Nom;Société\nclaire.martin@client-exemple.fr;Claire;Martin;Client Exemple\npas une adresse\npaul.leroy@client-b.fr;Paul;Leroy;\n')
+		await page.fill('.wm-merge input[name=mergeSubject]', 'Votre devis, {prenom}')
+		await page.fill('.wm-merge textarea[name=mergeBody]', 'Bonjour {prenom} {nom},\n\nVoici le devis pour {societe}.')
+		await page.waitForSelector('.wm-merge-info:has-text("2 destinataires")')
+		assert.ok((await page.textContent('.wm-merge-info')).includes('1 lignes sans adresse valide ignorées'))
+		await page.waitForSelector('.wm-merge-preview:has-text("Votre devis, Claire")')
+		await page.waitForSelector('.wm-merge-preview:has-text("Bonjour Claire Martin")')
+		await page.waitForSelector('.wm-merge-preview:has-text("Voici le devis pour Client Exemple.")')
+		await page.waitForSelector('.wm-merge-send:not([disabled]):has-text("Envoyer à 2 destinataires")')
+		await shot('111-merge')
+		page.once('dialog', (d) => d.accept())
+		await page.click('.wm-merge-send')
+		await page.waitForSelector('.wm-toast:has-text("2 messages envoyés")')
+		await page.waitForSelector('.wm-merge-report.done:has-text("terminé : 2 envoyés sur 2")')
+		await page.click('.wm-merge .wm-modal-close')
+		// each one sent alone, with their name; the empty field gone with its space
+		const sent = await page.evaluate(async () => {
+			const headers = { requesttoken: OC.requestToken }
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const r = await (await fetch('/apps/webmail/api/accounts/' + id + '/messages?folder=sentitems&q=devis', { headers })).json()
+			return r.items.filter((m) => m.subject.startsWith('Votre devis, ')).map((m) => m.subject)
+		})
+		assert.deepStrictEqual(sent.sort(), ['Votre devis, Claire', 'Votre devis, Paul'])
+		const bell = await page.evaluate(async () => (await (await fetch('/ocs/v2.php/apps/notifications/api/v2/notifications?format=json', { headers: { 'OCS-APIREQUEST': 'true' } })).json()).ocs.data.filter((n) => n.app === 'webmail' && n.subject.startsWith('Envoi personnalisé terminé')))
+		assert.ok(bell.length >= 1 && bell[0].message.startsWith('2 messages envoyés'), JSON.stringify(bell))
+	})
+
 	await step('right-click on a message of the list: its usual actions with their keys; on several ticked, for all of them', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)

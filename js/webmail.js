@@ -761,6 +761,7 @@
 	function navFooter() {
 		return h('div', { class: 'wm-nav-footer' },
 			h('a', { href: '#', onclick: (e) => { e.preventDefault(); openAccountSettings() } }, '⚙️  ' + _('Comptes et signature')),
+			h('a', { href: '#', class: 'wm-merge-link', onclick: (e) => { e.preventDefault(); openMerge() } }, '📨  ' + _('Envoi personnalisé')),
 			h('a', { href: '#', class: 'wm-palette-link', onclick: (e) => { e.preventDefault(); openPalette() } }, '🔎  ' + _('Commandes'), h('kbd', { class: 'wm-desktop-only' }, /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘K' : 'Ctrl+K')),
 			h('a', { href: '#', class: 'wm-shortcuts-link wm-desktop-only', onclick: (e) => { e.preventDefault(); showShortcuts() } }, '⌨️  ' + _('Raccourcis clavier')),
 			'Notification' in window
@@ -5099,6 +5100,108 @@
 		const set = signatureSets.get(account && account.id)
 		return set ? (kind === 'new' ? set.new : set.reply) : ''
 	}
+	// ------------------------------------------------------------------
+	// « Envoi personnalisé » (publipostage): one message per recipient, with their name
+	// ------------------------------------------------------------------
+
+	function openMerge() {
+		if (document.querySelector('.wm-overlay')) return
+		const account = state.accounts.find((a) => a.id === state.accountId)
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { clearTimeout(timer); clearInterval(follow); overlay.remove(); document.removeEventListener('keydown', onKey, true) }
+		const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close() } }
+		document.addEventListener('keydown', onKey, true)
+		const list = h('textarea', { name: 'mergeList', rows: '6', placeholder: 'email;prenom;nom;societe\nclaire.martin@exemple.fr;Claire;Martin;Exemple SA' })
+		const file = h('input', { type: 'file', accept: '.csv,.txt,text/csv,text/plain', hidden: true })
+		const subject = h('input', { type: 'text', name: 'mergeSubject', placeholder: _('Objet, par exemple : Votre devis, {prenom}') })
+		const body = h('textarea', { name: 'mergeBody', rows: '8', placeholder: _('Bonjour {prenom},\n\n…') })
+		const withSignature = h('input', { type: 'checkbox', name: 'mergeSignature', checked: true })
+		const info = h('p', { class: 'wm-muted wm-merge-info' })
+		const preview = h('div', { class: 'wm-merge-preview' })
+		const send = h('button', { type: 'button', class: 'primary wm-merge-send', disabled: true }, _('Envoyer'))
+		const reports = h('ul', { class: 'wm-merge-reports' })
+		const html = () => '<div>' + escapeHtml(body.value).split(/\n{2,}/).map((p) => p.replace(/\n/g, '<br>')).join('</div><div><br></div><div>') + '</div>'
+			+ (withSignature.checked ? signatureBlock(account, '') : '')
+		let count = 0
+		let timer = null
+		const check = () => {
+			clearTimeout(timer)
+			timer = setTimeout(async () => {
+				if (!list.value.trim()) { info.textContent = ''; clear(preview); count = 0; send.disabled = true; return }
+				try {
+					const r = await api('/accounts/' + state.accountId + '/merge/preview', { method: 'POST', body: { list: list.value, subject: subject.value, html: html() } })
+					count = r.count
+					info.textContent = (r.count > 1 ? _('{count} destinataires', { count: r.count }) : _('{count} destinataire', { count: r.count }))
+						+ ' · ' + _('champs : {fields}', { fields: r.columns.filter((c) => c !== 'email').map((c) => '{' + c + '}').join(' ') })
+						+ (r.refusedCount ? ' · ' + _('{count} lignes sans adresse valide ignorées', { count: r.refusedCount }) : '')
+						+ (r.count > r.max ? ' · ' + _('trop de destinataires ({max} au plus)', { max: r.max }) : '')
+					clear(preview)
+					if (r.first) {
+						const frame = h('div', { class: 'wm-merge-preview-body' })
+						frame.innerHTML = r.first.html // (filled on the server, its values escaped)
+						preview.append(h('div', { class: 'wm-muted' }, _('Aperçu pour {email}', { email: r.first.email })), h('strong', {}, r.first.subject || _('(sans objet)')), frame)
+					}
+					send.disabled = !r.count || r.count > r.max || !subject.value.trim() || !body.value.trim()
+					send.textContent = r.count ? (r.count > 1 ? _('Envoyer à {count} destinataires', { count: r.count }) : _('Envoyer à 1 destinataire')) : _('Envoyer')
+				} catch (e) { info.textContent = e.message }
+			}, 400)
+		}
+		;[list, subject, body].forEach((el) => el.addEventListener('input', check))
+		withSignature.addEventListener('change', check)
+		file.addEventListener('change', async () => {
+			const f = file.files[0]
+			if (!f) return
+			list.value = await f.text()
+			check()
+		})
+		const showReports = async () => {
+			try {
+				const r = await api('/accounts/' + state.accountId + '/merge')
+				clear(reports)
+				r.sendings.forEach((x) => reports.appendChild(h('li', { class: 'wm-merge-report' + (x.done ? ' done' : '') },
+					h('strong', {}, x.subject), ' — ',
+					x.done
+						? _('terminé : {sent} envoyés sur {total}', { sent: x.sent, total: x.total })
+						: _('en cours : {sent} envoyés, {left} à venir (quelques dizaines toutes les 5 minutes)', { sent: x.sent, left: x.left }),
+					x.failed.length ? h('span', { class: 'wm-merge-failed' }, ' · ' + _('en échec : {list}', { list: x.failed.map((f) => f.email).join(', ') })) : null,
+					x.done ? null : h('button', { type: 'button', class: 'wm-small', onclick: async () => {
+						if (!window.confirm(_('Arrêter cet envoi ? Les messages pas encore partis ne seront pas envoyés.'))) return
+						try { await api('/accounts/' + state.accountId + '/merge/' + x.id + '/stop', { method: 'POST' }); showReports() } catch (e) { toast(e.message, true) }
+					} }, _('Arrêter')))))
+			} catch (e) { /* no report */ }
+		}
+		const follow = setInterval(showReports, 15000)
+		send.addEventListener('click', async () => {
+			if (!window.confirm(_('Envoyer ce message, personnalisé, à {count} destinataires ? Chacun recevra le sien, sans voir les autres.', { count }))) return
+			send.disabled = true
+			try {
+				const r = await api('/accounts/' + state.accountId + '/merge', { method: 'POST', body: { subject: subject.value, html: html(), list: list.value } })
+				toast(r.done
+					? _('{sent} messages envoyés', { sent: r.sent })
+					: _('{sent} messages envoyés, les {left} autres suivront dans les prochaines minutes', { sent: r.sent, left: r.left }))
+				showReports()
+			} catch (e) { toast(e.message, true); send.disabled = false }
+		})
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		overlay.appendChild(h('div', { class: 'wm-modal wm-merge', role: 'dialog', 'aria-modal': 'true', 'aria-label': _('Envoi personnalisé') },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, '📨 ' + _('Envoi personnalisé')),
+				h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			h('p', { class: 'wm-muted' }, _('Un message par destinataire, depuis {email}, chacun avec son nom : les champs {prenom}, {nom}, {societe} (et les autres colonnes de votre liste) sont remplis pour chacun. Les envois sont espacés pour rester sous les limites d\'Exchange.', { email: account ? account.email : '' })),
+			h('label', { class: 'wm-field' }, h('span', {}, _('Destinataires (une ligne chacun, ou un fichier CSV)')), list),
+			h('div', {}, h('button', { type: 'button', class: 'wm-small', onclick: () => file.click() }, '📄 ' + _('Importer un fichier CSV…')), file),
+			info,
+			h('label', { class: 'wm-field' }, h('span', {}, _('Objet')), subject),
+			h('label', { class: 'wm-field' }, h('span', {}, _('Message')), body),
+			h('label', { class: 'wm-radio' }, withSignature, ' ' + _('Ajouter ma signature')),
+			preview,
+			h('div', { class: 'wm-modal-actions' }, send, h('button', { type: 'button', onclick: close }, _('Fermer'))),
+			h('h3', {}, _('Envois récents')),
+			reports))
+		document.body.appendChild(overlay)
+		showReports()
+		list.focus()
+	}
+
 	function signatureBlock(account, choice) {
 		const found = signatureChoices(account).find((c) => c[0] === choice) || signatureChoices(account)[0]
 		return found[2] ? '<div><br></div><div class="wm-signature">-- <br>' + found[2] + '</div>' : ''
