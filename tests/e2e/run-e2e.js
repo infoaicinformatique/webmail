@@ -1033,6 +1033,74 @@ async function main() {
 		}
 	})
 
+	await step('« Archiver »: to « Archives » (made at the first use), undone; the old read messages archived each night', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		const recent = await fake('/_test/deliver', { subject: 'Compte rendu à archiver', sender: ['Paul Durand', 'paul.durand@societe-a.fr'], body: '<p>CR.</p>', isRead: true })
+		const old = await fake('/_test/deliver', { subject: 'Ancien contrat 2024', sender: ['Paul Durand', 'paul.durand@societe-a.fr'], body: '<p>Contrat.</p>', isRead: true, minutesAgo: 60 * 24 * 400 })
+		const folders = () => page.evaluate(async () => {
+			const headers = { requesttoken: OC.requestToken }
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			return { id, folders: (await (await fetch('/apps/webmail/api/accounts/' + id + '/folders', { headers })).json()).folders }
+		})
+		try {
+			await page.click('.wm-tab[data-module="mail"]')
+			await page.click('.wm-folder:has-text("Boîte de réception")')
+			await page.click('.wm-list button[title="Actualiser"]')
+			await page.click('.wm-message:has-text("Compte rendu à archiver")')
+			await page.waitForSelector('.wm-message-header h2:has-text("Compte rendu à archiver")')
+			await shot('109-archive-button')
+			await page.click('.wm-message-toolbar .wm-archive-btn')
+			await page.waitForSelector('.wm-toast:has-text("Message archivé")')
+			await page.waitForSelector('.wm-folder .wm-folder-name:text-is("Archives")')
+			await page.waitForFunction(() => ![...document.querySelectorAll('.wm-message-subject')].some((e) => e.textContent.includes('Compte rendu à archiver')))
+			await page.click('.wm-folder:has(.wm-folder-name:text-is("Archives"))')
+			await page.waitForSelector('.wm-message:has-text("Compte rendu à archiver")')
+			// in « Archives » itself: no « Archiver »
+			await page.click('.wm-message:has-text("Compte rendu à archiver")')
+			await page.waitForSelector('.wm-message-header h2:has-text("Compte rendu à archiver")')
+			assert.ok(!(await page.$('.wm-message-toolbar .wm-archive-btn')))
+			// the nightly archiving: 12 months, chosen in the settings
+			await page.click('text=Comptes et signature')
+			const select = '.wm-archive-settings select[data-account]:not([disabled])'
+			await page.waitForSelector(select)
+			await page.selectOption(select, '12')
+			await page.waitForSelector('.wm-toast:has-text("archivés chaque nuit, après 1 an")')
+			const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\ArchiveJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+			assert(jobId, 'background job registered')
+			occ('background-job:execute ' + jobId + ' --force-execute')
+			const { folders: list } = await folders()
+			const archive = list.find((f) => f.name === 'Archives')
+			assert.ok(archive && archive.total === 2, JSON.stringify(archive))
+			await page.selectOption(select, '0')
+			await page.waitForSelector('.wm-toast:has-text("Plus d\'archivage automatique")')
+		} finally {
+			await fake('/_test/remove', { id: recent.id })
+			await fake('/_test/remove', { id: old.id })
+			// (the folder « Archives » taken away for good, for the steps after)
+			await page.evaluate(async () => {
+				const headers = { requesttoken: OC.requestToken, 'Content-Type': 'application/json' }
+				const accounts = await (await fetch('/apps/webmail/api/accounts', { headers })).json()
+				const base = '/apps/webmail/api/accounts/' + accounts.find((a) => a.email === 'user@societe-a.fr').id + '/folders'
+				const list = (await (await fetch(base, { headers })).json()).folders
+				const archive = list.find((f) => f.name === 'Archives' && !f.parentId)
+				if (archive) await fetch(base + '/delete', { method: 'POST', headers, body: JSON.stringify({ folderId: archive.id, permanent: true }) })
+			})
+			await page.goto(NC + '/apps/webmail/')
+			await page.waitForSelector('.wm-message')
+		}
+	})
+
 	await step('saved searches: kept under a name, in the side pane with their unread messages, opened again, deleted', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)

@@ -1753,5 +1753,20 @@
 	"Version installée : %s. Nouveautés et commande de mise à jour dans les paramètres d'administration.": "Installed version: %s. What's new and the update command in the administration settings.",
 	"Supprimer définitivement les {count} éléments supprimés et les {folders} dossiers qu'ils contiennent ? Ils ne pourront pas être récupérés ici.": "Permanently delete the {count} deleted items and the {folders} folders they contain? They cannot be recovered here.",
 	"Supprimer définitivement le dossier « {name} » et tout son contenu ? Il ne pourra pas être récupéré ici.": "Permanently delete the folder “{name}” and all its content? It cannot be recovered here.",
-	"Dossier « {name} » supprimé définitivement": "Folder “{name}” permanently deleted"
+	"Dossier « {name} » supprimé définitivement": "Folder “{name}” permanently deleted",
+	"Archives": "Archives",
+	"Archiver": "Archive",
+	"Archiver (E) : dans le dossier « Archives »": "Archive (E): into the “Archives” folder",
+	"{count} messages archivés": "{count} messages archived",
+	"Message archivé": "Message archived",
+	"Archivage": "Archiving",
+	"« Archiver » (ou la touche E) range un message dans le dossier « Archives », créé au premier usage. Chaque nuit, les messages lus de la boîte de réception peuvent aussi y aller d'eux-mêmes après quelques mois (sauf ceux suivis ou épinglés).": "“Archive” (or the E key) puts a message into the “Archives” folder, created on first use. Every night, the read messages of the inbox can also go there by themselves after a few months (except flagged or pinned ones).",
+	"Après 1 an": "After 1 year",
+	"Après 2 ans": "After 2 years",
+	"Après {count} mois": "After {count} months",
+	"Jamais": "Never",
+	"Archivage automatique de {email}": "Automatic archiving of {email}",
+	"Messages lus de {email} archivés chaque nuit, {when}": "Read messages of {email} archived every night, {when}",
+	"Plus d'archivage automatique pour {email}": "No more automatic archiving for {email}",
+	"Messages lus de {email}": "Read messages of {email}"
 }

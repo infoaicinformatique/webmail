@@ -895,6 +895,7 @@
 		['f', _('Transférer')],
 		['n', _('Nouveau message')],
 		[_('Suppr'), _('Supprimer (Maj+Suppr : définitivement)')],
+		['e', _('Archiver')],
 		['u', _('Marquer comme non lu')],
 		['x', _('Sélectionner le message (Ctrl+clic, Maj+clic dans la liste)')],
 		['s', _('Assurer un suivi / le retirer')],
@@ -1077,6 +1078,7 @@
 				s: () => toggleFlag(m),
 				Delete: () => deleteMessages([m.id], e.shiftKey || role === 'deleteditems'),
 				'#': () => deleteMessages([m.id], role === 'deleteditems'),
+				e: () => { if (canArchive(role)) archiveMessages([m.id]) },
 			})
 		}
 		const action = actions[e.key]
@@ -2512,6 +2514,7 @@
 				title: _('Transférer les messages sélectionnés en pièces jointes (.eml)'),
 				onclick: () => forwardAsAttachment(state.messages.filter((x) => state.checked.has(x.id))),
 			}, '↪ ' + _('Transférer')),
+			canArchive(role) ? h('button', { type: 'button', class: 'wm-small wm-archive-btn', onclick: () => archiveMessages(ids()) }, '🗄 ' + _('Archiver')) : null,
 			h('button', { type: 'button', class: 'wm-small wm-danger', onclick: () => deleteMessages(ids(), role === 'deleteditems') },
 				role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
 			junkButton(null, role, ids),
@@ -3518,6 +3521,7 @@
 			h('div', { class: 'wm-tb-break', 'aria-hidden': 'true' }),
 			group(_('Ranger'),
 				moveSelect,
+				canArchive(role) ? h('button', { class: 'wm-archive-btn', title: _('Archiver (E) : dans le dossier « Archives »'), onclick: () => archiveMessages([m.id]) }, '🗄 ' + _('Archiver')) : null,
 				h('button', { class: 'wm-danger wm-delete-btn', title: role === 'deleteditems' ? _('Supprimer définitivement') : _('Supprimer'), onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
 				junkButton([m.id], role)),
 			group(_('Suivre'),
@@ -4324,6 +4328,60 @@
 			undo()
 			toast(e.message, true)
 		}
+	}
+
+	/** The archive of the account (« Archives » at the top, or Exchange's own), when there is one. */
+	function archiveFolder() {
+		return state.folders.find((f) => f.role === 'archive')
+			|| state.folders.find((f) => !f.parentId && !f.role && ['archives', 'archive', 'archiv', 'archivio', 'archivo'].includes(f.name.trim().toLowerCase()))
+	}
+	/** Not from the archive itself, nor from the drafts or the outbox. */
+	function canArchive(role) {
+		if (state.unified || ['drafts', 'outbox', 'deleteditems'].includes(role)) return false
+		const a = archiveFolder()
+		return !a || a.id !== state.folderId
+	}
+	/** « Archiver »: to « Archives » (made at the first use), undone from the notice. */
+	async function archiveMessages(ids) {
+		if (!ids.length) return
+		ids.forEach((id) => state.checked.delete(id))
+		const from = originsOf(ids)
+		const undo = removeFromList(ids)
+		try {
+			const r = await api('/accounts/' + state.accountId + '/archive', { method: 'POST', body: { itemIds: ids } })
+			const count = ids.length
+			toast(count > 1 ? _('{count} messages archivés', { count }) : _('Message archivé'),
+				false, undoMove(((r && r.ids) || []).map((id, i) => ({ id, from: from[i] }))))
+			listCache.delete(state.accountId + '|' + r.folderId)
+			loadFolders()
+		} catch (e) {
+			undo()
+			toast(e.message, true)
+		}
+	}
+
+	/** « Archivage »: the read messages of the inbox to « Archives » after some months, each night. */
+	function archiveSettings() {
+		const card = h('fieldset', { class: 'wm-account-card wm-archive-settings' },
+			h('legend', {}, '🗄 ' + _('Archivage')),
+			h('p', { class: 'wm-muted' }, _('« Archiver » (ou la touche E) range un message dans le dossier « Archives », créé au premier usage. Chaque nuit, les messages lus de la boîte de réception peuvent aussi y aller d\'eux-mêmes après quelques mois (sauf ceux suivis ou épinglés).')))
+		const label = (n) => n ? (n === 12 ? _('Après 1 an') : n === 24 ? _('Après 2 ans') : _('Après {count} mois', { count: n })) : _('Jamais')
+		state.accounts.forEach((a) => {
+			const select = h('select', { name: 'autoArchive', dataset: { account: String(a.id) }, 'aria-label': _('Archivage automatique de {email}', { email: a.email }) },
+				[0, 3, 6, 12, 24].map((n) => h('option', { value: String(n) }, label(n))))
+			select.disabled = true
+			api('/accounts/' + a.id + '/autoarchive').then((r) => { select.value = String(r.months); select.disabled = false }, () => {})
+			select.addEventListener('change', async () => {
+				try {
+					const r = await api('/accounts/' + a.id + '/autoarchive', { method: 'POST', body: { months: parseInt(select.value, 10) } })
+					toast(r.months
+						? _('Messages lus de {email} archivés chaque nuit, {when}', { email: a.email, when: label(r.months).toLowerCase() })
+						: _('Plus d\'archivage automatique pour {email}', { email: a.email }))
+				} catch (e) { toast(e.message, true) }
+			})
+			card.appendChild(h('label', { class: 'wm-field' }, h('span', {}, _('Messages lus de {email}', { email: a.email })), select))
+		})
+		return card
 	}
 
 	async function deleteMessages(ids, permanent) {
@@ -6054,6 +6112,7 @@
 			h('legend', {}, _('Modèles de réponse')), templateList))
 		loadTemplates(true).then(showTemplates, (e) => toast(e.message, true))
 		// (last: the account cards stay first)
+		wrap.appendChild(archiveSettings())
 		wrap.appendChild(absenceSettings())
 		wrap.appendChild(matrixSettings())
 
