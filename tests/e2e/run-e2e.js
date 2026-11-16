@@ -5010,11 +5010,20 @@ async function main() {
 		await page.click(trash, { button: 'right' })
 		await page.waitForSelector('.wm-folder-menu .wm-folder-menu-item:has-text("Vider les éléments supprimés")')
 		await shot('90-empty-deleted-items')
-		page.once('dialog', (d) => { assert.ok(d.message().includes('Supprimer définitivement') && d.message().includes('les 2 dossiers'), d.message()); d.accept() })
+		page.once('dialog', (d) => { assert.ok(d.message().includes('Supprimer définitivement') && /et les \d+ dossiers qu'ils contiennent/.test(d.message()), d.message()); d.accept() })
 		await page.click('.wm-folder-menu-item:has-text("Vider les éléments supprimés")')
 		await page.waitForSelector('.wm-toast:has-text("Éléments supprimés vidés")')
-		// its folders gone with it
+		// its folders gone with it (also the one deleted in an earlier step)
 		await page.waitForFunction(() => ![...document.querySelectorAll('.wm-folder-name')].some((e) => e.textContent === 'Vieux projets' || e.textContent === '2019'))
+		const leftInTrash = await page.evaluate(async () => {
+			const headers = { requesttoken: OC.requestToken }
+			const accounts = await (await fetch('/apps/webmail/api/accounts', { headers })).json()
+			const id = accounts.find((a) => a.email === 'user@societe-a.fr').id
+			const folders = (await (await fetch('/apps/webmail/api/accounts/' + id + '/folders', { headers })).json()).folders
+			const trash = folders.find((f) => f.role === 'deleteditems')
+			return folders.filter((f) => f.parentId === trash.id).map((f) => f.name)
+		})
+		assert.deepStrictEqual(leftInTrash, [])
 		await page.click(trash)
 		await page.waitForSelector('.wm-empty:has-text("Aucun message")')
 		// nothing left: no such entry any more
