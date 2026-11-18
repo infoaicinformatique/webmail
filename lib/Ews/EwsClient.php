@@ -1033,8 +1033,9 @@ class EwsClient {
 		return '<m:SortOrder>' . $xml . '</m:SortOrder>';
 	}
 
-	public function findItems(string $folderId, int $offset = 0, int $limit = 50, ?string $query = null, string $sort = 'date', bool $desc = true): array {
-		$fields = $this->summaryFields();
+	/** @param bool $withLists also tell which messages come from a mailing list (« isList », for « Prioritaires / Autres ») */
+	public function findItems(string $folderId, int $offset = 0, int $limit = 50, ?string $query = null, string $sort = 'date', bool $desc = true, bool $withLists = false): array {
+		$fields = $this->summaryFields() . ($withLists ? self::LIST_HEADERS : '');
 		$queryXml = '';
 		if ($query !== null && trim($query) !== '') {
 			$queryXml = '<m:QueryString>' . $this->esc(trim($query)) . '</m:QueryString>';
@@ -1056,7 +1057,11 @@ class EwsClient {
 
 		$items = [];
 		foreach ($xp->query('//m:RootFolder/t:Items/*') as $node) {
-			$items[] = $this->summary($xp, $node);
+			$item = $this->summary($xp, $node);
+			if ($withLists) {
+				$item['isList'] = $this->unsubscribeOf($xp, $node) !== null;
+			}
+			$items[] = $item;
 		}
 		return ['items' => $items, 'total' => $total, 'hasMore' => !$last];
 	}

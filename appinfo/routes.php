@@ -38,6 +38,8 @@ return [
 		['name' => 'reply_later#index', 'url' => '/api/accounts/{id}/reply-later', 'verb' => 'GET'],
 		['name' => 'reply_later#add', 'url' => '/api/accounts/{id}/reply-later', 'verb' => 'POST'],
 		['name' => 'reply_later#remove', 'url' => '/api/accounts/{id}/reply-later/remove', 'verb' => 'POST'],
+		['name' => 'focus#index', 'url' => '/api/accounts/{id}/focus', 'verb' => 'GET'],
+		['name' => 'focus#set', 'url' => '/api/accounts/{id}/focus', 'verb' => 'POST'],
 		['name' => 'vip#index', 'url' => '/api/accounts/{id}/vip', 'verb' => 'GET'],
 		['name' => 'vip#set', 'url' => '/api/accounts/{id}/vip', 'verb' => 'POST'],
 		['name' => 'vip#messages', 'url' => '/api/accounts/{id}/vip/messages', 'verb' => 'GET'],

@@ -2048,5 +2048,16 @@
 	"Message trop long pour un envoi récurrent": "Message too long for a recurring sending",
 	"Fréquence ou heure invalide": "Invalid frequency or time",
 	"Envoi récurrent introuvable": "Recurring sending not found",
-	"Trop d'envois récurrents (%s au plus)": "Too many recurring sendings (%s at most)"
+	"Trop d'envois récurrents (%s au plus)": "Too many recurring sendings (%s at most)",
+	"Toujours dans Prioritaires": "Always in Priority",
+	"Toujours dans Autres": "Always in Other",
+	"Boîte de réception triée": "Sorted inbox",
+	"Les messages de {name} iront dans « Autres »": "Messages from {name} will go to “Other”",
+	"Les messages de {name} resteront dans « Prioritaires »": "Messages from {name} will stay in “Priority”",
+	"Aucune lettre d'information ni notification automatique.": "No newsletters or automatic notifications.",
+	"Rien de prioritaire : les autres messages sont dans « Autres ».": "Nothing priority: the other messages are in “Other”.",
+	"Boîte de réception triée : « Prioritaires » et « Autres »": "Sorted inbox: “Priority” and “Other”",
+	"Les lettres d'information, listes de diffusion et notifications automatiques vont dans l'onglet « Autres ». Un clic droit sur un message le classe pour de bon.": "Newsletters, mailing lists and automatic notifications go to the “Other” tab. Right-click a message to classify it for good.",
+	"Trop d'expéditeurs classés (%s au plus)": "Too many classified senders (%s at most)",
+	"Onglet inconnu": "Unknown tab"
 }
