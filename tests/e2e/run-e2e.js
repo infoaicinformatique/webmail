@@ -6147,10 +6147,11 @@ async function main() {
 		})
 		assert.strictEqual(saved().length, 0)
 		await page.click('text=Comptes et signature')
-		const card = '.wm-backup-settings'
+		// (the first account; each one has its own)
+		const card = '.wm-backup-settings .wm-backup-account:first-of-type'
 		// (filled once the settings are read)
 		await page.waitForFunction(() => (document.querySelector('.wm-backup-settings input[name=backupPath]') || {}).value === 'Webmail/Sauvegarde')
-		await page.waitForFunction(() => document.querySelectorAll('.wm-backup-settings input[name=backupFolder]:checked').length === 2)
+		await page.waitForFunction(() => document.querySelectorAll('.wm-backup-settings .wm-backup-account:first-of-type input[name=backupFolder]:checked').length === 2)
 		await page.selectOption(card + ' select[name=backupFrom]', '30')
 		await page.check(card + ' input[name=backupOn]')
 		await page.waitForSelector('.wm-toast:has-text("Sauvegarde dans « Webmail/Sauvegarde »")')
