@@ -117,7 +117,7 @@
 					r.editable ? h('button', { type: 'button', class: 'wm-rule-edit', onclick: () => edit(ctx, r) }, _('Modifier')) : null,
 					h('button', {
 						type: 'button',
-						class: 'wm-rule-delete wm-danger',
+						class: 'wm-rule-delete wm-danger wm-delete-action',
 						onclick: () => { if (confirm(_('Supprimer la règle « {name} » ?', { name: r.name }))) call(ctx, '/delete', { ruleId: r.id }, _('Règle supprimée')) },
 					}, _('Supprimer')))))
 		})

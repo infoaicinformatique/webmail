@@ -155,7 +155,7 @@
 	opacity: .35;
 }
 .wm-message:hover .wm-flag { opacity: .8; }
-.wm-flag.on { color: var(--color-error); opacity: 1; }
+.wm-flag.on { color: var(--color-text-error, var(--color-error)); opacity: 1; }
 
 /* ---------- detail ---------- */
 .wm-detail { overflow-y: auto; min-height: 0; padding: 0 16px 24px; }
@@ -171,8 +171,8 @@
 	border-bottom: 1px solid var(--color-border);
 }
 .wm-toolbar button, .wm-toolbar select { margin: 0; }
-.wm-flag-btn.on { color: var(--color-error); }
-.wm-danger { color: var(--color-error) !important; }
+.wm-flag-btn.on { color: var(--color-text-error, var(--color-error)); }
+.wm-danger { color: var(--color-text-error, var(--color-error)) !important; }
 .wm-message-header { padding: 12px 0; }
 .wm-subject { font-size: 20px; margin: 0 0 8px; line-height: 1.3; overflow-wrap: anywhere; }
 .wm-header-line { margin: 2px 0; overflow-wrap: anywhere; }
@@ -265,7 +265,7 @@
 	transition: opacity .5s;
 	max-width: 90vw;
 }
-.wm-toast-error { background: var(--color-error); color: #fff; }
+.wm-toast-error { background: var(--color-element-error, var(--color-error)); color: #fff; }
 .wm-toast-hide { opacity: 0; }
 /* the only toast with buttons: it takes the clicks (the others let them through) */
 .wm-toast-undo { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
@@ -440,8 +440,8 @@
 .wm-week-event-time { font-size: 11px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; flex-shrink: 0; }
 .wm-week-event-subject { font-size: 12px; overflow-wrap: anywhere; }
 .wm-week-event-location { font-size: 11px; opacity: .8; }
-.wm-now { position: absolute; left: 0; right: 0; height: 2px; background: var(--color-error); z-index: 3; pointer-events: none; }
-.wm-now::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-error); }
+.wm-now { position: absolute; left: 0; right: 0; height: 2px; background: var(--color-element-error, var(--color-error)); z-index: 3; pointer-events: none; }
+.wm-now::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-element-error, var(--color-error)); }
 .wm-mini-day.in-week { background: var(--color-primary-element-light) !important; border-radius: 0 !important; }
 .wm-mini-day.in-week.today { background: var(--color-primary-element) !important; border-radius: 50% !important; }
 .wm-mini-day.selected:not(.today) { box-shadow: inset 0 0 0 2px var(--color-primary-element); }
@@ -498,7 +498,7 @@
 	background: var(--color-primary-element-light);
 	display: flex; flex-direction: column; gap: 2px;
 }
-.wm-meeting.cancelled { border-color: var(--color-error); background: var(--color-background-dark); }
+.wm-meeting.cancelled { border-color: var(--color-element-error, var(--color-error)); background: var(--color-background-dark); }
 .wm-meeting-title { font-weight: bold; }
 
 .wm-meeting-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
@@ -610,7 +610,7 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-cal-mode { font-size: 10px; padding: 0 6px; border-radius: 999px; background: var(--color-background-dark); color: var(--color-text-maxcontrast); white-space: nowrap; }
 .wm-cal-mode-edit { background: var(--color-primary-element-light); color: var(--color-primary-element-light-text, var(--color-main-text)); }
 .wm-cal-remove { margin: 0 !important; min-height: 24px !important; min-width: 24px; padding: 0 !important; border: none !important; background: none !important; color: var(--color-text-maxcontrast); opacity: .6; }
-.wm-cal-remove:hover { opacity: 1; color: var(--color-error); }
+.wm-cal-remove:hover { opacity: 1; color: var(--color-text-error, var(--color-error)); }
 .wm-cal-add { width: 100%; margin: 4px 0 0 !important; font-size: 13px; }
 .wm-cal-nc { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 13px; cursor: pointer; }
 .wm-cal-nc input { margin: 0; }
@@ -808,7 +808,7 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-rule-form h4 { margin: 18px 0 4px; }
 .wm-rule-checks { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 6px 0 6px 0; }
 .wm-rule-tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--color-background-dark); color: var(--color-text-maxcontrast); white-space: nowrap; }
-.wm-rule-tag-error { background: var(--color-error); color: #fff; }
+.wm-rule-tag-error { background: var(--color-element-error, var(--color-error)); color: #fff; }
 @media (max-width: 800px) { .wm-rule { grid-template-columns: 24px minmax(0, 1fr); } .wm-rule-buttons { grid-column: 2; justify-content: flex-start; } }
 .wm-bell { display: block; margin: 4px 0 8px; }
 
@@ -901,7 +901,7 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-task-subject { overflow-wrap: anywhere; }
 .wm-task.done .wm-task-subject { text-decoration: line-through; color: var(--color-text-maxcontrast); }
 .wm-task-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--color-text-maxcontrast); margin-top: 2px; }
-.wm-task.late .wm-task-due { color: var(--color-error); font-weight: bold; }
+.wm-task.late .wm-task-due { color: var(--color-text-error, var(--color-error)); font-weight: bold; }
 .wm-task-status { background: var(--color-background-dark); border-radius: 8px; padding: 0 6px; }
 .wm-task-quick { width: 100%; }
 .wm-task-title { padding: 8px 4px; }
@@ -919,7 +919,7 @@ body.wm-drag-resize, body.wm-drag-resize * { cursor: ns-resize !important; }
 .wm-room { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 4px 0; border-top: 1px solid var(--color-border); }
 .wm-room-name { flex: 1; min-width: 140px; }
 .wm-room-state { color: var(--color-success, #2d7b41); font-size: 12px; }
-.wm-room.taken .wm-room-state { color: var(--color-error); }
+.wm-room.taken .wm-room-state { color: var(--color-text-error, var(--color-error)); }
 
 /* Signature editor */
 .wm-signature-wrap { flex: 1; min-width: 0; }
@@ -963,7 +963,7 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 .wm-auth-checks { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 10px; }
 .wm-auth { padding: 3px 10px; border-radius: var(--border-radius-pill, 12px); border: 1px solid var(--color-border); font-weight: bold; }
 .wm-auth-pass { color: var(--color-success-text, var(--color-success)); border-color: var(--color-success); }
-.wm-auth-fail { color: #fff; background: var(--color-error); border-color: var(--color-error); }
+.wm-auth-fail { color: #fff; background: var(--color-element-error, var(--color-error)); border-color: var(--color-element-error, var(--color-error)); }
 .wm-auth-unknown { color: var(--color-text-maxcontrast); }
 .wm-auth-warning { color: var(--color-error-text, var(--color-error)); font-weight: bold; }
 .wm-headers h3 { font-size: 1em; margin: 12px 0 4px; }
@@ -982,7 +982,7 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 .wm-split > .wm-flag-btn { border-start-end-radius: 0; border-end-end-radius: 0; margin-inline-end: 0; }
 .wm-split > .wm-flag-menu-btn { border-start-start-radius: 0; border-end-start-radius: 0; margin-inline-start: 1px; padding-inline: 8px; }
 .wm-flag-due { font-size: 0.8em; padding: 0 6px; border-radius: var(--border-radius-pill, 10px); background: var(--color-background-dark); color: var(--color-text-maxcontrast); white-space: nowrap; }
-.wm-flag-due.late { background: var(--color-error); color: #fff; }
+.wm-flag-due.late { background: var(--color-element-error, var(--color-error)); color: #fff; }
 .wm-flag-menu { width: 250px; display: flex; flex-direction: column; gap: 2px; }
 .wm-flag-choice { display: flex; justify-content: space-between; gap: 8px; width: 100%; text-align: start; margin: 0; background: transparent; border: none; }
 .wm-flag-choice:hover, .wm-flag-choice:focus-visible { background: var(--color-background-hover); }
@@ -1031,7 +1031,7 @@ img.wm-avatar-photo { object-fit: cover; background: var(--color-background-dark
 .wm-message.wm-swiping { position: relative; transition: none; z-index: 1; }
 .wm-message.wm-swipe-left { background: color-mix(in srgb, var(--color-error) 15%, var(--color-main-background)); }
 .wm-message.wm-swipe-right { background: color-mix(in srgb, var(--color-primary-element, #0082c9) 15%, var(--color-main-background)); }
-.wm-message.wm-swipe-left.wm-swipe-armed { background: var(--color-error); color: #fff; }
+.wm-message.wm-swipe-left.wm-swipe-armed { background: var(--color-element-error, var(--color-error)); color: #fff; }
 .wm-message.wm-swipe-right.wm-swipe-armed { background: var(--color-primary-element, #0082c9); color: #fff; }
 .wm-message.wm-swiping::after { content: attr(data-swipe); position: absolute; top: 50%; transform: translateY(-50%); font-weight: bold; white-space: nowrap; }
 .wm-message.wm-swipe-left::after { right: 12px; }
@@ -1317,7 +1317,7 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 /* the menu of a message of the list (right-click) */
 .wm-context-menu .wm-menu-label { flex: 1; }
 .wm-context-menu .wm-menu-key { font-size: 11px; color: var(--color-text-maxcontrast); border: 1px solid var(--color-border); border-radius: 4px; padding: 0 5px; min-width: 18px; text-align: center; }
-.wm-context-menu .wm-menu-item.wm-danger { color: var(--color-error-text, #c9190b); }
+.wm-context-menu .wm-menu-item.wm-danger { color: var(--color-text-error, var(--color-error-text, #c9190b)); }
 .wm-menu-sep { height: 1px; margin: 4px 6px; background: var(--color-border); }
 .wm-message.wm-context { outline: 2px solid var(--color-primary-element); outline-offset: -2px; }
 .wm-move-menu .wm-move-filter { width: 100%; box-sizing: border-box; margin: 4px 0; }
@@ -1340,3 +1340,17 @@ body:has(.wm-offline) #wm-toasts { bottom: 76px; }
 .wm-notify-settings .wm-quiet-on { font-weight: bold; margin-top: 12px; }
 .wm-quiet-more { margin-inline-start: 24px; }
 .wm-quiet-range select { width: auto; min-width: 5em; }
+
+/* « Supprimer », « Vider »…: red, with a red trash can, to be seen at once (light and dark themes) */
+.wm-delete-action { --wm-delete: var(--color-element-error, var(--color-error, #c9190b)); color: var(--wm-delete) !important; font-weight: 600; }
+button.wm-delete-action:not(.wm-menu-item):not(.wm-folder-menu-item) { border: 1px solid var(--wm-delete) !important; }
+.wm-delete-action::before, .wm-menu-item.wm-delete-action .wm-menu-icon::before {
+	content: ''; display: inline-block; flex: none; width: 16px; height: 16px; margin-inline-end: 6px; vertical-align: -3px;
+	background-color: currentColor;
+	-webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M9 2h6l1 2h5v2.5H3V4h5l1-2zM5 8h14l-1.2 14H6.2L5 8zm4 3v8h2v-8H9zm4 0v8h2v-8h-2z'/%3E%3C/svg%3E") center / contain no-repeat;
+	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M9 2h6l1 2h5v2.5H3V4h5l1-2zM5 8h14l-1.2 14H6.2L5 8zm4 3v8h2v-8H9zm4 0v8h2v-8h-2z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.wm-menu-item.wm-delete-action::before { content: none; }
+.wm-menu-item.wm-delete-action .wm-menu-icon::before { margin: 0; }
+.wm-delete-action:hover:not(:disabled), .wm-delete-action:focus-visible { background-color: var(--color-element-error, var(--color-error, #e9322d)) !important; color: #fff !important; }
+.wm-delete-action:hover:not(:disabled) kbd, .wm-delete-action:focus-visible kbd { color: inherit; }

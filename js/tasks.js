@@ -369,7 +369,7 @@
 			}, t.done ? '↺ ' + _('Remettre à faire') : '✓ ' + _('Marquer comme terminée')) : null,
 			!isNew && !locked ? h('button', {
 				type: 'button',
-				class: 'wm-danger',
+				class: 'wm-danger wm-delete-action',
 				onclick: async () => {
 					if (!window.confirm(_('Supprimer la tâche « {subject} » ?', { subject: t.subject }))) return
 					try {
@@ -380,7 +380,7 @@
 						load()
 					} catch (ex) { core.toast(ex.message, true) }
 				},
-			}, '🗑 ' + _('Supprimer')) : null,
+			}, _('Supprimer')) : null,
 			isNew ? h('button', { type: 'button', onclick: () => { renderEmpty(); core.setView('list') } }, _('Annuler')) : null)))
 		subject.focus()
 	}

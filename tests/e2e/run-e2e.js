@@ -3198,7 +3198,7 @@ async function main() {
 		await page.waitForSelector('.wm-modal .wm-event-when')
 		assert((await page.textContent('.wm-modal')).includes('Agenda commun'))
 		page.once('dialog', (dlg) => dlg.accept())
-		await page.click('.wm-modal button:has-text("🗑 Supprimer")')
+		await page.click('.wm-modal button.wm-delete-action:text-is("Supprimer")')
 		await page.waitForSelector('.wm-toast:has-text("Événement supprimé")')
 		await page.waitForSelector('.wm-agenda-item:has-text("Journée portes ouvertes")', { state: 'detached' })
 		// removed from the list: its events go away, nothing is deleted
@@ -3256,7 +3256,7 @@ async function main() {
 		await page.waitForSelector('.wm-modal .wm-event-rooms:has-text("Salle Sirocco (12 places) — réservée")')
 		assert(!(await page.textContent('.wm-modal .wm-event-rooms')).includes('Alizé'))
 		page.once('dialog', (dlg) => dlg.accept())
-		await page.click('.wm-modal button:has-text("🗑 Supprimer")')
+		await page.click('.wm-modal button.wm-delete-action:text-is("Supprimer")')
 		await page.waitForSelector('.wm-toast:has-text("Événement supprimé")')
 		await page.waitForSelector('.wm-agenda-item:has-text("Atelier devis")', { state: 'detached' })
 	})
