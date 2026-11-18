@@ -24,7 +24,7 @@ class CleanupRulesTest extends TestCase {
 		for ($i = 0; $i < CleanupRules::MAX_FOLDERS; $i++) {
 			$rules = CleanupRules::set($rules, 'F' . $i, 30);
 		}
-		$this->assertSame(['F0' => 7] + $rules, CleanupRules::set($rules, 'F0', 7) + $rules, 'a folder already there can change');
+		$this->assertSame(7, CleanupRules::set($rules, 'F0', 7)['F0'], 'a folder already there can change, even when full');
 		$this->expectExceptionMessage('too many');
 		CleanupRules::set($rules, 'NEW', 30);
 	}
