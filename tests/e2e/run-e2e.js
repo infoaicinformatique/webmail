@@ -1941,7 +1941,7 @@ async function main() {
 		}
 		// on by default, for each account
 		await page.click('text=Comptes et signature')
-		const box = '.wm-account-card:has-text("user@societe-a.fr") input[name=bell]'
+		const box = '.wm-notify-account[data-email="user@societe-a.fr"] input[name=bell]'
 		assert(await page.isChecked(box), 'on by default')
 		// the first check only notes what is there: old messages are not announced
 		runJob()
@@ -2150,7 +2150,7 @@ async function main() {
 		await page.waitForSelector('.wm-message')
 		// can be switched off per account
 		await page.click('text=Comptes et signature')
-		const box = '.wm-account-card:has-text("user@societe-a.fr") input[name=reminders]'
+		const box = '.wm-notify-account[data-email="user@societe-a.fr"] input[name=reminders]'
 		assert(await page.isChecked(box))
 		await page.uncheck(box)
 		await page.waitForSelector('.wm-toast:has-text("n\'arriveront plus dans Nextcloud")')
