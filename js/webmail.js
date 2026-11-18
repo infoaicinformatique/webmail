@@ -212,6 +212,8 @@
 
 	function saveListCache() {
 		if (isSearching() || !state.accountId) return
+		// (a list asked for before « Prioritaires / Autres » was turned on: not kept as the sorted one)
+		if (focusOn() && state.messages.some((m) => !('other' in m))) return
 		const key = listKey()
 		listCache.delete(key) // most recent last
 		listCache.set(key, { messages: state.messages.slice(), total: state.total, hasMore: state.hasMore, scrollTop: listEl ? listEl.scrollTop : 0 })

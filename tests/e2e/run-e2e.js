@@ -5987,14 +5987,15 @@ async function main() {
 		// off by default: one list
 		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector('.wm-message:has-text("Lettre focus")')
-		assert.strictEqual(await page.$('.wm-focus-tabs'), null)
+		assert.ok(!(await page.$('.wm-focus-tabs')), '.wm-focus-tabs')
 		await page.click('text=Comptes et signature')
 		await page.check('.wm-display-settings input[name=focusInbox]')
 		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector('.wm-focus-tab.active[data-tab=priority]')
 		await page.waitForSelector('.wm-message:has-text("Question focus")')
-		assert.strictEqual(await page.$('.wm-message:has-text("Lettre focus")'), null)
-		assert.strictEqual(await page.$('.wm-message:has-text("Alerte focus")'), null)
+		// (only the messages of the tab: once the sorted list has come)
+		await page.waitForSelector('.wm-message:has-text("Lettre focus")', { state: 'detached' })
+		assert.ok(!(await page.$('.wm-message:has-text("Alerte focus")')), '.wm-message:has-text("Alerte focus")')
 		// the unread ones of each tab counted
 		await page.waitForSelector('.wm-focus-tab[data-tab=other] .wm-focus-count')
 		assert.ok(Number(await page.textContent('.wm-focus-tab[data-tab=other] .wm-focus-count')) >= 2)
@@ -6002,7 +6003,7 @@ async function main() {
 		await page.click('.wm-focus-tab[data-tab=other]')
 		await page.waitForSelector('.wm-message:has-text("Lettre focus")')
 		await page.waitForSelector('.wm-message:has-text("Alerte focus")')
-		assert.strictEqual(await page.$('.wm-message:has-text("Question focus")'), null)
+		assert.ok(!(await page.$('.wm-message:has-text("Question focus")')), '.wm-message:has-text("Question focus")')
 		await shot('131-focus-other')
 		// « Toujours dans Prioritaires »: moved, and still after a reload
 		await page.click('.wm-message:has-text("Alerte focus")', { button: 'right' })
@@ -6024,7 +6025,7 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 		await page.waitForSelector('.wm-message:has-text("Lettre focus")')
 		await page.waitForSelector('.wm-message:has-text("Question focus")')
-		assert.strictEqual(await page.$('.wm-focus-tabs'), null)
+		assert.ok(!(await page.$('.wm-focus-tabs')), '.wm-focus-tabs')
 	})
 
 	await step('sort: « Trier par » subject, size, then back to the date (kept after a reload)', async () => {
