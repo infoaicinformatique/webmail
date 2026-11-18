@@ -868,7 +868,7 @@
 			c.matrix ? h('a', { class: 'button wm-matrix-btn', href: 'https://matrix.to/#/' + c.matrix, target: '_blank', rel: 'noopener noreferrer' }, '💬 ' + _('Écrire sur Matrix')) : null,
 			c.isGroup && members.some((m) => m.email) ? h('button', { class: 'primary', onclick: writeToGroup }, '✉️ ' + _('Écrire au groupe')) : null,
 			!book.canEdit ? null : h('button', { onclick: () => (c.isGroup ? openGroupForm(c) : openForm(c)) }, '✏️ ' + _('Modifier')),
-			book.canEdit ? h('button', { class: 'wm-danger', onclick: () => remove(c) }, '🗑 ' + _('Supprimer')) : null,
+			book.canEdit ? h('button', { class: 'wm-danger wm-delete-action', onclick: () => remove(c) }, _('Supprimer')) : null,
 			!book.canEdit && !c.isGroup ? h('button', { onclick: () => copyToMine(c) }, '＋ ' + _('Ajouter à mes contacts')) : null,
 			!book.canEdit ? h('span', { class: 'wm-muted' }, book.kind === 'directory' ? '🏢 ' + _('Annuaire de l\'entreprise') : '🔒 ' + _('{name} (lecture seule)', { name: bookTitle(book) })) : null))
 

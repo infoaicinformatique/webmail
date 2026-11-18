@@ -1606,9 +1606,9 @@
 				load()
 			} catch (e) { core.toast(e.message, true) }
 		}
-		if (!readOnly) actions.appendChild(h('button', { class: 'wm-danger', onclick: () => del(false) }, ev.type === 'Occurrence' || ev.type === 'Exception' ? '🗑 ' + _('Supprimer cette occurrence') : '🗑 ' + _('Supprimer')))
+		if (!readOnly) actions.appendChild(h('button', { class: 'wm-danger wm-delete-action', onclick: () => del(false) }, ev.type === 'Occurrence' || ev.type === 'Exception' ? _('Supprimer cette occurrence') : _('Supprimer')))
 		if (!readOnly && (ev.type === 'Occurrence' || ev.type === 'Exception')) {
-			actions.appendChild(h('button', { class: 'wm-danger', onclick: () => del(true) }, _('Supprimer la série')))
+			actions.appendChild(h('button', { class: 'wm-danger wm-delete-action', onclick: () => del(true) }, _('Supprimer la série')))
 		}
 		body.appendChild(actions)
 	}

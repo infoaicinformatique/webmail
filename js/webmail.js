@@ -1415,13 +1415,13 @@
 						}, _('Plus gros messages')) : null,
 						emptyable ? h('button', {
 							type: 'button',
-							class: 'wm-small wm-danger wm-space-empty',
+							class: 'wm-small wm-danger wm-delete-action wm-space-empty',
 							onclick: async (e) => {
 								e.currentTarget.disabled = true
 								await emptyFolder(f)
 								render()
 							},
-						}, '🗑 ' + _('Vider')) : null))
+						}, _('Vider')) : null))
 			})))
 			body.appendChild(h('p', {}, h('button', { type: 'button', class: 'wm-small wm-space-news', onclick: () => { close(); openNewsletters() } }, '📰 ' + _('Nettoyer les lettres d\'information'))))
 			body.appendChild(h('p', { class: 'wm-muted' }, _('Avant de supprimer un message, enregistrez dans Fichiers les pièces jointes à garder ; pour en envoyer de lourdes, préférez un lien de partage Nextcloud.')))
@@ -1547,7 +1547,7 @@
 				const rate = h('span', { class: 'wm-news-rate' + (r.readRate < 25 ? ' wm-news-unread' : '') }, _('ouverts : {rate} %', { rate: r.readRate }))
 				const clean = h('button', {
 					type: 'button',
-					class: 'wm-small wm-danger wm-news-clean',
+					class: 'wm-small wm-danger wm-delete-action wm-news-clean',
 					onclick: async (e) => {
 						const question = r.method === 'link'
 							? _('Supprimer les {count} de {who} ? La page de désinscription de la liste s\'ouvrira : confirmez-y le désabonnement.', { count: count(r.count), who })
@@ -1841,7 +1841,7 @@
 				? item('wm-ctx-junk', '✔', _('Pas indésirable'), null, () => markJunk(ids, false))
 				: item('wm-ctx-junk', '⛔', _('Indésirable'), null, () => markJunk(ids, true)))
 		}
-		parts.push(item('wm-ctx-delete', '🗑', role === 'deleteditems' ? _('Supprimer définitivement') : _('Supprimer'), _('Suppr'), () => deleteMessages(ids, role === 'deleteditems'), true))
+		parts.push(item('wm-ctx-delete wm-delete-action', '', role === 'deleteditems' ? _('Supprimer définitivement') : _('Supprimer'), _('Suppr'), () => deleteMessages(ids, role === 'deleteditems'), true))
 		menu.append(...parts)
 		document.body.appendChild(menu)
 		// at the pointer (from the keyboard: under the message), inside the window
@@ -3048,8 +3048,8 @@
 				onclick: () => forwardAsAttachment(state.messages.filter((x) => state.checked.has(x.id))),
 			}, '↪ ' + _('Transférer')),
 			canArchive(role) ? h('button', { type: 'button', class: 'wm-small wm-archive-btn', onclick: () => archiveMessages(ids()) }, '🗄 ' + _('Archiver')) : null,
-			h('button', { type: 'button', class: 'wm-small wm-danger', onclick: () => deleteMessages(ids(), role === 'deleteditems') },
-				role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
+			h('button', { type: 'button', class: 'wm-small wm-danger wm-delete-action', onclick: () => deleteMessages(ids(), role === 'deleteditems') },
+				role === 'deleteditems' ? _('Supprimer définitivement') : _('Supprimer')),
 			junkButton(null, role, ids),
 			h('button', {
 				type: 'button',
@@ -3425,7 +3425,7 @@
 		const item = (label, action, danger) => h('button', {
 			type: 'button',
 			role: 'menuitem',
-			class: 'wm-folder-menu-item' + (danger ? ' wm-danger' : ''),
+			class: 'wm-folder-menu-item' + (danger ? ' wm-danger wm-delete-action' : ''),
 			onclick: () => { close(); action() },
 		}, label)
 		const menu = h('div', { class: 'wm-folder-menu', role: 'menu', 'aria-label': _('Dossier {name}', { name: f.name }) },
@@ -3434,13 +3434,13 @@
 				: item('★ ' + _('Ajouter aux favoris'), () => setFavorite(f, true)),
 			item('＋ ' + _('Nouveau sous-dossier'), () => createFolder(f)),
 			f.unread ? item('✓ ' + _('Tout marquer comme lu'), () => markFolderRead(f)) : null,
-			f.role === 'deleteditems' && (f.total > 0 || subFolders(f).length > 0) ? item('🗑 ' + _('Vider les éléments supprimés'), () => emptyFolder(f), true) : null,
-			f.role === 'junkemail' && f.total > 0 ? item('🗑 ' + _('Vider le courrier indésirable'), () => emptyFolder(f), true) : null,
+			f.role === 'deleteditems' && (f.total > 0 || subFolders(f).length > 0) ? item(_('Vider les éléments supprimés'), () => emptyFolder(f), true) : null,
+			f.role === 'junkemail' && f.total > 0 ? item(_('Vider le courrier indésirable'), () => emptyFolder(f), true) : null,
 			item('📥 ' + _('Importer des messages (.eml)…'), () => pickEml(f)),
 			f.total > 0 ? item('📦 ' + _('Exporter (.zip)…'), () => exportFolder(f)) : null,
 			fixed ? null : item('✏️ ' + _('Renommer'), () => renameFolder(f)),
 			fixed ? null : item('↪ ' + _('Déplacer…'), () => moveFolder(f)),
-			fixed ? null : item('🗑 ' + _('Supprimer'), () => deleteFolder(f), true))
+			fixed ? null : item(_('Supprimer'), () => deleteFolder(f), true))
 		const close = () => { menu.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', onKey, true) }
 		const outside = (e) => { if (!menu.contains(e.target)) close() }
 		const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close() } }
@@ -3609,12 +3609,12 @@
 				h('button', { type: 'button', class: 'wm-sender-move-btn', onclick: () => apply('move', target.value, (c) => c > 1 ? _('{count} messages déplacés dans « {folder} »', { count: c, folder: folderName(target.value) }) : _('{count} message déplacé dans « {folder} »', { count: c, folder: folderName(target.value) })) }, _('Tout déplacer'))),
 			h('button', {
 				type: 'button',
-				class: 'wm-danger wm-sender-delete',
+				class: 'wm-danger wm-delete-action wm-sender-delete',
 				onclick: () => {
 					if (!window.confirm((n > 1 ? _('Mettre les {count} messages de {who} à la corbeille ?', { count: n }) : _('Mettre le message de {who} à la corbeille ?')).replace('{who}', who))) return
 					apply('delete', '', (c) => c > 1 ? _('{count} messages mis à la corbeille', { count: c }) : _('{count} message mis à la corbeille', { count: c }))
 				},
-			}, '🗑 ' + _('Tout supprimer'))))
+			}, _('Tout supprimer'))))
 		const first = body.querySelector('button')
 		if (first) first.focus()
 	}
@@ -4150,7 +4150,7 @@
 			group(_('Ranger'),
 				moveSelect,
 				canArchive(role) ? h('button', { class: 'wm-archive-btn', title: _('Archiver (E) : dans le dossier « Archives »'), onclick: () => archiveMessages([m.id]) }, '🗄 ' + _('Archiver')) : null,
-				h('button', { class: 'wm-danger wm-delete-btn', title: role === 'deleteditems' ? _('Supprimer définitivement') : _('Supprimer'), onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? _('Supprimer définitivement') : '🗑 ' + _('Supprimer')),
+				h('button', { class: 'wm-danger wm-delete-action wm-delete-btn', title: role === 'deleteditems' ? _('Supprimer définitivement') : _('Supprimer'), onclick: () => deleteMessages([m.id], role === 'deleteditems') }, role === 'deleteditems' ? _('Supprimer définitivement') : _('Supprimer')),
 				junkButton([m.id], role)),
 			group(_('Suivre'),
 				h('button', { class: 'wm-unread-btn', title: _('Marquer comme non lu'), 'aria-label': _('Marquer comme non lu'), onclick: () => markUnread(m) }, '✉'),
@@ -6495,7 +6495,7 @@
 
 		// ---- drafts: saved a few seconds after the last change, and when leaving
 		const draftStatus = h('span', { class: 'wm-draft-status wm-muted', 'aria-live': 'polite' })
-		const deleteDraftBtn = h('button', { type: 'button', class: 'wm-danger', hidden: !draftId, onclick: () => discardDraft() }, '🗑 ' + _('Supprimer le brouillon'))
+		const deleteDraftBtn = h('button', { type: 'button', class: 'wm-danger wm-delete-action', hidden: !draftId, onclick: () => discardDraft() }, _('Supprimer le brouillon'))
 		const DRAFT_DELAY = 3000
 		let draftTimer = null
 		let dirty = false
@@ -7087,7 +7087,7 @@
 						if (!name || name === t.name) return
 						try { showTemplates(await saveTemplate({ id: t.id, name, html: t.html })) } catch (e) { toast(e.message, true) }
 					} }, _('Renommer')),
-					h('button', { type: 'button', class: 'wm-small wm-danger', onclick: async () => {
+					h('button', { type: 'button', class: 'wm-small wm-danger wm-delete-action', onclick: async () => {
 						if (!window.confirm(_('Supprimer le modèle « {name} » ?', { name: t.name }))) return
 						try { showTemplates(await deleteTemplate(t.id)); toast(_('Modèle supprimé')) } catch (e) { toast(e.message, true) }
 					} }, _('Supprimer'))))
