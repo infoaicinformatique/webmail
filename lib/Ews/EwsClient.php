@@ -1177,13 +1177,22 @@ class EwsClient {
 	 * @throws MailException
 	 */
 	public function recentlySent(int $max = 200): array {
+		return $this->latestItems('sentitems', $max);
+	}
+
+	/**
+	 * The newest messages of a folder (with their conversation), for « Sans réponse » and « Statistiques ».
+	 * @return list<array<string, mixed>>
+	 * @throws MailException
+	 */
+	public function latestItems(string $folderId, int $max = 200): array {
 		$xp = $this->request(
 			'<m:FindItem Traversal="Shallow">'
 			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $this->summaryFields()
 			. '<t:FieldURI FieldURI="item:ConversationId"/></t:AdditionalProperties></m:ItemShape>'
 			. '<m:IndexedPageItemView MaxEntriesReturned="' . max(1, $max) . '" Offset="0" BasePoint="Beginning"/>'
 			. self::sortOrderXml('date', true)
-			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="sentitems"/></m:ParentFolderIds>'
+			. '<m:ParentFolderIds>' . $this->folderIdXml($folderId) . '</m:ParentFolderIds>'
 			. '</m:FindItem>'
 		);
 		$items = [];
