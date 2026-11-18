@@ -4320,10 +4320,17 @@
 		})
 		const all = others.length > 1 ? h('input', { type: 'checkbox', name: 'quickReplyAll' }) : null
 		const send = h('button', { type: 'submit', class: 'primary', title: _('Envoyer (Ctrl+Entrée)') }, _('Envoyer'))
+		let archiveAfter = false
+		const sendArchive = canArchiveMessage(m)
+			? h('button', { type: 'button', class: 'wm-send-archive', title: _('Envoyer, puis ranger le message d\'origine dans les archives'), onclick: () => { archiveAfter = true; box.requestSubmit() } }, '🗄 ' + _('Envoyer et archiver'))
+			: null
+		send.addEventListener('click', () => { archiveAfter = false })
 		const box = h('form', {
 			class: 'wm-quick-reply',
 			onsubmit: async (e) => {
 				e.preventDefault()
+				const andArchive = archiveAfter
+				archiveAfter = false
 				const typed = text.value.trim()
 				if (!typed) { text.focus(); return }
 				const probe = h('div', {}, typed)
@@ -4353,10 +4360,13 @@
 				}
 				send.disabled = true
 				try {
-					await api('/accounts/' + state.accountId + '/send', { method: 'POST', body: fd })
+					const accountId = state.accountId
+					await api('/accounts/' + accountId + '/send', { method: 'POST', body: fd })
 					threadCache.clear()
 					rememberRecipients(personLabel(sender))
-					toast(_('Message envoyé'))
+					const archived = andArchive && await archiveAnswered(accountId, m.id)
+					toast(archived ? _('Message envoyé, et celui d\'origine archivé') : _('Message envoyé'))
+					if (archived && state.current && state.current.id === m.id) { state.selectedId = null; renderEmptyDetail() }
 					if (folderRole() === 'sentitems') setTimeout(() => loadMessages(true), 1500)
 				} catch (err) {
 					toast(err.message, true)
@@ -4371,6 +4381,7 @@
 		text,
 		h('div', { class: 'wm-quick-actions' },
 			send,
+			sendArchive,
 			all ? h('label', { class: 'wm-radio' }, all, ' ' + _('Répondre à tous')) : null,
 			h('button', {
 				type: 'button',
@@ -5066,6 +5077,31 @@
 		const a = archiveFolder()
 		return !a || a.id !== state.folderId
 	}
+	/**
+	 * « Envoyer et archiver »: the message answered goes to « Archives » once the answer is sent.
+	 * @return {Promise<boolean>} archived
+	 */
+	async function archiveAnswered(accountId, id) {
+		try {
+			const r = await api('/accounts/' + accountId + '/archive', { method: 'POST', body: { itemIds: [id] } })
+			if (state.accountId === accountId) removeFromList([id])
+			listCache.delete(accountId + '|' + r.folderId)
+			threadCache.clear()
+			loadFolders()
+			return true
+		} catch (e) {
+			toast(e.message, true)
+			return false
+		}
+	}
+	/** The message can be archived from where it is (not a draft, not already in « Archives »…). */
+	function canArchiveMessage(m) {
+		if (!m || !m.id || state.unified) return false
+		const f = state.folders.find((x) => x.id === (m.folderId || state.folderId))
+		const a = archiveFolder()
+		return !['drafts', 'outbox', 'deleteditems', 'sentitems'].includes(f ? f.role : folderRole()) && (!a || a.id !== (m.folderId || state.folderId))
+	}
+
 	/** « Archiver »: to « Archives » (made at the first use), undone from the notice. */
 	async function archiveMessages(ids) {
 		if (!ids.length) return
@@ -6598,10 +6634,18 @@
 			h('label', { class: 'wm-radio' }, receipt, ' ' + _('Demander un accusé de lecture')),
 			h('label', { class: 'wm-radio' }, later, ' ' + _('Envoyer plus tard')), laterAt)
 		const sendBtn = h('button', { type: 'submit', class: 'primary', title: _('Envoyer (Ctrl+Entrée)') }, _('Envoyer'))
+		// « Envoyer et archiver »: an answer or a forward, the message answered then put away
+		let archiveAfter = false
+		const archiveBtn = original && !isDraft && canArchiveMessage(original)
+			? h('button', { type: 'button', class: 'wm-send-archive', title: _('Envoyer, puis ranger le message d\'origine dans les archives'), onclick: () => { archiveAfter = true; form.requestSubmit() } }, '🗄 ' + _('Envoyer et archiver'))
+			: null
+		sendBtn.addEventListener('click', () => { archiveAfter = false })
 		const form = h('form', {
 			class: 'wm-compose',
 			onsubmit: async (e) => {
 				e.preventDefault()
+				const andArchive = archiveAfter
+				archiveAfter = false
 				// a save in progress must end first: the draft it creates is deleted after sending
 				clearTimeout(draftTimer)
 				await persisting
@@ -6658,9 +6702,11 @@
 						} catch (err) { toast(err.message, true) }
 					}
 					rememberRecipients([to.value, cc.value, bcc.value].concat(isResponse ? [personLabel((original.replyTo && original.replyTo[0]) || original.from)] : []).join(','))
+					const archived = andArchive && await archiveAnswered(state.accountId, original.id)
 					toast(sent && sent.sendAt
 						? _('Envoi programmé le {date} (dans « Boîte d\'envoi » d\'ici là)', { date: new Date(sent.sendAt).toLocaleString(locale(), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) })
-						: _('Message envoyé'))
+							+ (archived ? ' · ' + _('message d\'origine archivé') : '')
+						: (archived ? _('Message envoyé, et celui d\'origine archivé') : _('Message envoyé')))
 					if (isDraft) { state.selectedId = null; removeFromList([draftId]) }
 					// meanwhile another message may have been opened or started: leave it
 					if (form.isConnected) { if (state.current && !isDraft) renderMessage(); else renderEmptyDetail() }
@@ -6696,6 +6742,7 @@
 		sendOptions,
 		h('div', { class: 'wm-compose-actions' },
 			sendBtn,
+			archiveBtn,
 			h('label', { class: 'wm-file-label button' }, '📎 ' + _('Joindre'), files),
 			h('button', { type: 'button', onclick: pickFromFiles }, '☁️ ' + _('Depuis Fichiers')),
 			h('button', { type: 'button', class: 'wm-link-btn', onclick: pickLinks, title: _('Un lien de téléchargement Nextcloud dans le message, au lieu d\'une pièce jointe') }, '🔗 ' + _('Lien Nextcloud')),
