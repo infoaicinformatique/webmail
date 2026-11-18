@@ -6134,7 +6134,7 @@ async function main() {
 		const container = (OCC.match(/docker exec(?:\s+-u\s+\S+)?\s+(\S+)\s+php occ/) || [])[1]
 		assert(container, 'container of the tests: ' + OCC)
 		const data = occ('config:system:get datadirectory').trim() || '/var/www/html/data'
-		const saved = () => execSync('docker exec ' + container + ' sh -c "find \'' + data + '/admin/files/Webmail/Sauvegarde\' -name \'*.eml\' 2>/dev/null"', { encoding: 'utf8' }).split('\n').filter(Boolean)
+		const saved = () => execSync('docker exec ' + container + ' sh -c "find \'' + data + '/admin/files/Webmail/Sauvegarde\' -name \'*.eml\' 2>/dev/null || true"', { encoding: 'utf8' }).split('\n').filter(Boolean)
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const d = JSON.stringify(body)
 			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(d) } }, (res) => {
