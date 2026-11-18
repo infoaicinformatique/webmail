@@ -5660,6 +5660,62 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 	})
 
+	await step('« Envoyer et archiver »: the answer sent, the message answered put in « Archives » (quick reply and full form)', async () => {
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		await fake('/_test/deliver', { subject: 'Archiver après réponse rapide', sender: ['Client A', 'client.a@exemple-archive.fr'], body: '<p>Une question rapide.</p>', minutesAgo: 1 })
+		await fake('/_test/deliver', { subject: 'Archiver après réponse complète', sender: ['Client B', 'client.b@exemple-archive.fr'], body: '<p>Une autre question.</p>', minutesAgo: 2 })
+		const inbox = async () => {
+			await page.click('.wm-folder >> nth=0')
+			await page.click('.wm-list button[title="Actualiser"]')
+		}
+		const archives = '.wm-folder:has(.wm-folder-name:text-is("Archives"))'
+		// the quick reply under the message
+		await inbox()
+		await page.click('.wm-message:has-text("Archiver après réponse rapide")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Archiver après réponse rapide")')
+		await page.click('.wm-quick-text')
+		await page.fill('.wm-quick-text', 'Réponse rapide, et je range.')
+		await page.click('.wm-quick-reply .wm-send-archive')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé, et celui d\'origine archivé")')
+		await page.waitForSelector('.wm-messages .wm-message:has-text("Archiver après réponse rapide")', { state: 'detached' })
+		// the full form
+		await page.click('.wm-message:has-text("Archiver après réponse complète")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Archiver après réponse complète")')
+		await page.click('.wm-reply-btn')
+		await page.waitForSelector('.wm-compose .wm-send-archive')
+		await page.click('.wm-editor')
+		await page.keyboard.type('Réponse complète, et je range aussi.')
+		await shot('126-send-archive')
+		// (the notice of the quick reply gone first: the next one is this sending's)
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé, et celui d\'origine archivé")', { state: 'detached' })
+		await page.click('.wm-compose .wm-send-archive')
+		await page.waitForSelector('.wm-toast:has-text("Message envoyé, et celui d\'origine archivé")')
+		await page.waitForSelector('.wm-messages .wm-message:has-text("Archiver après réponse complète")', { state: 'detached' })
+		await page.click(archives)
+		await page.waitForSelector('.wm-message:has-text("Archiver après réponse rapide")')
+		await page.waitForSelector('.wm-message:has-text("Archiver après réponse complète")')
+		// in « Archives », or a new message: no « Envoyer et archiver »
+		await page.click('.wm-message:has-text("Archiver après réponse complète")')
+		await page.waitForSelector('.wm-message-header h2:has-text("Archiver après réponse complète")')
+		assert.strictEqual(await page.$('.wm-quick-reply .wm-send-archive'), null)
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.waitForSelector('.wm-message:has-text("Archiver après réponse complète")')
+		await page.click('.wm-compose-btn')
+		await page.waitForSelector('.wm-compose')
+		assert.strictEqual(await page.$('.wm-compose .wm-send-archive'), null)
+		await page.click('.wm-compose button:has-text("Annuler")')
+		await page.click('.wm-folder >> nth=0')
+	})
+
 	await step('newsletters: the lists of the inbox by sender; one left and its messages deleted, another kept', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)
