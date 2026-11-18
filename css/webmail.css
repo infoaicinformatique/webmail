@@ -1359,3 +1359,11 @@ button.wm-delete-action:not(.wm-menu-item):not(.wm-folder-menu-item) { border: 1
 .wm-notify-account-name { font-weight: bold; margin-bottom: 2px; }
 /* « Envoyer et archiver » */
 .wm-send-archive { font-weight: 600; }
+/* « Sans réponse » */
+.wm-noreply-days { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.wm-noreply-days select { width: auto; }
+.wm-noreply-list { list-style: none; padding: 0; margin: 0; }
+.wm-noreply-item { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.wm-noreply-item .wm-noreply-open { flex: 1 1 280px; }
+.wm-noreply-actions { display: flex; gap: 6px; }
+.wm-noreply-actions button { margin: 0; }

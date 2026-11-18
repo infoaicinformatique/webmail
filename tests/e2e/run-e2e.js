@@ -5713,6 +5713,58 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 	})
 
+	await step('« Sans réponse »: the messages sent days ago that nobody answered (an answer in any folder counts); remind or ignore', async () => {
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		const me = ['Utilisateur', 'user@societe-a.fr']
+		const day = 24 * 60
+		const made = []
+		made.push(await fake('/_test/deliver', { folder: 'F-SENT', subject: 'Devis sans nouvelles', sender: me, to: [['Client Muet', 'muet@client-silence.fr']], body: '<p>Voici le devis.</p>', isRead: true, minutesAgo: 5 * day }))
+		made.push(await fake('/_test/deliver', { folder: 'F-SENT', subject: 'Question avec réponse', sender: me, to: [['Client Bavard', 'bavard@client-silence.fr']], body: '<p>Une question.</p>', isRead: true, minutesAgo: 5 * day }))
+		// the answer, filed by a rule in a subfolder
+		made.push(await fake('/_test/deliver', { folder: 'F-CLIENTS', subject: 'RE: Question avec réponse', sender: ['Client Bavard', 'bavard@client-silence.fr'], body: '<p>Voici la réponse.</p>', isRead: true, minutesAgo: 4 * day }))
+		made.push(await fake('/_test/deliver', { folder: 'F-SENT', subject: 'Envoi tout récent', sender: me, to: [['Client Pressé', 'presse@client-silence.fr']], body: '<p>Hier.</p>', isRead: true, minutesAgo: day + 60 }))
+		try {
+			await page.evaluate(() => localStorage.setItem('webmail.noReplyDays', '3'))
+			await page.click('.wm-noreply-link')
+			const item = (subject) => '.wm-noreply-item:has(.wm-today-subject:text-is("' + subject + '"))'
+			await page.waitForSelector(item('Devis sans nouvelles'))
+			assert.match(await page.textContent(item('Devis sans nouvelles')), /il y a 5 jours.*à Client Muet/)
+			assert.strictEqual(await page.$(item('Question avec réponse')), null, 'answered, even in another folder')
+			assert.strictEqual(await page.$(item('Envoi tout récent')), null, 'sent 1 day ago: not yet')
+			await shot('127-no-reply')
+			// one day is enough: the recent one too
+			await page.selectOption('.wm-noreply-days select', '1')
+			await page.waitForSelector(item('Envoi tout récent'))
+			// « Ignorer »: gone, and stays so
+			await page.click(item('Devis sans nouvelles') + ' .wm-noreply-ignore')
+			await page.waitForSelector('.wm-toast:has-text("Retiré de « Sans réponse »")')
+			await page.waitForSelector(item('Devis sans nouvelles'), { state: 'detached' })
+			await page.click('.wm-noreply-link')
+			await page.waitForSelector(item('Envoi tout récent'))
+			assert.strictEqual(await page.$(item('Devis sans nouvelles')), null)
+			// « Relancer »: a new message to the same person, its subject and first line ready
+			await page.click(item('Envoi tout récent') + ' .wm-noreply-remind')
+			await page.waitForSelector('.wm-compose')
+			assert.ok((await page.inputValue('.wm-compose input[name=to]')).includes('presse@client-silence.fr'))
+			assert.strictEqual(await page.inputValue('.wm-compose input[name=subject]'), 'RE : Envoi tout récent')
+			assert.ok((await page.textContent('.wm-editor')).includes('Je me permets de revenir vers vous au sujet de mon message du'))
+			await page.click('.wm-compose button:has-text("Annuler")')
+		} finally {
+			for (const m of made) await fake('/_test/remove', { id: m.id })
+			await page.evaluate(() => localStorage.removeItem('webmail.noReplyDays'))
+			await page.click('.wm-folder >> nth=0')
+		}
+	})
+
 	await step('newsletters: the lists of the inbox by sender; one left and its messages deleted, another kept', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)

@@ -762,9 +762,12 @@ def handle(op, el, user):
             last = offset + limit >= len(msgs)
             # « Lettres d'information »: the List-Unsubscribe header of each message, when asked
             headers = el.find('m:ItemShape/t:AdditionalProperties/t:ExtendedFieldURI[@DistinguishedPropertySetId="InternetHeaders"]', NS) is not None
+            with_conversation = any(u.get('FieldURI') == 'item:ConversationId' for u in el.iter(T + 'FieldURI'))
 
             def summary(m):
                 xml = item_summary_xml(m, with_folder)
+                if with_conversation:
+                    xml = xml.replace('<t:Subject>', '<t:ConversationId Id="%s"/><t:Subject>' % conversation_id(m), 1)
                 if headers and m.get('list_unsubscribe'):
                     head, sep, tail = xml.rpartition('</t:')
                     xml = head + ('<t:ExtendedProperty><t:ExtendedFieldURI DistinguishedPropertySetId="InternetHeaders" PropertyName="list-unsubscribe" PropertyType="String"/>'
@@ -1243,7 +1246,8 @@ class Handler(BaseHTTPRequestHandler):
                 MESSAGES.pop(data.get('id', ''), None)
                 return self.send(200, '{}', {'Content-Type': 'application/json'})
             files = [dict(name=a['name'], content_type=a.get('type', 'text/plain'), content=a.get('text', '').encode('utf-8'), inline=False) for a in data.get('attachments', [])]
-            mid = add_message(data.get('folder', 'F-INBOX'), data['subject'], tuple(data['sender']), data['body'], int(data.get('minutesAgo', 0)), is_read=bool(data.get('isRead')), attachments=files)
+            extra = {'to': tuple(tuple(x) for x in data['to'])} if data.get('to') else {}
+            mid = add_message(data.get('folder', 'F-INBOX'), data['subject'], tuple(data['sender']), data['body'], int(data.get('minutesAgo', 0)), is_read=bool(data.get('isRead')), attachments=files, **extra)
             if data.get('listUnsubscribe'):
                 MESSAGES[mid]['list_unsubscribe'] = data['listUnsubscribe']
             if data.get('rules'):
