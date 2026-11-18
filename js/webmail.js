@@ -1155,6 +1155,11 @@
 			class: 'wm-news-link',
 			onclick: (e) => { e.preventDefault(); openNewsletters() },
 		}, h('span', { class: 'wm-folder-name' }, '📰 ' + _('Lettres d\'information')))),
+		h('li', {}, h('a', {
+			href: '#',
+			class: 'wm-noreply-link',
+			onclick: (e) => { e.preventDefault(); openNoReply() },
+		}, h('span', { class: 'wm-folder-name' }, '📭 ' + _('Sans réponse')))),
 		state.vip.size ? h('li', {}, h('a', {
 			href: '#',
 			class: 'wm-vip-link' + (state.vipView ? ' active' : ''),
@@ -2630,6 +2635,86 @@
 				h('span', { class: 'wm-today-when' }, m.date ? new Date(m.date).toLocaleDateString(locale(), { day: 'numeric', month: 'short' }) : ''),
 				h('span', { class: 'wm-today-subject' }, m.subject || _('(sans objet)')),
 				h('span', { class: 'wm-muted' }, personShort(m.from)))))))
+	}
+
+	/**
+	 * « Sans réponse »: the messages sent some days ago that nobody answered (found in their
+	 * conversation), to send a reminder or to let go.
+	 */
+	let noReplySeq = 0
+	function noReplyDays() {
+		let v = 3
+		try { v = parseInt(localStorage.getItem('webmail.noReplyDays') || '3', 10) } catch (e) { /* default */ }
+		return [1, 2, 3, 5, 7, 14].includes(v) ? v : 3
+	}
+	async function openNoReply() {
+		const mine = ++noReplySeq
+		const accountId = state.accountId
+		state.vipView = false
+		state.today = false
+		state.filesView = false
+		renderNav()
+		setView('detail')
+		clear(detailEl)
+		const days = h('select', { name: 'noReplyDays', 'aria-label': _('Envoyés depuis au moins') })
+		const list = h('div', { class: 'wm-noreply-body' }, h('div', { class: 'wm-loading' }, _('Chargement…')))
+		const box = h('div', { class: 'wm-files wm-noreply-view' },
+			h('div', { class: 'wm-today-head' },
+				h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Retour'), onclick: () => setView('list') }, '←'),
+				h('h2', {}, '📭 ' + _('Sans réponse'))),
+			h('label', { class: 'wm-noreply-days' }, _('Envoyés depuis au moins'), ' ', days),
+			list)
+		detailEl.appendChild(box)
+		const load = async () => {
+			clear(list)
+			list.appendChild(h('div', { class: 'wm-loading' }, _('Recherche des réponses…')))
+			let r
+			try { r = await api('/accounts/' + accountId + '/no-reply', { query: { days: noReplyDays() } }) } catch (e) { clear(list); list.appendChild(h('p', { class: 'wm-form-error' }, e.message)); return }
+			if (mine !== noReplySeq || !box.isConnected) return
+			if (!days.options.length) {
+				r.choices.forEach((n) => days.appendChild(h('option', { value: String(n), selected: n === r.days }, n > 1 ? _('{count} jours', { count: n }) : _('{count} jour', { count: n }))))
+			}
+			clear(list)
+			list.appendChild(h('p', { class: 'wm-muted' }, _('Vos messages des 30 derniers jours restés sans réponse, le dernier de chaque conversation. Une réponse rangée dans n\'importe quel dossier compte.')))
+			if (!r.messages.length) { list.appendChild(h('p', { class: 'wm-empty' }, _('Tout le monde vous a répondu 🎉'))); return }
+			list.appendChild(h('ul', { class: 'wm-noreply-list' }, r.messages.map((m) => {
+				const li = h('li', { class: 'wm-today-item wm-noreply-item', dataset: { id: m.id } },
+					h('button', { type: 'button', class: 'wm-today-open wm-noreply-open', onclick: () => openMessage(m.id) },
+						h('span', { class: 'wm-today-when' }, m.age > 1 ? _('il y a {count} jours', { count: m.age }) : _('il y a {count} jour', { count: m.age })),
+						h('span', { class: 'wm-today-subject' }, m.subject || _('(sans objet)')),
+						h('span', { class: 'wm-muted' }, _('à {who}', { who: m.displayTo }))),
+					h('div', { class: 'wm-noreply-actions' },
+						h('button', { type: 'button', class: 'wm-small primary wm-noreply-remind', onclick: () => remind(m) }, '↩ ' + _('Relancer')),
+						h('button', { type: 'button', class: 'wm-small wm-noreply-ignore', onclick: async (e) => {
+							e.currentTarget.disabled = true
+							try {
+								await api('/accounts/' + accountId + '/no-reply/ignore', { method: 'POST', body: { itemId: m.id } })
+								li.remove()
+								toast(_('Retiré de « Sans réponse »'))
+							} catch (ex) { e.currentTarget.disabled = false; toast(ex.message, true) }
+						} }, _('Ignorer'))))
+				return li
+			})))
+		}
+		// « Relancer »: a new message to the same people, its subject and a first line ready
+		const remind = async (m) => {
+			let full
+			try { full = await api('/accounts/' + accountId + '/message', { query: { itemId: m.id } }) } catch (e) { toast(e.message, true); return }
+			const list = (people) => (people || []).map((p) => personLabel(p)).join(', ')
+			const subject = /^(re|tr|fw|fwd)\s?:/i.test(full.subject || '') ? full.subject : _('RE : ') + (full.subject || '')
+			const when = full.date ? new Date(full.date).toLocaleDateString(locale(), { day: 'numeric', month: 'long' }) : ''
+			openCompose('new', null, {
+				to: list(full.to),
+				cc: list(full.cc),
+				subject,
+				body: _('Bonjour,\n\nJe me permets de revenir vers vous au sujet de mon message du {date}.\n', { date: when }),
+			})
+		}
+		days.addEventListener('change', () => {
+			try { localStorage.setItem('webmail.noReplyDays', days.value) } catch (e) { /* not kept */ }
+			load()
+		})
+		load()
 	}
 
 	/** Several attachments to Nextcloud Files, in the folder chosen once. */

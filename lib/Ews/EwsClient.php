@@ -1167,6 +1167,28 @@ class EwsClient {
 	}
 
 	/**
+	 * The newest messages sent (« Sans réponse »), with their conversation.
+	 * @return list<array<string, mixed>>
+	 * @throws MailException
+	 */
+	public function recentlySent(int $max = 200): array {
+		$xp = $this->request(
+			'<m:FindItem Traversal="Shallow">'
+			. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>' . $this->summaryFields()
+			. '<t:FieldURI FieldURI="item:ConversationId"/></t:AdditionalProperties></m:ItemShape>'
+			. '<m:IndexedPageItemView MaxEntriesReturned="' . max(1, $max) . '" Offset="0" BasePoint="Beginning"/>'
+			. self::sortOrderXml('date', true)
+			. '<m:ParentFolderIds><t:DistinguishedFolderId Id="sentitems"/></m:ParentFolderIds>'
+			. '</m:FindItem>'
+		);
+		$items = [];
+		foreach ($xp->query('//m:RootFolder/t:Items/*') as $node) {
+			$items[] = $this->summary($xp, $node) + ['conversationId' => (string)$this->attr($xp, 't:ConversationId', 'Id', $node)];
+		}
+		return $items;
+	}
+
+	/**
 	 * @return array<string, mixed>
 	 */
 	public function getItem(string $itemId): array {

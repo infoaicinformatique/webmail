@@ -1993,5 +1993,17 @@
 	"Envoyer, puis ranger le message d'origine dans les archives": "Send, then put the original message in the archives",
 	"Envoyer et archiver": "Send and archive",
 	"message d'origine archivé": "original message archived",
-	"Message envoyé, et celui d'origine archivé": "Message sent, and the original one archived"
+	"Message envoyé, et celui d'origine archivé": "Message sent, and the original one archived",
+	"Sans réponse": "No reply",
+	"Envoyés depuis au moins": "Sent at least",
+	"Recherche des réponses…": "Looking for answers…",
+	"Vos messages des 30 derniers jours restés sans réponse, le dernier de chaque conversation. Une réponse rangée dans n'importe quel dossier compte.": "Your messages of the last 30 days still without an answer, the last one of each conversation. An answer filed in any folder counts.",
+	"Tout le monde vous a répondu 🎉": "Everybody answered you 🎉",
+	"il y a {count} jours": "{count} days ago",
+	"il y a {count} jour": "{count} day ago",
+	"à {who}": "to {who}",
+	"Relancer": "Send a reminder",
+	"Ignorer": "Ignore",
+	"Retiré de « Sans réponse »": "Removed from “No reply”",
+	"Bonjour,\n\nJe me permets de revenir vers vous au sujet de mon message du {date}.\n": "Hello,\n\nI am following up on my message of {date}.\n"
 }
