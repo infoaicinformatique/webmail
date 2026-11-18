@@ -95,6 +95,8 @@ return [
 		['name' => 'sender#count', 'url' => '/api/accounts/{id}/sender', 'verb' => 'GET'],
 		['name' => 'sender#apply', 'url' => '/api/accounts/{id}/sender', 'verb' => 'POST'],
 		['name' => 'newsletter#index', 'url' => '/api/accounts/{id}/newsletters', 'verb' => 'GET'],
+		['name' => 'cleanup#index', 'url' => '/api/accounts/{id}/cleanup', 'verb' => 'GET'],
+		['name' => 'cleanup#set', 'url' => '/api/accounts/{id}/cleanup', 'verb' => 'POST'],
 		['name' => 'no_reply#index', 'url' => '/api/accounts/{id}/no-reply', 'verb' => 'GET'],
 		['name' => 'no_reply#ignore', 'url' => '/api/accounts/{id}/no-reply/ignore', 'verb' => 'POST'],
 		['name' => 'folder_export#download', 'url' => '/api/accounts/{id}/folder/export', 'verb' => 'GET'],

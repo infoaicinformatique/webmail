@@ -1367,3 +1367,4 @@ button.wm-delete-action:not(.wm-menu-item):not(.wm-folder-menu-item) { border: 1
 .wm-noreply-item .wm-noreply-open { flex: 1 1 280px; }
 .wm-noreply-actions { display: flex; gap: 6px; }
 .wm-noreply-actions button { margin: 0; }
+.wm-cleanup-mark { font-size: 0.85em; opacity: 0.8; margin-inline-start: 4px; }

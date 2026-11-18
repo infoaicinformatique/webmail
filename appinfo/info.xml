@@ -60,6 +60,7 @@
 		<job>OCA\Webmail\BackgroundJob\AllowedSendersJob</job>
 		<job>OCA\Webmail\BackgroundJob\ReplyLaterJob</job>
 		<job>OCA\Webmail\BackgroundJob\DigestJob</job>
+		<job>OCA\Webmail\BackgroundJob\CleanupJob</job>
 	</background-jobs>
 	<settings>
 		<admin>OCA\Webmail\Settings\Admin</admin>

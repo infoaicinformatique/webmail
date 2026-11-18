@@ -817,7 +817,7 @@ async function main() {
 		await page.hover(row('Boîte de réception'))
 		await page.click(row('Boîte de réception') + ' .wm-folder-menu-btn')
 		const items = await page.$$eval('.wm-folder-menu button', (els) => els.map((e) => e.textContent))
-		assert.deepStrictEqual(items, ['★ Ajouter aux favoris', '＋ Nouveau sous-dossier', '📥 Importer des messages (.eml)…', '📦 Exporter (.zip)…'])
+		assert.deepStrictEqual(items, ['★ Ajouter aux favoris', '＋ Nouveau sous-dossier', '📥 Importer des messages (.eml)…', '📦 Exporter (.zip)…', '🧹 Nettoyage automatique…'])
 		await page.keyboard.press('Escape')
 		await page.click(row('Boîte de réception') + ' .wm-folder')
 		await page.waitForSelector('.wm-message')
@@ -5761,6 +5761,65 @@ async function main() {
 		} finally {
 			for (const m of made) await fake('/_test/remove', { id: m.id })
 			await page.evaluate(() => localStorage.removeItem('webmail.noReplyDays'))
+			await page.click('.wm-folder >> nth=0')
+		}
+	})
+
+	await step('cleanup: a folder whose old messages are deleted each night (not the followed ones), set from its menu', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		const day = 24 * 60
+		const made = []
+		made.push(await fake('/_test/deliver', { folder: 'F-JUNK', subject: 'Pourriel très ancien', sender: ['Spam', 'spam@pourriel.example'], body: '<p>Vieux.</p>', isRead: true, minutesAgo: 45 * day }))
+		made.push(await fake('/_test/deliver', { folder: 'F-JUNK', subject: 'Pourriel ancien mais suivi', sender: ['Spam', 'spam@pourriel.example'], body: '<p>Gardé.</p>', isRead: true, flagged: true, minutesAgo: 45 * day }))
+		made.push(await fake('/_test/deliver', { folder: 'F-JUNK', subject: 'Pourriel récent', sender: ['Spam', 'spam@pourriel.example'], body: '<p>Récent.</p>', isRead: true, minutesAgo: day }))
+		const row = (name) => '.wm-folder-row:has(.wm-folder-name:text-is("' + name + '"))'
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\CleanupJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		assert(jobId, 'background job registered')
+		try {
+			await page.click('.wm-folder >> nth=0')
+			await page.hover(row('Courrier indésirable'))
+			await page.click(row('Courrier indésirable') + ' .wm-folder-menu-btn')
+			await page.click('.wm-folder-menu button:has-text("Nettoyage automatique")')
+			await page.waitForSelector('.wm-cleanup-dialog')
+			assert.strictEqual(await page.inputValue('.wm-cleanup-dialog select[name=cleanupDays]'), '0')
+			await page.selectOption('.wm-cleanup-dialog select[name=cleanupDays]', '30')
+			await shot('128-cleanup')
+			await page.click('.wm-cleanup-dialog button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("les messages de plus de 30 jours seront supprimés chaque nuit")')
+			await page.waitForSelector(row('Courrier indésirable') + ' .wm-cleanup-mark')
+			// the night: the old one to « Éléments supprimés », the followed and the recent ones kept
+			occ('background-job:execute ' + jobId + ' --force-execute')
+			await page.click(row('Courrier indésirable') + ' .wm-folder')
+			await page.click('.wm-list button[title="Actualiser"]')
+			await page.waitForSelector('.wm-message:has-text("Pourriel récent")')
+			await page.waitForSelector('.wm-message:has-text("Pourriel ancien mais suivi")')
+			assert.strictEqual(await page.$('.wm-message:has-text("Pourriel très ancien")'), null)
+			await page.click(row('Éléments supprimés') + ' .wm-folder')
+			await page.waitForSelector('.wm-message:has-text("Pourriel très ancien")')
+			// kept after a reload; then « Jamais »
+			await page.reload()
+			await page.waitForSelector(row('Courrier indésirable') + ' .wm-cleanup-mark')
+			await page.hover(row('Courrier indésirable'))
+			await page.click(row('Courrier indésirable') + ' .wm-folder-menu-btn')
+			await page.click('.wm-folder-menu button:has-text("Nettoyage automatique")')
+			assert.strictEqual(await page.inputValue('.wm-cleanup-dialog select[name=cleanupDays]'), '30')
+			await page.selectOption('.wm-cleanup-dialog select[name=cleanupDays]', '0')
+			await page.click('.wm-cleanup-dialog button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Plus de nettoyage automatique pour « Courrier indésirable »")')
+			await page.waitForSelector(row('Courrier indésirable') + ' .wm-cleanup-mark', { state: 'detached' })
+		} finally {
+			try { occ('user:setting --delete admin webmail ' + 'cleanup_' + await page.evaluate(async () => (await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()).find((a) => a.email === 'user@societe-a.fr').id)) } catch (e) { /* none */ }
+			for (const m of made) await fake('/_test/remove', { id: m.id })
 			await page.click('.wm-folder >> nth=0')
 		}
 	})
