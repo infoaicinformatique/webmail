@@ -5617,6 +5617,67 @@
 		return card
 	}
 
+	/** « Sauvegarde dans Fichiers »: each new message kept as a .eml in Files, by a background job. */
+	function backupSettings() {
+		const card = h('fieldset', { class: 'wm-account-card wm-backup-settings' },
+			h('legend', {}, '💾 ' + _('Sauvegarde dans Fichiers')),
+			h('p', { class: 'wm-muted' }, _('Chaque nouveau message est copié en .eml dans vos Fichiers Nextcloud (un dossier par mois), toutes les demi-heures, webmail fermé ou non. Une copie à vous, qui reste même si le message est supprimé de la boîte.')))
+		const FOLDER_LABELS = { inbox: _('Boîte de réception'), sentitems: _('Éléments envoyés') }
+		state.accounts.forEach((a) => {
+			const on = h('input', { type: 'checkbox', name: 'backupOn' })
+			const path = h('input', { type: 'text', name: 'backupPath', 'aria-label': _('Dossier de sauvegarde') })
+			const boxes = Object.keys(FOLDER_LABELS).map((k) => h('input', { type: 'checkbox', name: 'backupFolder', value: k }))
+			const from = h('select', { name: 'backupFrom', 'aria-label': _('À partir de') },
+				h('option', { value: '0' }, _('les messages à venir')),
+				h('option', { value: '30' }, _('les 30 derniers jours')),
+				h('option', { value: '365' }, _('la dernière année')))
+			const status = h('p', { class: 'wm-muted wm-backup-status', 'aria-live': 'polite' })
+			const nowBtn = h('button', { type: 'button', class: 'wm-small wm-backup-now' }, _('Sauvegarder maintenant'))
+			const fromRow = h('label', { class: 'wm-field wm-backup-from' }, h('span', {}, _('À partir de')), from)
+			const show = (r) => {
+				on.checked = r.on
+				path.value = r.path
+				boxes.forEach((b) => { b.checked = r.folders.includes(b.value) })
+				// the start is chosen when turning it on
+				fromRow.hidden = r.on
+				nowBtn.hidden = !r.on
+				const parts = []
+				if (r.total) parts.push(r.total > 1 ? _('{count} messages sauvegardés en tout', { count: r.total }) : _('{count} message sauvegardé en tout', { count: r.total }))
+				if (r.last && r.last.at) parts.push(_('dernière sauvegarde : {when}', { when: new Date(r.last.at).toLocaleString(locale(), { dateStyle: 'short', timeStyle: 'short' }) }))
+				status.textContent = parts.join(' — ')
+				status.classList.toggle('wm-form-error', !!(r.last && r.last.error))
+				if (r.last && r.last.error) status.textContent += (parts.length ? ' — ' : '') + r.last.error
+			}
+			const save = async () => {
+				try {
+					const r = await api('/accounts/' + a.id + '/backup', { method: 'POST', body: {
+						on: on.checked, path: path.value, folders: boxes.filter((b) => b.checked).map((b) => b.value), fromDays: parseInt(from.value, 10),
+					} })
+					show(r)
+					toast(r.on ? _('Sauvegarde dans « {path} »', { path: r.path }) : _('Sauvegarde arrêtée'))
+				} catch (e) { toast(e.message, true) }
+			}
+			on.addEventListener('change', save)
+			path.addEventListener('change', () => { if (on.checked) save() })
+			boxes.forEach((b) => b.addEventListener('change', () => { if (on.checked) save() }))
+			nowBtn.addEventListener('click', async () => {
+				nowBtn.disabled = true
+				try {
+					const r = await api('/accounts/' + a.id + '/backup/now', { method: 'POST' })
+					show(r)
+					toast(r.saved > 1 ? _('{count} messages sauvegardés', { count: r.saved }) : r.saved ? _('1 message sauvegardé') : _('Rien de nouveau à sauvegarder'))
+				} catch (e) { toast(e.message, true) } finally { nowBtn.disabled = false }
+			})
+			card.appendChild(h('div', { class: 'wm-backup-account', dataset: { account: String(a.id) } },
+				h('label', { class: 'wm-quiet-check wm-backup-toggle' }, on, ' ', state.accounts.length > 1 ? _('Sauvegarder {email}', { email: a.email }) : _('Sauvegarder mes messages')),
+				h('label', { class: 'wm-field' }, h('span', {}, _('Dans le dossier')), path),
+				h('div', { class: 'wm-backup-folders' }, boxes.map((b) => h('label', { class: 'wm-quiet-check' }, b, ' ', FOLDER_LABELS[b.value]))),
+				fromRow, status, nowBtn))
+			api('/accounts/' + a.id + '/backup').then(show, (e) => toast(e.message, true))
+		})
+		return card
+	}
+
 	function archiveSettings() {
 		const card = h('fieldset', { class: 'wm-account-card wm-archive-settings' },
 			h('legend', {}, '🗄 ' + _('Archivage')),
@@ -7686,6 +7747,7 @@
 		// (last: the account cards stay first)
 		wrap.appendChild(senderListsCard())
 		wrap.appendChild(autoBccSettings())
+		wrap.appendChild(backupSettings())
 		wrap.appendChild(archiveSettings())
 		wrap.appendChild(absenceSettings())
 		wrap.appendChild(matrixSettings())

@@ -1423,3 +1423,9 @@ button.wm-delete-action:not(.wm-menu-item):not(.wm-folder-menu-item) { border: 1
 .wm-autobcc-add input[name=autoBccDomains] { flex: 1 1 160px; }
 .wm-autobcc-add input[hidden] { display: none; }
 .wm-autobcc-add select { width: auto; }
+
+/* « Sauvegarde dans Fichiers » */
+.wm-backup-account { margin: 8px 0; }
+.wm-backup-settings .wm-quiet-check { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.wm-backup-folders { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.wm-backup-from[hidden], .wm-backup-now[hidden] { display: none; }

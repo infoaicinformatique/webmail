@@ -6117,7 +6117,7 @@ async function main() {
 		await page.click('.wm-folder:has-text("Éléments envoyés")')
 		await page.click('.wm-message:has-text("Copie cachée auto 2")')
 		await page.waitForSelector('.wm-header-line:has-text("lea@autre-test.example")')
-		assert.strictEqual(await page.$('.wm-header-line:has-text("Cci")'), null)
+		assert.ok(!(await page.$('.wm-header-line:has-text("Cci")')), '.wm-header-line:has-text("Cci")')
 		// removed
 		await page.click('text=Comptes et signature')
 		for (const email of ['suivi@crm-test.example', 'archive@cabinet-test.example']) {
@@ -6127,6 +6127,66 @@ async function main() {
 		await page.waitForSelector(card + ' .wm-autobcc-rules li:text-is("Aucune")')
 		await page.click('.wm-tab[data-module="mail"]')
 		await page.click('.wm-folder >> nth=0')
+	})
+
+	await step('« Sauvegarde dans Fichiers »: the last 30 days saved as .eml by month, then the new messages by the background job', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const container = (OCC.match(/docker exec(?:\s+-u\s+\S+)?\s+(\S+)\s+php occ/) || [])[1]
+		assert(container, 'container of the tests: ' + OCC)
+		const data = occ('config:system:get datadirectory').trim() || '/var/www/html/data'
+		const saved = () => execSync('docker exec ' + container + ' sh -c "find \'' + data + '/admin/files/Webmail/Sauvegarde\' -name \'*.eml\' 2>/dev/null"', { encoding: 'utf8' }).split('\n').filter(Boolean)
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const d = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(d) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(d)
+		})
+		assert.strictEqual(saved().length, 0)
+		await page.click('text=Comptes et signature')
+		const card = '.wm-backup-settings'
+		await page.waitForSelector(card + ' input[name=backupPath]')
+		assert.strictEqual(await page.inputValue(card + ' input[name=backupPath]'), 'Webmail/Sauvegarde')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-backup-settings input[name=backupFolder]:checked').length === 2)
+		await page.selectOption(card + ' select[name=backupFrom]', '30')
+		await page.check(card + ' input[name=backupOn]')
+		await page.waitForSelector('.wm-toast:has-text("Sauvegarde dans « Webmail/Sauvegarde »")')
+		await page.waitForSelector(card + ' .wm-backup-now:not([hidden])')
+		await page.click(card + ' .wm-backup-now')
+		const toast = await (await page.waitForSelector('.wm-toast:has-text("messages sauvegardés")')).textContent()
+		const first = parseInt(toast, 10)
+		assert.ok(first > 3, toast)
+		const files = saved()
+		assert.strictEqual(files.length, first, files.slice(0, 5).join('\n'))
+		// by account, folder, year and month
+		assert.ok(files.every((f) => /\/Webmail\/Sauvegarde\/[^/]+@[^/]+\/(Reçus|Envoyés)\/\d{4}\/\d{4}-\d{2}\/\d{4}-\d{2}-\d{2} \d{4} .+\.eml$/.test(f)), files.slice(0, 3).join('\n'))
+		assert.ok(files.some((f) => f.includes('/Envoyés/')) && files.some((f) => f.includes('/Reçus/')))
+		await page.waitForSelector(card + ' .wm-backup-status:has-text("' + first + ' messages sauvegardés en tout")')
+		await shot('135-backup')
+		// nothing twice
+		await page.click(card + ' .wm-backup-now')
+		await page.waitForSelector('.wm-toast:has-text("Rien de nouveau à sauvegarder")')
+		// a new message: saved by the background job
+		await fake('/_test/deliver', { subject: 'Sauvegarde nouvelle', sender: ['Zoé Stats', 'zoe@stats-test.example'], body: '<p>À garder.</p>' })
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\BackupJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		assert(jobId, 'BackupJob registered')
+		occ('background-job:execute ' + jobId + ' --force-execute')
+		const after = saved()
+		assert.strictEqual(after.length, first + 1)
+		const added = after.find((f) => !files.includes(f))
+		assert.ok(/Reçus\/.*Sauvegarde nouvelle\.eml$/.test(added), added)
+		const eml = execSync('docker exec ' + container + ' cat "' + added + '"', { encoding: 'utf8' })
+		assert.ok(eml.includes('Subject: Sauvegarde nouvelle'), eml.slice(0, 300))
+		// off: the job saves nothing more
+		await page.uncheck(card + ' input[name=backupOn]')
+		await page.waitForSelector('.wm-toast:has-text("Sauvegarde arrêtée")')
+		await fake('/_test/deliver', { subject: 'Sauvegarde après arrêt', sender: ['Zoé Stats', 'zoe@stats-test.example'], body: '<p>Non.</p>' })
+		occ('background-job:execute ' + jobId + ' --force-execute')
+		assert.strictEqual(saved().length, first + 1)
+		await page.click('.wm-tab[data-module="mail"]')
 	})
 
 	await step('sort: « Trier par » subject, size, then back to the date (kept after a reload)', async () => {
