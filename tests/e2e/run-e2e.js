@@ -6148,8 +6148,8 @@ async function main() {
 		assert.strictEqual(saved().length, 0)
 		await page.click('text=Comptes et signature')
 		const card = '.wm-backup-settings'
-		await page.waitForSelector(card + ' input[name=backupPath]')
-		assert.strictEqual(await page.inputValue(card + ' input[name=backupPath]'), 'Webmail/Sauvegarde')
+		// (filled once the settings are read)
+		await page.waitForFunction(() => (document.querySelector('.wm-backup-settings input[name=backupPath]') || {}).value === 'Webmail/Sauvegarde')
 		await page.waitForFunction(() => document.querySelectorAll('.wm-backup-settings input[name=backupFolder]:checked').length === 2)
 		await page.selectOption(card + ' select[name=backupFrom]', '30')
 		await page.check(card + ' input[name=backupOn]')
