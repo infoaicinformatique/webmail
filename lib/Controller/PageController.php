@@ -18,6 +18,7 @@ use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\App\IAppManager;
+use OCP\IConfig;
 use OCP\IGroupManager;
 use OCP\IRequest;
 use OCP\IUserSession;
@@ -38,6 +39,7 @@ class PageController extends Controller {
 		private TrustedImagesService $trustedImages,
 		private MatrixService $matrix,
 		private LoggerInterface $logger,
+		private IConfig $config,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -89,6 +91,8 @@ class PageController extends Controller {
 			'maxAttachments' => $this->servers->getMaxAttachmentsBytes(),
 			// folders whose messages show their remote images at once (the user's choice)
 			'imageFolders' => $user !== null ? $this->trustedImages->folders($user->getUID()) : null,
+			// « Thème » of the webmail: as Nextcloud, light or dark (the user's choice)
+			'theme' => $user !== null ? $this->config->getUserValue($user->getUID(), Application::APP_ID, PreferencesController::THEME, '') : '',
 		]);
 
 		// The message body is rendered in a sandboxed srcdoc iframe which

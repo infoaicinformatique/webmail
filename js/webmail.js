@@ -7060,8 +7060,25 @@
 				toast(_('Affichage enregistré'))
 			},
 		}, DENSITIES.map(([v, label]) => h('option', { value: v, selected: v === density() }, label())))
+		const themeSelect = h('select', {
+			name: 'theme',
+			onchange: async () => {
+				const before = root.dataset.wmTheme || ''
+				applyTheme(themeSelect.value)
+				try {
+					await api('/preferences/theme', { method: 'POST', body: { theme: themeSelect.value } })
+					toast(themeSelect.value === 'dark' ? _('Mode sombre activé') : (themeSelect.value === 'light' ? _('Mode clair activé') : _('Thème de Nextcloud')))
+				} catch (e) {
+					applyTheme(before)
+					themeSelect.value = before
+					toast(e.message, true)
+				}
+			},
+		}, THEMES.map(([v, label]) => h('option', { value: v, selected: v === (root.dataset.wmTheme || '') }, label())))
 		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-display-settings' },
 			h('legend', {}, _('Affichage')),
+			h('label', { class: 'wm-field' }, h('span', {}, '🌓 ' + _('Thème')), themeSelect),
+			h('p', { class: 'wm-muted' }, _('« Comme Nextcloud » suit le thème choisi dans vos paramètres personnels de Nextcloud (ou celui de l\'appareil). Le texte des messages garde sa page blanche, comme l\'expéditeur l\'a mis en forme.')),
 			h('label', { class: 'wm-field' }, h('span', {}, _('Liste des messages')), densitySelect),
 			h('p', { class: 'wm-muted' }, _('Plus compact, plus de messages tiennent à l\'écran.'))))
 		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-send-settings' },
@@ -7386,6 +7403,30 @@
 		try { v = localStorage.getItem('webmail.density') } catch (e) { /* default */ }
 		return DENSITIES.some(([d]) => d === v) ? v : 'comfortable'
 	}
+	/**
+	 * « Thème »: as Nextcloud (the user's theme of Nextcloud, or that of the device), light or
+	 * dark, with Nextcloud's own colours (its themes are in the page: the body says which applies).
+	 * The text of a message keeps its white page, as the sender made it.
+	 */
+	const THEMES = [['', () => _('Comme Nextcloud')], ['light', () => _('Clair')], ['dark', () => _('Sombre')]]
+	let nextcloudTheme = null
+	function applyTheme(theme) {
+		const body = document.body
+		if (nextcloudTheme === null) {
+			// what Nextcloud set, to go back to it
+			nextcloudTheme = [...body.attributes].filter((a) => a.name.startsWith('data-theme')).map((a) => [a.name, a.value])
+		}
+		;[...body.attributes].filter((a) => a.name.startsWith('data-theme')).forEach((a) => body.removeAttribute(a.name))
+		if (theme === 'dark' || theme === 'light') {
+			body.setAttribute('data-theme-' + theme, '')
+			body.setAttribute('data-themes', theme)
+		} else {
+			nextcloudTheme.forEach(([n, v]) => body.setAttribute(n, v))
+		}
+		document.documentElement.style.colorScheme = theme || ''
+		if (root) root.dataset.wmTheme = theme || ''
+	}
+
 	function applyDensity() {
 		if (!root) return
 		DENSITIES.forEach(([d]) => root.classList.toggle('wm-density-' + d, d === density()))
@@ -7393,6 +7434,7 @@
 
 	async function init() {
 		root = document.getElementById('webmail-app')
+		if (root && root.dataset.wmTheme) applyTheme(root.dataset.wmTheme)
 		if (!root) return
 		// back from « Se connecter avec Nextcloud » (the chat): in its window, the webmail that opened it is told
 		const ssoReturn = new URLSearchParams(window.location.search)
