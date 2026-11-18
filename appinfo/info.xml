@@ -61,6 +61,7 @@
 		<job>OCA\Webmail\BackgroundJob\ReplyLaterJob</job>
 		<job>OCA\Webmail\BackgroundJob\DigestJob</job>
 		<job>OCA\Webmail\BackgroundJob\CleanupJob</job>
+		<job>OCA\Webmail\BackgroundJob\RecurringJob</job>
 	</background-jobs>
 	<settings>
 		<admin>OCA\Webmail\Settings\Admin</admin>

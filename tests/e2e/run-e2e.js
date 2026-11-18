@@ -5824,6 +5824,80 @@ async function main() {
 		}
 	})
 
+	await step('recurring sending: a new message repeated each week, sent by the background job; send now, change, pause, delete', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		const accountId = await page.evaluate(async () => (await (await fetch('/apps/webmail/api/accounts', { headers: { requesttoken: OC.requestToken } })).json()).find((a) => a.email === 'user@societe-a.fr').id)
+		const key = 'recurring_' + accountId
+		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\RecurringJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
+		assert(jobId, 'background job registered')
+		const sentCount = async (subject) => {
+			await page.click('.wm-folder:has-text("Éléments envoyés")')
+			await page.click('.wm-list button[title="Actualiser"]')
+			await page.waitForSelector('.wm-messages')
+			return page.$$eval('.wm-messages .wm-message-subject', (els, s) => els.filter((e) => e.textContent === s).length, subject)
+		}
+		try {
+			await page.click('.wm-folder >> nth=0')
+			await page.click('.wm-compose-btn')
+			await page.fill('input[name=to]', 'equipe@client-recurrent.fr')
+			await page.fill('input[name=subject]', 'Rapport hebdo')
+			await page.fill('.wm-editor', 'Bonjour, voici le rapport de la semaine.')
+			await page.check('.wm-compose input[name=repeat]')
+			await page.selectOption('.wm-compose select[name=repeatFreq]', 'weekly')
+			await page.selectOption('.wm-compose select[name=repeatWeekday]', '1')
+			await page.fill('.wm-compose input[name=repeatTime]', '09:00')
+			assert.strictEqual((await page.textContent('.wm-compose button[type=submit]')).trim(), 'Programmer les envois')
+			await shot('129-recurring-compose')
+			await page.click('.wm-compose button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Envoi récurrent enregistré : prochain envoi le lundi")')
+			// its list
+			await page.click('.wm-recurring-link')
+			const item = '.wm-recurring-item:has(.wm-recurring-subject:text-is("Rapport hebdo"))'
+			await page.waitForSelector(item)
+			assert.match(await page.textContent(item), /à equipe@client-recurrent\.fr.*chaque lundi à 09:00.*prochain envoi : lundi/)
+			// « Envoyer maintenant »: once, the schedule unchanged
+			await page.click(item + ' .wm-recurring-send')
+			await page.waitForSelector('.wm-toast:has-text("Envoyé maintenant")')
+			assert.strictEqual(await sentCount('Rapport hebdo'), 1)
+			// its time come: sent by the background job, then the next one a week later
+			const list = JSON.parse(occ('user:setting admin webmail ' + key))
+			list[0].next = new Date(Date.now() - 60000).toISOString().replace(/\.\d+Z$/, 'Z')
+			occ('user:setting admin webmail ' + key + " '" + JSON.stringify(list) + "'")
+			occ('background-job:execute ' + jobId + ' --force-execute')
+			assert.strictEqual(await sentCount('Rapport hebdo'), 2)
+			const after = JSON.parse(occ('user:setting admin webmail ' + key))[0]
+			assert.ok(new Date(after.next) > new Date(Date.now() + 86400000) && after.sent === 1, JSON.stringify(after))
+			// pause, resume
+			await page.click('.wm-recurring-link')
+			await page.click(item + ' .wm-recurring-pause')
+			await page.waitForSelector(item + ':has-text("en pause")')
+			await page.click(item + ' .wm-recurring-pause')
+			await page.waitForSelector(item + ':has-text("prochain envoi")')
+			// change: the form again, with what it had
+			await page.click(item + ' .wm-recurring-edit')
+			await page.waitForSelector('.wm-compose input[name=repeat]:checked')
+			assert.strictEqual(await page.inputValue('.wm-compose input[name=subject]'), 'Rapport hebdo')
+			assert.ok((await page.textContent('.wm-editor')).includes('voici le rapport de la semaine'))
+			await page.fill('.wm-compose input[name=subject]', 'Rapport mensuel')
+			await page.selectOption('.wm-compose select[name=repeatFreq]', 'monthly')
+			await page.selectOption('.wm-compose select[name=repeatMonthday]', '5')
+			await page.click('.wm-compose button[type=submit]')
+			await page.waitForSelector('.wm-toast:has-text("Envoi récurrent enregistré")')
+			await page.click('.wm-recurring-link')
+			const monthly = '.wm-recurring-item:has(.wm-recurring-subject:text-is("Rapport mensuel"))'
+			await page.waitForSelector(monthly + ':has-text("le 5 de chaque mois à 09:00")')
+			assert.strictEqual(await page.$$eval('.wm-recurring-item', (e) => e.length), 1, 'changed, not added')
+			// delete: the link goes with the last one
+			page.once('dialog', (d) => d.accept())
+			await page.click(monthly + ' .wm-recurring-delete')
+			await page.waitForSelector('.wm-toast:has-text("Envoi récurrent supprimé")')
+			await page.waitForSelector('.wm-recurring-link', { state: 'detached' })
+		} finally {
+			try { occ('user:setting --delete admin webmail ' + key) } catch (e) { /* none */ }
+			await page.click('.wm-folder >> nth=0')
+		}
+	})
+
 	await step('newsletters: the lists of the inbox by sender; one left and its messages deleted, another kept', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)
