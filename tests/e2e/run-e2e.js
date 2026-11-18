@@ -5970,6 +5970,63 @@ async function main() {
 		await page.click('.wm-news-dialog .wm-modal-close')
 	})
 
+	await step('« Prioritaires / Autres »: newsletters and automatic senders in « Autres »; a sender classified for good', async () => {
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		await fake('/_test/deliver', { subject: 'Lettre focus', sender: ['Magazine Focus', 'redaction@magazine-focus.example'], body: '<p>Les nouvelles.</p>', isRead: false, listUnsubscribe: '<https://magazine-focus.example/stop>' })
+		await fake('/_test/deliver', { subject: 'Alerte focus', sender: ['Service Focus', 'no-reply@service-focus.example'], body: '<p>Connexion.</p>', isRead: false })
+		await fake('/_test/deliver', { subject: 'Question focus', sender: ['Paul Focus', 'paul@focus-test.example'], body: '<p>Une question.</p>', isRead: false })
+		// off by default: one list
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-message:has-text("Lettre focus")')
+		assert.strictEqual(await page.$('.wm-focus-tabs'), null)
+		await page.click('text=Comptes et signature')
+		await page.check('.wm-display-settings input[name=focusInbox]')
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-focus-tab.active[data-tab=priority]')
+		await page.waitForSelector('.wm-message:has-text("Question focus")')
+		assert.strictEqual(await page.$('.wm-message:has-text("Lettre focus")'), null)
+		assert.strictEqual(await page.$('.wm-message:has-text("Alerte focus")'), null)
+		// the unread ones of each tab counted
+		await page.waitForSelector('.wm-focus-tab[data-tab=other] .wm-focus-count')
+		assert.ok(Number(await page.textContent('.wm-focus-tab[data-tab=other] .wm-focus-count')) >= 2)
+		await shot('130-focus-priority')
+		await page.click('.wm-focus-tab[data-tab=other]')
+		await page.waitForSelector('.wm-message:has-text("Lettre focus")')
+		await page.waitForSelector('.wm-message:has-text("Alerte focus")')
+		assert.strictEqual(await page.$('.wm-message:has-text("Question focus")'), null)
+		await shot('131-focus-other')
+		// « Toujours dans Prioritaires »: moved, and still after a reload
+		await page.click('.wm-message:has-text("Alerte focus")', { button: 'right' })
+		await page.click('.wm-ctx-focus:has-text("Toujours dans Prioritaires")')
+		await page.waitForSelector('.wm-toast:has-text("Service Focus resteront dans « Prioritaires »")')
+		await page.waitForSelector('.wm-message:has-text("Alerte focus")', { state: 'detached' })
+		await page.reload()
+		await page.waitForSelector('.wm-focus-tab.active[data-tab=priority]')
+		await page.waitForSelector('.wm-message:has-text("Alerte focus")')
+		// « Toujours dans Autres » for a person
+		await page.click('.wm-message:has-text("Question focus")', { button: 'right' })
+		await page.click('.wm-ctx-focus:has-text("Toujours dans Autres")')
+		await page.waitForSelector('.wm-message:has-text("Question focus")', { state: 'detached' })
+		await page.click('.wm-focus-tab[data-tab=other]')
+		await page.waitForSelector('.wm-message:has-text("Question focus")')
+		// a search shows everything; then off again
+		await page.click('text=Comptes et signature')
+		await page.uncheck('.wm-display-settings input[name=focusInbox]')
+		await page.click('.wm-folder >> nth=0')
+		await page.waitForSelector('.wm-message:has-text("Lettre focus")')
+		await page.waitForSelector('.wm-message:has-text("Question focus")')
+		assert.strictEqual(await page.$('.wm-focus-tabs'), null)
+	})
+
 	await step('sort: « Trier par » subject, size, then back to the date (kept after a reload)', async () => {
 		const subjects = () => page.$$eval('.wm-messages .wm-message-subject', (els) => els.map((e) => e.textContent))
 		await page.click('.wm-folder >> nth=0')

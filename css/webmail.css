@@ -1377,3 +1377,17 @@ button.wm-delete-action:not(.wm-menu-item):not(.wm-folder-menu-item) { border: 1
 .wm-recurring-when { margin: 2px 0 6px; }
 .wm-recurring-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .wm-recurring-actions button { margin: 0; }
+
+/* « Prioritaires / Autres » */
+.wm-focus-tabs { display: flex; gap: 4px; padding: 4px 12px 0; border-bottom: 1px solid var(--color-border); }
+.wm-focus-tab {
+	background: none !important; border: none !important; border-bottom: 2px solid transparent !important; border-radius: 0 !important;
+	padding: 6px 12px !important; margin: 0 !important; min-height: 0 !important; color: var(--color-text-maxcontrast); font-weight: normal;
+}
+.wm-focus-tab.active { color: var(--color-main-text); border-bottom-color: var(--color-primary-element) !important; font-weight: bold; }
+.wm-focus-count {
+	display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 10px; font-size: 11px; line-height: 16px;
+	background: var(--color-primary-element); color: var(--color-primary-element-text, #fff);
+}
+.wm-focus-empty { padding: 16px 12px; }
+.wm-focus-setting { display: flex; align-items: center; gap: 6px; margin: 8px 0 4px; }

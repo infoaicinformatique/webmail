@@ -10,6 +10,7 @@ use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\AttachmentKinds;
 use OCA\Webmail\Service\AttachmentZip;
+use OCA\Webmail\Service\Focus;
 use OCA\Webmail\Service\FollowUpService;
 use OCA\Webmail\Service\HtmlSanitizer;
 use OCA\Webmail\Service\MessagePdf;
@@ -21,6 +22,7 @@ use OCA\Webmail\Service\SharedFolderService;
 use OCA\Webmail\Service\SnoozeService;
 use OCA\Webmail\Service\TrustedImagesService;
 use OCA\Webmail\Service\UnsubscribeService;
+use OCA\Webmail\Service\VipList;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
@@ -170,17 +172,28 @@ class MailController extends Controller {
 	#[NoAdminRequired]
 	public function messages(int $id, string $folder = 'inbox', int $offset = 0, int $limit = 50, string $q = '',
 		bool $unread = false, bool $attachments = false, bool $flagged = false, string $since = '', string $scope = 'folder',
-		string $sort = 'date', string $order = 'desc'): Response {
+		string $sort = 'date', string $order = 'desc', bool $focus = false): Response {
 		$limit = max(1, min(100, $limit));
 		$desc = $order !== 'asc';
-		return $this->handle(function () use ($id, $folder, $offset, $limit, $q, $unread, $attachments, $flagged, $since, $scope, $sort, $desc) {
+		return $this->handle(function () use ($id, $folder, $offset, $limit, $q, $unread, $attachments, $flagged, $since, $scope, $sort, $desc, $focus) {
 			$client = $this->client($id);
 			$query = EwsClient::searchQuery($q, ['unread' => $unread, 'attachments' => $attachments, 'flagged' => $flagged, 'since' => $since]);
 			if ($scope === 'all' && $query !== null) {
 				$ids = $this->folderIds($id, $client);
 				return $client->searchFolders($ids, max(0, $offset), $limit, $query, $sort, $desc);
 			}
-			return $client->findItems($folder, max(0, $offset), $limit, $query, $sort, $desc);
+			// « Prioritaires / Autres »: each message of the inbox says in which tab it goes
+			$focus = $focus && $query === null;
+			$found = $client->findItems($folder, max(0, $offset), $limit, $query, $sort, $desc, $focus);
+			if ($focus) {
+				$vip = VipList::decode($this->config->getUserValue((string)$this->userId, Application::APP_ID, VipList::PREF . $id, '[]'));
+				$o = Focus::decode($this->config->getUserValue((string)$this->userId, Application::APP_ID, Focus::PREF . $id, '{}'));
+				foreach ($found['items'] as &$item) {
+					$item['other'] = Focus::isOther($item, $vip, $o);
+				}
+				unset($item);
+			}
+			return $found;
 		});
 	}
 

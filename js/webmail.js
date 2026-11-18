@@ -44,6 +44,9 @@
 		showFilters: false,
 		// the list grouped by conversation (one row each), remembered
 		grouped: (() => { try { return localStorage.getItem('webmail.grouped') === '1' } catch (e) { return false } })(),
+		// « Prioritaires / Autres » in the inbox (opt-in), and the tab shown
+		focus: (() => { try { return localStorage.getItem('webmail.focus') === '1' } catch (e) { return false } })(),
+		focusTab: 'priority',
 		/** « Trier par »: « date-desc » (the default), « from-asc », « subject-asc », « size-desc »… */
 		sort: (() => { try { return localStorage.getItem('webmail.sort') || 'date-desc' } catch (e) { return 'date-desc' } })(),
 		selectedId: null,
@@ -83,7 +86,7 @@
 	let listSeq = 0
 	let listObserver = null
 
-	const listKey = () => state.accountId + '|' + state.folderId + (grouped() ? '|conversations' : (state.sort !== 'date-desc' ? '|' + state.sort : ''))
+	const listKey = () => state.accountId + '|' + state.folderId + (grouped() ? '|conversations' : (state.sort !== 'date-desc' ? '|' + state.sort : '')) + (focusOn() ? '|focus' : '')
 	/** The orders offered: value, label. */
 	const SORTS = [
 		['date-desc', () => _('Plus récents')],
@@ -193,6 +196,7 @@
 			flagged: f.flagged ? 1 : undefined,
 			since: since ? since.getFullYear() + '-' + String(since.getMonth() + 1).padStart(2, '0') + '-' + String(since.getDate()).padStart(2, '0') : undefined,
 			scope: f.all && isSearching() ? 'all' : undefined,
+			focus: focusOn() ? 1 : undefined,
 			sort: state.sort !== 'date-desc' && sortField()[0] !== 'date' ? sortField()[0] : undefined,
 			order: state.sort === 'date-desc' ? undefined : sortField()[1],
 		}
@@ -567,6 +571,12 @@
 		return state.folders.find((f) => f.id === state.folderId || f.role === state.folderId)
 			|| sharedFolders().find((f) => f.id === state.folderId)
 	}
+
+	/** the inbox in two tabs « Prioritaires / Autres »: chosen, and this list can be */
+	function focusOn() {
+		return state.focus && !state.unified && !grouped() && !isSearching() && folderRole() === 'inbox'
+	}
+	const inOther = (m) => !!m.other
 
 	function folderRole() {
 		const f = currentFolder()
@@ -1850,6 +1860,11 @@
 		if (!many && m.from && m.from.email && !m.from.email.startsWith('/')) {
 			parts.push(item('wm-ctx-sender', '👤', _('Tous ses messages…'), null, () => senderMessages(m)))
 			parts.push(item('wm-ctx-vip', '⭐', isVip(m.from) ? _('Retirer des prioritaires') : _('Expéditeur prioritaire'), null, () => toggleVip(m.from)))
+			if (focusOn()) {
+				parts.push(inOther(m)
+					? item('wm-ctx-focus', '📥', _('Toujours dans Prioritaires'), null, () => setFocus(m.from, 'priority'))
+					: item('wm-ctx-focus', '📰', _('Toujours dans Autres'), null, () => setFocus(m.from, 'other')))
+			}
 		}
 		if (!notJunkable) {
 			parts.push(role === 'junkemail'
@@ -2727,6 +2742,41 @@
 			if ([...state.vip].join('|') !== before && state.module === 'mail') { renderNav(); if (listEl && !state.loadingList) renderList(false) }
 		} catch (e) { /* no star */ }
 	}
+	/** The two tabs over the inbox, with the unread messages of each (of those loaded). */
+	function focusTabs() {
+		const unread = { priority: 0, other: 0 }
+		state.messages.forEach((m) => { if (!m.isRead) unread[inOther(m) && !state.pinned.has(m.id) ? 'other' : 'priority']++ })
+		const tab = (key, label) => h('button', {
+			type: 'button',
+			role: 'tab',
+			class: 'wm-focus-tab' + (state.focusTab === key ? ' active' : ''),
+			dataset: { tab: key },
+			'aria-selected': state.focusTab === key ? 'true' : 'false',
+			onclick: () => {
+				if (state.focusTab === key) return
+				state.focusTab = key
+				state.checked.clear()
+				renderList(false, 0)
+			},
+		}, label, unread[key] ? h('span', { class: 'wm-focus-count' }, String(unread[key])) : null)
+		return h('div', { class: 'wm-focus-tabs', role: 'tablist', 'aria-label': _('Boîte de réception triée') },
+			tab('priority', _('Prioritaires')), tab('other', _('Autres')))
+	}
+
+	/** A sender always in one tab (where: priority, other). */
+	async function setFocus(from, where) {
+		const email = String(from.email || '').toLowerCase()
+		try {
+			await api('/accounts/' + state.accountId + '/focus', { method: 'POST', body: { email, where } })
+			state.messages.forEach((m) => { if (m.from && String(m.from.email || '').toLowerCase() === email) m.other = where === 'other' })
+			toast(where === 'other'
+				? _('Les messages de {name} iront dans « Autres »', { name: from.name || from.email })
+				: _('Les messages de {name} resteront dans « Prioritaires »', { name: from.name || from.email }))
+			if (listEl && !state.loadingList) renderList(false)
+			saveListCache()
+		} catch (e) { toast(e.message, true) }
+	}
+
 	async function toggleVip(from) {
 		const vip = !isVip(from)
 		try {
@@ -3087,7 +3137,18 @@
 			.filter((p) => p.folderId === state.folderId)
 			.map((p) => state.messages.find((x) => x.id === p.id) || p)
 		const pinnedIds = new Set(pinnedHere.map((p) => p.id))
-		const rows = pinnedHere.concat(state.messages.filter((m) => !pinnedIds.has(m.id)))
+		let rows = pinnedHere.concat(state.messages.filter((m) => !pinnedIds.has(m.id)))
+		// « Prioritaires / Autres »: the tab's messages only (the pinned ones are in « Prioritaires »)
+		const focus = focusOn()
+		if (focus) {
+			listEl.appendChild(focusTabs())
+			rows = rows.filter((m) => (state.focusTab === 'other') === (inOther(m) && !pinnedIds.has(m.id)))
+			if (!rows.length && !state.hasMore && !state.loadingList) {
+				listEl.appendChild(h('p', { class: 'wm-empty wm-focus-empty' }, state.focusTab === 'other'
+					? _('Aucune lettre d\'information ni notification automatique.')
+					: _('Rien de prioritaire : les autres messages sont dans « Autres ».')))
+			}
+		}
 		// the heading of each row (null: none), then how many under each: shown on a folded heading
 		const headings = []
 		rows.forEach((m) => {
@@ -7400,6 +7461,17 @@
 			h('label', { class: 'wm-field' }, h('span', {}, '🌓 ' + _('Thème')), themeSelect),
 			h('p', { class: 'wm-muted' }, _('« Comme Nextcloud » suit le thème choisi dans vos paramètres personnels de Nextcloud (ou celui de l\'appareil). Le texte des messages garde sa page blanche, comme l\'expéditeur l\'a mis en forme.')),
 			h('label', { class: 'wm-field' }, h('span', {}, _('Liste des messages')), densitySelect),
+			h('label', { class: 'wm-quiet-check wm-focus-setting' }, h('input', {
+				name: 'focusInbox',
+				type: 'checkbox',
+				checked: state.focus,
+				onchange: (e) => {
+					state.focus = e.target.checked
+					state.focusTab = 'priority'
+					try { localStorage.setItem('webmail.focus', state.focus ? '1' : '0') } catch (ex) { /* not kept */ }
+				},
+			}), ' ' + _('Boîte de réception triée : « Prioritaires » et « Autres »')),
+			h('p', { class: 'wm-muted' }, _('Les lettres d\'information, listes de diffusion et notifications automatiques vont dans l\'onglet « Autres ». Un clic droit sur un message le classe pour de bon.')),
 			h('p', { class: 'wm-muted' }, _('Plus compact, plus de messages tiennent à l\'écran.'))))
 		wrap.appendChild(h('fieldset', { class: 'wm-account-card wm-send-settings' },
 			h('legend', {}, _('Envoi')),
