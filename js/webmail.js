@@ -1174,6 +1174,11 @@
 		}, h('span', { class: 'wm-folder-name' }, '🔁 ' + _('Envois récurrents')))) : null,
 		h('li', {}, h('a', {
 			href: '#',
+			class: 'wm-stats-link',
+			onclick: (e) => { e.preventDefault(); openStats() },
+		}, h('span', { class: 'wm-folder-name' }, '📊 ' + _('Statistiques')))),
+		h('li', {}, h('a', {
+			href: '#',
 			class: 'wm-noreply-link',
 			onclick: (e) => { e.preventDefault(); openNoReply() },
 		}, h('span', { class: 'wm-folder-name' }, '📭 ' + _('Sans réponse')))),
@@ -2826,6 +2831,94 @@
 	 * conversation), to send a reminder or to let go.
 	 */
 	let noReplySeq = 0
+	let statsSeq = 0
+	let statsDays = 30
+	/** a time in minutes, as people say it: « 25 min », « 3 h 10 », « 2 j » */
+	function spanLabel(min) {
+		if (min < 60) return _('{count} min', { count: Math.max(1, min) })
+		if (min < 48 * 60) {
+			const hh = Math.floor(min / 60)
+			const mm = min % 60
+			return mm ? _('{hours} h {minutes}', { hours: hh, minutes: String(mm).padStart(2, '0') }) : _('{hours} h', { hours: hh })
+		}
+		return _('{count} j', { count: Math.round(min / 1440) })
+	}
+
+	/** « Statistiques »: what the mailbox received and sent over a period. */
+	async function openStats(fresh) {
+		const mine = ++statsSeq
+		const accountId = state.accountId
+		state.vipView = false
+		state.today = false
+		state.filesView = false
+		renderNav()
+		setView('detail')
+		clear(detailEl)
+		let days = statsDays
+		const period = h('select', { name: 'statsDays', 'aria-label': _('Période'), onchange: (e) => { statsDays = days = parseInt(e.target.value, 10); load() } })
+		const body = h('div', { class: 'wm-stats-body' })
+		const box = h('div', { class: 'wm-files wm-stats-view' },
+			h('div', { class: 'wm-today-head' },
+				h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Retour'), onclick: () => setView('list') }, '←'),
+				h('h2', {}, '📊 ' + _('Statistiques'))),
+			h('div', { class: 'wm-stats-period' },
+				h('label', {}, _('Période'), ' ', period),
+				h('button', { type: 'button', class: 'wm-small wm-stats-refresh', title: _('Recompter'), onclick: () => load(true) }, '⟳ ' + _('Recompter'))),
+			body)
+		detailEl.appendChild(box)
+		const tile = (cls, value, label) => h('div', { class: 'wm-stats-tile ' + cls }, h('strong', {}, value), h('span', {}, label))
+		const bars = (cls, values, labels, title) => {
+			const max = Math.max(1, ...values)
+			return h('div', { class: 'wm-stats-bars ' + cls, role: 'img', 'aria-label': title },
+				values.map((v, i) => h('div', { class: 'wm-stats-bar', title: labels[i] + ' : ' + v },
+					h('span', { class: 'wm-stats-fill', style: 'height:' + Math.round(v / max * 100) + '%' }),
+					h('small', {}, labels[i].length <= 3 || i % Math.ceil(values.length / 12) === 0 ? labels[i] : ''))))
+		}
+		const load = async (again) => {
+			clear(body)
+			body.appendChild(h('div', { class: 'wm-loading' }, _('Comptage des messages…')))
+			let r
+			try { r = await api('/accounts/' + accountId + '/stats', { query: { days, fresh: again || fresh ? 1 : undefined } }) } catch (e) { clear(body); body.appendChild(h('p', { class: 'wm-form-error' }, e.message)); return }
+			fresh = false
+			if (mine !== statsSeq || !box.isConnected) return
+			if (!period.options.length) {
+				r.choices.forEach((n) => period.appendChild(h('option', { value: String(n), selected: n === r.days }, _('{count} derniers jours', { count: n }))))
+			}
+			clear(body)
+			body.appendChild(h('div', { class: 'wm-stats-tiles' },
+				tile('wm-stats-received', String(r.received), _('reçus')),
+				tile('wm-stats-sent', String(r.sent), _('envoyés')),
+				tile('wm-stats-unread', String(r.unread), _('encore non lus')),
+				tile('wm-stats-reply', r.replyMedian === null ? '—' : spanLabel(r.replyMedian),
+					r.replied ? _('pour répondre (médiane de {count} réponses)', { count: r.replied }) : _('pour répondre'))))
+			const dayLabel = (d) => new Date(d + 'T12:00:00').toLocaleDateString(locale(), r.days > 7 ? { day: 'numeric', month: 'numeric' } : { weekday: 'short' })
+			body.appendChild(h('h3', {}, _('Messages reçus par jour')))
+			body.appendChild(bars('wm-stats-days', r.perDay.map((d) => d.received), r.perDay.map((d) => dayLabel(d.date)), _('Messages reçus par jour')))
+			body.appendChild(h('h3', {}, _('Messages envoyés par jour')))
+			body.appendChild(bars('wm-stats-days wm-stats-out', r.perDay.map((d) => d.sent), r.perDay.map((d) => dayLabel(d.date)), _('Messages envoyés par jour')))
+			const weekNames = [1, 2, 3, 4, 5, 6, 7].map((n) => new Date(2024, 0, n).toLocaleDateString(locale(), { weekday: 'short' }))
+			body.appendChild(h('div', { class: 'wm-stats-pair' },
+				h('div', {}, h('h3', {}, _('À quelle heure arrivent-ils ?')),
+					bars('wm-stats-hours', r.hours, r.hours.map((v, i) => String(i)), _('À quelle heure arrivent-ils ?'))),
+				h('div', {}, h('h3', {}, _('Quel jour ?')),
+					bars('wm-stats-weekdays', r.weekdays, weekNames, _('Quel jour ?')))))
+			const people = (list, cls, empty, row) => list.length
+				? h('ol', { class: 'wm-stats-people ' + cls }, list.map(row))
+				: h('p', { class: 'wm-muted' }, empty)
+			body.appendChild(h('div', { class: 'wm-stats-pair' },
+				h('div', {}, h('h3', {}, _('Qui vous écrit le plus')),
+					people(r.topSenders, 'wm-stats-senders', _('Aucun message reçu sur la période.'), (p) => h('li', { dataset: { email: p.email } },
+						h('a', { href: '#', onclick: (e) => { e.preventDefault(); senderMessages({ from: { name: p.name, email: p.email }, folderId: (state.folders.find((f) => f.role === 'inbox') || {}).id }) } }, p.name || p.email),
+						h('span', { class: 'wm-muted' }, String(p.count))))),
+				h('div', {}, h('h3', {}, _('À qui vous écrivez le plus')),
+					people(r.topRecipients, 'wm-stats-recipients', _('Aucun message envoyé sur la période.'), (p) => h('li', {},
+						h('span', {}, p.name), h('span', { class: 'wm-muted' }, String(p.count)))))))
+			body.appendChild(h('p', { class: 'wm-muted' }, r.partial
+				? _('Comptés sur les {count} derniers messages de la boîte de réception et des éléments envoyés : la période en compte davantage.', { count: 1500 })
+				: _('Messages de la boîte de réception et des éléments envoyés (ceux déjà rangés ailleurs ne sont pas comptés). Le délai de réponse va du dernier message reçu de la conversation à votre réponse.')))
+		}
+		load()
+	}
 	function noReplyDays() {
 		let v = 3
 		try { v = parseInt(localStorage.getItem('webmail.noReplyDays') || '3', 10) } catch (e) { /* default */ }

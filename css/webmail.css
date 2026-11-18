@@ -1391,3 +1391,22 @@ button.wm-delete-action:not(.wm-menu-item):not(.wm-folder-menu-item) { border: 1
 }
 .wm-focus-empty { padding: 16px 12px; }
 .wm-focus-setting { display: flex; align-items: center; gap: 6px; margin: 8px 0 4px; }
+
+/* « Statistiques » */
+.wm-stats-period { display: flex; align-items: center; gap: 12px; margin: 8px 0; flex-wrap: wrap; }
+.wm-stats-period select { width: auto; }
+.wm-stats-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 12px 0; }
+.wm-stats-tile { border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 10px); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.wm-stats-tile strong { font-size: 24px; line-height: 1.2; }
+.wm-stats-tile span { color: var(--color-text-maxcontrast); font-size: 13px; }
+.wm-stats-view h3 { font-size: 15px; margin: 16px 0 6px; }
+.wm-stats-bars { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding-bottom: 18px; border-bottom: 1px solid var(--color-border); }
+.wm-stats-bar { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; position: relative; }
+.wm-stats-fill { display: block; background: var(--color-primary-element); border-radius: 3px 3px 0 0; min-height: 1px; }
+.wm-stats-out .wm-stats-fill { background: var(--color-success, #2d7b41); }
+.wm-stats-bar small { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--color-text-maxcontrast); white-space: nowrap; }
+.wm-stats-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.wm-stats-people { margin: 0; padding-left: 22px; }
+.wm-stats-people li { padding: 2px 0; }
+.wm-stats-people li .wm-muted { float: right; margin-left: 8px; }
+.wm-stats-people li::marker { color: var(--color-text-maxcontrast); }

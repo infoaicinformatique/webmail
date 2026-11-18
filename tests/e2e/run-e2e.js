@@ -6028,6 +6028,44 @@ async function main() {
 		assert.ok(!(await page.$('.wm-focus-tabs')), '.wm-focus-tabs')
 	})
 
+	await step('« Statistiques »: received, sent, by day and hour, who writes the most; another period', async () => {
+		const fake = (path, body) => new Promise((resolve, reject) => {
+			const data = JSON.stringify(body)
+			const req = require('https').request({ host: 'localhost', port: 8443, path, method: 'POST', rejectUnauthorized: false, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+				let out = ''
+				res.on('data', (c) => { out += c })
+				res.on('end', () => resolve(JSON.parse(out || '{}')))
+			})
+			req.on('error', reject)
+			req.end(data)
+		})
+		for (const n of [1, 2, 3, 4]) {
+			await fake('/_test/deliver', { subject: 'Chiffres ' + n, sender: ['Zoé Stats', 'zoe@stats-test.example'], body: '<p>Bonjour.</p>', minutesAgo: n * 30 })
+		}
+		await page.click('.wm-folder >> nth=0')
+		await page.click('.wm-stats-link')
+		await page.waitForSelector('.wm-stats-view .wm-stats-tile.wm-stats-received strong')
+		const received = Number(await page.textContent('.wm-stats-received strong'))
+		assert.ok(received >= 4, 'received: ' + received)
+		assert.ok(Number(await page.textContent('.wm-stats-sent strong')) >= 0)
+		assert.strictEqual(await page.inputValue('select[name=statsDays]'), '30')
+		assert.strictEqual(await page.$$eval('.wm-stats-days:not(.wm-stats-out) .wm-stats-bar', (b) => b.length), 30)
+		assert.strictEqual(await page.$$eval('.wm-stats-hours .wm-stats-bar', (b) => b.length), 24)
+		assert.strictEqual(await page.$$eval('.wm-stats-weekdays .wm-stats-bar', (b) => b.length), 7)
+		// the sender of four messages among those who write the most
+		await page.waitForSelector('.wm-stats-senders li[data-email="zoe@stats-test.example"]:has-text("4")')
+		await shot('132-stats')
+		// a week: 7 days
+		await page.selectOption('select[name=statsDays]', '7')
+		await page.waitForFunction(() => document.querySelectorAll('.wm-stats-days:not(.wm-stats-out) .wm-stats-bar').length === 7)
+		assert.ok(Number(await page.textContent('.wm-stats-received strong')) <= received)
+		// a sender: their messages
+		await page.click('.wm-stats-senders li[data-email="zoe@stats-test.example"] a')
+		await page.waitForSelector('.wm-sender-dialog h2:has-text("zoe@stats-test.example")')
+		await page.click('.wm-sender-dialog .wm-modal-close')
+		await page.click('.wm-folder >> nth=0')
+	})
+
 	await step('sort: « Trier par » subject, size, then back to the date (kept after a reload)', async () => {
 		const subjects = () => page.$$eval('.wm-messages .wm-message-subject', (els) => els.map((e) => e.textContent))
 		await page.click('.wm-folder >> nth=0')
