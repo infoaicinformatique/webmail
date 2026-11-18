@@ -1390,6 +1390,45 @@ class EwsClient {
 	}
 
 	/**
+	 * The messages of a folder received since a date (UTC, included), newest first, read page
+	 * by page until an older one: for « Sauvegarde dans Fichiers ».
+	 * @return list<array{id: string, subject: string, date: string}>
+	 * @throws MailException
+	 */
+	public function itemsSince(string $folderId, string $since, int $max = 1000): array {
+		$from = new \DateTimeImmutable($since);
+		$out = [];
+		for ($offset = 0; $offset < $max; $offset += 200) {
+			$xp = $this->request(
+				'<m:FindItem Traversal="Shallow">'
+				. '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties><t:FieldURI FieldURI="item:Subject"/>'
+				. '<t:FieldURI FieldURI="item:DateTimeReceived"/></t:AdditionalProperties></m:ItemShape>'
+				. '<m:IndexedPageItemView MaxEntriesReturned="' . min(200, $max - $offset) . '" Offset="' . $offset . '" BasePoint="Beginning"/>'
+				. self::sortOrderXml('date', true)
+				. '<m:ParentFolderIds>' . $this->folderIdXml($folderId) . '</m:ParentFolderIds>'
+				. '</m:FindItem>'
+			);
+			$older = false;
+			foreach ($xp->query('//m:RootFolder/t:Items/*') as $node) {
+				$date = (string)$this->text($xp, 't:DateTimeReceived', $node);
+				if ($date === '') {
+					continue;
+				}
+				if (new \DateTimeImmutable($date) < $from) {
+					$older = true;
+					break;
+				}
+				$out[] = ['id' => (string)$this->attr($xp, 't:ItemId', 'Id', $node), 'subject' => trim((string)$this->text($xp, 't:Subject', $node)), 'date' => $date];
+			}
+			$root = $xp->query('//m:RootFolder')->item(0);
+			if ($older || !$root instanceof \DOMElement || $root->getAttribute('IncludesLastItemInRange') !== 'false') {
+				break;
+			}
+		}
+		return $out;
+	}
+
+	/**
 	 * Several messages as .eml in one request; those gone are left out.
 	 * @param list<string> $ids
 	 * @return list<array{id: string, subject: string, date: ?string, content: string}>
