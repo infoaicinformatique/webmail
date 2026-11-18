@@ -1155,6 +1155,11 @@
 			class: 'wm-news-link',
 			onclick: (e) => { e.preventDefault(); openNewsletters() },
 		}, h('span', { class: 'wm-folder-name' }, '📰 ' + _('Lettres d\'information')))),
+		(state.recurring || []).length ? h('li', {}, h('a', {
+			href: '#',
+			class: 'wm-recurring-link',
+			onclick: (e) => { e.preventDefault(); openRecurring() },
+		}, h('span', { class: 'wm-folder-name' }, '🔁 ' + _('Envois récurrents')))) : null,
 		h('li', {}, h('a', {
 			href: '#',
 			class: 'wm-noreply-link',
@@ -1957,7 +1962,80 @@
 		loadShared(id)
 		loadCategories(id)
 		loadCleanup(id)
+		loadRecurring(id)
 		await Promise.all([loadFolders(), loadMessages(true)])
+	}
+
+	/** « Envois récurrents » of the account shown (the link in the side pane when there are some). */
+	async function loadRecurring(accountId) {
+		try {
+			const r = await api('/accounts/' + accountId + '/recurring')
+			if (accountId !== state.accountId) return
+			state.recurring = r.items || []
+			if (state.module === 'mail') renderNav()
+		} catch (e) { /* not shown */ }
+	}
+
+	/** How often, in words: « chaque lundi à 09:00 », « le 5 de chaque mois à 08:30 »… */
+	function recurringLabel(e) {
+		const day = new Date(2024, 0, e.weekday).toLocaleDateString(locale(), { weekday: 'long' })
+		return {
+			daily: _('chaque jour à {time}', { time: e.time }),
+			weekdays: _('chaque jour ouvré à {time}', { time: e.time }),
+			weekly: _('chaque {day} à {time}', { day, time: e.time }),
+			monthly: _('le {day} de chaque mois à {time}', { day: e.monthday, time: e.time }),
+		}[e.freq] || ''
+	}
+
+	/** « Envois récurrents »: each one, its next sending; change, pause, send now, delete. */
+	async function openRecurring() {
+		const accountId = state.accountId
+		state.vipView = false
+		state.today = false
+		state.filesView = false
+		renderNav()
+		setView('detail')
+		clear(detailEl)
+		const list = h('div', { class: 'wm-recurring-body' })
+		const box = h('div', { class: 'wm-files wm-recurring-view' },
+			h('div', { class: 'wm-today-head' },
+				h('button', { type: 'button', class: 'wm-back wm-mobile-only', 'aria-label': _('Retour'), onclick: () => setView('list') }, '←'),
+				h('h2', {}, '🔁 ' + _('Envois récurrents'))),
+			list)
+		detailEl.appendChild(box)
+		const call = async (path, body, done) => {
+			try {
+				const r = await api('/accounts/' + accountId + '/recurring' + path, { method: 'POST', body })
+				if (r.items) state.recurring = r.items
+				if (done) toast(done)
+				render()
+				renderNav()
+			} catch (ex) { toast(ex.message, true) }
+		}
+		const render = () => {
+			clear(list)
+			list.appendChild(h('p', { class: 'wm-muted' }, _('Pour en créer un : un nouveau message, puis « Répéter l\'envoi » sous le texte.')))
+			if (!state.recurring.length) { list.appendChild(h('p', { class: 'wm-empty' }, _('Aucun envoi récurrent'))); return }
+			list.appendChild(h('ul', { class: 'wm-recurring-list' }, state.recurring.map((e) => h('li', { class: 'wm-recurring-item' + (e.paused ? ' paused' : ''), dataset: { id: e.id } },
+				h('div', { class: 'wm-recurring-head' },
+					h('strong', { class: 'wm-recurring-subject' }, e.subject || _('(sans objet)')),
+					h('span', { class: 'wm-muted' }, ' · ' + _('à {who}', { who: e.to.concat(e.cc).join(', ') }))),
+				h('div', { class: 'wm-recurring-when' }, '🔁 ' + recurringLabel(e) + ' · ' + (e.paused
+					? _('en pause')
+					: _('prochain envoi : {date}', { date: new Date(e.next).toLocaleString(locale(), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) }))),
+				e.error ? h('div', { class: 'wm-form-error' }, _('Dernier essai en échec : {error}', { error: e.error })) : null,
+				h('div', { class: 'wm-recurring-actions' },
+					h('button', { type: 'button', class: 'wm-small wm-recurring-edit', onclick: () => openCompose('new', null, {
+						to: e.to.join(', '), cc: e.cc.join(', '), bcc: e.bcc.join(', '), subject: e.subject, bodyHtml: e.bodyHtml, recurring: e,
+					}) }, '✏️ ' + _('Modifier')),
+					h('button', { type: 'button', class: 'wm-small wm-recurring-pause', onclick: () => call('/pause', { rid: e.id, paused: !e.paused }, e.paused ? _('Envois repris') : _('Envois en pause')) },
+						e.paused ? '▶ ' + _('Reprendre') : '⏸ ' + _('Mettre en pause')),
+					h('button', { type: 'button', class: 'wm-small wm-recurring-send', onclick: () => call('/send', { rid: e.id }, _('Envoyé maintenant (la suite ne change pas)')) }, '✉ ' + _('Envoyer maintenant')),
+					h('button', { type: 'button', class: 'wm-small wm-danger wm-delete-action wm-recurring-delete', onclick: () => {
+						if (window.confirm(_('Supprimer l\'envoi récurrent « {subject} » ?', { subject: e.subject }))) call('/delete', { rid: e.id }, _('Envoi récurrent supprimé'))
+					} }, _('Supprimer')))))))
+		}
+		render()
 	}
 
 	/** « Nettoyage automatique »: folder id -> days, for the account shown. */
@@ -6320,6 +6398,8 @@
 				if (prefill.bcc) bcc.value = prefill.bcc
 				if (prefill.subject) subject.value = prefill.subject
 				if (prefill.body) body.innerHTML = '<div>' + textHtml(prefill.body) + '</div>' + body.innerHTML
+				// an « Envoi récurrent » opened to be changed: its text as it was (signature included)
+				if (prefill.bodyHtml !== undefined) body.innerHTML = prefill.bodyHtml
 			}
 		}
 
@@ -6769,11 +6849,57 @@
 		const followUp = h('input', { type: 'checkbox', name: 'followUp' })
 		const followDays = h('select', { name: 'followUpDays', 'aria-label': _('Délai de réponse') },
 			[1, 2, 3, 5, 7, 14].map((n) => h('option', { value: String(n), selected: n === 3 }, n > 1 ? _('{count} jours', { count: n }) : _('{count} jour', { count: n }))))
+		// « Envoi récurrent »: a new message sent again at regular times (no attachment kept)
+		const editing = prefill && prefill.recurring ? prefill.recurring : null
+		const repeat = mode === 'new' && !isDraft ? h('input', { type: 'checkbox', name: 'repeat', checked: !!editing }) : null
+		const freq = h('select', { name: 'repeatFreq' }, [['daily', _('chaque jour')], ['weekdays', _('chaque jour ouvré (lundi à vendredi)')], ['weekly', _('chaque semaine')], ['monthly', _('chaque mois')]]
+			.map(([v, l]) => h('option', { value: v, selected: editing ? editing.freq === v : v === 'weekly' }, l)))
+		const weekday = h('select', { name: 'repeatWeekday', 'aria-label': _('Jour de la semaine') }, [1, 2, 3, 4, 5, 6, 7].map((n) => h('option', { value: String(n), selected: n === (editing ? editing.weekday : 1) },
+			_('le {day}', { day: new Date(2024, 0, n).toLocaleDateString(locale(), { weekday: 'long' }) }))))
+		const monthday = h('select', { name: 'repeatMonthday', 'aria-label': _('Jour du mois') }, Array.from({ length: 28 }, (x, i) => i + 1).map((n) => h('option', { value: String(n), selected: n === (editing ? editing.monthday : 1) }, _('le {day}', { day: n }))))
+		const repeatTime = h('input', { type: 'time', name: 'repeatTime', value: editing ? editing.time : '09:00', 'aria-label': _('Heure') })
+		const repeatBox = h('span', { class: 'wm-repeat-options', hidden: !editing }, freq, ' ', weekday, ' ', monthday, ' ', _('à'), ' ', repeatTime)
+		const showRepeat = () => {
+			repeatBox.hidden = !repeat.checked
+			weekday.hidden = freq.value !== 'weekly'
+			monthday.hidden = freq.value !== 'monthly'
+			sendBtn.textContent = repeat.checked ? _('Programmer les envois') : (later.checked ? _('Programmer l\'envoi') : _('Envoyer'))
+		}
 		const sendOptions = h('div', { class: 'wm-send-options' },
 			h('label', { class: 'wm-radio' }, followUp, ' ' + _('Me rappeler si pas de réponse sous')), followDays,
 			h('label', { class: 'wm-radio' }, receipt, ' ' + _('Demander un accusé de lecture')),
-			h('label', { class: 'wm-radio' }, later, ' ' + _('Envoyer plus tard')), laterAt)
+			h('label', { class: 'wm-radio' }, later, ' ' + _('Envoyer plus tard')), laterAt,
+			repeat ? h('label', { class: 'wm-radio' }, repeat, ' 🔁 ' + _('Répéter l\'envoi')) : null, repeat ? repeatBox : null)
 		const sendBtn = h('button', { type: 'submit', class: 'primary', title: _('Envoyer (Ctrl+Entrée)') }, _('Envoyer'))
+		const saveRecurring = async () => {
+			if (files.files.length || ncFiles.length || savedAtts.length) {
+				toast(_('Un envoi récurrent ne garde pas les pièces jointes : mettez plutôt un lien Nextcloud'), true)
+				return
+			}
+			sendBtn.disabled = true
+			const accountId = state.accountId
+			try {
+				const r = await api('/accounts/' + accountId + '/recurring', { method: 'POST', body: {
+					rid: editing ? editing.id : '', to: to.value, cc: cc.value, bcc: bcc.value, subject: subject.value, bodyHtml: body.innerHTML,
+					freq: freq.value, weekday: Number(weekday.value), monthday: Number(monthday.value), time: repeatTime.value || '09:00', tz: TZ,
+				} })
+				if (accountId === state.accountId) state.recurring = r.items
+				// the draft saved meanwhile is not needed: the text is kept with the sending
+				if (draftId) { try { await api('/accounts/' + accountId + '/draft/delete', { method: 'POST', body: { draftId } }) } catch (e) { /* stays in « Brouillons » */ } }
+				dirty = false
+				leave()
+				renderNav()
+				toast(_('Envoi récurrent enregistré : prochain envoi le {date}', { date: new Date(r.item.next).toLocaleString(locale(), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) }))
+			} catch (err) {
+				sendBtn.disabled = false
+				toast(err.message, true)
+			}
+		}
+		if (repeat) {
+			repeat.addEventListener('change', showRepeat)
+			freq.addEventListener('change', showRepeat)
+			showRepeat()
+		}
 		// « Envoyer et archiver »: an answer or a forward, the message answered then put away
 		let archiveAfter = false
 		const archiveBtn = original && !isDraft && canArchiveMessage(original)
@@ -6790,6 +6916,10 @@
 				clearTimeout(draftTimer)
 				await persisting
 				await saving
+				if (repeat && repeat.checked) {
+					await saveRecurring()
+					return
+				}
 				const fd = new FormData()
 				Object.entries(fields()).forEach(([k, v]) => fd.append(k, v))
 				// a new message saved with its files: the draft itself is sent
