@@ -1410,3 +1410,16 @@ button.wm-delete-action:not(.wm-menu-item):not(.wm-folder-menu-item) { border: 1
 .wm-stats-people li { padding: 2px 0; }
 .wm-stats-people li .wm-muted { float: right; margin-left: 8px; }
 .wm-stats-people li::marker { color: var(--color-text-maxcontrast); }
+
+/* « Copie cachée automatique » */
+.wm-autobcc-note { font-size: 13px; margin: -2px 0 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.wm-autobcc-note[hidden] { display: none; }
+.wm-autobcc-list { color: var(--color-main-text); }
+.wm-autobcc-skip { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; }
+.wm-autobcc-rules { list-style: none; padding: 0; margin: 6px 0; }
+.wm-autobcc-rules li { padding: 3px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.wm-autobcc-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.wm-autobcc-add input[type=email] { flex: 1 1 200px; }
+.wm-autobcc-add input[name=autoBccDomains] { flex: 1 1 160px; }
+.wm-autobcc-add input[hidden] { display: none; }
+.wm-autobcc-add select { width: auto; }

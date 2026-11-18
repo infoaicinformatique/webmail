@@ -6066,6 +6066,69 @@ async function main() {
 		await page.click('.wm-folder >> nth=0')
 	})
 
+	await step('« Copie cachée automatique »: always, or to some domains; said when writing; left out for one message', async () => {
+		await page.click('text=Comptes et signature')
+		const card = '.wm-autobcc-settings'
+		await page.waitForSelector(card + ' .wm-autobcc-rules li:text-is("Aucune")')
+		// a wrong address refused
+		await page.fill(card + ' input[name=autoBccEmail]', 'pas-une-adresse')
+		await page.click(card + ' .wm-autobcc-add button[type=submit]')
+		await page.waitForSelector(card + ' .wm-autobcc-rules li:text-is("Aucune")')
+		await page.fill(card + ' input[name=autoBccEmail]', 'suivi@crm-test.example')
+		await page.click(card + ' .wm-autobcc-add button[type=submit]')
+		await page.waitForSelector('.wm-toast:has-text("Copie cachée automatique ajoutée")')
+		await page.waitForSelector(card + ' li[data-email="suivi@crm-test.example"]:has-text("tous les messages")')
+		await page.fill(card + ' input[name=autoBccEmail]', 'archive@cabinet-test.example')
+		await page.selectOption(card + ' select[name=autoBccWhen]', 'domains')
+		await page.fill(card + ' input[name=autoBccDomains]', 'client-test.example')
+		await page.click(card + ' .wm-autobcc-add button[type=submit]')
+		await page.waitForSelector(card + ' li[data-email="archive@cabinet-test.example"]:has-text("quand j\'écris à client-test.example")')
+		await shot('133-autobcc-settings')
+		// writing: the addresses that will be added, as the recipients are typed
+		await page.click('.wm-tab[data-module="mail"]')
+		for (let i = 0; i < 5 && !(await page.$('.wm-compose input[name=to]')); i++) {
+			await page.click('.wm-compose-btn')
+			await page.waitForSelector('.wm-compose input[name=to]', { timeout: 3000 }).catch(() => {})
+		}
+		await page.waitForSelector('.wm-autobcc-note:not([hidden]) .wm-autobcc-list:text-is("suivi@crm-test.example")')
+		await page.fill('.wm-compose input[name=to]', 'marc@client-test.example')
+		await page.waitForSelector('.wm-autobcc-list:text-is("suivi@crm-test.example, archive@cabinet-test.example")')
+		await page.fill('.wm-compose input[name=subject]', 'Copie cachée auto 1')
+		await page.click('.wm-editor')
+		await page.keyboard.type('Bonjour Marc.')
+		await shot('134-autobcc-compose')
+		await submitCompose()
+		// the copy sent: both in Bcc
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.click('.wm-message:has-text("Copie cachée auto 1")')
+		await page.waitForSelector('.wm-header-line:has-text("Cci"):has-text("suivi@crm-test.example"):has-text("archive@cabinet-test.example")')
+		// left out for one message
+		for (let i = 0; i < 5 && !(await page.$('.wm-compose input[name=to]')); i++) {
+			await page.click('.wm-compose-btn')
+			await page.waitForSelector('.wm-compose input[name=to]', { timeout: 3000 }).catch(() => {})
+		}
+		await page.fill('.wm-compose input[name=to]', 'lea@autre-test.example')
+		await page.waitForSelector('.wm-autobcc-list:text-is("suivi@crm-test.example")')
+		await page.check('.wm-compose input[name=noAutoBcc]')
+		await page.fill('.wm-compose input[name=subject]', 'Copie cachée auto 2')
+		await page.click('.wm-editor')
+		await page.keyboard.type('Bonjour Léa.')
+		await submitCompose()
+		await page.click('.wm-folder:has-text("Éléments envoyés")')
+		await page.click('.wm-message:has-text("Copie cachée auto 2")')
+		await page.waitForSelector('.wm-header-line:has-text("lea@autre-test.example")')
+		assert.strictEqual(await page.$('.wm-header-line:has-text("Cci")'), null)
+		// removed
+		await page.click('text=Comptes et signature')
+		for (const email of ['suivi@crm-test.example', 'archive@cabinet-test.example']) {
+			await page.click(card + ' li[data-email="' + email + '"] .wm-autobcc-remove')
+			await page.waitForSelector(card + ' li[data-email="' + email + '"]', { state: 'detached' })
+		}
+		await page.waitForSelector(card + ' .wm-autobcc-rules li:text-is("Aucune")')
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-folder >> nth=0')
+	})
+
 	await step('sort: « Trier par » subject, size, then back to the date (kept after a reload)', async () => {
 		const subjects = () => page.$$eval('.wm-messages .wm-message-subject', (els) => els.map((e) => e.textContent))
 		await page.click('.wm-folder >> nth=0')

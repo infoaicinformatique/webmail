@@ -2082,5 +2082,20 @@
 	"À qui vous écrivez le plus": "Who you write to the most",
 	"Aucun message envoyé sur la période.": "No messages sent in this period.",
 	"Comptés sur les {count} derniers messages de la boîte de réception et des éléments envoyés : la période en compte davantage.": "Counted over the last {count} messages of the inbox and sent items: the period holds more.",
-	"Messages de la boîte de réception et des éléments envoyés (ceux déjà rangés ailleurs ne sont pas comptés). Le délai de réponse va du dernier message reçu de la conversation à votre réponse.": "Messages of the inbox and sent items (those already filed elsewhere are not counted). The reply time runs from the last message received in the conversation to your reply."
+	"Messages de la boîte de réception et des éléments envoyés (ceux déjà rangés ailleurs ne sont pas comptés). Le délai de réponse va du dernier message reçu de la conversation à votre réponse.": "Messages of the inbox and sent items (those already filed elsewhere are not counted). The reply time runs from the last message received in the conversation to your reply.",
+	"Copie cachée automatique": "Automatic Bcc",
+	"Une adresse ajoutée en copie cachée (Cci) des messages que vous envoyez : un logiciel de suivi client, une boîte d'archive, un collègue… Toujours, seulement quand vous écrivez hors de votre domaine, ou à certains domaines. Dans la fenêtre d'écriture, elle peut être retirée pour un message.": "An address added in blind copy (Bcc) of the messages you send: a CRM, an archive mailbox, a colleague… Always, only when you write outside your domain, or to some domains. In the compose window, it can be left out for one message.",
+	"quand un destinataire est hors de mon domaine": "when a recipient is outside my domain",
+	"quand j'écris à {domains}": "when I write to {domains}",
+	"tous les messages": "all messages",
+	"Copie cachée retirée": "Bcc removed",
+	"Adresse en copie cachée": "Bcc address",
+	"Domaines": "Domains",
+	"Quand": "When",
+	"seulement à certains domaines…": "only to some domains…",
+	"Copie cachée automatique ajoutée": "Automatic Bcc added",
+	"Copie cachée automatique :": "Automatic Bcc:",
+	"pas pour ce message": "not for this message",
+	"Trop de copies cachées automatiques (%s au plus)": "Too many automatic Bcc addresses (%s at most)",
+	"Indiquez au moins un domaine, par exemple client.fr": "Enter at least one domain, for example client.fr"
 }

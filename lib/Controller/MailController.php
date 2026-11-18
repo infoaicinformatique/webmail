@@ -9,6 +9,7 @@ use OCA\Webmail\Ews\EwsClient;
 use OCA\Webmail\Exception\MailException;
 use OCA\Webmail\Service\AccountService;
 use OCA\Webmail\Service\AttachmentKinds;
+use OCA\Webmail\Service\AutoBcc;
 use OCA\Webmail\Service\AttachmentZip;
 use OCA\Webmail\Service\Focus;
 use OCA\Webmail\Service\FollowUpService;
@@ -973,6 +974,12 @@ class MailController extends Controller {
 			$client = $this->accounts->getClient($account);
 
 			$m = $this->composed(true);
+			// « Copie cachée automatique » (unless left out for this message)
+			$skip = $this->request->getParam('noAutoBcc', '');
+			if (!($skip === true || $skip === '1' || $skip === 'true')) {
+				$rules = AutoBcc::decode($this->config->getUserValue((string)$this->userId, Application::APP_ID, AutoBcc::PREF . $id, '[]'));
+				$m['bcc'] = array_merge($m['bcc'], AutoBcc::extra($rules, $account->getEmail(), $m['to'], $m['cc'], $m['bcc']));
+			}
 			$attachments = $this->collectAttachments();
 			// images pasted in the text: inline attachments (cid:)
 			$inline = HtmlSanitizer::extractInlineImages($m['html']);
