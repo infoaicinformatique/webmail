@@ -31,10 +31,10 @@
 .wm-update-release-notes .wm-update-heading { display: block; margin-top: 6px; }
 .wm-update-release a.external { display: inline-block; margin-top: 4px; }
 /* « Supprimer » a domain: a red trash can, as in the webmail */
-#webmail-admin .wm-remove.icon-delete { background-image: none; color: var(--color-error-text, var(--color-error, #c9190b)); }
+#webmail-admin .wm-remove.icon-delete { background-image: none; color: var(--color-element-error, var(--color-error, #c9190b)); }
 #webmail-admin .wm-remove.icon-delete::before {
 	content: ''; display: inline-block; width: 18px; height: 18px; vertical-align: middle; background-color: currentColor;
 	-webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M9 2h6l1 2h5v2.5H3V4h5l1-2zM5 8h14l-1.2 14H6.2L5 8zm4 3v8h2v-8H9zm4 0v8h2v-8h-2z'/%3E%3C/svg%3E") center / contain no-repeat;
 	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M9 2h6l1 2h5v2.5H3V4h5l1-2zM5 8h14l-1.2 14H6.2L5 8zm4 3v8h2v-8H9zm4 0v8h2v-8h-2z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
-#webmail-admin .wm-remove.icon-delete:hover { background-color: var(--color-error, #e9322d); color: #fff; }
+#webmail-admin .wm-remove.icon-delete:hover { background-color: var(--color-element-error, var(--color-error, #e9322d)); color: #fff; }
