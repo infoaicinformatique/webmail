@@ -1444,6 +1444,9 @@
 		const now = h('button', { type: 'button', class: 'wm-digest-now' }, _('Recevoir le résumé maintenant'))
 		const card = h('fieldset', { class: 'wm-account-card wm-notify-settings' },
 			h('legend', {}, _('Notifications')),
+			// the new messages and the reminders, account by account (filled with the accounts)
+			h('div', { class: 'wm-notify-accounts' }),
+			h('p', { class: 'wm-muted' }, _('Pour ne plus recevoir de notification à chaque nouveau message (sur le téléphone aussi), décochez la cloche. Les messages de vos expéditeurs prioritaires (⭐) restent signalés.')),
 			h('label', { class: 'wm-field' }, h('span', {}, '☀️ ' + _('Résumé du matin')), digest),
 			h('p', { class: 'wm-muted' }, _('Chaque jour à l\'heure choisie, une seule notification de Nextcloud résume votre journée, tous comptes réunis : les réunions, les messages non lus (dont les importants et ceux des expéditeurs prioritaires), les réponses à faire, les tâches et les messages à suivre. Un clic ouvre « Aujourd\'hui ».')),
 			h('p', {}, now))
@@ -7171,7 +7174,8 @@
 			}
 		}, (e) => toast(e.message, true))
 
-		wrap.appendChild(notifySettingsCard())
+		const notifyCard = notifySettingsCard()
+		wrap.appendChild(notifyCard)
 
 		state.accounts.forEach((a) => {
 			const name = h('input', { type: 'text', value: a.displayName === a.email ? '' : a.displayName, placeholder: _('Nom affiché (facultatif)') })
@@ -7188,7 +7192,8 @@
 					renderNav()
 				} catch (e) { toast(e.message, true) } finally { save.disabled = false }
 			})
-			// saved at once: Nextcloud's notifications (the bell, the phone app) for each new message
+			// saved at once: Nextcloud's notifications (the bell, the phone app) for each new message,
+			// in « Notifications » (one line per account)
 			const bell = h('input', {
 				type: 'checkbox',
 				name: 'bell',
@@ -7218,6 +7223,10 @@
 					}
 				},
 			})
+			notifyCard.querySelector('.wm-notify-accounts').appendChild(h('div', { class: 'wm-notify-account', dataset: { email: a.email } },
+				state.accounts.length > 1 ? h('div', { class: 'wm-notify-account-name' }, a.email) : null,
+				h('label', { class: 'wm-radio wm-bell' }, bell, ' 🔔 ' + _('Signaler chaque nouveau message dans les notifications Nextcloud, même webmail fermé (et sur le téléphone avec l\'application Nextcloud)')),
+				h('label', { class: 'wm-radio wm-bell' }, remind, ' ⏰ ' + _('Rappels des rendez-vous de l\'agenda dans les notifications Nextcloud (au moment choisi pour chaque rendez-vous : 15 minutes avant…)'))))
 			const del = h('button', { class: 'wm-danger' }, _('Retirer ce compte'))
 			del.addEventListener('click', async () => {
 				if (!window.confirm(_('Retirer le compte {email} du webmail ? (aucun e-mail n\'est supprimé)', { email: a.email }))) return
@@ -7240,8 +7249,6 @@
 				h('div', { class: 'wm-field wm-field-top' }, h('span', {}, _('Signature')), sig.el),
 				otherSignaturesEditor(a, sig),
 				sharedMailboxesEditor(a),
-				h('label', { class: 'wm-radio wm-bell' }, bell, ' 🔔 ' + _('Signaler chaque nouveau message dans les notifications Nextcloud, même webmail fermé (et sur le téléphone avec l\'application Nextcloud)')),
-				h('label', { class: 'wm-radio wm-bell' }, remind, ' ⏰ ' + _('Rappels des rendez-vous de l\'agenda dans les notifications Nextcloud (au moment choisi pour chaque rendez-vous : 15 minutes avant…)')),
 				h('div', { class: 'wm-compose-actions' }, save,
 					h('button', { type: 'button', class: 'wm-oof-btn', onclick: () => openOof(a) }, '🌴 ' + _('Réponse automatique')),
 					h('button', { type: 'button', class: 'wm-autofile-btn', title: _('Les pièces jointes de certains expéditeurs rangées d\'elles-mêmes dans un dossier de Fichiers'), onclick: () => openAutoFile(a) }, '📂 ' + _('Pièces jointes → Fichiers')),

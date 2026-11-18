@@ -1988,5 +1988,6 @@
 	"Thème de Nextcloud": "Nextcloud's theme",
 	"Thème": "Theme",
 	"Thème inconnu": "Unknown theme",
-	"« Comme Nextcloud » suit le thème choisi dans vos paramètres personnels de Nextcloud (ou celui de l'appareil). Le texte des messages garde sa page blanche, comme l'expéditeur l'a mis en forme.": "“As Nextcloud” follows the theme chosen in your Nextcloud personal settings (or the device's). The text of messages keeps its white page, as the sender laid it out."
+	"« Comme Nextcloud » suit le thème choisi dans vos paramètres personnels de Nextcloud (ou celui de l'appareil). Le texte des messages garde sa page blanche, comme l'expéditeur l'a mis en forme.": "“As Nextcloud” follows the theme chosen in your Nextcloud personal settings (or the device's). The text of messages keeps its white page, as the sender laid it out.",
+	"Pour ne plus recevoir de notification à chaque nouveau message (sur le téléphone aussi), décochez la cloche. Les messages de vos expéditeurs prioritaires (⭐) restent signalés.": "To stop getting a notification for each new message (on the phone too), untick the bell. The messages of your priority senders (⭐) are still told."
 }
