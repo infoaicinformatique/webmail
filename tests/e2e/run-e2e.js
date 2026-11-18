@@ -5833,11 +5833,16 @@ async function main() {
 		const key = 'recurring_' + accountId
 		const jobId = (occ("background-job:list --class='OCA\\Webmail\\BackgroundJob\\RecurringJob'").match(/\|\s*(\d+)\s*\|\s*OCA/) || [])[1]
 		assert(jobId, 'background job registered')
-		const sentCount = async (subject) => {
+		// (the list refreshed until it shows them: Exchange and the page take their time)
+		const sentCount = async (subject, expected) => {
 			await page.click('.wm-folder:has-text("Éléments envoyés")')
 			await page.click('.wm-list button[title="Actualiser"]')
-			await page.waitForSelector('.wm-messages')
-			return page.$$eval('.wm-messages .wm-message-subject', (els, s) => els.filter((e) => e.textContent === s).length, subject)
+			const count = () => page.$$eval('.wm-messages .wm-message-subject', (els, s) => els.filter((e) => e.textContent === s).length, subject)
+			for (let i = 0; i < 10 && await count() !== expected; i++) {
+				await page.waitForTimeout(1000)
+				await page.click('.wm-list button[title="Actualiser"]')
+			}
+			return count()
 		}
 		try {
 			await page.click('.wm-folder >> nth=0')
@@ -5861,13 +5866,13 @@ async function main() {
 			// « Envoyer maintenant »: once, the schedule unchanged
 			await page.click(item + ' .wm-recurring-send')
 			await page.waitForSelector('.wm-toast:has-text("Envoyé maintenant")')
-			assert.strictEqual(await sentCount('Rapport hebdo'), 1)
+			assert.strictEqual(await sentCount('Rapport hebdo', 1), 1)
 			// its time come: sent by the background job, then the next one a week later
 			const list = JSON.parse(occ('user:setting admin webmail ' + key))
 			list[0].next = new Date(Date.now() - 60000).toISOString().replace(/\.\d+Z$/, 'Z')
 			occ('user:setting admin webmail ' + key + " '" + JSON.stringify(list) + "'")
 			occ('background-job:execute ' + jobId + ' --force-execute')
-			assert.strictEqual(await sentCount('Rapport hebdo'), 2)
+			assert.strictEqual(await sentCount('Rapport hebdo', 2), 2)
 			const after = JSON.parse(occ('user:setting admin webmail ' + key))[0]
 			assert.ok(new Date(after.next) > new Date(Date.now() + 86400000) && after.sent === 1, JSON.stringify(after))
 			// pause, resume
