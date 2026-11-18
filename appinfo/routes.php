@@ -98,6 +98,7 @@ return [
 		['name' => 'folder_export#download', 'url' => '/api/accounts/{id}/folder/export', 'verb' => 'GET'],
 		['name' => 'folder_export#save', 'url' => '/api/accounts/{id}/folder/export', 'verb' => 'POST'],
 		['name' => 'notify_settings#index', 'url' => '/api/notify-settings', 'verb' => 'GET'],
+		['name' => 'preferences#theme', 'url' => '/api/preferences/theme', 'verb' => 'POST'],
 		['name' => 'notify_settings#save', 'url' => '/api/notify-settings', 'verb' => 'POST'],
 		['name' => 'notify_settings#digestNow', 'url' => '/api/notify-settings/digest-now', 'verb' => 'POST'],
 		['name' => 'newsletter#keep', 'url' => '/api/accounts/{id}/newsletters/keep', 'verb' => 'POST'],

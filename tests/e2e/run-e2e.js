@@ -5613,6 +5613,53 @@ async function main() {
 		})
 	})
 
+	await step('display: « Supprimer » in red with a red trash can; the dark theme chosen in the settings, kept, then Nextcloud\'s again', async () => {
+		const occ = (args) => execSync(OCC + ' ' + args, { encoding: 'utf8' })
+		await page.click('.wm-tab[data-module="mail"]')
+		await page.click('.wm-folder >> nth=0')
+		await page.click('.wm-messages .wm-message >> nth=0')
+		await page.waitForSelector('.wm-message-toolbar .wm-delete-btn')
+		// red, and its trash can drawn in the same red (not a grey emoji)
+		const del = await page.$eval('.wm-message-toolbar .wm-delete-btn', (b) => {
+			const st = getComputedStyle(b)
+			const icon = getComputedStyle(b, '::before')
+			return { color: st.color, icon: icon.backgroundColor, mask: icon.webkitMaskImage || icon.maskImage, text: b.textContent }
+		})
+		const [r, g, bl] = del.color.match(/\d+/g).map(Number)
+		assert.ok(r > 150 && g < 100 && bl < 100, 'red: ' + del.color)
+		assert.strictEqual(del.icon, del.color)
+		assert.ok(/svg/.test(del.mask), del.mask)
+		assert.ok(!del.text.includes('🗑'), del.text)
+		// the dark theme
+		await page.click('text=Comptes et signature')
+		await page.waitForSelector('.wm-display-settings select[name=theme]')
+		assert.strictEqual(await page.inputValue('.wm-display-settings select[name=theme]'), '')
+		const before = await page.evaluate(() => [...document.body.attributes].filter((a) => a.name.startsWith('data-theme')).map((a) => a.name + '=' + a.value).sort())
+		await page.selectOption('.wm-display-settings select[name=theme]', 'dark')
+		await page.waitForSelector('.wm-toast:has-text("Mode sombre activé")')
+		const bg = () => page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--color-main-background').trim())
+		assert.strictEqual(await bg(), '#171717')
+		assert.strictEqual(occ('user:setting admin webmail theme').trim(), 'dark')
+		// kept: dark from the start
+		await page.reload()
+		await page.waitForSelector('.wm-message')
+		assert.ok(await page.evaluate(() => document.body.hasAttribute('data-theme-dark')))
+		assert.strictEqual(await bg(), '#171717')
+		await page.click('.wm-messages .wm-message >> nth=0')
+		await page.waitForSelector('.wm-body-frame')
+		await shot('125-dark-theme')
+		// light, then as Nextcloud again: its own attributes back
+		await page.click('text=Comptes et signature')
+		await page.selectOption('.wm-display-settings select[name=theme]', 'light')
+		await page.waitForSelector('.wm-toast:has-text("Mode clair activé")')
+		assert.ok(await page.evaluate(() => document.body.hasAttribute('data-theme-light') && !document.body.hasAttribute('data-theme-dark')))
+		await page.selectOption('.wm-display-settings select[name=theme]', '')
+		await page.waitForSelector('.wm-toast:has-text("Thème de Nextcloud")')
+		assert.deepStrictEqual(await page.evaluate(() => [...document.body.attributes].filter((a) => a.name.startsWith('data-theme')).map((a) => a.name + '=' + a.value).sort()), before)
+		assert.throws(() => occ('user:setting admin webmail theme'), 'nothing kept for « Comme Nextcloud »')
+		await page.click('.wm-folder >> nth=0')
+	})
+
 	await step('newsletters: the lists of the inbox by sender; one left and its messages deleted, another kept', async () => {
 		const fake = (path, body) => new Promise((resolve, reject) => {
 			const data = JSON.stringify(body)

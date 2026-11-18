@@ -1979,5 +1979,14 @@
 	"(les {max} plus récents)": "(the {max} most recent)",
 	"Un fichier .zip avec un fichier .eml par message, que lisent Outlook, Thunderbird et la plupart des logiciels de messagerie. Les messages restent dans le dossier, et ses sous-dossiers ne sont pas inclus.": "A .zip file with one .eml file per message, which Outlook, Thunderbird and most mail programs read. The messages stay in the folder, and its subfolders are not included.",
 	"Les {max} messages les plus récents seulement.": "Only the {max} most recent messages.",
-	"Ce dossier est vide": "This folder is empty"
+	"Ce dossier est vide": "This folder is empty",
+	"Comme Nextcloud": "As Nextcloud",
+	"Clair": "Light",
+	"Sombre": "Dark",
+	"Mode sombre activé": "Dark mode on",
+	"Mode clair activé": "Light mode on",
+	"Thème de Nextcloud": "Nextcloud's theme",
+	"Thème": "Theme",
+	"Thème inconnu": "Unknown theme",
+	"« Comme Nextcloud » suit le thème choisi dans vos paramètres personnels de Nextcloud (ou celui de l'appareil). Le texte des messages garde sa page blanche, comme l'expéditeur l'a mis en forme.": "“As Nextcloud” follows the theme chosen in your Nextcloud personal settings (or the device's). The text of messages keeps its white page, as the sender laid it out."
 }
