@@ -1187,6 +1187,7 @@
 				},
 				h('span', { class: 'wm-folder-icon', 'aria-hidden': 'true' }, '★'),
 				h('span', { class: 'wm-folder-name' }, f.name),
+				(state.cleanup || {})[f.id] ? h('span', { class: 'wm-cleanup-mark', title: _('Nettoyage automatique : après {count} jours', { count: state.cleanup[f.id] }) }, '🧹') : null,
 				f.unread && f.role !== 'sentitems' && f.role !== 'deleteditems' ? h('span', { class: 'wm-badge' }, String(f.unread)) : null)
 				folderDropTarget(link, f)
 				favUl.appendChild(h('li', { class: 'wm-folder-row' }, link,
@@ -1253,6 +1254,7 @@
 				},
 				h('span', { class: 'wm-folder-icon', 'aria-hidden': 'true' }, ROLE_ICON[f.role] || '📁'),
 				h('span', { class: 'wm-folder-name' }, f.name),
+				(state.cleanup || {})[f.id] ? h('span', { class: 'wm-cleanup-mark', title: _('Nettoyage automatique : après {count} jours', { count: state.cleanup[f.id] }) }, '🧹') : null,
 				f.unread && f.role !== 'sentitems' && f.role !== 'deleteditems' ? h('span', { class: 'wm-badge' }, String(f.unread)) : null)
 			folderDropTarget(link, f)
 			ul.appendChild(h('li', { class: 'wm-folder-row' }, link,
@@ -1954,7 +1956,59 @@
 		loadOof(id)
 		loadShared(id)
 		loadCategories(id)
+		loadCleanup(id)
 		await Promise.all([loadFolders(), loadMessages(true)])
+	}
+
+	/** « Nettoyage automatique »: folder id -> days, for the account shown. */
+	async function loadCleanup(accountId) {
+		try {
+			const r = await api('/accounts/' + accountId + '/cleanup')
+			if (accountId !== state.accountId) return
+			state.cleanup = r.rules || {}
+			if (state.module === 'mail') renderNav()
+		} catch (e) { /* not shown */ }
+	}
+
+	/** « Nettoyage automatique… » of a folder: the messages older than some days deleted each night. */
+	function cleanupFolder(f) {
+		const accountId = state.accountId
+		const overlay = h('div', { class: 'wm-overlay' })
+		const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey) }
+		const onKey = (e) => { if (e.key === 'Escape') close() }
+		document.addEventListener('keydown', onKey)
+		overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close() })
+		const now = (state.cleanup || {})[f.id] || 0
+		const days = h('select', { name: 'cleanupDays' }, [0, 7, 14, 30, 60, 90, 180, 365].map((n) => h('option', { value: String(n), selected: n === now },
+			n === 0 ? _('Jamais') : _('Après {count} jours', { count: n }))))
+		const permanent = f.role === 'deleteditems'
+		const title = _('Nettoyage automatique de « {name} »', { name: folderName(f.id) })
+		const save = h('button', { type: 'submit', class: 'primary' }, _('Enregistrer'))
+		overlay.appendChild(h('div', { class: 'wm-modal wm-modal-small wm-cleanup-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+			h('div', { class: 'wm-modal-header' }, h('h2', {}, '🧹 ' + title), h('button', { class: 'wm-modal-close', 'aria-label': _('Fermer'), onclick: close }, '✕')),
+			h('form', {
+				class: 'wm-cleanup-form',
+				onsubmit: async (e) => {
+					e.preventDefault()
+					save.disabled = true
+					try {
+						const r = await api('/accounts/' + accountId + '/cleanup', { method: 'POST', body: { folderId: f.id, days: Number(days.value) } })
+						if (accountId === state.accountId) state.cleanup = r.rules || {}
+						close()
+						renderNav()
+						toast(days.value === '0'
+							? _('Plus de nettoyage automatique pour « {name} »', { name: folderName(f.id) })
+							: _('« {name} » : les messages de plus de {count} jours seront supprimés chaque nuit', { name: folderName(f.id), count: days.value }))
+					} catch (ex) { save.disabled = false; toast(ex.message, true) }
+				},
+			},
+			h('label', { class: 'wm-field' }, h('span', {}, _('Supprimer les messages')), days),
+			h('p', { class: 'wm-muted' }, permanent
+				? _('Chaque nuit, les messages plus anciens sont supprimés définitivement. Les messages suivis (⚑) ou épinglés sont gardés.')
+				: _('Chaque nuit, les messages plus anciens vont dans « Éléments supprimés » (récupérables de là). Les messages suivis (⚑) ou épinglés sont gardés. Les sous-dossiers ne sont pas concernés.')),
+			h('div', { class: 'wm-form-actions' }, h('button', { type: 'button', onclick: close }, _('Annuler')), save))))
+		document.body.appendChild(overlay)
+		days.focus()
 	}
 
 	// ------------------------------------------------------------------
@@ -3526,6 +3580,7 @@
 			f.role === 'junkemail' && f.total > 0 ? item(_('Vider le courrier indésirable'), () => emptyFolder(f), true) : null,
 			item('📥 ' + _('Importer des messages (.eml)…'), () => pickEml(f)),
 			f.total > 0 ? item('📦 ' + _('Exporter (.zip)…'), () => exportFolder(f)) : null,
+			['drafts', 'outbox'].includes(f.role) ? null : item('🧹 ' + _('Nettoyage automatique…'), () => cleanupFolder(f)),
 			fixed ? null : item('✏️ ' + _('Renommer'), () => renameFolder(f)),
 			fixed ? null : item('↪ ' + _('Déplacer…'), () => moveFolder(f)),
 			fixed ? null : item(_('Supprimer'), () => deleteFolder(f), true))

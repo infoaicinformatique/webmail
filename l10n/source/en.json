@@ -2005,5 +2005,16 @@
 	"Relancer": "Send a reminder",
 	"Ignorer": "Ignore",
 	"Retiré de « Sans réponse »": "Removed from “No reply”",
-	"Bonjour,\n\nJe me permets de revenir vers vous au sujet de mon message du {date}.\n": "Hello,\n\nI am following up on my message of {date}.\n"
+	"Bonjour,\n\nJe me permets de revenir vers vous au sujet de mon message du {date}.\n": "Hello,\n\nI am following up on my message of {date}.\n",
+	"Après {count} jours": "After {count} days",
+	"Nettoyage automatique de « {name} »": "Automatic cleanup of “{name}”",
+	"Plus de nettoyage automatique pour « {name} »": "No more automatic cleanup for “{name}”",
+	"« {name} » : les messages de plus de {count} jours seront supprimés chaque nuit": "“{name}”: messages older than {count} days will be deleted each night",
+	"Supprimer les messages": "Delete messages",
+	"Chaque nuit, les messages plus anciens sont supprimés définitivement. Les messages suivis (⚑) ou épinglés sont gardés.": "Each night, older messages are deleted for good. Followed (⚑) or pinned messages are kept.",
+	"Chaque nuit, les messages plus anciens vont dans « Éléments supprimés » (récupérables de là). Les messages suivis (⚑) ou épinglés sont gardés. Les sous-dossiers ne sont pas concernés.": "Each night, older messages go to “Deleted Items” (recoverable from there). Followed (⚑) or pinned messages are kept. Subfolders are not affected.",
+	"Nettoyage automatique : après {count} jours": "Automatic cleanup: after {count} days",
+	"Nettoyage automatique…": "Automatic cleanup…",
+	"Trop de dossiers nettoyés automatiquement (%s au plus)": "Too many folders cleaned automatically (%s at most)",
+	"Durée invalide": "Invalid duration"
 }
