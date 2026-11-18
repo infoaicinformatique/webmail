@@ -5550,6 +5550,73 @@
 	}
 
 	/** « Archivage »: the read messages of the inbox to « Archives » after some months, each night. */
+	/** the « Copie cachée automatique » of each account (kept while the page is open) */
+	const autoBccCache = new Map()
+	function loadAutoBcc(accountId, again) {
+		if (!again && autoBccCache.has(accountId)) return autoBccCache.get(accountId)
+		const p = api('/accounts/' + accountId + '/auto-bcc').then((r) => r.rules)
+		autoBccCache.set(accountId, p)
+		p.catch(() => autoBccCache.delete(accountId))
+		return p
+	}
+	/** As the server does it: the addresses added in Bcc of a message (to the shown ones). */
+	function autoBccExtra(rules, me, visible, bccValue) {
+		const split = (v) => String(v || '').split(/[,;]/).map((x) => { const m = x.match(/<([^>]+)>/); return (m ? m[1] : x).trim().toLowerCase() }).filter((x) => x.includes('@'))
+		const shown = split(visible.join(','))
+		const bccs = split(bccValue)
+		const domainOf = (a) => a.slice(a.lastIndexOf('@') + 1)
+		const inDomain = (a, d) => domainOf(a) === d || domainOf(a).endsWith('.' + d)
+		const mine = me.includes('@') ? domainOf(me.toLowerCase()) : ''
+		return rules.filter((r) => !shown.includes(r.email) && !bccs.includes(r.email) && (
+			r.when === 'all'
+			|| (r.when === 'external' && mine && shown.some((a) => !inDomain(a, mine)))
+			|| (r.when === 'domains' && shown.some((a) => r.domains.some((d) => inDomain(a, d)))))).map((r) => r.email)
+	}
+
+	function autoBccSettings() {
+		const card = h('fieldset', { class: 'wm-account-card wm-autobcc-settings' },
+			h('legend', {}, '🕶 ' + _('Copie cachée automatique')),
+			h('p', { class: 'wm-muted' }, _('Une adresse ajoutée en copie cachée (Cci) des messages que vous envoyez : un logiciel de suivi client, une boîte d\'archive, un collègue… Toujours, seulement quand vous écrivez hors de votre domaine, ou à certains domaines. Dans la fenêtre d\'écriture, elle peut être retirée pour un message.')))
+		const whenLabel = (r) => r.when === 'external' ? _('quand un destinataire est hors de mon domaine')
+			: r.when === 'domains' ? _('quand j\'écris à {domains}', { domains: r.domains.join(', ') }) : _('tous les messages')
+		state.accounts.forEach((a) => {
+			const list = h('ul', { class: 'wm-autobcc-rules', dataset: { account: String(a.id) } })
+			let rules = []
+			const save = async (next, done) => {
+				try {
+					const r = await api('/accounts/' + a.id + '/auto-bcc', { method: 'POST', body: { rules: next } })
+					rules = r.rules
+					autoBccCache.set(a.id, Promise.resolve(rules))
+					show()
+					toast(done)
+					return true
+				} catch (e) { toast(e.message, true); return false }
+			}
+			const show = () => {
+				clear(list)
+				if (!rules.length) list.appendChild(h('li', { class: 'wm-muted' }, _('Aucune')))
+				rules.forEach((r) => list.appendChild(h('li', { dataset: { email: r.email } },
+					h('strong', {}, r.email), ' ', h('span', { class: 'wm-muted' }, whenLabel(r)), ' ',
+					h('button', { type: 'button', class: 'wm-small wm-danger wm-delete-action wm-autobcc-remove', onclick: () => save(rules.filter((x) => x !== r), _('Copie cachée retirée')) }, _('Retirer')))))
+			}
+			const email = h('input', { type: 'email', name: 'autoBccEmail', placeholder: _('adresse@exemple.fr'), 'aria-label': _('Adresse en copie cachée') })
+			const domains = h('input', { type: 'text', name: 'autoBccDomains', placeholder: 'client.fr, partenaire.com', 'aria-label': _('Domaines'), hidden: true })
+			const when = h('select', { name: 'autoBccWhen', 'aria-label': _('Quand'), onchange: () => { domains.hidden = when.value !== 'domains' } },
+				h('option', { value: 'all' }, _('tous les messages')),
+				h('option', { value: 'external' }, _('quand un destinataire est hors de mon domaine')),
+				h('option', { value: 'domains' }, _('seulement à certains domaines…')))
+			const add = h('form', { class: 'wm-autobcc-add', onsubmit: async (e) => {
+				e.preventDefault()
+				if (!email.value.trim()) return
+				const ok = await save(rules.concat([{ email: email.value.trim(), when: when.value, domains: domains.value }]), _('Copie cachée automatique ajoutée'))
+				if (ok) { email.value = ''; domains.value = '' }
+			} }, email, when, domains, h('button', { type: 'submit', class: 'wm-small' }, _('Ajouter')))
+			card.appendChild(h('div', { class: 'wm-autobcc-account' }, state.accounts.length > 1 ? h('h4', {}, a.email) : null, list, add))
+			loadAutoBcc(a.id).then((r) => { rules = r; show() }, (e) => toast(e.message, true))
+		})
+		return card
+	}
+
 	function archiveSettings() {
 		const card = h('fieldset', { class: 'wm-account-card wm-archive-settings' },
 			h('legend', {}, '🗄 ' + _('Archivage')),
@@ -6492,6 +6559,20 @@
 		const cc = h('input', { type: 'text', name: 'cc', placeholder: '' })
 		const bcc = h('input', { type: 'text', name: 'bcc', placeholder: '' })
 		const subject = h('input', { type: 'text', name: 'subject' })
+		// « Copie cachée automatique »: said, and can be left out for this message
+		const autoBccSkip = h('input', { type: 'checkbox', name: 'noAutoBcc' })
+		const autoBccList = h('span', { class: 'wm-autobcc-list' })
+		const autoBccNote = h('div', { class: 'wm-autobcc-note wm-muted', hidden: true },
+			'🕶 ', _('Copie cachée automatique :'), ' ', autoBccList, ' ',
+			h('label', { class: 'wm-autobcc-skip' }, autoBccSkip, ' ', _('pas pour ce message')))
+		let autoBccRules = []
+		const showAutoBcc = () => {
+			const extra = autoBccExtra(autoBccRules, (state.accounts.find((a) => a.id === state.accountId) || {}).email || '', [to.value, cc.value], bcc.value)
+			autoBccList.textContent = extra.join(', ')
+			autoBccNote.hidden = !extra.length
+		}
+		loadAutoBcc(state.accountId).then((rules) => { autoBccRules = rules; showAutoBcc() }, () => {})
+		;[to, cc, bcc].forEach((f) => f.addEventListener('input', () => { if (autoBccRules.length) showAutoBcc() }))
 		const body = h('div', {
 			class: 'wm-editor',
 			contenteditable: 'true',
@@ -7081,6 +7162,7 @@
 				// a new message saved with its files: the draft itself is sent
 				if (mode === 'new' && draftId && savedAtts.length) fd.set('mode', 'draft')
 				if (receipt.checked) fd.append('readReceipt', '1')
+				if (autoBccSkip.checked) fd.append('noAutoBcc', '1')
 				if (later.checked) {
 					const at = new Date(laterAt.value)
 					if (!laterAt.value || isNaN(at) || at <= new Date()) { toast(_('Choisissez une date et une heure d\'envoi à venir'), true); return }
@@ -7159,6 +7241,7 @@
 			: h('label', { class: 'wm-field' }, h('span', {}, _('À')), attachAutocomplete(to)),
 		h('label', { class: 'wm-field' }, h('span', {}, isResponse ? _('Ajouter en Cc') : 'Cc'), attachAutocomplete(cc)),
 		h('label', { class: 'wm-field' }, h('span', {}, _('Cci')), attachAutocomplete(bcc)),
+		autoBccNote,
 		h('label', { class: 'wm-field' }, h('span', {}, _('Objet')), subject),
 		h('div', { class: 'wm-editor-wrap' }, editorBar, body),
 		original && !isDraft ? h('div', { class: 'wm-info wm-muted' }, mode === 'forward'
@@ -7602,6 +7685,7 @@
 		loadTemplates(true).then(showTemplates, (e) => toast(e.message, true))
 		// (last: the account cards stay first)
 		wrap.appendChild(senderListsCard())
+		wrap.appendChild(autoBccSettings())
 		wrap.appendChild(archiveSettings())
 		wrap.appendChild(absenceSettings())
 		wrap.appendChild(matrixSettings())

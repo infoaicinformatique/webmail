@@ -133,8 +133,11 @@ class RecurringService {
 	}
 
 	private function send(Account $account, array $e, ?int $timeout = null): void {
+		// with the « Copie cachée automatique » of the account
+		$rules = AutoBcc::decode($this->config->getUserValue($account->getUserId(), Application::APP_ID, AutoBcc::PREF . $account->getId(), '[]'));
+		$bcc = array_merge((array)$e['bcc'], AutoBcc::extra($rules, $account->getEmail(), (array)$e['to'], (array)$e['cc'], (array)$e['bcc']));
 		$this->accounts->getClient($account, $timeout)->sendMessage('new', (string)$e['subject'], (string)$e['bodyHtml'],
-			(array)$e['to'], (array)$e['cc'], (array)$e['bcc']);
+			(array)$e['to'], (array)$e['cc'], $bcc);
 	}
 
 	/** Every few minutes: the sendings whose time has come. @return int sent */

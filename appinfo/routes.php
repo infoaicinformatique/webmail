@@ -38,6 +38,8 @@ return [
 		['name' => 'reply_later#index', 'url' => '/api/accounts/{id}/reply-later', 'verb' => 'GET'],
 		['name' => 'reply_later#add', 'url' => '/api/accounts/{id}/reply-later', 'verb' => 'POST'],
 		['name' => 'reply_later#remove', 'url' => '/api/accounts/{id}/reply-later/remove', 'verb' => 'POST'],
+		['name' => 'auto_bcc#index', 'url' => '/api/accounts/{id}/auto-bcc', 'verb' => 'GET'],
+		['name' => 'auto_bcc#save', 'url' => '/api/accounts/{id}/auto-bcc', 'verb' => 'POST'],
 		['name' => 'stats#index', 'url' => '/api/accounts/{id}/stats', 'verb' => 'GET'],
 		['name' => 'focus#index', 'url' => '/api/accounts/{id}/focus', 'verb' => 'GET'],
 		['name' => 'focus#set', 'url' => '/api/accounts/{id}/focus', 'verb' => 'POST'],
